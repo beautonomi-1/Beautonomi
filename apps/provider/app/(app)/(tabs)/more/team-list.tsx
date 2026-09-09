@@ -31,6 +31,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
@@ -439,9 +440,13 @@ export default function TeamListScreen() {
       location_ids: form.location_ids,
       service_ids: form.service_ids,
     };
-    const { data: createdMember, error } = await createMember(payload);
+    const { data: createdMember, error, errorCode } = await createMember(payload);
     if (error) {
-      Alert.alert("Error", error);
+      if (isPlanGateErrorCode(errorCode)) {
+        showPlanGateAlert({ message: error, errorCode, router });
+      } else {
+        Alert.alert("Error", error);
+      }
     } else {
       setAddSheetOpen(false);
       refresh();

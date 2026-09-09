@@ -74,16 +74,11 @@ Feature flag keys (Admin → Settings → Feature flags):
 
 ## Rollout: `log` → `enforce`
 
-The social age gate ships in **`log`** mode so deploy does not block existing users.
+**Status (Sep 2026):** Global gate is **`enforce`** via migration `885_social_age_gate_enforce.sql` and code fallbacks. Server-side social/UGC writes now return `403 SOCIAL_RESTRICTED` for under-13 and restricted 13–17 users.
 
-1. **Deploy** migrations 828 + 829 and application code with `safety.social_age_gate_mode` = `log` (default in DB seed).
-2. **Monitor** server logs for `[safety] social access would block` entries (`require-social-access.ts`). Review volume for `under_13`, `safety_settings`, and `unknown` bands.
-3. **Validate** Content & Safety Controls in the customer app (13–17 test accounts, locked toggles, device auth).
-4. **Confirm** `/age-suitability` and App Store declarations match live behaviour.
-5. **Flip enforcement** in Admin → Feature flags: set `safety.social_age_gate_mode` metadata to `{ "mode": "enforce" }`. No redeploy required; takes effect on next request.
-6. **Rollback** instantly by setting mode back to `log` or `off` if unexpected blocks occur.
+**Rollback:** Admin → Feature flags → `safety.social_age_gate_mode` → metadata `{ "mode": "log" }` or `{ "mode": "off" }` (no redeploy).
 
-Do **not** enable `enforce` until unknown-DOB legacy users have been reviewed in log output and support is briefed on `SOCIAL_RESTRICTED` / `SAFETY_SETTING_LOCKED` responses.
+**Monitor after enforce:** `[safety] social access would block` logs should drop to zero; watch support for `SOCIAL_RESTRICTED` / `SAFETY_SETTING_LOCKED` responses.
 
 ---
 
@@ -103,4 +98,5 @@ When upgrading to Expo SDK 56+ and installing `expo-age-range`:
 
 | Date | Change |
 |------|--------|
+| Sep 2026 | Global social age gate flipped to `enforce` (migration 885) |
 | July 2026 | Initial record: Phase 4 page, safety layer, log-mode rollout plan |

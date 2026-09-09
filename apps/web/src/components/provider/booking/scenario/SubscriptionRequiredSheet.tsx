@@ -15,7 +15,7 @@ export function SubscriptionRequiredSheet({
   open,
   onOpenChange,
   title = "Subscription required",
-  description = "Upgrade your plan to use this feature.",
+  description = "This feature is not included on your current plan. Upgrade under Subscription.",
 }: SubscriptionRequiredSheetProps) {
   const footer = (
     <div className="flex flex-col gap-2 sm:flex-row">

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { formatCurrency } from "@/lib/format";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -55,7 +55,9 @@ export default function ReportsIndex() {
   const { selectedLocationId } = useProvider();
   const [search, setSearch] = useState("");
   const analyticsUrl = appendReportLocation("/api/provider/analytics?period=month", selectedLocationId);
-  const { data: analytics, loading: analyticsLoading, error: analyticsError, refresh } = useApi<AnalyticsSummary>(analyticsUrl);
+  const { data: analytics, loading: analyticsLoading, error: analyticsError, refresh } = useApi<AnalyticsSummary>(analyticsUrl, {
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

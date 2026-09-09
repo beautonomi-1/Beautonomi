@@ -10,6 +10,7 @@ import {
   isPaycloudCashbackEnabledForProvider,
 } from "@/lib/payments/paycloud-feature-gate";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { resolveAcceptPaycloud } from "@/lib/payments/paycloud-accept";
 import { z } from "zod";
 
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
 
     const paycloudAccess = await checkPaycloudFeatureAccess(providerId, supabase);
     if (!paycloudAccess.enabled) {
-      return NextResponse.json({ data: null, error: { message: "Card machines require a plan upgrade.", code: "SUBSCRIPTION_REQUIRED" } }, { status: 403 });
+      return NextResponse.json({ data: null, error: { message: getUpgradeMessage("integrations.paycloud"), code: "SUBSCRIPTION_REQUIRED" } }, { status: 403 });
     }
 
     const { count } = await supabase
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
       .not("status", "eq", "decommissioned");
 
     if (paycloudAccess.maxTerminals != null && (count ?? 0) >= paycloudAccess.maxTerminals) {
-      return NextResponse.json({ data: null, error: { message: "You've reached the card machine limit on your plan. Upgrade to add more.", code: "TERMINAL_LIMIT_REACHED" } }, { status: 403 });
+      return NextResponse.json({ data: null, error: { message: getUpgradeMessage("limits.paycloud_terminals"), code: "TERMINAL_LIMIT_REACHED" } }, { status: 403 });
     }
 
     const { data: provider } = await supabase.from("providers").select("tenant_id").eq("id", providerId).single();

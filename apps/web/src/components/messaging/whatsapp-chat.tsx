@@ -32,6 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { format, isToday, isYesterday } from "date-fns";
@@ -949,10 +950,21 @@ export default function WhatsAppChat({
       
       let errorMessage = "Failed to send message";
       if (err instanceof FetchError) {
-        if (err.status === 403 && (err.message?.includes("subscription") || err.message?.includes("plan"))) {
-          errorMessage = "Messaging is not available on your current plan. Please upgrade your subscription to enable chat.";
-        } else {
-          errorMessage = err.message || "Failed to send message";
+        errorMessage = err.message || "Failed to send message";
+        if (isProviderChat && isPlanGateErrorCode(err.code)) {
+          toast.error(errorMessage, {
+            action: {
+              label: "View plans",
+              onClick: () => {
+                window.location.assign("/provider/subscription");
+              },
+            },
+          });
+          console.error("Error sending message:", err);
+          setMessageInput(messageContent);
+          if (replyTarget) setReplyingTo(replyTarget);
+          setSelectedFiles(selectedFiles);
+          return;
         }
       }
       

@@ -215,8 +215,13 @@ export function BookingScheduleCard({
   ].filter(Boolean) as { label: string; icon: keyof typeof Ionicons.glyphMap }[];
   const visibleTraits = traits.slice(0, 2);
   const overflowCount = Math.max(0, traits.length - visibleTraits.length);
-  const showManageMenu = canReschedule || canCancel;
+  const isClosedBooking = ["completed", "cancelled", "canceled", "no_show"].includes(ns);
 
+  /**
+   * Always rendered. Hiding the menu when nothing is actionable makes a tap on a
+   * past or closed booking look like the app is broken; an explanation is cheaper
+   * than a support ticket.
+   */
   const openManageMenu = () => {
     const options: string[] = [];
     const handlers: Array<() => void> = [];
@@ -228,8 +233,17 @@ export function BookingScheduleCard({
       options.push("Cancel booking");
       handlers.push(() => onCancel(booking));
     }
-    if (options.length === 0) return;
-    Alert.alert("Manage booking", customerName, [
+    const hasManageActions = options.length > 0;
+    options.push("View details");
+    handlers.push(() => onOpen(booking));
+
+    const message = hasManageActions
+      ? customerName
+      : isClosedBooking
+        ? "This booking is already closed, so it can't be rescheduled or cancelled."
+        : "You do not have permission to reschedule or cancel this booking. Ask an owner for appointment permissions.";
+
+    Alert.alert("Manage booking", message, [
       ...options.map((label, index) => ({
         text: label,
         onPress: handlers[index],
@@ -359,20 +373,18 @@ export function BookingScheduleCard({
               </View>
 
               <View style={twStyle("flex-row items-center justify-end gap-2")}>
-                {showManageMenu ? (
-                  <TouchableOpacity
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      void Haptics.selectionAsync();
-                      openManageMenu();
-                    }}
-                    style={twStyle("h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white")}
-                    accessibilityRole="button"
-                    accessibilityLabel="More booking actions"
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
-                  </TouchableOpacity>
-                ) : null}
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    void Haptics.selectionAsync();
+                    openManageMenu();
+                  }}
+                  style={twStyle("h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white")}
+                  accessibilityRole="button"
+                  accessibilityLabel="More booking actions"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color="#4b5563" />
+                </TouchableOpacity>
                 {cta ? (
                   <TouchableOpacity
                     onPress={() => {

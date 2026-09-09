@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
 import WhatsAppChat from "@/components/messaging/whatsapp-chat";
@@ -170,9 +171,22 @@ export function MessagingClient({
         if (err.status === 401) {
           errorMessage = "Please sign in to view your conversations.";
         } else if (err.status === 403) {
-          errorMessage = err.message?.includes("plan")
-            ? "Messaging is not available on your current plan. Upgrade your subscription to enable chat."
-            : "You don't have permission to view conversations. Please contact support if you believe this is an error.";
+          if (isPlanGateErrorCode(err.code)) {
+            errorMessage =
+              err.message ||
+              "You've reached your monthly client-chat message limit. Upgrade under Subscription.";
+            toast.error(errorMessage, {
+              action: {
+                label: "View plans",
+                onClick: () => {
+                  window.location.assign("/provider/subscription");
+                },
+              },
+            });
+          } else {
+            errorMessage =
+              "You don't have permission to view conversations. Please contact support if you believe this is an error.";
+          }
         } else if (err.status === 404) {
           errorMessage = "Conversations endpoint not found.";
         } else if (err.status === 0) {

@@ -13,7 +13,8 @@ import { subDays, format } from "date-fns";
 import { RevenueChart } from "../../components/RevenueChart";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
@@ -60,6 +61,7 @@ export default function SalesSummaryReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadReport();
@@ -80,12 +82,15 @@ export default function SalesSummaryReport() {
       );
       setData(response.data);
     } catch (err) {
-      if (err instanceof FetchError && err.code === "SUBSCRIPTION_REQUIRED") {
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
         setIsSubscriptionRequired(true);
+        setSubscriptionGateMessage(parsed.message);
         setError(null);
       } else {
-        setError(err instanceof Error ? err.message : "Failed to load report");
+        setError(parsed.message);
         setIsSubscriptionRequired(false);
+        setSubscriptionGateMessage(null);
       }
       console.error("Error loading sales summary:", err);
     } finally {
@@ -140,11 +145,7 @@ export default function SalesSummaryReport() {
             title="Sales Summary"
             subtitle="Track revenue, bookings, and service performance"
           />
-          <SubscriptionGate
-            feature="Sales Summary Reports"
-            message="Basic reports require a subscription upgrade."
-            upgradeMessage="Upgrade your platform plan under Subscription to access sales analytics."
-          />
+          <ReportSubscriptionRequired feature="Sales summary" message={subscriptionGateMessage} />
         </div>
       </SettingsDetailLayout>
     );

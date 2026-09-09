@@ -2376,7 +2376,7 @@
     "requiredDetailsMissing": "Ka kopo tlatsa lintlha tsohle tse ling tse hlokahang.",
     "providerFormFieldRequired": "Ka kopo qetela: {{formTitle}} — {{fieldName}}",
     "sessionVerifyFailed": "Ha rea khona ho netefatsa seshene ea hau e kentsoeng bakeng sa ho pata. Leka hape; ha e hlolohela, koasa 'me o bue hape app hore seshene e ncholle.",
-    "bookingLimitReached": "O fihlile moele oa ho buka. Ka kopo ntsosa leano la hau.",
+    "bookingLimitReached": "Khoebo ena e tletse bakeng sa nako ena. Ka kopo leka letsatsi le leng kapa mofani e mong.",
     "differentMarketProvider": "Mofani ona o ikemiselitseng mmarakeng e mits'e. Ka kopo ntlafatša sebaka sa hau.",
     "slotAlreadyClaimed": "Nako ena ea ho buka e se e nkuoe. Khutlela mora 'me u kgethe nako e ncha.",
     "noPermissionCompleteBooking": "Ha o na tumello ea ho qetella moketo ona.",

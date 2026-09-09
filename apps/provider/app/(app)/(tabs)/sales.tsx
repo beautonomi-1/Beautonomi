@@ -19,7 +19,7 @@ import { PayCloudPaymentSheet } from "@/components/payments/PayCloudPaymentSheet
 import { PaycloudCollectSetupAffordance } from "@/components/payments/PaycloudCollectSetupAffordance";
 import { usePaycloudCollectAvailability } from "@/hooks/usePaycloudCollectAvailability";
 import { getReportDateRange } from "@/lib/reportDateRanges";
-import { useApi, useApiPost } from "@/hooks/useApi";
+import { useApi, useApiPost, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useConfigBundle, useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -366,6 +366,7 @@ export default function SalesScreen() {
   } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`, {
     enabled: isFocused,
     staleTimeMs: 15_000,
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
   });
 
   const dateParams = useMemo(() => {
@@ -398,7 +399,7 @@ export default function SalesScreen() {
     refresh: refreshSales,
   } = useApi<SalesResponse>(
     `/api/provider/sales?limit=50${dateParams}${locQ}${searchQ}`,
-    { enabled: isFocused, staleTimeMs: 15_000 },
+    { enabled: isFocused, staleTimeMs: 15_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS },
   );
   const sales = salesResponse?.data ?? [];
 
@@ -844,6 +845,7 @@ export default function SalesScreen() {
             ? `Sale for ${selectedClient.full_name}`
             : "Walk-in sale",
         }),
+        { timeout: 120_000 },
       );
       if (res.error) {
         Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");

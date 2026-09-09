@@ -9,6 +9,7 @@ import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { subDays } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 
 export interface StaffTotalsItem {
   team_member_id: string;
@@ -49,6 +50,26 @@ export async function GET(request: NextRequest) {
       return handleApiError(new Error("Provider not found"), "NOT_FOUND", 404);
     }
 
+    const owner = await isProviderOwner(user.id, request);
+    const canViewAllReports =
+      owner || (await hasPermission(user.id, "view_reports", undefined, request));
+
+    let callerStaffId: string | null = null;
+    if (!canViewAllReports) {
+      const { data: callerStaff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!callerStaff) {
+        return successResponse([]);
+      }
+      callerStaffId = callerStaff.id;
+    }
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "daily";
     const dateStr = searchParams.get("date");
@@ -81,11 +102,15 @@ export async function GET(request: NextRequest) {
       toDate = new Date(bounds.toIso);
     }
 
-    const { data: staffMembers } = await supabaseAdmin
+    const { data: staffMembersRaw } = await supabaseAdmin
       .from("provider_staff")
       .select("id, user_id, tips_enabled, commission_enabled, users(full_name)")
       .eq("provider_id", providerId)
       .eq("is_active", true);
+
+    const staffMembers = callerStaffId
+      ? (staffMembersRaw ?? []).filter((s: { id: string }) => s.id === callerStaffId)
+      : staffMembersRaw;
 
     if (!staffMembers?.length) {
       return successResponse([]);

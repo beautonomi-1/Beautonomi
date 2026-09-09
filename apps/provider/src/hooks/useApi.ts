@@ -21,6 +21,7 @@ import {
   pruneResponseCache,
   clearApiCache,
   invalidateApiCacheForPath,
+  invalidateOrdersAndReturnsCache,
   invalidateServicesCache,
 } from "@/lib/api-response-cache";
 import { emitProviderServicesCatalogChanged } from "@/lib/provider-services-catalog-events";
@@ -366,7 +367,24 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   return { data, loading, error, errorCode, timedOut, refresh, silentRefresh, mutate };
 }
 
-export function useApiPost<TReq extends ApiClientRequestBody, TRes>(path: string) {
+const MONEY_MUTATION_TIMEOUT_MS = 120_000;
+
+function timeoutForMutationPath(path: string, explicit?: number): number | undefined {
+  if (typeof explicit === "number") return explicit;
+  if (
+    /\/api\/provider\/(sales|product-sales|payouts|payments)\b/.test(path) ||
+    /\/api\/payments\//.test(path) ||
+    /paystack|yoco|paycloud|mark-paid|charge-saved-card/.test(path)
+  ) {
+    return MONEY_MUTATION_TIMEOUT_MS;
+  }
+  return undefined;
+}
+
+export function useApiPost<TReq extends ApiClientRequestBody, TRes>(
+  path: string,
+  options?: { timeout?: number },
+) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -385,7 +403,12 @@ export function useApiPost<TReq extends ApiClientRequestBody, TRes>(path: string
         setLoading(true);
         setError(null);
         setErrorCode(null);
-        const result = await api.post<TRes>(path, body);
+        const timeout = timeoutForMutationPath(path, options?.timeout);
+        const result = await api.post<TRes>(
+          path,
+          body,
+          timeout ? { timeout } : undefined,
+        );
         if (result.error) {
           // §Provider-audit 2026-04: surface `error.code` so callers can
           // branch on specific server contracts (e.g. CONFLICT, CALENDAR_BLOCK,
@@ -411,7 +434,7 @@ export function useApiPost<TReq extends ApiClientRequestBody, TRes>(path: string
         if (mountedRef.current) setLoading(false);
       }
     },
-    [path]
+    [path, options?.timeout]
   );
 
   return { execute, loading, error, errorCode };
@@ -436,14 +459,16 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
         setLoading(true);
         setError(null);
         let result;
+        const timeout = timeoutForMutationPath(path);
+        const requestOptions = timeout ? { timeout } : undefined;
         if (method === "delete") {
-          result = await api.delete<TRes>(path);
+          result = await api.delete<TRes>(path, requestOptions);
         } else if (method === "patch") {
-          result = await api.patch<TRes>(path, body);
+          result = await api.patch<TRes>(path, body, requestOptions);
         } else if (method === "post") {
-          result = await api.post<TRes>(path, body);
+          result = await api.post<TRes>(path, body, requestOptions);
         } else {
-          result = await api.put<TRes>(path, body);
+          result = await api.put<TRes>(path, body, requestOptions);
         }
         if (result.error) {
           const apiErr = result.error as ApiError;
@@ -454,6 +479,11 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
         if (path.includes("/api/provider/services")) {
           invalidateServicesCache();
           emitProviderServicesCatalogChanged();
+        } else if (
+          path.includes("/api/provider/product-orders") ||
+          path.includes("/api/provider/returns")
+        ) {
+          invalidateOrdersAndReturnsCache();
         } else {
           invalidateApiCacheForPath(path);
         }

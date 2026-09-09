@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 const TRIGGER_TYPES = [
   { label: "Booking completed", value: "booking_completed" },
@@ -40,14 +41,8 @@ const ACTION_TYPES = [
 ] as const;
 
 function alertCreateError(message: string, errorCode: string | null, router: Router) {
-  if (errorCode === "SUBSCRIPTION_REQUIRED" || errorCode === "LIMIT_REACHED") {
-    Alert.alert(errorCode === "LIMIT_REACHED" ? "Automation limit" : "Subscription required", message, [
-      { text: "OK", style: "cancel" },
-      {
-        text: "View plans & billing",
-        onPress: () => router.push("/(app)/(tabs)/more/settings/subscription" as never),
-      },
-    ]);
+  if (isPlanGateErrorCode(errorCode)) {
+    showPlanGateAlert({ message, errorCode, router });
     return;
   }
   Alert.alert("Error", message);

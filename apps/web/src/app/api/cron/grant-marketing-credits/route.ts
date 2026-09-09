@@ -3,12 +3,14 @@ import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { grantMonthlyIncludedCredits } from "@/lib/marketing/credits";
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
+import { resolveIncludedMonthlyCreditZar } from "@/lib/marketing/included-credit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const JOB_NAME = "grant-marketing-credits";
+const PAGE_SIZE = 500;
 
 /**
  * GET /api/cron/grant-marketing-credits
@@ -31,32 +33,42 @@ async function runJob(request: NextRequest) {
   const supabase = getSupabaseAdmin();
   const periodKey = new Date().toISOString().slice(0, 7);
 
-  const { data: subs } = await supabase
-    .from("provider_subscriptions")
-    .select("provider_id, subscription_plans(features)")
-    .eq("status", "active")
-    .limit(500);
-
   let granted = 0;
-  for (const sub of subs ?? []) {
-    const plan = sub.subscription_plans as { features?: Record<string, unknown> } | null;
-    const marketing = plan?.features?.marketing_campaigns as
-      | {
-          use_platform_credentials?: boolean;
-          included_marketing_credit_zar_per_month?: number;
-        }
-      | undefined;
-    const usePlatform = marketing?.use_platform_credentials === true;
-    const marketingGrant = Number(marketing?.included_marketing_credit_zar_per_month ?? 0);
-    const ads = plan?.features?.platform_ads as { included_credit_zar_per_month?: number } | undefined;
-    const grant = marketingGrant > 0 ? marketingGrant : usePlatform ? Number(ads?.included_credit_zar_per_month ?? 0) : 0;
-    if (grant <= 0) continue;
-    try {
-      await grantMonthlyIncludedCredits(supabase, sub.provider_id as string, grant, periodKey);
-      granted++;
-    } catch (e) {
-      console.warn("[grant-marketing-credits]", sub.provider_id, e);
+  let offset = 0;
+
+  while (true) {
+    const { data: subs, error } = await supabase
+      .from("provider_subscriptions")
+      .select("provider_id, subscription_plans(features)")
+      .eq("status", "active")
+      .order("provider_id", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) {
+      console.error("[grant-marketing-credits] query failed", error);
+      break;
     }
+
+    if (!subs?.length) {
+      break;
+    }
+
+    for (const sub of subs) {
+      const plan = sub.subscription_plans as { features?: Record<string, unknown> } | null;
+      const grant = resolveIncludedMonthlyCreditZar(plan?.features);
+      if (grant <= 0) continue;
+      try {
+        await grantMonthlyIncludedCredits(supabase, sub.provider_id as string, grant, periodKey);
+        granted++;
+      } catch (e) {
+        console.warn("[grant-marketing-credits]", sub.provider_id, e);
+      }
+    }
+
+    if (subs.length < PAGE_SIZE) {
+      break;
+    }
+    offset += PAGE_SIZE;
   }
 
   return NextResponse.json({ ok: true, granted, period: periodKey });

@@ -12,6 +12,7 @@ import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { api } from "@/lib/api-client";
 import { trackReferralShared, trackSafetyHubNav } from "@/lib/analytics";
 import { openNativeStoreReview } from "@/lib/open-store-review";
+import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 interface ProfileCompletion {
@@ -166,6 +167,7 @@ export default function AccountSettingsScreen() {
 
   const handleRateStore = () => {
     getAnalyticsClient()?.track("rate_app_store", { source: "account_settings" });
+    void recordManualStoreReview(user?.id);
     void openNativeStoreReview();
   };
 

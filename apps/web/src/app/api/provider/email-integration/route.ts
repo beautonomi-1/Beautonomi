@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { checkMarketingFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const putSchema = z.object({
@@ -98,7 +99,7 @@ export async function PUT(request: NextRequest) {
       const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
       if (!marketingAccess.customIntegrations) {
         return errorResponse(
-          "Marketing integrations require a subscription upgrade. Please upgrade your plan to use custom email integrations.",
+          getUpgradeMessage("integrations.custom"),
           "SUBSCRIPTION_REQUIRED",
           403
         );

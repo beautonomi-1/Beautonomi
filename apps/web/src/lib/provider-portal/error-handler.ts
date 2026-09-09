@@ -4,6 +4,8 @@
 
 import { toast } from "sonner";
 import { FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 
 export interface ErrorContext {
   action?: string;
@@ -31,6 +33,12 @@ export function getErrorMessage(error: any, context?: ErrorContext): string {
       case 401:
         return "You are not authorized to perform this action. Please log in again.";
       case 403:
+        if (isPlanGateErrorCode(error.code)) {
+          return (
+            error.message?.trim() ||
+            "This action isn’t included in your current plan. Upgrade under Subscription."
+          );
+        }
         return "You don't have permission to access this resource.";
       case 404:
         return context?.resource
@@ -95,6 +103,16 @@ export function handleError(
   }
 
   if (showToast) {
+    const code =
+      error instanceof FetchError
+        ? error.code
+        : typeof error === "object" && error && "code" in error
+          ? String((error as { code?: unknown }).code ?? "")
+          : undefined;
+    if (isPlanGateErrorCode(code)) {
+      toastPlanGateError(error, message);
+      return;
+    }
     if (onRetry) {
       toast.error(message, {
         action: {

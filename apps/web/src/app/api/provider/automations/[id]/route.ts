@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkAutomationFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { assertAutomationChannelAllowed } from "@/lib/subscriptions/marketing-channel-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const updateAutomationSchema = z.object({
@@ -73,7 +74,7 @@ export async function PATCH(
     // Check subscription allows automations
     const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("marketing.automations"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const body = await request.json();
@@ -82,13 +83,33 @@ export async function PATCH(
     // Get existing automation to merge configs
     const { data: existing } = await supabase
       .from("marketing_automations")
-      .select("action_config, trigger_config")
+      .select("action_config, trigger_config, action_type, is_active")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!existing) {
       return notFoundResponse("Automation not found");
+    }
+
+    // Subscription gate on outbound channels: re-check when the channel is being
+    // changed, or when an outbound automation is being switched on. Plain edits
+    // (rename, template tweaks) on an existing row are left alone; the execute
+    // cron independently skips channels the plan no longer allows.
+    const nextActionType =
+      validated.action_type ??
+      (existing.action_type as "email" | "sms" | "notification" | "whatsapp");
+    const channelChanging = validated.action_type !== undefined;
+    const activating = validated.is_active === true;
+    if ((channelChanging || activating) && nextActionType !== "notification") {
+      const channelCheck = await assertAutomationChannelAllowed(
+        providerId,
+        nextActionType,
+        supabase,
+      );
+      if (channelCheck.ok === false) {
+        return errorResponse(channelCheck.message, "SUBSCRIPTION_REQUIRED", 403);
+      }
     }
 
     // Merge action_config if provided

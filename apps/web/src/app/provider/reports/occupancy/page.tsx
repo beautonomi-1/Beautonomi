@@ -1,4 +1,6 @@
 "use client";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -8,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Users, Calendar, Download, Timer, Activity, Info, TrendingUp } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { differenceInCalendarDays, format, parseISO, subDays } from "date-fns";
 import { ReportSkeleton } from "../components/ReportSkeleton";
 import { EmptyReportState } from "../components/EmptyReportState";
@@ -34,6 +36,8 @@ export default function OccupancyReportPage() {
   const [data, setData] = useState<OccupancyResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
   const [view, setView] = useState<"byDate" | "byStaff">("byDate");
 
   const rangeDayCount = useMemo(() => {
@@ -52,6 +56,8 @@ export default function OccupancyReportPage() {
     try {
       setIsLoading(true);
       setError(null);
+      setIsSubscriptionRequired(false);
+      setSubscriptionGateMessage(null);
       if (from > to) {
         setError("'From' must be on or before 'To'.");
         setData(null);
@@ -70,7 +76,16 @@ export default function OccupancyReportPage() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
+        setIsSubscriptionRequired(true);
+        setSubscriptionGateMessage(parsed.message);
+        setError(null);
+      } else {
+        setError(parsed.message);
+        setIsSubscriptionRequired(false);
+        setSubscriptionGateMessage(null);
+      }
       setData(null);
     } finally {
       setIsLoading(false);
@@ -104,6 +119,21 @@ export default function OccupancyReportPage() {
         ]}
       >
         <ReportSkeleton />
+      </SettingsDetailLayout>
+    );
+  }
+
+  if (isSubscriptionRequired) {
+    return (
+      <SettingsDetailLayout
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Provider", href: "/provider" },
+          { label: "Reports", href: "/provider/reports" },
+          { label: "Occupancy" },
+        ]}
+      >
+        <ReportSubscriptionRequired feature="Occupancy" message={subscriptionGateMessage} />
       </SettingsDetailLayout>
     );
   }

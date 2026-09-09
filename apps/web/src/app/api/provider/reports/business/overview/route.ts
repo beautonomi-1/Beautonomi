@@ -67,7 +67,7 @@ async function recognizedBreakdownForWindow(
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "sales" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

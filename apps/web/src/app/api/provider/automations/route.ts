@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkAutomationFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { assertAutomationChannelAllowed } from "@/lib/subscriptions/marketing-channel-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const createAutomationSchema = z.object({
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows automations
     const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("marketing.automations"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Use service role client for template seeding (needs elevated permissions)
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows automations
     const automationAccess = await checkAutomationFeatureAccess(providerId, supabase);
     if (!automationAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("marketing.automations"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Check automation limit
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
 
       if ((existingAutomations?.length || 0) >= automationAccess.maxAutomations) {
         return errorResponse(
-          `You've reached your automation limit (${automationAccess.maxAutomations}). Please upgrade your plan to create more automations.`,
+          getUpgradeMessage("limits.automations"),
           "LIMIT_REACHED",
           403
         );
@@ -129,6 +130,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validated = createAutomationSchema.parse(body);
+
+    const channelCheck = await assertAutomationChannelAllowed(
+      providerId,
+      validated.action_type,
+      supabase,
+    );
+    if (channelCheck.ok === false) {
+      return errorResponse(channelCheck.message, "SUBSCRIPTION_REQUIRED", 403);
+    }
 
     const { data: automation, error } = await supabase
       .from("marketing_automations")

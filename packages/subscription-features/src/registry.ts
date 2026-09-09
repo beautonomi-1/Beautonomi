@@ -21,6 +21,7 @@ export const REPORT_TYPES = [
   { value: "payments", label: "Payments" },
   { value: "gift_cards", label: "Gift cards" },
   { value: "packages", label: "Packages" },
+  { value: "memberships", label: "Memberships" },
 ] as const;
 
 /** All subscription feature category keys (top-level keys in subscription_plans.features). */

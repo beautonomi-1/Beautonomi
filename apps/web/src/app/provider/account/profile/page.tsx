@@ -59,7 +59,7 @@ export default function ProfilePage() {
     phone: "",
     avatar_url: null,
     address: null,
-    plan: "Professional",
+    plan: "",
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -612,14 +612,14 @@ export default function ProfilePage() {
             className="bg-gray-50"
           />
           <div className="flex items-center gap-2 mt-2">
-            <p className="text-xs text-gray-500">Contact support to change your plan</p>
+            <p className="text-xs text-gray-500">Manage your plan under Subscription.</p>
             <Button
               variant="link"
               size="sm"
               className="h-auto p-0 text-xs text-primary"
-              onClick={() => window.open("/help/submit-ticket", "_blank")}
+              onClick={() => window.location.assign("/provider/subscription")}
             >
-              Contact Support
+              View plans
             </Button>
           </div>
         </div>

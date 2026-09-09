@@ -7,8 +7,8 @@ import {
   forbiddenResponse,
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+
 
 const invoiceLineItemSchema = z.object({
   line_item_type: z.enum(["platform_fee", "commission", "subscription", "transaction_fee", "adjustment", "other"]).optional().default("other"),
@@ -104,7 +104,12 @@ export async function GET(
 
 /**
  * PATCH /api/provider/invoices/[id]
- * Update invoice (mark as sent, paid, etc.)
+ *
+ * Amend a platform invoice. Restricted to staff: providers receive these invoices,
+ * they do not author them. Settlement is never expressed here — `paid` and
+ * `partially_paid` are derived by the `update_invoice_amount_paid` trigger from
+ * rows in `provider_invoice_payments`, so writing them directly would produce an
+ * invoice that reads as settled with no payment behind it.
  */
 export async function PATCH(
   request: NextRequest,
@@ -112,12 +117,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const permissionCheck = await requirePermission("edit_settings", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["superadmin"], request);
     const admin = getSupabaseAdmin();
 
     const { data: existing, error: loadErr } = await admin
@@ -139,23 +139,24 @@ export async function PATCH(
     if (!invPid) {
       return forbiddenResponse("Invalid invoice record");
     }
-    if (!(await userHasProviderAccessAdmin(admin, user.id, invPid))) {
-      return forbiddenResponse("You do not have access to this invoice");
-    }
 
     const body = await request.json();
     const validated = updateInvoiceSchema.parse(body);
 
     const updates: Record<string, unknown> = {};
 
-    const existingStatus = (existing as { status?: string | null }).status;
     if (validated.status) {
+      if (validated.status === "paid" || validated.status === "partially_paid") {
+        return handleApiError(
+          new Error("Settlement status is derived from payments"),
+          "Record a payment via /invoices/[id]/pay instead of setting this status directly.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
       updates.status = validated.status;
       if (validated.status === "sent") {
         updates.sent_at = new Date().toISOString();
-      }
-      if (validated.status === "paid" && existingStatus !== "paid") {
-        updates.paid_at = new Date().toISOString();
       }
     }
 

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreditCard, Plus, MoreVertical, CheckCircle2, XCircle, MapPin, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import { Money } from "@/components/provider-portal/Money";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -124,7 +125,7 @@ export default function YocoDevicesPage() {
       loadPageData();
     } catch (error) {
       console.error("Failed to save device:", error);
-      toast.error("Failed to save device");
+      toastPlanGateError(error, "Failed to save device");
     }
   };
 

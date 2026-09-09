@@ -12,11 +12,12 @@ import {
 import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { useTranslation } from "@beautonomi/i18n";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { VerifiedBadge } from "@/components/ui/VerifiedBadge";
 import { openNativeStoreReview } from "@/lib/open-store-review";
+import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { formatCurrency } from "@/lib/format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -250,9 +251,9 @@ export default function MoreScreen() {
   };
   const { data: meProfile, refresh: refreshMeProfile } = useApi<MeProfileLite>("/api/me/profile", { staleTimeMs: 45_000 });
   const { provider } = useProvider();
-  const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000 });
-  const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000 });
-  const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000 });
+  const { data: financeSummary, refresh: refreshFinanceSummary } = useApi<FinanceSummaryData>("/api/provider/finance?range=month", { staleTimeMs: 30_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
+  const { data: payoutAccounts, loading: payoutAccountsLoading, refresh: refreshPayoutAccounts } = useApi<PayoutAccountSummary[]>("/api/provider/payout-accounts", { staleTimeMs: 30_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
+  const { data: payoutSchedule, refresh: refreshPayoutSchedule } = useApi<PayoutScheduleData>("/api/provider/payouts/next-date", { staleTimeMs: 60_000, timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
   const { data: teamAccess } = useApi<TeamAccessData>("/api/provider/team-access", { staleTimeMs: 60_000 });
   const { data: permissionData } = useApi<{ isOwner?: boolean; permissions?: Record<string, boolean> }>(
     "/api/provider/permissions",
@@ -1146,6 +1147,7 @@ export default function MoreScreen() {
           }}
           onPress={() => {
             getAnalyticsClient()?.track("rate_app_store", { source: "more_tab" });
+            void recordManualStoreReview(user?.id);
             void openNativeStoreReview();
           }}
           activeOpacity={0.7}

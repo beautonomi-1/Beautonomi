@@ -25,17 +25,10 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 function alertApiError(title: string, message: string, errorCode: string | null, router: Router | null) {
-  if (errorCode === "SUBSCRIPTION_REQUIRED" && router) {
-    Alert.alert(title, message, [
-      { text: "OK", style: "cancel" },
-      {
-        text: "View plans & billing",
-        onPress: () => {
-          router.push("/(app)/(tabs)/more/settings/subscription" as never);
-        },
-      },
-    ]);
+  if (isPlanGateErrorCode(errorCode)) {
+    showPlanGateAlert({ title, message, errorCode, router: router ?? undefined });
     return;
   }
   Alert.alert(title, message);
@@ -419,19 +412,16 @@ export default function RecurringAppointmentsScreen() {
   }
 
   if (error && !data) {
-    const isSub =
-      errorCode === "SUBSCRIPTION_REQUIRED" ||
-      error.toLowerCase().includes("subscription") ||
-      error.toLowerCase().includes("upgrade");
+    const isSub = isPlanGateErrorCode(errorCode);
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Recurring Appointments" showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState
-            message={isSub ? "This feature requires a plan that includes recurring appointments." : error}
+            message={isSub ? "Recurring appointments require a plan that includes this feature. Upgrade under Subscription." : error}
             onRetry={isSub ? undefined : refresh}
           />
-          {isSub && errorCode === "SUBSCRIPTION_REQUIRED" && (
+          {isSub && (
             <TouchableOpacity
               onPress={() =>
                 router.push("/(app)/(tabs)/more/settings/subscription" as never)

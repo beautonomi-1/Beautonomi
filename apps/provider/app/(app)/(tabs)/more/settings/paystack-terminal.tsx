@@ -8,6 +8,7 @@ import { twStyle } from "@/lib/twStyle";
 import { useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { usePaystackTerminals, usePaystackTerminalPayments, type PaystackTerminalPayment } from "@/hooks/usePaystackTerminal";
 import { TerminalPosterCard } from "@/components/TerminalPosterCard";
+import { isPlanGateErrorCode, openProviderPlans, showPlanGateAlert } from "@/lib/plan-gate";
 
 export default function PaystackTerminalSettingsScreen() {
   const { isLoading: bundleLoading } = useConfigBundle();
@@ -45,7 +46,13 @@ export default function PaystackTerminalSettingsScreen() {
       const result = await requestTerminalSetup(null, null);
       Alert.alert("Paystack Terminal", result?.message ?? "Beautonomi Ops has been notified.");
     } catch (err) {
-      Alert.alert("Paystack Terminal", err instanceof Error ? err.message : "Failed to request terminal setup");
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code?: string }).code) : null;
+      const msg = err instanceof Error ? err.message : "Failed to request terminal setup";
+      if (isPlanGateErrorCode(code)) {
+        showPlanGateAlert({ title: "Paystack Terminal", message: msg, errorCode: code });
+      } else {
+        Alert.alert("Paystack Terminal", msg);
+      }
     } finally {
       setCreating(false);
     }
@@ -238,9 +245,14 @@ export default function PaystackTerminalSettingsScreen() {
         <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4 mb-4")}>
           <Text style={twStyle("text-base font-semibold text-gray-900")}>Request terminal setup</Text>
           {!canRequestSetup ? (
-            <Text style={twStyle("text-sm text-red-700 mt-2")}>
-              Your plan does not include Paystack Terminal. Contact support or upgrade your subscription.
-            </Text>
+            <>
+              <Text style={twStyle("text-sm text-red-700 mt-2")}>
+                Paystack Terminal requires a plan that includes virtual terminals. Upgrade under Subscription.
+              </Text>
+              <TouchableOpacity onPress={() => openProviderPlans()} hitSlop={8} style={twStyle("mt-2 self-start")}>
+                <Text style={twStyle("text-sm font-semibold text-green-700")}>View plans</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <Text style={twStyle("text-sm text-gray-600 mt-1")}>

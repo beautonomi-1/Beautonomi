@@ -9,12 +9,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
@@ -73,7 +73,9 @@ export default function StaffReport() {
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const staffReportUrl = appendReportLocation(`/api/provider/reports/staff?from=${from}&to=${to}`, selectedLocationId);
-  const { data, loading, error: dataError, refresh } = useApi<StaffData>(staffReportUrl);
+  const { data, loading, error: dataError, errorCode: dataErrorCode, refresh } = useApi<StaffData>(staffReportUrl, {
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -140,7 +142,9 @@ export default function StaffReport() {
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#7c3aed" />}
-      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && dataError && !data && (
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
+      )}
       {!loading && !dataError && (!data || data.staff.length === 0) && (
         <EmptyState icon="people-outline" title="No staff data" description="Add team members or widen the date range" />
       )}

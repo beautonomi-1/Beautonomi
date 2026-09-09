@@ -25,7 +25,8 @@ function mockSupabaseWithLedgerRows(total: number) {
     in: () => chain,
     gte: () => chain,
     lte: () => chain,
-    order: () => ({ range }),
+    order: () => chain,
+    range,
   };
 
   return { supabase: { from: () => chain } as never, range };

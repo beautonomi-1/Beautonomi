@@ -16,6 +16,7 @@ import { Plus, Mail, MessageSquare, Send, Edit, Trash2, Users, MessageCircle, In
 import { FetchError, fetcher } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { format } from "date-fns";
@@ -157,8 +158,7 @@ export default function MarketingCampaignsPage() {
       toast.success(`Test ${formData.type} sent to ${testRecipient.trim()}`);
       void loadCreditBalance();
     } catch (error) {
-      const message = error instanceof FetchError ? error.message : "Failed to send test message";
-      toast.error(message);
+      toastPlanGateError(error, "Failed to send test message");
     } finally {
       setIsSendingTest(false);
     }
@@ -213,8 +213,8 @@ export default function MarketingCampaignsPage() {
       const data = await providerApi.listCampaigns();
       setCampaigns((data || []) as any as Campaign[]);
     } catch (error) {
-      console.error("Failed to load campaigns:", error);
-      toast.error("Failed to load campaigns");
+      const message = error instanceof FetchError ? error.message : "Failed to load campaigns";
+      toastPlanGateError(error, message);
     } finally {
       setIsLoading(false);
     }
@@ -309,8 +309,7 @@ export default function MarketingCampaignsPage() {
       setIsDialogOpen(false);
       loadCampaigns();
     } catch (error) {
-      const errorMessage = error instanceof FetchError ? error.message : "Failed to save campaign";
-      toast.error(errorMessage);
+      toastPlanGateError(error, "Failed to save campaign");
     }
   };
 
@@ -346,8 +345,7 @@ export default function MarketingCampaignsPage() {
       loadCampaigns();
       void loadCreditBalance();
     } catch (error) {
-      const errorMessage = error instanceof FetchError ? error.message : "Failed to send campaign";
-      toast.error(errorMessage);
+      toastPlanGateError(error, "Failed to send campaign");
     }
   };
 

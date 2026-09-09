@@ -22,6 +22,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import {
   mapTriggerToCategory,
   formatTriggerLabel,
@@ -138,11 +139,7 @@ export default function AutomationsScreen() {
     }
   }, [refresh, refreshBalance]);
 
-  const subscriptionBlocked =
-    errorCode === "SUBSCRIPTION_REQUIRED" ||
-    (!!error &&
-      error.toLowerCase().includes("subscription") &&
-      (error.toLowerCase().includes("upgrade") || error.toLowerCase().includes("plan")));
+  const subscriptionBlocked = isPlanGateErrorCode(errorCode);
 
   function openSubscriptionHelp() {
     router.push("/(app)/(tabs)/more/settings/subscription" as never);
@@ -150,7 +147,7 @@ export default function AutomationsScreen() {
 
   async function handleActivateTemplate(raw: AutomationRow) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { error: err } = await createAutomationFromTemplate("/api/provider/automations", {
+    const { error: err, errorCode } = await createAutomationFromTemplate("/api/provider/automations", {
       name: raw.name,
       trigger_type: raw.trigger_type,
       trigger_config: raw.trigger_config ?? {},
@@ -160,8 +157,13 @@ export default function AutomationsScreen() {
       is_active: true,
       ...(raw.description ? { description: raw.description } : {}),
     });
-    if (err) Alert.alert("Error", err);
-    else {
+    if (err) {
+      if (isPlanGateErrorCode(errorCode)) {
+        showPlanGateAlert({ message: err, errorCode, router });
+      } else {
+        Alert.alert("Error", err);
+      }
+    } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
     }
@@ -173,11 +175,16 @@ export default function AutomationsScreen() {
       await handleActivateTemplate(row.raw);
       return;
     }
-    const { error: err } = await updateAutomation(`/api/provider/automations/${row.id}`, {
+    const { error: err, errorCode: toggleCode } = await updateAutomation(`/api/provider/automations/${row.id}`, {
       is_active: newValue,
     });
-    if (err) Alert.alert("Error", err);
-    else {
+    if (err) {
+      if (isPlanGateErrorCode(toggleCode)) {
+        showPlanGateAlert({ message: err, errorCode: toggleCode, router });
+      } else {
+        Alert.alert("Error", err);
+      }
+    } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
     }

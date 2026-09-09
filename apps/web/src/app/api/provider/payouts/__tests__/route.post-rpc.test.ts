@@ -65,6 +65,11 @@ vi.mock("@/lib/reports/provider-report-utils", () => ({
   getProviderReportContext: vi.fn(),
 }));
 
+vi.mock("@/lib/verification/verification-policy", () => ({
+  resolveVerificationPolicy: vi.fn(),
+  isProviderVerificationApproved: vi.fn(),
+}));
+
 const owner = MOCK_USERS.provider_owner;
 const PROVIDER_ID = "11111111-1111-1111-1111-111111111111";
 const TENANT_ID = "22222222-2222-2222-2222-222222222222";
@@ -134,6 +139,9 @@ async function setupMocks(adminMock: ReturnType<typeof buildAdminMock>) {
   const { fetchScopedSingle } = await import("@/lib/tenant/scoped-overrides");
   const { checkPayoutRequestRateLimit } = await import("@/lib/rate-limit/payout-request");
   const { getProviderReportContext } = await import("@/lib/reports/provider-report-utils");
+  const { resolveVerificationPolicy, isProviderVerificationApproved } = await import(
+    "@/lib/verification/verification-policy"
+  );
 
   vi.mocked(requireOwnerOrEditSettings).mockResolvedValue({
     authorized: true,
@@ -150,6 +158,8 @@ async function setupMocks(adminMock: ReturnType<typeof buildAdminMock>) {
   } as never);
   vi.mocked(checkPayoutRequestRateLimit).mockResolvedValue({ allowed: true } as never);
   vi.mocked(getProviderReportContext).mockResolvedValue({ timezone: "Africa/Johannesburg" } as never);
+  vi.mocked(resolveVerificationPolicy).mockResolvedValue({ requiredForPayouts: false } as never);
+  vi.mocked(isProviderVerificationApproved).mockResolvedValue(true);
   // available 500, pending reserve 200 → max available before reserve = 700
   vi.mocked(getAvailablePayoutBalance).mockResolvedValue({
     availableBalance: 500,

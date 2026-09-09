@@ -7,6 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import {
   sumStaffEarningsLines,
   summarizeStaffEarningsLines,
@@ -35,6 +36,14 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const owner = await isProviderOwner(user.id, request);
+    if (!owner) {
+      const allowed = await hasPermission(user.id, "view_own_earnings", undefined, request);
+      if (!allowed) {
+        return successResponse({ pay_stubs: [], live: null, settlement: null, adjustments: [] });
+      }
+    }
 
     const { data: staff } = await supabaseAdmin
       .from("provider_staff")

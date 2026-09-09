@@ -44,7 +44,7 @@ function lineRevenue(qty: number, unitPrice: number, totalPrice: number): number
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "products" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

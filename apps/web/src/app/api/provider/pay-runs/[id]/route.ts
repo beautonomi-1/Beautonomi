@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isProviderOwner } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const updateItemSchema = z.object({
@@ -42,7 +43,22 @@ export async function GET(
 
     if (prError || !payRun) return notFoundResponse("Pay run not found");
 
-    const { data: items, error: itemsError } = await supabaseAdmin
+    const owner = await isProviderOwner(user.id, request);
+    let callerStaffId: string | null = null;
+    if (!owner) {
+      const { data: callerStaff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!callerStaff) return notFoundResponse("Pay run not found");
+      callerStaffId = callerStaff.id;
+    }
+
+    let itemsQuery = supabaseAdmin
       .from("provider_pay_run_items")
       .select(`
         id,
@@ -61,6 +77,12 @@ export async function GET(
       `)
       .eq("pay_run_id", id)
       .order("staff_id");
+
+    if (callerStaffId) {
+      itemsQuery = itemsQuery.eq("staff_id", callerStaffId);
+    }
+
+    const { data: items, error: itemsError } = await itemsQuery;
 
     if (itemsError) throw itemsError;
 

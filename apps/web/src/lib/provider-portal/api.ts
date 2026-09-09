@@ -589,7 +589,11 @@ export class ProviderApiClient implements ProviderApi {
     requestData?: any,
   ): Promise<never> {
     await this.logProviderApiFailure(endpoint, method, error, userId, providerId, requestData);
-    throw new Error(`API call failed: ${error?.message || String(error)}`);
+    // Keep FetchError.status/code so plan-gate toasts can show catalog copy + View plans.
+    if (error instanceof FetchError || error instanceof FetchTimeoutError) {
+      throw error;
+    }
+    throw error instanceof Error ? error : new Error(String(error));
   }
 
   private async resolveProviderTimezone(explicitTimezone?: string | null): Promise<string | null> {

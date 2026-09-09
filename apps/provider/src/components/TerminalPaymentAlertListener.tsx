@@ -59,7 +59,7 @@ export function TerminalPaymentAlertListener() {
     void api.post(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, {
       paystackTerminalAction: "mark_seen",
       paymentId: id,
-    });
+    }, { timeout: 120_000 });
   }, []);
 
   const close = useCallback(() => {
@@ -84,6 +84,7 @@ export function TerminalPaymentAlertListener() {
           entity_type: suggestion.entity_type,
           entity_id: suggestion.entity_id,
         }),
+        { timeout: 120_000 },
       );
       if (res.error) {
         Alert.alert("Allocate payment", res.error.message ?? "Could not allocate this payment.");

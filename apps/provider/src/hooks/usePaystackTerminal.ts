@@ -131,9 +131,12 @@ export function usePaystackTerminals(options?: { enabled?: boolean }) {
         },
       );
       if (res.error) {
-        throw new Error(
-          paystackTerminalErrorMessage(res.error.message, (res.error as { code?: string }).code),
-        );
+        const code = (res.error as { code?: string }).code;
+        const err = new Error(
+          paystackTerminalErrorMessage(res.error.message, code),
+        ) as Error & { code?: string };
+        err.code = code;
+        throw err;
       }
       await refresh();
       return res.data;
@@ -198,7 +201,7 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean; termi
       message?: string;
       recorded?: number;
       terminalPayments?: number;
-    }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, { paystackTerminalAction: "reconcile" });
+    }>(PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH, { paystackTerminalAction: "reconcile" }, { timeout: 120_000 });
     if (res.error) throw new Error(res.error.message ?? "Failed to check for new payments");
     await refresh();
     return res.data;
@@ -221,6 +224,7 @@ export function usePaystackTerminalPayments(options?: { enabled?: boolean; termi
       const res = await api.post(
         PAYSTACK_TERMINAL_PAYMENTS_ACTION_PATH,
         paystackTerminalAllocatePayload(paymentId, input),
+        { timeout: 120_000 },
       );
       if (res.error) throw new Error(res.error.message ?? "Failed to update allocation");
       await refresh();

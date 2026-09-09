@@ -1,4 +1,6 @@
 "use client";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -8,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, RefreshCw } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
@@ -48,11 +50,13 @@ export default function PaystackTerminalReconciliationPage() {
   const [data, setData] = useState<PaystackReconciliationData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
 
   const loadReport = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      setIsSubscriptionRequired(false);
       const params = new URLSearchParams();
       appendReportDateParams(params, dateRange);
       const response = await fetcher.get<{ data: PaystackReconciliationData }>(

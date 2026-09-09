@@ -39,6 +39,24 @@ export function buildAdReachKey(request: Request): string {
   return createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
+/** One billable impression per device + placement per hour (matches idx_ads_events_idempotency). */
+export function buildAdImpressionHourBucket(now: Date = new Date()): string {
+  const d = new Date(now);
+  d.setUTCMinutes(0, 0, 0);
+  return d.toISOString().slice(0, 13);
+}
+
+export function buildAdImpressionIdempotencyPrefix(
+  placement: "home" | "search",
+  reachKey: string,
+  extra?: string,
+  now: Date = new Date(),
+): string {
+  const hour = buildAdImpressionHourBucket(now);
+  const suffix = extra ? `:${extra}` : "";
+  return `${placement}:${reachKey}:${hour}${suffix}`;
+}
+
 /**
  * Fallback cost per impression ratio when Control Plane config is unavailable.
  * Actual charge is applied by DB trigger when an impression row is inserted into ads_events.

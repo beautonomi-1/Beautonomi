@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 import {
   convertToCents,
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
         {
           data: null,
           error: {
-            message: "Upgrade your plan to use Yoco card payments.",
+            message: getUpgradeMessage("integrations.yoco"),
             code: "SUBSCRIPTION_REQUIRED",
           },
         },

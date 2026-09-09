@@ -587,19 +587,35 @@ export default function ProductCheckoutScreen() {
       });
       void refreshSavedCards();
       if (cardCharge.success) {
+        const paidAfterCard = await pollProductOrderPaid(orders.fetchOrderDetail, order.id);
         await fetchCart();
         emitCartUpdated();
-        haptic.success();
         setPlacing(false);
         setProcessingPayment(false);
-        setOrderSuccessData({
-          orderNumber: order.order_number,
-          total,
-          currency: fb,
-          items: itemsSummary,
-          status: "success",
-          subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
-        });
+        if (paidAfterCard) {
+          haptic.success();
+          setOrderSuccessData({
+            orderNumber: order.order_number,
+            total,
+            currency: fb,
+            items: itemsSummary,
+            status: "success",
+            subtitle: pc("paymentSuccessConfirmedBody", { orderNumber: String(order.order_number) }),
+          });
+        } else {
+          setOrderSuccessData({
+            orderNumber: order.order_number,
+            total,
+            currency: fb,
+            items: itemsSummary,
+            status: "pending",
+            subtitle: pc(
+              "orderCreatedPayPendingBody",
+              { orderNumber: String(order.order_number) },
+              `Order #${order.order_number} was created. Complete payment from My Orders if it does not confirm shortly.`,
+            ),
+          });
+        }
         return;
       }
       if (cardCharge.requires3ds) {
@@ -662,7 +678,8 @@ export default function ProductCheckoutScreen() {
           type: "product_order",
           mobile_app: "customer",
         },
-      }
+      },
+      { timeout: 120_000 },
     );
 
     setPlacing(false);

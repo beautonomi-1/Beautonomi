@@ -9,7 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -83,7 +83,9 @@ export default function ActivityScreen() {
     return `/api/provider/activity?${p.toString()}`;
   }, [selectedLocationId, feedLimit]);
 
-  const { data, loading, error, refresh } = useApi<DashboardData>(dashboardUrl);
+  const { data, loading, error, refresh } = useApi<DashboardData>(dashboardUrl, {
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+  });
   const {
     data: feedPayload,
     loading: feedLoading,

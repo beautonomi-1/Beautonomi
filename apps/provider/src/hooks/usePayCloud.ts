@@ -8,6 +8,7 @@ import { api } from "@/lib/api-client";
 import type { PaycloudIntentContract, PaycloudIntentPayload } from "@/lib/paycloud-same-terminal";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { humanizePaycloudPaymentError as humanizePaycloudPaymentErrorShared } from "@beautonomi/utils";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 /* ─── Platform availability gate ─── */
 
@@ -348,12 +349,20 @@ export function usePayCloudTerminals() {
           const code = res.error.code;
           const msg =
             code === "SUBSCRIPTION_REQUIRED"
-              ? "Upgrade your plan to add card machines."
+              ? "In-person card machines require a plan that includes PayCloud. Upgrade under Subscription."
               : code === "TERMINAL_LIMIT_REACHED"
                 ? res.error.message || "You've reached the card machine limit on your plan."
                 : code === "DUPLICATE_TERMINAL"
                   ? "This serial number is already registered."
                   : res.error.message || "Failed to add card machine";
+          if (isPlanGateErrorCode(code)) {
+            showPlanGateAlert({
+              title: "Couldn't add card machine",
+              message: msg,
+              errorCode: code,
+            });
+            return null;
+          }
           Alert.alert("Couldn't add card machine", msg);
           return null;
         }
@@ -803,7 +812,13 @@ export function usePayCloudPayment() {
                 ? errorDetails.payment_id
                 : undefined;
           const humanized = humanizePaycloudPaymentError(code, res.error.message);
-          if (code !== "TERMINAL_IN_FLIGHT" && code !== "ENTITY_IN_FLIGHT") {
+          if (isPlanGateErrorCode(code)) {
+            showPlanGateAlert({
+              title: humanized.title,
+              message: humanized.message,
+              errorCode: code,
+            });
+          } else if (code !== "TERMINAL_IN_FLIGHT" && code !== "ENTITY_IN_FLIGHT") {
             Alert.alert(humanized.title, humanized.message);
           }
           return {

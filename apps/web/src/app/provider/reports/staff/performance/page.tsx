@@ -9,11 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, Users, CalendarRange, Wallet, Star, Info } from "lucide-react";
-import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
@@ -60,6 +61,7 @@ export default function StaffPerformanceReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [staffOptions, setStaffOptions] = useState<Array<{ id: string; name: string }>>([]);
 
@@ -94,12 +96,15 @@ export default function StaffPerformanceReport() {
         );
       }
     } catch (err) {
-      if (err instanceof FetchError && err.code === "SUBSCRIPTION_REQUIRED") {
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
         setIsSubscriptionRequired(true);
+        setSubscriptionGateMessage(parsed.message);
         setError(null);
       } else {
-        setError(err instanceof Error ? err.message : "Failed to load report");
+        setError(parsed.message);
         setIsSubscriptionRequired(false);
+        setSubscriptionGateMessage(null);
       }
       console.error("Error loading staff performance:", err);
     } finally {
@@ -155,10 +160,9 @@ export default function StaffPerformanceReport() {
             title="Staff Performance"
             subtitle="Ledger net by team member — aligned with Sales Summary"
           />
-          <SubscriptionGate
-            feature="Staff Performance Reports"
-            message="Advanced reports require a Professional plan or higher."
-            upgradeMessage="Upgrade to access detailed staff analytics, performance metrics, and commission tracking."
+          <ReportSubscriptionRequired
+            feature="Staff performance"
+            message={subscriptionGateMessage}
           />
         </div>
       </SettingsDetailLayout>

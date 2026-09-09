@@ -74,7 +74,7 @@ export function humanizePaycloudPaymentError(
     case "SUBSCRIPTION_REQUIRED":
       return {
         title: "Plan upgrade needed",
-        message: "Upgrade your plan to use Beautonomi card machines.",
+        message: "In-person card machines require a plan that includes PayCloud. Upgrade under Subscription.",
         action: "open_subscription",
         owner: "provider",
       };

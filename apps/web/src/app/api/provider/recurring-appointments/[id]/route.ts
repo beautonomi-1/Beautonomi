@@ -5,7 +5,7 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
 import {
   ADVANCED_RECURRENCE_UPGRADE,
-  SUBSCRIPTION_UPGRADE_SHORT,
+  getUpgradeMessage,
 } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { z } from "zod";
@@ -55,7 +55,7 @@ export async function PATCH(
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
-        SUBSCRIPTION_UPGRADE_SHORT,
+        getUpgradeMessage("recurring.feature"),
         "SUBSCRIPTION_REQUIRED",
         403
       );
@@ -141,7 +141,7 @@ export async function DELETE(
     const recurringAccessDelete = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccessDelete.enabled) {
       return errorResponse(
-        SUBSCRIPTION_UPGRADE_SHORT,
+        getUpgradeMessage("recurring.feature"),
         "SUBSCRIPTION_REQUIRED",
         403
       );

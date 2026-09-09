@@ -8,7 +8,7 @@ import {
   getProviderIdForUser,
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
-import { requireAnyPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
 const invoiceLineItemSchema = z.object({
@@ -20,6 +20,8 @@ const invoiceLineItemSchema = z.object({
 });
 
 const createInvoiceSchema = z.object({
+  /** Which provider is being billed. Required now that only staff may raise invoices. */
+  provider_id: z.string().uuid(),
   invoice_type: z.enum(["platform_fee", "commission", "subscription", "transaction_fee", "other"]).optional().default("other"),
   period_start: z.string().min(1),
   period_end: z.string().min(1),
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     let summaryQuery = supabase
       .from("provider_invoices")
-      .select("status, total_amount")
+      .select("status, total_amount, amount_paid, amount_due")
       .eq("provider_id", providerId);
     if (status) {
       summaryQuery = summaryQuery.eq("status", status);
@@ -136,17 +138,29 @@ export async function GET(request: NextRequest) {
 
     const summary = (summaryRows || []).reduce(
       (acc, invoice) => {
-        const row = invoice as { status?: string | null; total_amount?: number | null };
-        const amount = Number(row.total_amount ?? 0);
-        if (row.status === "paid") {
-          acc.paid_amount += amount;
-        }
+        const row = invoice as {
+          status?: string | null;
+          total_amount?: number | null;
+          amount_paid?: number | null;
+          amount_due?: number | null;
+        };
+        const total = Number(row.total_amount ?? 0);
+        const paid = Number(row.amount_paid ?? 0);
+        // `amount_due` is a generated column; fall back for safety.
+        const due = Number.isFinite(Number(row.amount_due))
+          ? Number(row.amount_due)
+          : total - paid;
+
+        // Track money, not invoice count: a part-paid invoice contributes to
+        // both buckets, and billing the full total as outstanding would tell the
+        // provider they owe more than they do.
+        acc.paid_amount += paid;
         if (
           row.status === "sent" ||
           row.status === "partially_paid" ||
           row.status === "overdue"
         ) {
-          acc.outstanding_amount += amount;
+          acc.outstanding_amount += Math.max(0, due);
         }
         if (row.status === "overdue") {
           acc.overdue_count += 1;
@@ -171,23 +185,29 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/provider/invoices
- * Create a provider invoice with editable line items.
+ *
+ * Raise a platform invoice against a provider. These are invoices Beautonomi
+ * issues TO the provider, so only staff may author them — providers view, download
+ * and pay. Automated issuance goes through `/api/provider/invoices/generate`.
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(user.id, supabase);
-
-    if (!providerId) {
-      return handleApiError(new Error("Provider not found"), "Provider not found", "NOT_FOUND", 404);
-    }
+    const { user } = await requireRoleInApi(["superadmin"], request);
 
     const validated = createInvoiceSchema.parse(await request.json());
+    const providerId = validated.provider_id;
+    if (!providerId) {
+      return handleApiError(
+        new Error("provider_id is required"),
+        "provider_id is required",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
     const admin = getSupabaseAdmin();
     const { normalizedItems, subtotal, taxAmount, totalAmount } = calculateInvoiceTotals(validated.line_items, validated.tax_rate);
     const year = currentYear();
-    const { data: lastInvoice } = await supabase
+    const { data: lastInvoice } = await admin
       .from("provider_invoices")
       .select("invoice_number")
       .like("invoice_number", `INV-${year}-%`)
@@ -199,10 +219,11 @@ export async function POST(request: NextRequest) {
     const next = match ? Number.parseInt(match[1] ?? "0", 10) + 1 : 1;
     const invoiceNumber = `INV-${year}-${String(next).padStart(6, "0")}`;
 
-    const { data: invoice, error } = await supabase
+    const { data: invoice, error } = await admin
       .from("provider_invoices")
       .insert({
         provider_id: providerId,
+        generated_by: "admin",
         invoice_number: invoiceNumber,
         invoice_type: validated.invoice_type,
         period_start: validated.period_start,
@@ -235,7 +256,7 @@ export async function POST(request: NextRequest) {
       if (lineItemError) throw lineItemError;
     }
 
-    const { data: created } = await supabase
+    const { data: created } = await admin
       .from("provider_invoices")
       .select("*, payment_methods:provider_payment_methods(id, name, type, last4), line_items:provider_invoice_line_items(*), payments:provider_invoice_payments(*)")
       .eq("id", invoice.id)

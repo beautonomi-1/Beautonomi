@@ -1,12 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, Text, TextInput, TouchableOpacity, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { useAuth } from "@/providers/AuthProvider";
+import { LoveTheAppSheet } from "@/components/LoveTheAppSheet";
+import {
+  shouldPromptStoreReview,
+  recordStoreReviewAccepted,
+  recordStoreReviewNotNow,
+  recordStoreReviewDontAsk,
+  requestAppStoreReview,
+  trackStoreReviewEvent,
+} from "@/lib/store-review-prompt";
 
 export type PostCompletionStep = "idle" | "choose" | "photo" | "rate" | "done";
 
@@ -37,12 +48,16 @@ export function PostCompletionSheet({
   onRated,
 }: PostCompletionSheetProps) {
   const router = useRouter();
+  const { t } = useTranslation();
+  const { user } = useAuth();
   const [step, setStep] = useState<PostCompletionStep>(initialStep);
   const [rateStars, setRateStars] = useState(0);
   const [rateComment, setRateComment] = useState("");
   const [submittingRate, setSubmittingRate] = useState(false);
   const [rateError, setRateError] = useState<string | null>(null);
+  const [storeReviewOpen, setStoreReviewOpen] = useState(false);
   const seenRef = useRef(false);
+  const submittedStarsRef = useRef(0);
 
   useEffect(() => {
     if (visible) {
@@ -88,8 +103,42 @@ export function PostCompletionSheet({
         setRateError(res.error.message || "Failed to submit rating.");
         return;
       }
+      submittedStarsRef.current = rateStars;
       setStep("done");
       onRated();
+      if (rateStars >= 4) {
+        const prompt = await shouldPromptStoreReview({
+          userId: user?.id,
+          stars: rateStars,
+          isEdit: false,
+        });
+        if (prompt) {
+          setTimeout(() => {
+            trackStoreReviewEvent("store_review_prompt_shown", "client_rating", { rating: rateStars });
+            setStoreReviewOpen(true);
+          }, 800);
+          return;
+        }
+      } else if (rateStars >= 1) {
+        setTimeout(() => {
+          trackStoreReviewEvent("low_score_feedback", "client_rating", { rating: rateStars });
+          Alert.alert(
+            t("common.storeReview.lowScoreTitle"),
+            t("common.storeReview.lowScoreBody"),
+            [
+              { text: t("common.cancel"), style: "cancel", onPress: markSeen },
+              {
+                text: t("common.storeReview.lowScoreAction"),
+                onPress: () => {
+                  markSeen();
+                  router.push("/(app)/(tabs)/more/support-tickets/new" as never);
+                },
+              },
+            ],
+          );
+        }, 800);
+        return;
+      }
       setTimeout(() => markSeen(), 800);
     } catch (e: unknown) {
       setRateError(e instanceof Error ? e.message : "Failed to submit rating.");
@@ -101,6 +150,7 @@ export function PostCompletionSheet({
   if (!visible) return null;
 
   return (
+    <>
     <Modal visible={visible} animationType="fade" transparent onRequestClose={markSeen}>
       <Pressable
         style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
@@ -200,6 +250,36 @@ export function PostCompletionSheet({
         </Pressable>
       </Pressable>
     </Modal>
+    <LoveTheAppSheet
+      visible={storeReviewOpen}
+      stars={submittedStarsRef.current}
+      onRate={() => {
+        void (async () => {
+          if (user?.id) await recordStoreReviewAccepted(user.id);
+          trackStoreReviewEvent("accepted", "client_rating", { rating: submittedStarsRef.current });
+          await requestAppStoreReview();
+          setStoreReviewOpen(false);
+          markSeen();
+        })();
+      }}
+      onNotNow={() => {
+        void (async () => {
+          if (user?.id) await recordStoreReviewNotNow(user.id);
+          trackStoreReviewEvent("not_now", "client_rating", { rating: submittedStarsRef.current });
+          setStoreReviewOpen(false);
+          markSeen();
+        })();
+      }}
+      onDontAsk={() => {
+        void (async () => {
+          if (user?.id) await recordStoreReviewDontAsk(user.id);
+          trackStoreReviewEvent("dont_ask", "client_rating", { rating: submittedStarsRef.current });
+          setStoreReviewOpen(false);
+          markSeen();
+        })();
+      }}
+    />
+    </>
   );
 }
 

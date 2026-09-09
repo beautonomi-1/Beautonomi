@@ -9,6 +9,7 @@ import { dateRangeBoundsUtc, formatDateYmd } from "@/lib/dates/provider-tz";
 import { getProviderReportContext } from "@/lib/reports/provider-report-utils";
 import { subDays } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 
 export interface StaffTotalsItem {
   team_member_id: string;
@@ -51,6 +52,23 @@ export async function GET(
     const providerId = providerAsOwner?.id ?? staffAsUser?.provider_id;
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const owner = await isProviderOwner(user.id, request);
+    const canViewAllReports =
+      owner || (await hasPermission(user.id, "view_reports", undefined, request));
+    if (!canViewAllReports) {
+      const { data: callerStaff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (!callerStaff || callerStaff.id !== id) {
+        return notFoundResponse("Staff member not found");
+      }
     }
 
     const { data: staff } = await supabaseAdmin

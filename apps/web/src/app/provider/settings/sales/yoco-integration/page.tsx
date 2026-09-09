@@ -27,6 +27,8 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getCsrfHeaders } from "@/lib/csrf";
@@ -93,10 +95,7 @@ export default function YocoIntegrationPage() {
         return;
       }
       console.error("Failed to load Yoco integration:", error);
-      if (
-        err?.code === "SUBSCRIPTION_REQUIRED" ||
-        err?.error?.code === "SUBSCRIPTION_REQUIRED"
-      ) {
+      if (error instanceof Error && isPlanGateErrorCode((error as { code?: string }).code)) {
         setSubscriptionRequired(true);
       } else if (err?.name !== "FetchTimeoutError" || !err?.__cancelled) {
         toast.error("Failed to load Yoco integration");
@@ -220,15 +219,8 @@ export default function YocoIntegrationPage() {
       toast.success(enabled ? "Yoco integration enabled" : "Yoco integration disabled");
     } catch (error: unknown) {
       console.error("Failed to update integration:", error);
-      const err = error as { code?: string; error?: { code?: string } };
-      if (
-        err?.code === "SUBSCRIPTION_REQUIRED" ||
-        err?.error?.code === "SUBSCRIPTION_REQUIRED"
-      ) {
+      if (toastPlanGateError(error, "Failed to update integration")) {
         setSubscriptionRequired(true);
-        toast.error("Subscription upgrade required to use Yoco integration");
-      } else {
-        toast.error("Failed to update integration");
       }
     } finally {
       setIsSaving(false);
@@ -249,15 +241,8 @@ export default function YocoIntegrationPage() {
       setShowKeys(false);
     } catch (error: unknown) {
       console.error("Failed to save keys:", error);
-      const err = error as { code?: string; error?: { code?: string } };
-      if (
-        err?.code === "SUBSCRIPTION_REQUIRED" ||
-        err?.error?.code === "SUBSCRIPTION_REQUIRED"
-      ) {
+      if (toastPlanGateError(error, "Failed to save API keys")) {
         setSubscriptionRequired(true);
-        toast.error("Subscription upgrade required to configure Yoco integration");
-      } else {
-        toast.error("Failed to save API keys");
       }
     } finally {
       setIsSaving(false);
@@ -316,9 +301,8 @@ export default function YocoIntegrationPage() {
       <div className="space-y-6">
         {subscriptionRequired && (
           <SubscriptionGate
-            feature="yoco_integration"
-            message="Yoco integration requires a subscription upgrade"
-            upgradeMessage="Upgrade your platform plan under Subscription to connect Yoco devices."
+            feature="Yoco"
+            message={getUpgradeMessage("integrations.yoco")}
           />
         )}
 

@@ -105,3 +105,78 @@ Successful renewals (in invoice payload with `status: success` and `paid_at`) up
 ## Requirement: `subscription_plan_id` when subscribing via pricing plan
 
 The create route **requires** `pricing_plan.subscription_plan_id` and returns 400 with a clear message if it’s missing. No fallback to the pricing plan id is used, so `provider_subscriptions.plan_id` always references `subscription_plans(id)`.
+
+## Tier entitlements (enforcement vs marketing copy)
+
+Migration `883_subscription_truth_alignment.sql` aligns **subscription_plans.features**, **pricing_plans** / **pricing_plan_features** bullets, and **apple_iap_products** descriptions with API enforcement. Migration `884_growth_plan_numeric_caps.sql` writes Growth’s numeric caps onto `subscription_plans` (columns + `features` JSON) so they match those bullets. Display copy lives in `pricing_plan_features`; limits and gates live in `subscription_plans.features` and are checked by RPCs (`can_provider_*`) and route-level helpers.
+
+| Tier | Slug | Key limits | Marketing campaigns | Reports (`report_types`) | Included monthly credit |
+|------|------|------------|---------------------|--------------------------|-------------------------|
+| **Starter** | `free-tier-default` | 50 bookings/mo, 4 staff, 3 locations, 5 express links | Off (email/SMS/WhatsApp blocked) | `sales`, `bookings`, `clients` | R0 |
+| **Growth** | `beautonomi-growth` | Unlimited bookings; 25 staff; 8 locations; 20 express links; 8,000 chat messages; 40 automations; 8 Yoco devices | Email + SMS via platform credentials | Above + `staff`, `products`, `payments`, `memberships` | R50/mo (see credit semantics below) |
+| **Scale** | `beautonomi-scale` | Unlimited | Email + SMS + WhatsApp (own Twilio for WhatsApp) | Full suite incl. `gift_cards`, `packages` | R0 (pay-as-you-go top-ups only) |
+
+**No trialing credit:** Providers in `trialing` status receive full plan entitlements, but there is **no** included marketing credit grant for trialing subscriptions. The monthly credit cron (`/api/cron/grant-marketing-credits`) runs only for `provider_subscriptions.status = 'active'`.
+
+**No API access bullet on Scale:** Provider public API / API keys are not shipped; do not advertise API access on pricing or IAP copy until a real provider API exists.
+
+## Report subscription gating
+
+Provider report APIs use `requireProviderReportsAccess(request, { reportType })` in `apps/web/src/lib/reports/require-provider-reports-access.ts`, which checks staff permission **then** subscription via `assertReportSubscriptionAccess` in `apps/web/src/lib/subscriptions/report-gating.ts`.
+
+Rules:
+
+- **Superadmin:** always allowed.
+- **Missing `advanced_analytics` key** on a legacy plan: fail-open (allow) with a console warning.
+- **`advanced_analytics.enabled === false`:** 403 with `code: "SUBSCRIPTION_REQUIRED"`.
+- **`report_types` non-empty:** allow only if the route's report type is in the list (case-insensitive). Report types are defined in `packages/subscription-features` (`REPORT_TYPES`, includes `memberships`).
+- **`report_types` empty:** fall back to basic vs advanced buckets (`sales`/`bookings` → basic; others → advanced).
+
+Route → report type mapping: `apps/web/src/lib/reports/report-subscription-types.ts`.
+
+**Dashboard feeds:** `weekly-revenue` and `top-services` back the mobile dashboard cards and map to `sales` (available on every tier). `top-services` ranks service revenue (same basis as Sales by service), not products. The dashboard suppresses the error card on `SUBSCRIPTION_REQUIRED` rather than showing a red error.
+
+**Ungated endpoints** (permission only, no subscription check): `products/inventory` (operational stock view).
+
+**Schedule report:** gated on `advanced_analytics.enabled` only (not a separate report type).
+
+**UI:** Mobile report screens show a "View plans" CTA on `SUBSCRIPTION_REQUIRED` via `FinanceReportError`. Web report pages use `ReportSubscriptionRequired` and `parseReportLoadError`.
+
+## Marketing automations vs campaigns
+
+- **Campaigns** (email/SMS/WhatsApp blasts): require `marketing_campaigns.enabled` and the channel in `marketing_campaigns.channels`.
+- **Automations:** `marketing_automations.enabled` allows automation records on all tiers, but **outbound channel actions** are blocked on Starter via `assertAutomationChannelAllowed` (`apps/web/src/lib/subscriptions/marketing-channel-access.ts`):
+  - `action_type` of `email`, `sms`, or `whatsapp` → 403 when marketing campaigns are disabled or channel not allowed.
+  - `action_type` of `notification` (push/in-app) → allowed on Starter.
+- Gate applies on **create**, **PATCH** (changing `action_type`), and **execute**.
+
+## Included monthly marketing credit
+
+Pure helper: `resolveIncludedMonthlyCreditZar(features)` in `apps/web/src/lib/marketing/included-credit.ts`.
+
+Resolution order:
+
+1. If `marketing_campaigns.included_marketing_credit_zar_per_month > 0`, use that value.
+2. Else if `platform_ads.enabled === false`, return 0.
+3. Else use `platform_ads.included_credit_zar_per_month` (Growth: 50; Scale: 0; Starter: 0).
+
+Cron: `POST /api/cron/grant-marketing-credits` (Vercel schedule). Grants only **active** subscriptions, paginated in batches of 500. Credit is written to `provider_marketing_credits.included_balance_zar` via `grantMonthlyIncludedCredits` and is spendable on platform sends and on ads when `payment_method: "marketing_credit"`.
+
+**Important:** `use_platform_credentials` on `marketing_campaigns` controls whether the provider may use platform SendGrid/Twilio for campaigns; it is **not** required for the ads included-credit grant.
+
+## Platform ads module dependency
+
+Subscription `platform_ads.enabled` on Growth/Scale allows a provider to **participate** in promoted placement when the platform has ads turned on. Actual ad serving, bidding, and spend still depend on **admin control-plane** config:
+
+- Table: `ads_module_config` (per environment).
+- Superadmin must enable the ads module for the environment before providers see promoted-placement UI or impressions are charged.
+- Growth copy may mention "promoted placement ads (where available)" — availability is ops-dependent, not automatic from subscribing alone.
+
+## Manual QA checklist (post-deploy)
+
+Apply migrations `883` and `884` after code deploy. Smoke-test with one provider per tier:
+
+1. **Starter:** email campaign POST → 403; notification automation POST → 201; email automation POST → 403; 51st booking in month → blocked; 6th express link → 403; `staff/performance` report → 403 + upgrade CTA; `sales/summary` → 200; inventory → 200.
+2. **Growth (active):** email + SMS campaign → 200; `memberships` report → 200; `gift-cards/sales` → 403; 26th staff / 9th location → 403 + View plans; on 1st of month, `marketing_credit_ledger` has `monthly_grant` of 50; ads payable with `marketing_credit` when `ads_module_config.enabled`.
+3. **Scale:** WhatsApp campaign → 200 only with Twilio WhatsApp configured; all reports → 200; no `monthly_grant` row.
+4. **Copy surfaces:** `/pricing`, provider app More → Subscription, Admin → Plans, App Store product descriptions match migration 883 bullets (no trials, no API access on Scale, no included credit on Scale).

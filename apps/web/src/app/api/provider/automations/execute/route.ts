@@ -19,6 +19,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/marketing/unified-service";
 import { debitMarketingBalance, getMarketingBalance, priceFor, creditMarketingBalance } from "@/lib/marketing/credits";
 import { resolveMarketingSendingContext } from "@/lib/marketing/sending-path";
+import { assertAutomationChannelAllowed } from "@/lib/subscriptions/marketing-channel-access";
 import { filterAutomationRecipientsByOptOut } from "@/lib/marketing/automation-opt-out";
 import { addDays, subDays, subMinutes } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -128,6 +129,22 @@ export async function POST(request: NextRequest) {
         }
 
         const channel = automation.action_type as "email" | "sms" | "whatsapp" | "notification";
+
+        if (channel !== "notification") {
+          const channelCheck = await assertAutomationChannelAllowed(
+            automation.provider_id,
+            channel,
+            supabaseAdmin,
+          );
+          if (channelCheck.ok === false) {
+            skipped.push({
+              automationId: automation.id,
+              customerId: "",
+              reason: "plan_channel_not_allowed",
+            });
+            continue;
+          }
+        }
 
         // Enforce customer notification / marketing opt-outs before anything is sent or debited.
         const optOut = await filterAutomationRecipientsByOptOut(supabaseAdmin, candidateCustomers, {
@@ -313,11 +330,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (skipped.length > 0) {
+    const optOutSkips = skipped.filter((s) => s.reason !== "plan_channel_not_allowed").length;
+    const planSkips = skipped.length - optOutSkips;
+    if (optOutSkips > 0) {
       console.info(
         JSON.stringify({
           metric: "automation_recipients_skipped_opt_out",
-          count: skipped.length,
+          count: optOutSkips,
+          ts: new Date().toISOString(),
+        }),
+      );
+    }
+    if (planSkips > 0) {
+      console.info(
+        JSON.stringify({
+          metric: "automation_skipped_plan_channel_not_allowed",
+          count: planSkips,
           ts: new Date().toISOString(),
         }),
       );

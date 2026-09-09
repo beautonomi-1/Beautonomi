@@ -34,7 +34,9 @@ export async function GET(request: NextRequest) {
     // Get staff with their base commission percentage
     let staffQuery = supabase
       .from("provider_staff")
-      .select("id, name, email, role, commission_percentage, is_active")
+      .select(
+        "id, name, email, role, commission_percentage, service_commission_rate, product_commission_rate, commission_rate, is_active",
+      )
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
@@ -85,14 +87,22 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    const result = (staffMembers || []).map((member: any) => ({
-      staffId: member.id,
-      name: member.name,
-      email: member.email,
-      role: member.role,
-      commissionPercentage: member.commission_percentage ?? 0,
-      tiers: tiersByStaff[member.id] || [],
-    }));
+    const result = (staffMembers || []).map((member: any) => {
+      const serviceRate =
+        member.service_commission_rate ?? member.commission_rate ?? member.commission_percentage ?? 0;
+      const productRate =
+        member.product_commission_rate ?? member.commission_rate ?? member.commission_percentage ?? 0;
+      return {
+        staffId: member.id,
+        name: member.name,
+        email: member.email,
+        role: member.role,
+        commissionPercentage: serviceRate,
+        serviceCommissionRate: serviceRate,
+        productCommissionRate: productRate,
+        tiers: tiersByStaff[member.id] || [],
+      };
+    });
 
     const view = searchParams.get("view");
     if (view === "setup") {
@@ -167,7 +177,14 @@ export async function PATCH(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { staffId, commissionPercentage, tiers, staff_share_cancellation_fee } = body;
+    const {
+      staffId,
+      commissionPercentage,
+      serviceCommissionRate,
+      productCommissionRate,
+      tiers,
+      staff_share_cancellation_fee,
+    } = body;
 
     if (staff_share_cancellation_fee !== undefined && !staffId) {
       const enabled = staff_share_cancellation_fee === true;
@@ -212,11 +229,26 @@ export async function PATCH(request: NextRequest) {
       return notFoundResponse("Staff member not found");
     }
 
-    // Update base commission percentage
+    const rateUpdate: Record<string, number> = {};
+    if (serviceCommissionRate !== undefined) {
+      rateUpdate.service_commission_rate = Number(serviceCommissionRate);
+    }
+    if (productCommissionRate !== undefined) {
+      rateUpdate.product_commission_rate = Number(productCommissionRate);
+    }
     if (commissionPercentage !== undefined) {
+      const pct = Number(commissionPercentage);
+      if (serviceCommissionRate === undefined) {
+        rateUpdate.service_commission_rate = pct;
+      }
+      if (productCommissionRate === undefined) {
+        rateUpdate.product_commission_rate = pct;
+      }
+    }
+    if (Object.keys(rateUpdate).length > 0) {
       const { error: updateError } = await supabase
         .from("provider_staff")
-        .update({ commission_percentage: Number(commissionPercentage) })
+        .update(rateUpdate)
         .eq("id", staffId)
         .eq("provider_id", providerId);
 
@@ -261,7 +293,9 @@ export async function PATCH(request: NextRequest) {
     // Return the updated data
     const { data: updatedStaff } = await supabase
       .from("provider_staff")
-      .select("id, name, commission_percentage")
+      .select(
+        "id, name, commission_percentage, service_commission_rate, product_commission_rate, commission_rate",
+      )
       .eq("id", staffId)
       .single();
 
@@ -271,10 +305,23 @@ export async function PATCH(request: NextRequest) {
       .eq("staff_id", staffId)
       .order("tier_order", { ascending: true });
 
+    const serviceRate =
+      updatedStaff?.service_commission_rate ??
+      updatedStaff?.commission_rate ??
+      updatedStaff?.commission_percentage ??
+      0;
+    const productRate =
+      updatedStaff?.product_commission_rate ??
+      updatedStaff?.commission_rate ??
+      updatedStaff?.commission_percentage ??
+      0;
+
     return successResponse({
       staffId: updatedStaff?.id,
       name: updatedStaff?.name,
-      commissionPercentage: updatedStaff?.commission_percentage ?? 0,
+      commissionPercentage: serviceRate,
+      serviceCommissionRate: serviceRate,
+      productCommissionRate: productRate,
       tiers: (updatedTiers || []).map((t: any) => ({
         id: t.id,
         minRevenue: t.min_revenue,

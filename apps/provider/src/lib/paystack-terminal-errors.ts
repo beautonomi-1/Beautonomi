@@ -5,7 +5,7 @@ export function paystackTerminalErrorMessage(
 ): string {
   switch (code) {
     case "SUBSCRIPTION_REQUIRED":
-      return "Your plan doesn't include Paystack Terminal. Contact support or upgrade your subscription.";
+      return "Paystack Terminal requires a plan that includes virtual terminals. Upgrade under Subscription.";
     case "PAYSTACK_VIRTUAL_TERMINAL_DISABLED_BY_PLATFORM":
       return "Paystack Terminal isn't enabled for this market.";
     case "LIMIT_REACHED":

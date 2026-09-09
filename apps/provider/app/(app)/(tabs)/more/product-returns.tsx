@@ -13,6 +13,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useOrdersReturnsListRefresh } from "@/hooks/useOrdersReturnsListRefresh";
 import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -50,6 +51,8 @@ const STATUS_OPTIONS = [
   { value: "refunded", label: "Refunded" },
 ];
 
+const PRODUCT_RETURNS_REALTIME_TABLES = ["product_return_requests"] as const;
+
 /** Content-only for use in Orders hub (Returns tab). */
 export function ProductReturnsContent() {
   const { screenPadding } = useResponsive();
@@ -64,9 +67,13 @@ export function ProductReturnsContent() {
   // method at approval time. Mobile previously hardcoded `drop_off`, which
   // broke couriers that use pickup. Expose the same two-option chooser.
   const [returnMethod, setReturnMethod] = useState<"drop_off" | "courier" | "not_required">("drop_off");
+  const [refundPayoutMethod, setRefundPayoutMethod] = useState<"store_credit" | "cash">("store_credit");
 
   const url = `/api/provider/returns?limit=50${statusFilter ? `&status=${statusFilter}` : ""}`;
-  const { data, loading, error, refresh } = useApi<ReturnsListResponse>(url);
+  const { data, loading, error, refresh, silentRefresh } = useApi<ReturnsListResponse>(url, {
+    revalidateOnFocus: true,
+  });
+  useOrdersReturnsListRefresh(silentRefresh, PRODUCT_RETURNS_REALTIME_TABLES);
   const { execute: patchReturn } = useApiMutation("patch");
 
   const onRefresh = useCallback(async () => {
@@ -266,6 +273,38 @@ export function ProductReturnsContent() {
                   </View>
                 </View>
               )}
+              {getActions(detail.status).some((a) => a.action === "process_refund") && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={twStyle("mb-2 text-xs font-medium uppercase text-gray-500")}>
+                    Refund method
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    {([
+                      { value: "store_credit", label: "Wallet credit" },
+                      { value: "cash", label: "Cash in person" },
+                    ] as const).map((opt) => {
+                      const selected = refundPayoutMethod === opt.value;
+                      return (
+                        <TouchableOpacity
+                          key={opt.value}
+                          onPress={() => setRefundPayoutMethod(opt.value)}
+                          style={twStyle(
+                            `flex-1 rounded-xl border py-2 ${selected ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-white"}`,
+                          )}
+                        >
+                          <Text
+                            style={twStyle(
+                              `text-center text-sm font-medium ${selected ? "text-emerald-700" : "text-gray-700"}`,
+                            )}
+                          >
+                            {opt.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
               {getActions(detail.status).map(({ action, label }) => (
                 <TouchableOpacity
                   key={action}
@@ -275,6 +314,8 @@ export function ProductReturnsContent() {
                       setRejectNoteModal(true);
                     } else if (action === "approve") {
                       performAction("approve", { return_method: returnMethod, resolution: "full_refund" });
+                    } else if (action === "process_refund") {
+                      performAction(action, { refund_method: refundPayoutMethod });
                     } else {
                       performAction(action);
                     }

@@ -44,7 +44,11 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/subscriptions/limit-checker", () => ({
   checkMessageLimit: (...args: unknown[]) => mockCheckMessageLimit(...args),
-  formatLimitError: () => "Message limit reached",
+}));
+
+vi.mock("@/lib/subscriptions/subscription-upgrade-copy", () => ({
+  formatChatLimitUpgradeMessage: () =>
+    "You've used 2,000 of 2,000 client-chat messages this month on Beautonomi Starter. Upgrade to Growth (8,000 messages) or Scale (unlimited) to keep messaging clients.",
 }));
 
 vi.mock("@/lib/notifications/insert-notification", () => ({
@@ -150,6 +154,41 @@ describe("POST /api/provider/conversations/[id]/messages", () => {
       data: { conversation_id: "conversation-1", message_id: "message-1" },
       action_url: "/account-settings/messages?conversation=conversation-1",
     });
+  });
+
+  it("returns 403 SUBSCRIPTION_LIMIT_EXCEEDED when monthly chat cap is hit", async () => {
+    mockCheckMessageLimit.mockResolvedValue({
+      canProceed: false,
+      reason: "Monthly message limit reached",
+      currentCount: 2000,
+      limitValue: 2000,
+      planName: "Beautonomi Starter",
+      isUnlimited: false,
+    });
+
+    const admin = {
+      from: vi.fn((table: string) => {
+        if (table === "conversations") {
+          return createQuery({ id: "conversation-1", provider_id: "provider-1", customer_id: "customer-1" });
+        }
+        throw new Error(`Unexpected table ${table}`);
+      }),
+    };
+    mockGetSupabaseAdmin.mockReturnValue(admin);
+
+    const { POST } = await import("../route");
+    const req = new NextRequest("http://localhost/api/provider/conversations/conversation-1/messages", {
+      method: "POST",
+      body: JSON.stringify({ content: "Over limit" }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: "conversation-1" }) });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error?.code).toBe("SUBSCRIPTION_LIMIT_EXCEEDED");
+    expect(body.error?.message).toContain("Growth");
+    expect(body.error?.message).toContain("Scale");
   });
 
   it("rejects reply_to_message_id when parent is not in the conversation", async () => {

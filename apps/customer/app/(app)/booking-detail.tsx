@@ -994,6 +994,7 @@ export default function BookingDetailScreen() {
         idempotency_key: payRemainingIdempotencyKeyRef.current,
       }, {
         headers: { "Idempotency-Key": payRemainingIdempotencyKeyRef.current },
+        timeout: 120_000,
       });
       if (res.error) {
         Alert.alert(
@@ -1025,16 +1026,31 @@ export default function BookingDetailScreen() {
         }
       } else {
         const returnUrl = ExpoLinking.createURL("book/paystack");
-        if (res.data?.reference) {
-          markReferenceProcessing(res.data.reference);
+        let paymentReference = res.data?.reference ?? null;
+        if (paymentReference) {
+          markReferenceProcessing(paymentReference);
         }
-        await payRemainingCheckout.waitForCheckout(url, {
+        const checkoutResult = await payRemainingCheckout.waitForCheckout(url, {
           title: "Pay remaining balance",
           returnUrl,
           matchSuccess: (rawUrl) =>
             matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
           matchCancel: (rawUrl) => isCancelledPaystackUrl(rawUrl),
         });
+        if (checkoutResult.outcome === "cancel") {
+          Alert.alert(
+            bd("paymentPendingTitle"),
+            "Payment was cancelled. You can retry when ready.",
+          );
+          return;
+        }
+        if (checkoutResult.outcome === "success" && checkoutResult.url) {
+          const extracted = extractPaystackReferenceFromUrl(checkoutResult.url);
+          if (extracted) paymentReference = extracted;
+        }
+        if (paymentReference) {
+          await verifyPaystackWithRetry(paymentReference);
+        }
       }
 
       const MAX_ATTEMPTS = 10;
@@ -1581,7 +1597,7 @@ export default function BookingDetailScreen() {
         ...(additionalPayGiftCode.trim()
           ? { gift_card_code: additionalPayGiftCode.trim().toUpperCase() }
           : {}),
-      });
+      }, { timeout: 120_000 });
       if (res.error) {
         Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not start payment for this charge."));
         return;
@@ -1701,7 +1717,8 @@ export default function BookingDetailScreen() {
             additional_charge_id: chargeId,
             payment_type: "additional_charge",
           },
-        }
+        },
+        { timeout: 120_000 },
       );
       if (res.error) {
         Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not charge your saved card."));

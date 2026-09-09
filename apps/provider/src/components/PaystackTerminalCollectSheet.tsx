@@ -80,6 +80,7 @@ export function PaystackTerminalCollectSheet({
           customer_reference: customerReference ?? undefined,
           terminal_id: selectedTerminalId ?? undefined,
         }),
+        { timeout: 120_000 },
       );
       if (cancelled) return;
       if (res.error) {

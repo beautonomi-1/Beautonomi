@@ -9,7 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -19,6 +19,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
@@ -154,9 +155,9 @@ export default function BusinessReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const businessUrl = appendReportLocation(`/api/provider/reports/business/overview?period=${period}`, selectedLocationId);
-  const { data: overview, loading, error: dataError, timedOut, refresh } = useApi<OverviewResponse>(
+  const { data: overview, loading, error: dataError, errorCode: dataErrorCode, timedOut, refresh } = useApi<OverviewResponse>(
     businessUrl,
-    { timeoutMs: 15000 }
+    { timeoutMs: MONEY_SURFACE_TIMEOUT_MS }
   );
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
@@ -210,7 +211,7 @@ export default function BusinessReportScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Business Overview" showBack />
-        <ErrorState message={dataError} onRetry={refresh} />
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       </ScreenContainer>
     );
   }

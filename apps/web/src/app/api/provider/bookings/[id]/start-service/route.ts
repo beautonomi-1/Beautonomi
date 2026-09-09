@@ -138,6 +138,7 @@ export async function POST(
       .update({
         status: "in_progress",
         current_stage: "service_started",
+        started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         version: currentVersion + 1,
       })

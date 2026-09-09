@@ -3,7 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { checkMessageLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
+import { checkMessageLimit } from "@/lib/subscriptions/limit-checker";
+import { formatChatLimitUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { signMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import {
   enrichMessagesWithReplyTo,
@@ -223,7 +224,7 @@ export async function POST(
           messageLimitCheck.currentCount >= messageLimitCheck.limitValue) {
         // Only block if there's an active subscription with a limit that's been exceeded
         return errorResponse(
-          formatLimitError(messageLimitCheck),
+          formatChatLimitUpgradeMessage(messageLimitCheck),
           "SUBSCRIPTION_LIMIT_EXCEEDED",
           403
         );

@@ -9,12 +9,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -60,7 +60,9 @@ export default function ServicesReport() {
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const url = appendReportLocation(`/api/provider/reports/sales/services?from=${from}&to=${to}`, selectedLocationId);
-  const { data: raw, loading, error: dataError, refresh } = useApi<SalesByServicePayload>(url);
+  const { data: raw, loading, error: dataError, errorCode: dataErrorCode, refresh } = useApi<SalesByServicePayload>(url, {
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+  });
 
   const charts = useMemo(() => {
     if (!raw?.allServices?.length) {
@@ -134,7 +136,9 @@ export default function ServicesReport() {
       </View>
 
       {loading && !raw && <ActivityIndicator style={twStyle("my-8")} color="#7c3aed" />}
-      {!loading && dataError && !raw && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && dataError && !raw && (
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
+      )}
       {!loading && !raw && !dataError && (
         <EmptyState icon="cut-outline" title="No service data" description="Service analytics will appear here" />
       )}

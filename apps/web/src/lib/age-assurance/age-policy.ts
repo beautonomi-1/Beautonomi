@@ -10,7 +10,7 @@ export interface AgeAssurancePolicy {
 
 const DEFAULT_POLICY: AgeAssurancePolicy = {
   socialMinAge: 13,
-  socialAgeGateMode: "log",
+  socialAgeGateMode: "enforce",
   restrictedModeDefaults: {
     restricted_mode: true,
     hide_social_feed: true,

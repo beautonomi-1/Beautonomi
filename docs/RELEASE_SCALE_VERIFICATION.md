@@ -33,15 +33,12 @@ Release-candidate verification checklist for provider/customer/web core journeys
    - typecheck, lint, test
    - observability gate (`NEXT_PUBLIC_SENTRY_DSN` present)
 2. Run release verification command:
-   - `pnpm run prod:verify:release`
-3. Run load suite:
-   - auth burst
-   - provider calendar reads
-   - booking flow
-   - webhook storm
-   - mixed soak
-4. Confirm all Tier-1 SLO gates pass.
-5. Attach artifacts (logs, screenshots, k6 outputs) to release notes.
+   - `pnpm run prod:verify:release` (quick) or `pnpm run prod:verify:release:full` (includes k6)
+3. **Automated (weekly + manual):** GitHub Actions **Scale Verification** runs quick release verify + k6 auth-burst + booking-flow against staging; artifacts uploaded as `k6-scale-gates-*`.
+4. **Automated (staging deploy):** GitHub Actions **E2E (Preview + Staging)** runs `booking-happy-path`, `money-path`, and (staging only) `tenant-isolation` Playwright specs; report retained 14 days.
+5. For full Tier-1 sign-off, also run manually: provider calendar, webhook storm, soak-mixed (see `.github/workflows/load-test.yml`).
+6. Confirm all Tier-1 SLO gates pass (`docs/SCALE_SLO_GATES.md`).
+7. Attach artifacts (logs, screenshots, k6 outputs) to release notes.
 
 ## Pass Criteria
 

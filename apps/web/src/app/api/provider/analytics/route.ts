@@ -245,14 +245,15 @@ export async function GET(request: NextRequest) {
 
     for (const bucket of trendBuckets) {
       trendPromises.push(
-        (() => {
+        (async () => {
           let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("scheduled_at", bucket.start.toISOString()).lte("scheduled_at", bucket.end.toISOString());
           if (locationId) q = q.eq("location_id", locationId);
-          return q.then((bookingsData) => ({
+          const bookingsData = await q;
+          return {
             month: bucket.label,
             revenue: recognizedNet(rowsInRange(allTimeRows, bucket.start, bucket.end)),
             bookings: bookingsData.count || 0,
-          }));
+          };
         })(),
       );
     }

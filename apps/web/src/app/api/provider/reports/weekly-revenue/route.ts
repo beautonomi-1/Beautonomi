@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import {
-  requireRoleInApi,
   getProviderIdForUser,
   successResponse,
   notFoundResponse,
@@ -17,10 +16,11 @@ import { eachReportDateKey, getProviderReportContext, reportDateRangeFromParams 
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff", "superadmin"],
-      request,
-    );
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "sales" });
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,

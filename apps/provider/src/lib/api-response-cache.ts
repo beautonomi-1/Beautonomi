@@ -46,6 +46,21 @@ export function invalidateServicesCache(): void {
   }
 }
 
+/** Drop every cached orders/returns GET regardless of status filter or page. */
+export function invalidateOrdersAndReturnsCache(): void {
+  const needles = [
+    "/api/provider/product-orders",
+    "/api/provider/returns",
+    "/api/provider/nav-counts",
+  ];
+  for (const key of responseCache.keys()) {
+    if (needles.some((needle) => key.includes(needle))) responseCache.delete(key);
+  }
+  for (const key of inflightRequests.keys()) {
+    if (needles.some((needle) => key.includes(needle))) inflightRequests.delete(key);
+  }
+}
+
 /** Drop cached GET responses whose key contains `path` (e.g. after PATCH/POST mutations). */
 export function invalidateApiCacheForPath(path: string): void {
   const needle = path.trim();

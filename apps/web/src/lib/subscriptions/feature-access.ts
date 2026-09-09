@@ -148,7 +148,7 @@ export interface ProviderFeatureAccess {
 /**
  * Get provider's subscription tier and features
  */
-async function getProviderSubscriptionTier(
+export async function getProviderSubscriptionTier(
   supabase: SupabaseClient<any>,
   providerId: string
 ): Promise<{
@@ -754,11 +754,15 @@ export async function checkExpressBookingFeatureAccess(
     };
   }
 
-  const express = tier.features?.express_booking || {};
-  
+  const express = tier.features?.express_booking;
+  const enabled =
+    express == null || typeof express !== "object"
+      ? true
+      : (express as { enabled?: boolean }).enabled !== false;
+
   return {
-    enabled: true,
-    maxLinks: express.max_links,
+    enabled,
+    maxLinks: (express as { max_links?: number } | null | undefined)?.max_links,
   };
 }
 
@@ -918,8 +922,11 @@ export async function getProviderFeatureAccess(
       advancedPatterns: recurring.advanced_patterns === true,
     },
     expressBooking: {
-      enabled: true,
-      maxLinks: express.max_links,
+      enabled:
+        express == null || typeof express !== "object"
+          ? true
+          : (express as { enabled?: boolean }).enabled !== false,
+      maxLinks: (express as { max_links?: number } | null | undefined)?.max_links,
     },
     calendarSync: {
       enabled: calendar.enabled === true,

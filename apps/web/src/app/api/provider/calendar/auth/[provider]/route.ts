@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkCalendarSyncFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { encodeCalendarOAuthState } from "@/lib/calendar/oauth-state";
 
 /**
@@ -97,7 +97,7 @@ export async function GET(
       return NextResponse.json(
         {
           error: {
-            message: SUBSCRIPTION_UPGRADE_SHORT,
+            message: getUpgradeMessage("integrations.calendar"),
             code: "SUBSCRIPTION_REQUIRED",
           },
         },

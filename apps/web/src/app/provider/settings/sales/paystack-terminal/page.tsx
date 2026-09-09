@@ -22,6 +22,8 @@ import { paystackTerminalErrorMessage } from "@/lib/payments/paystack-terminal-e
 
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
+
 import type { PaystackVirtualTerminalFeatureAccess } from "@/lib/subscriptions/feature-access";
 
 import { Clock } from "lucide-react";
@@ -413,7 +415,7 @@ export default function PaystackTerminalSettingsPage() {
 
     } catch (error) {
 
-      toast.error(apiErrorMessage(error, "Failed to request terminal setup"));
+      toastPlanGateError(error, apiErrorMessage(error, "Failed to request terminal setup"));
 
     } finally {
 
@@ -779,7 +781,7 @@ export default function PaystackTerminalSettingsPage() {
 
             <AlertDescription>
 
-              Your subscription plan does not include Paystack Terminal. Contact support or upgrade your plan to request terminal setup.
+              Your subscription plan does not include Paystack Terminal. Upgrade under Subscription to request terminal setup. <a href="/provider/subscription" className="underline font-medium">View plans</a>
 
             </AlertDescription>
 

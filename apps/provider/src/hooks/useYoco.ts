@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Alert, Linking } from "react-native";
 import { api } from "@/lib/api-client";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 /* ─── Platform availability gate ─── */
 
@@ -461,7 +462,13 @@ export function useYocoDevices() {
           credential_mode: input.credential_mode,
         });
         if (res.error) {
-          Alert.alert("Error", res.error.message || "Failed to add device");
+          const code = res.error.code;
+          const msg = res.error.message || "Failed to add device";
+          if (isPlanGateErrorCode(code)) {
+            showPlanGateAlert({ message: msg, errorCode: code });
+          } else {
+            Alert.alert("Error", msg);
+          }
           return null;
         }
         await load();
@@ -581,7 +588,7 @@ export function useYocoPayment() {
             code === "YOCO_OAUTH_APP_NOT_CONFIGURED";
           const msg =
             code === "SUBSCRIPTION_REQUIRED"
-              ? "Upgrade your plan to use Yoco card payments."
+              ? "Yoco in-person payments require a plan that includes Yoco. Upgrade under Subscription."
               : isOauthIssue
                 ? res.error.message ||
                   "Your Yoco connection has expired. Open Payment Settings and tap Connect Yoco."
@@ -597,6 +604,10 @@ export function useYocoPayment() {
                 : code === "TERMINAL_UNAVAILABLE" || code === "TERMINAL_NOT_FOUND"
                   ? "Terminal unavailable"
                   : "Payment Failed";
+          if (isPlanGateErrorCode(code)) {
+            showPlanGateAlert({ title, message: msg, errorCode: code });
+            return null;
+          }
           Alert.alert(title, msg);
           return null;
         }

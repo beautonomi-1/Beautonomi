@@ -1643,6 +1643,84 @@ export async function notifyProviderPayoutProcessed(
 }
 
 /**
+ * Notify a provider that Beautonomi has issued them a platform invoice.
+ * Without this, issuing an invoice only changed a status column and the provider
+ * had no way of learning they owed anything until they opened the billing tab.
+ */
+export async function notifyProviderInvoiceIssued(
+  providerId: string,
+  invoice: {
+    invoice_number: string;
+    total_amount: number;
+    due_date: string;
+    period_start?: string | null;
+    period_end?: string | null;
+  },
+  channels?: NotificationChannel[],
+) {
+  const supabase = getSupabaseAdmin();
+  const { data: provider } = await supabase
+    .from("providers")
+    .select("user_id, currency, tenant_id")
+    .eq("id", providerId)
+    .single();
+
+  if (!provider?.user_id) {
+    return { success: false, error: "Provider not found" };
+  }
+
+  const variables = {
+    invoice_number: invoice.invoice_number,
+    total_amount: fmt(invoice.total_amount, (provider as { currency?: string | null }).currency),
+    due_date: invoice.due_date,
+    period_start: invoice.period_start ?? "",
+    period_end: invoice.period_end ?? "",
+  };
+
+  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  return await dispatchTemplateNotification(
+    "provider_invoice_issued",
+    recipients,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
+    channels,
+    { appType: "provider" },
+  );
+}
+
+/** Confirmation that a platform invoice has been settled in full. */
+export async function notifyProviderInvoicePaid(
+  providerId: string,
+  invoice: { invoice_number: string; total_amount: number; payment_date: string },
+  channels?: NotificationChannel[],
+) {
+  const supabase = getSupabaseAdmin();
+  const { data: provider } = await supabase
+    .from("providers")
+    .select("user_id, currency, tenant_id")
+    .eq("id", providerId)
+    .single();
+
+  if (!provider?.user_id) {
+    return { success: false, error: "Provider not found" };
+  }
+
+  const variables = {
+    invoice_number: invoice.invoice_number,
+    total_amount: fmt(invoice.total_amount, (provider as { currency?: string | null }).currency),
+    payment_date: invoice.payment_date,
+  };
+
+  const recipients = await resolveProviderRecipients(providerId, provider.user_id);
+  return await dispatchTemplateNotification(
+    "provider_invoice_paid",
+    recipients,
+    withTenantVariable((provider as { tenant_id?: string | null }).tenant_id, variables),
+    channels,
+    { appType: "provider" },
+  );
+}
+
+/**
  * Notify provider payout scheduled
  */
 export async function notifyProviderPayoutScheduled(

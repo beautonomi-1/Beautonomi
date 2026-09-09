@@ -51,7 +51,17 @@
     "rateBeautonomiAppStore": "Rate Beautonomi on the App Store",
     "rateBeautonomiPlayStore": "Rate Beautonomi on Google Play",
     "rateBeautonomiStoreWeb": "Get Beautonomi apps",
-    "rateBeautonomiStoreSubtitle": "Opens the store (or download page) so you can leave a review."
+    "rateBeautonomiStoreSubtitle": "Opens the store (or download page) so you can leave a review.",
+    "storeReview": {
+      "title": "Loving Beautonomi?",
+      "body": "You just left {{stars}} stars — that means a lot. A quick store rating helps more people find us.",
+      "rateApp": "Rate the app",
+      "notNow": "Not now",
+      "dontAskAgain": "Don't ask again",
+      "lowScoreTitle": "Tell us how to improve",
+      "lowScoreBody": "We're sorry your experience wasn't great. Share feedback so we can do better.",
+      "lowScoreAction": "Send feedback"
+    }
   },
   "authGate": {
     "checkingAccess": "Checking your account…",
@@ -2903,7 +2913,8 @@
     "requiredDetailsMissing": "Please fill in all required additional details.",
     "providerFormFieldRequired": "Please complete: {{formTitle}} — {{fieldName}}",
     "sessionVerifyFailed": "We couldn't verify your signed-in session for checkout. Please try again; if it repeats, close and reopen the app so your session can refresh.",
-    "bookingLimitReached": "You've reached your booking limit. Please upgrade your plan.",
+    "bookingLimitReached": "This business is fully booked for this period. Please try a different date or another provider.",
+    "bookingLimitBusinessFull": "This business is fully booked for this period. Please try a different date or another provider.",
     "differentMarketProvider": "This provider is in a different market. Please update your location.",
     "slotAlreadyClaimed": "This booking slot has already been claimed. Please go back and pick a new time.",
     "noPermissionCompleteBooking": "You don't have permission to complete this booking.",

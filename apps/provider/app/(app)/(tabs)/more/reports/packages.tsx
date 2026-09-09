@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -16,7 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -50,7 +50,7 @@ export default function PackageReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const packagesUrl = appendReportLocation(`/api/provider/reports/packages?period=${period}`, selectedLocationId);
-  const { data: reportData, loading, error: dataError, refresh } = useApi<{
+  const { data: reportData, loading, error: dataError, errorCode: dataErrorCode, refresh } = useApi<{
     stats: PackageStats;
     packages: PackageReport[];
     reportBasis?: string;
@@ -58,7 +58,7 @@ export default function PackageReportScreen() {
     fromYmd?: string;
     toYmd?: string;
     basis?: Record<string, string>;
-  }>(packagesUrl);
+  }>(packagesUrl, { timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -166,7 +166,7 @@ export default function PackageReportScreen() {
       {loading && !reportData ? (
         <SkeletonList rows={5} />
       ) : !loading && dataError && !reportData ? (
-        <ErrorState message={dataError} onRetry={refresh} />
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       ) : packages.length === 0 ? (
         <EmptyState icon="layers-outline" title="No packages" description="Create active service packages to see them here" />
       ) : (

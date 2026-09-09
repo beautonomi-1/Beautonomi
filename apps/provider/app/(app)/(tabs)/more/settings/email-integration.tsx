@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, TextInput, Alert, Switch, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -10,6 +11,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
+import { showPlanGateAlert } from "@/lib/plan-gate";
 
 interface EmailStats {
   total_sent: number;
@@ -42,6 +44,7 @@ function formatDateSafe(value: unknown): string {
 }
 
 export default function EmailIntegrationScreen() {
+  const router = useRouter();
   const { data: integration, loading, refresh } = useApi<EmailIntegration | null>(
     "/api/provider/email-integration"
   );
@@ -77,18 +80,19 @@ export default function EmailIntegrationScreen() {
       Alert.alert("Invalid", "Please enter a valid email address");
       return;
     }
-    const { error } = await saveIntegration("/api/provider/email-integration", {
+    const { error, errorCode } = await saveIntegration("/api/provider/email-integration", {
       provider_name: provider,
       api_key: apiKey.trim(),
       from_email: fromEmail.trim(),
       from_name: fromName.trim() || "Beautonomi",
       is_enabled: isEnabled,
     });
-    if (error) Alert.alert("Error", error);
-    else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+    if (error) {
+      showPlanGateAlert({ title: "Could not save", message: error, errorCode, router });
+      return;
     }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    refresh();
   }
 
   async function handleTestConnection() {

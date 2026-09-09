@@ -7,11 +7,11 @@ export function paystackTerminalErrorMessage(
 ): string {
   switch (code) {
     case "SUBSCRIPTION_REQUIRED":
-      return "Your plan doesn't include Paystack Terminal. Contact support or upgrade your subscription.";
+      return message?.trim() || "Paystack Terminal requires a plan that includes virtual terminals. Upgrade under Subscription.";
     case "PAYSTACK_VIRTUAL_TERMINAL_DISABLED_BY_PLATFORM":
       return "Paystack Terminal isn't enabled for this market.";
     case "LIMIT_REACHED":
-      return message ?? "You've reached your Paystack Terminal limit on this plan.";
+      return message?.trim() || "You've reached your Paystack Terminal limit on your current plan. Upgrade to add more terminals.";
     case "LOCATION_TERMINAL_NOT_ALLOWED":
       return "Per-location Paystack terminals aren't available on your plan.";
     case "PROVIDER_NOT_FOUND":

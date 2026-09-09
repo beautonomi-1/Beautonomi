@@ -1,4 +1,6 @@
 "use client";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -8,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Banknote, CreditCard, ShoppingBag, Calendar, Download, HeartHandshake, Ban, Info } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { ReportSkeleton } from "../components/ReportSkeleton";
 import { EmptyReportState } from "../components/EmptyReportState";
@@ -40,6 +42,8 @@ export default function EndOfDayReportPage() {
   const [data, setData] = useState<EndOfDayResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadReport();
@@ -49,6 +53,8 @@ export default function EndOfDayReportPage() {
     try {
       setIsLoading(true);
       setError(null);
+      setIsSubscriptionRequired(false);
+      setSubscriptionGateMessage(null);
       const params = new URLSearchParams({ date });
       appendLocation(params);
       const response = await fetcher.get<{ data: EndOfDayResponse }>(
@@ -56,7 +62,16 @@ export default function EndOfDayReportPage() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
+        setIsSubscriptionRequired(true);
+        setSubscriptionGateMessage(parsed.message);
+        setError(null);
+      } else {
+        setError(parsed.message);
+        setIsSubscriptionRequired(false);
+        setSubscriptionGateMessage(null);
+      }
       setData(null);
     } finally {
       setIsLoading(false);
@@ -84,6 +99,21 @@ export default function EndOfDayReportPage() {
         ]}
       >
         <ReportSkeleton />
+      </SettingsDetailLayout>
+    );
+  }
+
+  if (isSubscriptionRequired) {
+    return (
+      <SettingsDetailLayout
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Provider", href: "/provider" },
+          { label: "Reports", href: "/provider/reports" },
+          { label: "End of day" },
+        ]}
+      >
+        <ReportSubscriptionRequired feature="End of day" message={subscriptionGateMessage} />
       </SettingsDetailLayout>
     );
   }

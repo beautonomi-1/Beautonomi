@@ -19,6 +19,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { openNativeStoreReview } from "@/lib/open-store-review";
+import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { pushInAppBrowser } from "@/lib/in-app-web";
@@ -182,7 +183,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
 
 export default function SettingsAccountHubScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const { role } = useProvider();
   const [expandedId, setExpandedId] = useState<string | null>("account");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
@@ -255,6 +256,7 @@ export default function SettingsAccountHubScreen() {
       }
       if (item.action === "rateStore") {
         getAnalyticsClient()?.track("rate_app_store", { source: "settings_account_hub" });
+        void recordManualStoreReview(user?.id);
         void openNativeStoreReview();
         return;
       }

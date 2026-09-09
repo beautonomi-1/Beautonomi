@@ -7,6 +7,14 @@ import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking
 import { notifyProviderEnRoute } from "@/lib/notifications/notification-service";
 import type { Booking } from "@/types/beautonomi";
 
+/** PostgREST reports an unknown column as PGRST204 ("… in the schema cache"). */
+function isUnknownColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as { code?: string }).code ?? "");
+  const message = String((error as { message?: string }).message ?? "").toLowerCase();
+  return code === "PGRST204" || message.includes("schema cache");
+}
+
 /**
  * POST /api/provider/bookings/[id]/start-journey
  * 
@@ -87,7 +95,84 @@ export async function POST(
       return errorResponse("Booking must be confirmed before starting journey", "INVALID_STATUS", 400);
     }
 
-    // Create booking event
+    // Idempotent: a retry (double tap, flaky network) must not emit a second
+    // `provider_on_way` event or re-notify the customer.
+    if (bookingData.current_stage === "provider_on_way") {
+      return successResponse({
+        booking: bookingData as Booking,
+        message: "Provider journey already started",
+      });
+    }
+    if (
+      bookingData.current_stage &&
+      bookingData.current_stage !== "confirmed"
+    ) {
+      return errorResponse(
+        "This booking has already moved past the journey step.",
+        "HOUSECALL_STAGE_REQUIRED",
+        409,
+      );
+    }
+
+    // Persist the stage change *before* emitting the event, under an optimistic
+    // concurrency guard. A failure here must surface to the provider: an orphaned
+    // `provider_on_way` event with an unchanged `current_stage` leaves the app
+    // rendering "Start journey" forever with no indication anything went wrong.
+    const currentVersion = (bookingData as { version?: number }).version || 0;
+    const nowIso = new Date().toISOString();
+    const corePayload: Record<string, unknown> = {
+      current_stage: "provider_on_way",
+      provider_en_route_at: nowIso,
+      updated_at: nowIso,
+      version: currentVersion + 1,
+    };
+    if (estimatedArrivalIso) {
+      corePayload.estimated_arrival = estimatedArrivalIso;
+    }
+    const etaPayload: Record<string, unknown> =
+      providerEtaMinutes != null
+        ? { provider_eta_minutes: providerEtaMinutes, eta_source: "manual" }
+        : {};
+
+    const applyUpdate = (payload: Record<string, unknown>) =>
+      supabase
+        .from("bookings")
+        .update(payload)
+        .eq("id", id)
+        .eq("version", currentVersion)
+        .select("*");
+
+    let { data: updatedRows, error: updateError } = await applyUpdate({
+      ...corePayload,
+      ...etaPayload,
+    });
+
+    // Schema drift guard: `provider_eta_minutes` / `eta_source` arrive in migration
+    // 862. If an environment is behind, still advance the journey rather than
+    // stranding the provider — but make the drift loud in the logs.
+    if (updateError && Object.keys(etaPayload).length > 0 && isUnknownColumnError(updateError)) {
+      console.error(
+        "[start-journey] ETA columns missing — apply supabase/migrations/862_booking_journey_dashboard.sql",
+        { bookingId: id, error: updateError.message },
+      );
+      ({ data: updatedRows, error: updateError } = await applyUpdate(corePayload));
+    }
+
+    if (updateError) {
+      throw updateError;
+    }
+    if (!updatedRows?.length) {
+      return errorResponse(
+        "Booking was modified by another user. Please refresh and try again.",
+        "CONFLICT",
+        409,
+      );
+    }
+
+    const updatedBooking = updatedRows[0];
+
+    // Create booking event (audit trail). The stage change is already durable, so
+    // a failure here is logged rather than rolled back onto the provider.
     const { error: eventError } = await supabase
       .from("booking_events")
       .insert({
@@ -96,47 +181,20 @@ export async function POST(
         event_data: {
           estimated_arrival: estimatedArrivalIso,
           eta_minutes: providerEtaMinutes,
-          started_at: new Date().toISOString(),
+          started_at: nowIso,
         },
         created_by: user.id,
       });
 
     if (eventError) {
-      throw eventError;
-    }
-
-    // Update booking current_stage (if field exists, otherwise use status)
-    const updatePayload: Record<string, unknown> = {
-      current_stage: "provider_on_way",
-      provider_en_route_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    if (estimatedArrivalIso) {
-      updatePayload.estimated_arrival = estimatedArrivalIso;
-    }
-    if (providerEtaMinutes != null) {
-      updatePayload.provider_eta_minutes = providerEtaMinutes;
-      updatePayload.eta_source = "manual";
-    }
-    const { error: updateError } = await supabase
-      .from("bookings")
-      .update(updatePayload)
-      .eq("id", id);
-
-    if (updateError) {
-      console.error("Error updating booking stage:", updateError);
-      // Don't fail - event is created
+      console.error("[start-journey] Failed to record booking event", {
+        bookingId: id,
+        error: eventError.message,
+      });
     }
 
     // Notify customer via template pipeline (push + in-app bell row).
     await notifyProviderEnRoute(id, estimatedArrivalIso, ["push", "email"]);
-
-    // Fetch updated booking
-    const { data: updatedBooking } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("id", id)
-      .single();
 
     return successResponse({
       booking: updatedBooking as Booking,

@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useOrdersReturnsListRefresh } from "@/hooks/useOrdersReturnsListRefresh";
 import { api } from "@/lib/api-client";
 import { downloadPdf } from "@/lib/pdf-file";
 import { shareProviderOrderReceipt } from "@/lib/share-receipt";
@@ -162,6 +163,8 @@ const STATUS_OPTIONS = [
 ];
 
 const ACTION_REQUIRED_STATUSES = new Set(["pending", "confirmed", "processing", "ready_for_collection", "shipped"]);
+
+const PRODUCT_ORDERS_REALTIME_TABLES = ["product_orders"] as const;
 
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   pending:               { bg: "#fef3c7", text: "#92400e" },
@@ -328,7 +331,10 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   const pageSize = 50;
   const url = `/api/provider/product-orders?limit=${pageSize}&page=${page}${statusFilter ? `&status=${statusFilter}` : ""}`;
-  const { data, loading, error, refresh } = useApi<OrdersListResponse>(url);
+  const { data, loading, error, refresh, silentRefresh } = useApi<OrdersListResponse>(url, {
+    revalidateOnFocus: true,
+  });
+  useOrdersReturnsListRefresh(silentRefresh, PRODUCT_ORDERS_REALTIME_TABLES);
   const { execute: patchOrder, loading: patching } = useApiMutation<{ order: Order }>("patch");
   const { execute: patchLine, loading: patchingLine } = useApiMutation<{ item: { id: string; fulfilment_status: string } }>("patch");
   const { execute: postOrderMutation, loading: postingOrderMutation } = useApiMutation<{ order: Order }>("post");

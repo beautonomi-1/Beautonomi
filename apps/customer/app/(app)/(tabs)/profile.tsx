@@ -32,6 +32,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { formatMoney, resolveProfileEmailVerificationState } from "@beautonomi/utils";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { openNativeStoreReview } from "@/lib/open-store-review";
+import { recordManualStoreReview } from "@/lib/store-review-prompt";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -786,6 +787,7 @@ export default function ProfileScreen() {
             label="Give us feedback"
             onPress={() => {
               if (Platform.OS === "ios" || Platform.OS === "android") {
+                void recordManualStoreReview(user?.id);
                 void openNativeStoreReview();
                 if (Platform.OS === "ios" && (!IOS_APP_STORE_ID || IOS_APP_STORE_ID === "0000000000")) {
                   router.push("/(app)/(tabs)/support-tickets/new");

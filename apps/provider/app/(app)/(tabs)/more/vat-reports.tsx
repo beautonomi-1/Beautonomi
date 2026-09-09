@@ -16,7 +16,7 @@ import {
 import { useRouter, Redirect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useApi, useApiMutation, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -138,7 +138,8 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   const { data, loading, error, refresh } = useApi<VATReportsData>(
-    `/api/provider/finance/vat-reports?year=${selectedYear}`
+    `/api/provider/finance/vat-reports?year=${selectedYear}`,
+    { timeoutMs: MONEY_SURFACE_TIMEOUT_MS },
   );
   const { execute: patchRemitted, loading: markingRemitted } = useApiMutation<unknown>("patch");
 

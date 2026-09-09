@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import NextLink from "next/link";
 import { MessagePreviewDialog } from "./components/MessagePreviewDialog";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import {
   Dialog,
   DialogContent,
@@ -136,30 +138,13 @@ export default function ProviderAutomations() {
       setAutomations(mappedAutomations);
       setSubscriptionRequired(false);
     } catch (error) {
-      // Check if it's a subscription error first (before logging)
-      if (error instanceof FetchError) {
-        const isSubscriptionError = 
-          error.code === "SUBSCRIPTION_REQUIRED" || 
-          error.message?.toLowerCase().includes("subscription upgrade") ||
-          error.message?.toLowerCase().includes("starter plan") ||
-          error.message?.toLowerCase().includes("subscription") ||
-          error.status === 403;
-        
-        if (isSubscriptionError) {
-          // Handle subscription error gracefully - no console error, no toast
-          setSubscriptionRequired(true);
-          setIsLoading(false);
-          return; // Exit early, don't show error toast
-        }
-        
-        // For other FetchErrors, log and show toast
-        console.error("Failed to load automations:", error);
-        toast.error(error.message || "Failed to load automations");
-      } else {
-        // For non-FetchErrors, log and show toast
-        console.error("Failed to load automations:", error);
-        toast.error("Failed to load automations");
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
+        setSubscriptionRequired(true);
+        setIsLoading(false);
+        return;
       }
+      console.error("Failed to load automations:", error);
+      toastPlanGateError(error, "Failed to load automations");
     } finally {
       setIsLoading(false);
     }
@@ -206,9 +191,9 @@ export default function ProviderAutomations() {
         toast.success(`Automation ${!isActive ? "enabled" : "disabled"}`);
       }
       loadAutomations();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to toggle automation:", error);
-      toast.error(error?.message || "Failed to update automation");
+      toastPlanGateError(error, "Failed to update automation");
     }
   };
 
@@ -244,10 +229,8 @@ export default function ProviderAutomations() {
       {subscriptionRequired && (
         <div className="mb-6">
           <SubscriptionGate
-            feature="Marketing Automations"
-            message="Marketing automations require a subscription upgrade"
-            upgradeMessage="Upgrade your platform plan under Subscription to use marketing automations."
-            showUpgradeButton={true}
+            feature="Marketing automations"
+            message={getUpgradeMessage("marketing.automations")}
           />
         </div>
       )}

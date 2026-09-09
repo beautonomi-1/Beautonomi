@@ -164,12 +164,9 @@ export default function ReportDetailScreen() {
     });
   }, [def, from, to, periodMQY, periodDMWY, eodDate, selectedLocationId]);
 
-  const reportTimeoutMs =
-    reportId === "sales-summary" || reportId === "revenue-trends" ? MONEY_SURFACE_TIMEOUT_MS : undefined;
-
   const { data, loading, error, errorCode, refresh } = useApi<unknown>(path, {
     enabled: !!def && !!path,
-    timeoutMs: reportTimeoutMs,
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
   });
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {

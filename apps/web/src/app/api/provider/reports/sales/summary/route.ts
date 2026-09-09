@@ -17,7 +17,7 @@ export const maxDuration = 60;
 export async function GET(request: NextRequest) {
   try {
     // Require provider_owner or provider_staff role
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "sales" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

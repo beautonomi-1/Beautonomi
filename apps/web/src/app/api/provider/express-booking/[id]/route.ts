@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
@@ -43,7 +43,7 @@ export async function PATCH(
     const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
       return errorResponse(
-        SUBSCRIPTION_UPGRADE_SHORT,
+        getUpgradeMessage("express.feature"),
         "SUBSCRIPTION_REQUIRED",
         403
       );

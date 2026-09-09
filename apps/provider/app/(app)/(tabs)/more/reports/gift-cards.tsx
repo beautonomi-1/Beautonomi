@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -16,7 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate, formatStatusLabel } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -60,12 +60,12 @@ export default function GiftCardReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const giftCardsUrl = appendReportLocation(`/api/provider/reports/gift-cards?period=${period}`, selectedLocationId);
-  const { data: reportData, loading, error: dataError, refresh } = useApi<{
+  const { data: reportData, loading, error: dataError, errorCode: dataErrorCode, refresh } = useApi<{
     stats: GiftCardStats;
     cards: GiftCardReport[];
     reportBasis?: string;
     basis?: Record<string, string>;
-  }>(giftCardsUrl);
+  }>(giftCardsUrl, { timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -151,7 +151,7 @@ export default function GiftCardReportScreen() {
       {loading && !reportData ? (
         <SkeletonList rows={5} />
       ) : !loading && dataError && !reportData ? (
-        <ErrorState message={dataError} onRetry={refresh} />
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       ) : cards.length === 0 ? (
         <EmptyState
           icon="gift-outline"

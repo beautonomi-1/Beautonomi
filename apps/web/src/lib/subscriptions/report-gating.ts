@@ -1,45 +1,174 @@
 /**
  * Report Gating Helper
- * 
- * Utility functions for gating report access based on subscription
+ *
+ * Utility functions for gating report access based on subscription.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { checkAnalyticsFeatureAccess } from "./feature-access";
+import { getProviderIdForUser, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  checkAnalyticsFeatureAccess,
+  getProviderSubscriptionTier,
+} from "./feature-access";
 import { isUserSuperadmin } from "./entitlements";
-import { errorResponse } from "@/lib/supabase/api-helpers";
+import { getUpgradeMessage } from "./subscription-upgrade-copy";
 
-/** User-facing copy only — access is enforced via `subscription_plans.features.advanced_analytics` (see `checkAnalyticsFeatureAccess`). */
+export type ReportGateResult =
+  | { allowed: true }
+  | { allowed: false; response: NextResponse };
+
+const warnedMissingAnalyticsKey = new Set<string>();
+
+/** User-facing copy — enforced via subscription_plans.features.advanced_analytics. */
 function subscriptionRequiredMessage(
-  kind: "analytics" | "basic" | "advanced" | "export" | "api"
+  kind: "analytics" | "basic" | "advanced" | "scale_only" | "export" | "api",
 ): string {
   switch (kind) {
     case "analytics":
-      return "Reports require a subscription that includes analytics. Please upgrade to a plan with analytics enabled.";
+      return getUpgradeMessage("reports.basic");
     case "basic":
-      return "This report requires a subscription that includes basic reports. Please upgrade your plan.";
+      return getUpgradeMessage("reports.basic");
     case "advanced":
-      return "This report requires a subscription that includes advanced analytics. Please upgrade your plan.";
+      return getUpgradeMessage("reports.advanced");
+    case "scale_only":
+      return getUpgradeMessage("reports.scale_only");
     case "export":
-      return "Data export requires a subscription that includes export. Please upgrade your plan.";
+      return "Data export requires a subscription that includes export. Upgrade under Subscription.";
     case "api":
-      return "API access requires a subscription that includes API access. Please upgrade your plan.";
+      return "API access requires a subscription that includes API access. Upgrade under Subscription.";
     default:
-      return "Reports require a subscription upgrade.";
+      return getUpgradeMessage("reports.basic");
   }
 }
 
+function deny(
+  kind: "analytics" | "basic" | "advanced" | "scale_only",
+): ReportGateResult {
+  return {
+    allowed: false,
+    response: errorResponse(
+      subscriptionRequiredMessage(kind),
+      "SUBSCRIPTION_REQUIRED",
+      403,
+    ),
+  };
+}
+
+function denyForReportType(reportType: string): ReportGateResult {
+  const t = reportType.toLowerCase();
+  if (t === "gift_cards" || t === "packages") return deny("scale_only");
+  if (t === "sales" || t === "bookings") return deny("basic");
+  if (t === "staff" || t === "products" || t === "payments" || t === "memberships") {
+    return deny("advanced");
+  }
+  return deny("advanced");
+}
+
 /**
- * Check if provider can access a specific report type
+ * Core subscription gate for provider report APIs.
+ * Pass the same Supabase client as the route (Bearer-aware).
+ */
+export async function assertReportSubscriptionAccess(input: {
+  providerId: string;
+  reportType: string;
+  supabase: SupabaseClient;
+  isSuperadmin?: boolean;
+}): Promise<ReportGateResult> {
+  if (input.isSuperadmin) {
+    return { allowed: true };
+  }
+
+  const tier = await getProviderSubscriptionTier(input.supabase, input.providerId);
+  const rawFeatures = (tier?.features ?? null) as Record<string, unknown> | null;
+  const hasAnalyticsKey =
+    rawFeatures != null &&
+    typeof rawFeatures === "object" &&
+    !Array.isArray(rawFeatures) &&
+    Object.prototype.hasOwnProperty.call(rawFeatures, "advanced_analytics");
+
+  if (!hasAnalyticsKey) {
+    const warnKey = tier?.planId ?? input.providerId;
+    if (!warnedMissingAnalyticsKey.has(warnKey)) {
+      warnedMissingAnalyticsKey.add(warnKey);
+      console.warn(
+        "[report-gating] advanced_analytics key missing on plan; fail-open for provider",
+        input.providerId,
+        tier?.planName,
+      );
+    }
+    return { allowed: true };
+  }
+
+  const analyticsAccess = await checkAnalyticsFeatureAccess(
+    input.providerId,
+    input.supabase,
+  );
+
+  if (!analyticsAccess.enabled) {
+    return deny("analytics");
+  }
+
+  const normalizedType = input.reportType.toLowerCase();
+
+  if (normalizedType === "analytics_only") {
+    return { allowed: true };
+  }
+
+  const reportTypes = (analyticsAccess.reportTypes ?? []).map((t) =>
+    String(t).toLowerCase(),
+  );
+
+  if (reportTypes.length > 0) {
+    if (reportTypes.includes(normalizedType)) {
+      return { allowed: true };
+    }
+    return denyForReportType(normalizedType);
+  }
+
+  const basicReports = ["sales", "bookings"];
+  if (basicReports.includes(normalizedType)) {
+    if (!analyticsAccess.basicReports) {
+      return deny("basic");
+    }
+    return { allowed: true };
+  }
+
+  const advancedReports = [
+    "staff",
+    "clients",
+    "products",
+    "payments",
+    "gift_cards",
+    "packages",
+    "memberships",
+  ];
+  if (advancedReports.includes(normalizedType)) {
+    if (!analyticsAccess.advancedReports) {
+      return deny("advanced");
+    }
+    return { allowed: true };
+  }
+
+  if (!analyticsAccess.basicReports) {
+    return deny("basic");
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * @deprecated Prefer requireProviderReportsAccess with reportType option.
  */
 export async function canAccessReport(
   userId: string,
-  reportType: "basic" | "advanced" | "export" | "api"
-): Promise<{ allowed: boolean; error?: any }> {
-  const supabase = await getSupabaseServer();
-  const providerId = await getProviderIdForUser(userId);
-  
+  reportType: "basic" | "advanced" | "export" | "api",
+  request?: Request,
+): Promise<{ allowed: boolean; error?: Response }> {
+  const supabase = await getSupabaseServer(request);
+  const providerId = await getProviderIdForUser(userId, supabase);
+
   if (!providerId) {
     return {
       allowed: false,
@@ -47,30 +176,23 @@ export async function canAccessReport(
     };
   }
 
-  // Check if user is superadmin - allow access regardless of subscription
-  const { data: userRole } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "superadmin")
-    .maybeSingle();
+  const isSuperadmin = await isUserSuperadmin(supabase, userId);
 
-  // Superadmins have full access to all reports
-  if (userRole) {
-    return { allowed: true };
-  }
+  const analyticsAccess = await checkAnalyticsFeatureAccess(providerId, supabase);
 
-  const analyticsAccess = await checkAnalyticsFeatureAccess(providerId);
-
-  if (!analyticsAccess.enabled) {
+  if (!isSuperadmin && !analyticsAccess.enabled) {
     return {
       allowed: false,
       error: errorResponse(
         subscriptionRequiredMessage("analytics"),
         "SUBSCRIPTION_REQUIRED",
-        403
+        403,
       ),
     };
+  }
+
+  if (isSuperadmin) {
+    return { allowed: true };
   }
 
   if (reportType === "basic" && !analyticsAccess.basicReports) {
@@ -79,7 +201,7 @@ export async function canAccessReport(
       error: errorResponse(
         subscriptionRequiredMessage("basic"),
         "SUBSCRIPTION_REQUIRED",
-        403
+        403,
       ),
     };
   }
@@ -90,7 +212,7 @@ export async function canAccessReport(
       error: errorResponse(
         subscriptionRequiredMessage("advanced"),
         "SUBSCRIPTION_REQUIRED",
-        403
+        403,
       ),
     };
   }
@@ -101,7 +223,7 @@ export async function canAccessReport(
       error: errorResponse(
         subscriptionRequiredMessage("export"),
         "SUBSCRIPTION_REQUIRED",
-        403
+        403,
       ),
     };
   }
@@ -112,7 +234,7 @@ export async function canAccessReport(
       error: errorResponse(
         subscriptionRequiredMessage("api"),
         "SUBSCRIPTION_REQUIRED",
-        403
+        403,
       ),
     };
   }
@@ -121,15 +243,16 @@ export async function canAccessReport(
 }
 
 /**
- * Check if provider can access a specific report type by name
+ * @deprecated Prefer requireProviderReportsAccess with reportType option.
  */
 export async function canAccessReportType(
   userId: string,
-  reportTypeName: string
-): Promise<{ allowed: boolean; error?: any }> {
-  const supabase = await getSupabaseServer();
-  const providerId = await getProviderIdForUser(userId);
-  
+  reportTypeName: string,
+  request?: Request,
+): Promise<{ allowed: boolean; error?: Response }> {
+  const supabase = await getSupabaseServer(request);
+  const providerId = await getProviderIdForUser(userId, supabase);
+
   if (!providerId) {
     return {
       allowed: false,
@@ -137,65 +260,16 @@ export async function canAccessReportType(
     };
   }
 
-  if (await isUserSuperadmin(supabase, userId)) {
-    return { allowed: true };
-  }
+  const isSuperadmin = await isUserSuperadmin(supabase, userId);
+  const gate = await assertReportSubscriptionAccess({
+    providerId,
+    reportType: reportTypeName,
+    supabase,
+    isSuperadmin,
+  });
 
-  const analyticsAccess = await checkAnalyticsFeatureAccess(providerId);
-
-  if (!analyticsAccess.enabled) {
-    return {
-      allowed: false,
-      error: errorResponse(
-        subscriptionRequiredMessage("analytics"),
-        "SUBSCRIPTION_REQUIRED",
-        403
-      ),
-    };
-  }
-
-  // Basic reports: sales, bookings
-  const basicReports = ["sales", "bookings"];
-  if (basicReports.includes(reportTypeName.toLowerCase())) {
-    if (!analyticsAccess.basicReports) {
-      return {
-        allowed: false,
-        error: errorResponse(
-          subscriptionRequiredMessage("basic"),
-          "SUBSCRIPTION_REQUIRED",
-          403
-        ),
-      };
-    }
-    return { allowed: true };
-  }
-
-  // Advanced reports: staff, clients, products, payments, gift_cards, packages
-  const advancedReports = ["staff", "clients", "products", "payments", "gift_cards", "packages"];
-  if (advancedReports.includes(reportTypeName.toLowerCase())) {
-    if (!analyticsAccess.advancedReports) {
-      return {
-        allowed: false,
-        error: errorResponse(
-          subscriptionRequiredMessage("advanced"),
-          "SUBSCRIPTION_REQUIRED",
-          403
-        ),
-      };
-    }
-    return { allowed: true };
-  }
-
-  // Default: require basic reports
-  if (!analyticsAccess.basicReports) {
-    return {
-      allowed: false,
-      error: errorResponse(
-        subscriptionRequiredMessage("basic"),
-        "SUBSCRIPTION_REQUIRED",
-        403
-      ),
-    };
+  if (gate.allowed === false) {
+    return { allowed: false, error: gate.response };
   }
 
   return { allowed: true };

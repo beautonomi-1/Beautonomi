@@ -11,7 +11,12 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import {
+  buildAdReachKey,
+  buildAdImpressionIdempotencyPrefix,
+  runAdsAuction,
+  recordAdImpressions,
+} from "@/lib/ads/auction";
 import { getProviderIdsForGlobalCategory } from "@/lib/categories/provider-ids-for-global-category";
 import { resolveActiveBadge } from "@/lib/provider/active-badge";
 import {
@@ -1921,7 +1926,7 @@ export async function GET(request: Request) {
               sponsored.push(card as PublicProviderCard);
             }
             const reachKey = buildAdReachKey(request);
-            const idempotencyPrefix = `home:${reachKey}:${Date.now()}`;
+            const idempotencyPrefix = buildAdImpressionIdempotencyPrefix("home", reachKey);
             await recordAdImpressions(auctionWinners, idempotencyPrefix, {
               placement: "home",
               reach_key: reachKey,

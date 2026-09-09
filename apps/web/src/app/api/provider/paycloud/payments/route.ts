@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkPaycloudFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import {
   requirePaycloudPlatformEnabledForProvider,
   isPaycloudSameTerminalEnabledForProvider,
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     const paycloudAccess = await checkPaycloudFeatureAccess(providerId, supabase);
     if (!paycloudAccess.enabled) {
-      return NextResponse.json({ data: null, error: { message: "Card machines require a plan upgrade.", code: "SUBSCRIPTION_REQUIRED" } }, { status: 403 });
+      return NextResponse.json({ data: null, error: { message: getUpgradeMessage("integrations.paycloud"), code: "SUBSCRIPTION_REQUIRED" } }, { status: 403 });
     }
 
     const { data: provider } = await supabase.from("providers").select("accept_paycloud, tenant_id").eq("id", providerId).single();

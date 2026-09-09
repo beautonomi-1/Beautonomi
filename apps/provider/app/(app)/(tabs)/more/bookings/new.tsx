@@ -47,6 +47,7 @@ import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/native-permissions";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 import { Colors } from "@/constants/colors";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { calculateBookingTotals, effectiveTravelFee, percentOf, safeNum, manualCardCollectOptionLabel } from "@beautonomi/utils";
 import { BookingDateStrip, BookingTimeSlotGrid } from "@/components/bookings/BookingDateTimePicker";
@@ -2135,24 +2136,14 @@ export default function NewBookingScreen() {
         ]);
         return;
       }
-      const isLimitError =
-        typeof error === "string" &&
-        (error.toLowerCase().includes("booking limit") ||
-          error.toLowerCase().includes("upgrade your plan") ||
-          error.toLowerCase().includes("limit_reached"));
+      const isLimitError = isPlanGateErrorCode(errorCode);
       if (isLimitError) {
-        Alert.alert(
-          "Booking limit reached",
-          error,
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "View subscription",
-              onPress: () =>
-                router.push("/(app)/(tabs)/more/settings/subscription" as never),
-            },
-          ]
-        );
+        showPlanGateAlert({
+          title: "Booking limit reached",
+          message: error,
+          errorCode,
+          router,
+        });
       } else {
         Alert.alert("Error", error);
       }
