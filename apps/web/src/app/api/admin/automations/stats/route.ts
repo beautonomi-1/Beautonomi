@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       .from("provider_subscriptions")
       .select(`
         provider_id,
-        plan:subscription_plans(
+        plan:subscription_plans!plan_id(
           id,
           name,
           price_monthly,

@@ -163,6 +163,9 @@ export async function getProviderSubscriptionTier(
   // to the free tier. Rows with null expires_at never expire (lifetime / free).
   const nowIso = new Date().toISOString();
   const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  // !plan_id is required: provider_subscriptions also FKs subscription_plans
+  // via scheduled_plan_id. An unhinted embed is PGRST201 and the tier is null
+  // (PayCloud "plan does not include card machines", mobile Subscriptions 500).
   const { data: subscription, error: subscriptionError } = await supabase
     .from("provider_subscriptions")
     .select(`
@@ -171,7 +174,7 @@ export async function getProviderSubscriptionTier(
       updated_at,
       billing_provider,
       apple_grace_period_expires_at,
-      plan:subscription_plans(
+      plan:subscription_plans!plan_id(
         id,
         name,
         features,

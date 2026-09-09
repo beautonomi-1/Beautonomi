@@ -12,4 +12,13 @@ describe("getFeatureAccessClient", () => {
     expect(src).toContain("getSupabaseServer(request)");
     expect(src).toMatch(/Always pass the route `request`/);
   });
+
+  it("disambiguates provider subscription plan embeds via plan_id", () => {
+    const src = readFileSync(
+      resolve(__dirname, "../feature-access.ts"),
+      "utf8",
+    );
+    expect(src).toContain("plan:subscription_plans!plan_id(");
+    expect(src).not.toMatch(/plan:subscription_plans\(/);
+  });
 });

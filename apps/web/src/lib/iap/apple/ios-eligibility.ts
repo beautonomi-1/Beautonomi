@@ -19,7 +19,7 @@ export async function resolveIosPurchaseEligibility(
 ): Promise<IosPurchaseEligibility> {
   const { data: sub } = await supabase
     .from("provider_subscriptions")
-    .select("billing_provider, status, paystack_subscription_code, plan:subscription_plans(is_free)")
+    .select("billing_provider, status, paystack_subscription_code, plan:subscription_plans!plan_id(is_free)")
     .eq("provider_id", providerId)
     .maybeSingle();
 

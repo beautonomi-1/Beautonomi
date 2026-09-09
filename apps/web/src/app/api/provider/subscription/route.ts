@@ -29,10 +29,11 @@ export async function GET(request: NextRequest) {
       return successResponse(null);
     }
 
+    // !plan_id: scheduled_plan_id is a second FK to subscription_plans (PGRST201).
     const { data: subscription, error: subError } = await supabase
       .from("provider_subscriptions")
       .select(
-        "*, plan:subscription_plans(id, name, description, price_monthly, price_yearly, currency, features, is_free)"
+        "*, plan:subscription_plans!plan_id(id, name, description, price_monthly, price_yearly, currency, features, is_free)"
       )
       .eq("provider_id", providerId)
       .maybeSingle();
