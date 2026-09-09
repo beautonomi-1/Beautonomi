@@ -4,7 +4,7 @@ on:
   deployment_status:
 
 jobs:
-  booking-happy-path:
+  staging-e2e:
     # Run against successful Vercel Preview deployments (skippable — no seed) AND
     # against Staging deployments (non-skippable — always seeds a test provider).
     if: >-
@@ -15,7 +15,7 @@ jobs:
         github.event.deployment_status.environment == 'staging'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       IS_STAGING: ${{ contains(github.event.deployment_status.environment, 'taging') }}
     steps:
@@ -23,7 +23,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
       - name: Install deps
         run: pnpm install --frozen-lockfile
@@ -56,14 +56,30 @@ jobs:
         with:
           package-filter: web
 
-      - name: Run booking happy-path
+      - name: Run booking + money-path E2E
         working-directory: apps/web
         env:
           PLAYWRIGHT_BASE_URL: ${{ github.event.deployment_status.environment_url }}
           E2E_PROVIDER_SLUG: ${{ steps.slug.outputs.value }}
           # On staging, the test is non-skippable (slug is always set by seed step).
           E2E_NON_SKIPPABLE: ${{ env.IS_STAGING }}
-        run: pnpm exec playwright test e2e/booking-happy-path.spec.ts
+        run: pnpm exec playwright test e2e/booking-happy-path.spec.ts e2e/money-path.spec.ts
+
+      # REM-007 — multi-market tenant isolation (staging only).
+      # Requires GitHub secrets:
+      #   E2E_TENANT_B_BASE — foreign market host (e.g. https://www.beautonomi.com)
+      # Optional overrides:
+      #   E2E_TENANT_A_BASE — defaults to the staging deployment URL
+      #   E2E_TENANT_A_PROVIDER — defaults to the seeded staging provider slug
+      - name: Run tenant isolation E2E (Staging only)
+        if: ${{ env.IS_STAGING == 'true' }}
+        working-directory: apps/web
+        env:
+          E2E_TENANT_A_BASE: ${{ secrets.E2E_TENANT_A_BASE || github.event.deployment_status.environment_url }}
+          E2E_TENANT_B_BASE: ${{ secrets.E2E_TENANT_B_BASE }}
+          E2E_TENANT_A_PROVIDER: ${{ steps.slug.outputs.value || secrets.E2E_TENANT_A_PROVIDER }}
+          E2E_NON_SKIPPABLE: "true"
+        run: pnpm exec playwright test e2e/tenant-isolation.spec.ts
 
       - name: Upload Playwright report
         if: always()
@@ -71,4 +87,4 @@ jobs:
         with:
           name: playwright-report-${{ github.run_id }}
           path: apps/web/playwright-report
-          retention-days: 7
+          retention-days: 14

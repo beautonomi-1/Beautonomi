@@ -3,7 +3,7 @@ import { paystackTerminalErrorMessage } from "../paystack-terminal-errors";
 
 describe("paystackTerminalErrorMessage", () => {
   it("maps SUBSCRIPTION_REQUIRED to upgrade guidance", () => {
-    expect(paystackTerminalErrorMessage("raw", "SUBSCRIPTION_REQUIRED")).toContain("plan");
+    expect(paystackTerminalErrorMessage(undefined, "SUBSCRIPTION_REQUIRED")).toContain("plan");
   });
 
   it("maps platform disabled code", () => {

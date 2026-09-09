@@ -5,17 +5,25 @@ on:
   schedule:
     - cron: "0 3 * * 1"
 
+concurrency:
+  group: scale-verification
+  cancel-in-progress: true
+
+env:
+  STAGING_BASE_URL: https://staging.beautonomi.com
+
 jobs:
-  verify:
+  release-verify:
     name: Release Verification (Quick)
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
-      NEXT_PUBLIC_APP_URL: https://staging.beautonomi.com
-      EXPO_PUBLIC_APP_URL: https://staging.beautonomi.com
+      NEXT_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
+      EXPO_PUBLIC_APP_URL: ${{ env.STAGING_BASE_URL }}
       NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN || '' }}
       EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN || '' }}
       SLACK_ALERT_WEBHOOK_URL: ${{ secrets.SLACK_ALERT_WEBHOOK_URL || '' }}
@@ -37,3 +45,62 @@ jobs:
 
       - name: Run release verification (quick)
         run: pnpm run prod:verify:release
+
+  load-gates:
+    name: k6 Load Gates (Staging burst)
+    needs: release-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring \
+            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 \
+            --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -qq && sudo apt-get install -y k6
+
+      - name: Validate staging reachable
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${STAGING_BASE_URL}/api/public/home" || true)
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::Staging URL ${STAGING_BASE_URL} is not reachable. Aborting load gates."
+            exit 1
+          fi
+          echo "Staging returned HTTP $STATUS — proceeding."
+
+      - name: Run k6 auth-burst
+        env:
+          BASE_URL: ${{ env.STAGING_BASE_URL }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-auth-burst.js
+
+      - name: Run k6 booking-flow
+        env:
+          BASE_URL: ${{ env.STAGING_BASE_URL }}
+          AUTH_TOKEN: ${{ secrets.LOAD_TEST_AUTH_TOKEN }}
+        run: |
+          k6 run \
+            -e BASE_URL="$BASE_URL" \
+            -e AUTH_TOKEN="$AUTH_TOKEN" \
+            tooling/load-test/k6-booking-flow.js
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-scale-gates-${{ github.run_id }}
+          path: |
+            k6-summary*.json
+            k6-summary*.html
+          if-no-files-found: ignore
