@@ -142,7 +142,7 @@ export function DashboardInsightsPanel({
             <p className="text-sm font-semibold text-amber-900">Online bookings paused</p>
             <p className="mt-0.5 text-sm text-amber-700">
               {stats.booking_eligibility.booking_limit_message ??
-                "Upgrade your subscription to accept more online bookings."}
+                "You've reached your monthly online booking limit on your current plan. Upgrade for unlimited bookings."}
             </p>
           </div>
           <Button
@@ -151,7 +151,7 @@ export function DashboardInsightsPanel({
             className="border-amber-300 bg-white shrink-0"
             onClick={() => router.push("/provider/subscription")}
           >
-            Manage subscription
+            View plans
           </Button>
         </div>
       )}

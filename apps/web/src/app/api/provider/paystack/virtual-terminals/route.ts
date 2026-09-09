@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePaystackVirtualTerminalEnabledForProvider } from "@/lib/payments/paystack-virtual-terminal-feature-gate";
 import { checkPaystackVirtualTerminalFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { slackNotifyPaystackTerminalSetupRequested } from "@/lib/integrations/slack/ops-triggers";
 import { buildPaystackTerminalName, normalizeWhatsAppTarget } from "@/lib/payments/paystack-terminal-assets";
 
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     const access = await checkPaystackVirtualTerminalFeatureAccess(providerId, supabase as any);
     if (!access.enabled) {
       return errorResponse(
-        "Paystack Terminal requires a subscription upgrade.",
+        getUpgradeMessage("integrations.paystack_terminal"),
         "SUBSCRIPTION_REQUIRED",
         403,
       );
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
     const nextTerminalNumber = (terminalCount ?? 0) + 1;
     if (access.maxTerminals && (terminalCount ?? 0) >= access.maxTerminals) {
       return errorResponse(
-        `You've reached your Paystack Terminal limit (${access.maxTerminals}).`,
+        getUpgradeMessage("limits.paystack_terminals"),
         "LIMIT_REACHED",
         403,
       );

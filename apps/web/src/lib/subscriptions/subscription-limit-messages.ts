@@ -5,6 +5,7 @@
  */
 
 import type { LimitCheckResult } from "./limit-checker";
+import { formatChatLimitUpgradeMessage, formatLimitUpgradeMessage } from "./subscription-upgrade-copy";
 
 /** Shown to customers when the salon cannot accept bookings due to platform/plan state (not their fault). */
 export const PUBLIC_CUSTOMER_BOOKING_UNAVAILABLE =
@@ -68,6 +69,18 @@ export function formatProviderPortalLimitMessage(limitCheck: LimitCheckResult, a
         ? "Subscription or billing settings"
         : `${actionLabel} settings`;
     return `No active platform plan is linked to your business. Open ${settingsHint} to choose or activate a plan so you can continue.`;
+  }
+
+  if (
+    r.includes("Monthly message limit") ||
+    r.includes("message limit reached") ||
+    r.toLowerCase().includes("client-chat")
+  ) {
+    return formatChatLimitUpgradeMessage(limitCheck);
+  }
+
+  if (r.includes("Monthly booking limit") || r.includes("booking limit reached")) {
+    return formatLimitUpgradeMessage(limitCheck, "bookings");
   }
 
   if (plan) {

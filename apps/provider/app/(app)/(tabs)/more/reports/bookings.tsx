@@ -9,12 +9,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency, formatPercentage, formatStatusLabel } from "@/lib/format";
@@ -84,7 +84,9 @@ export default function BookingsReport() {
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const bookingsReportUrl = appendReportLocation(`/api/provider/reports/bookings?from=${from}&to=${to}`, selectedLocationId);
-  const { data, loading, error: dataError, refresh } = useApi<BookingsData>(bookingsReportUrl);
+  const { data, loading, error: dataError, errorCode: dataErrorCode, refresh } = useApi<BookingsData>(bookingsReportUrl, {
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+  });
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -145,7 +147,9 @@ export default function BookingsReport() {
       </View>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}
-      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && dataError && !data && (
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
+      )}
       {!loading && !data && !dataError && <EmptyState icon="calendar-outline" title="No bookings data" description="Booking analytics will appear here" />}
 
       {data && (

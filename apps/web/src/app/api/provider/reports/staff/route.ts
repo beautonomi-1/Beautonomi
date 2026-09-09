@@ -15,7 +15,7 @@ import { allocateLedgerNetByStaff } from "@/lib/reports/staff-ledger-revenue";
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "staff" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

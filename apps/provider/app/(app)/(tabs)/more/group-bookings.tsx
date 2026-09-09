@@ -1538,6 +1538,7 @@ export default function GroupBookingsScreen() {
           entity_id: group.id,
           expected_amount: expectedAmount,
         }),
+        { timeout: 120_000 },
       );
       if (res.error) {
         const errMsg = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Terminal not ready";
@@ -2488,6 +2489,7 @@ export default function GroupBookingsScreen() {
             entity_id: createdGroupId,
             expected_amount: totalAmt,
           }),
+          { timeout: 120_000 },
         ).then((res) => {
           const terminal = res.data?.terminal;
           if (terminal) {

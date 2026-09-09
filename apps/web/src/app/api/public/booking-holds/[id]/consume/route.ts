@@ -170,6 +170,20 @@ async function handlePost(
       }
     }
 
+    const adminSupabaseForOnboarding = getSupabaseAdmin();
+    const { data: onboardingUser } = await adminSupabaseForOnboarding
+      .from("users")
+      .select("customer_onboarding_completed_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!onboardingUser?.customer_onboarding_completed_at) {
+      return errorResponse(
+        "Please complete your profile before booking.",
+        "ONBOARDING_REQUIRED",
+        403,
+      );
+    }
+
     const body = await request.json();
     const parsed = consumeBodySchema.safeParse(body);
     if (!parsed.success) {

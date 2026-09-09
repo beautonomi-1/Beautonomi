@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 
 interface TeamMemberCreateEditDialogProps {
   open: boolean;
@@ -491,9 +492,9 @@ export function TeamMemberCreateEditDialog({
 
       onSave?.(!!member);
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save team member:", error);
-      toast.error(error?.message || "Failed to save team member");
+      toastPlanGateError(error, "Failed to save team member");
     } finally {
       setIsLoading(false);
     }

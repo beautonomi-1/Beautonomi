@@ -12,6 +12,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays, startOfDay, startOfMonth } from "date-fns";
 import { fromBusinessTime, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
 import { checkMarketingFeatureAccess, canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
+import {
+  campaignChannelUpgradeMessage,
+  getUpgradeMessage,
+} from "@/lib/subscriptions/subscription-upgrade-copy";
 
 export type DispatchableCampaign = {
   id: string;
@@ -96,7 +100,7 @@ export async function dispatchCampaign(
       ok: false,
       code: "SUBSCRIPTION_REQUIRED",
       status: 403,
-      message: `${campaign.type} campaigns require a subscription upgrade.`,
+      message: campaignChannelUpgradeMessage(campaign.type),
     };
   }
 
@@ -123,7 +127,7 @@ export async function dispatchCampaign(
         ok: false,
         code: "LIMIT_REACHED",
         status: 403,
-        message: `Monthly campaign limit reached (${marketingAccess.maxCampaignsPerMonth}).`,
+        message: `${getUpgradeMessage("limits.campaigns")} (${marketingAccess.maxCampaignsPerMonth} per month).`,
       };
     }
   }
@@ -176,7 +180,7 @@ export async function dispatchCampaign(
       ok: false,
       code: "LIMIT_REACHED",
       status: 403,
-      message: `Campaign exceeds recipient limit (${marketingAccess.maxRecipientsPerCampaign}).`,
+      message: `${getUpgradeMessage("limits.campaign_recipients")} (max ${marketingAccess.maxRecipientsPerCampaign}).`,
     };
   }
 

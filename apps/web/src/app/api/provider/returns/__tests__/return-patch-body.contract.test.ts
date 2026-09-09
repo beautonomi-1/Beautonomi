@@ -40,14 +40,19 @@ describe("provider return PATCH body contract (updateSchema)", () => {
     expect(r.success).toBe(true);
   });
 
-  it("strips unknown keys; `note` does not populate provider_notes", () => {
+  it("accepts process_refund with store_credit refund_method", () => {
     const r = updateSchema.safeParse({
-      action: "reject",
-      note: "This should be stripped, not mapped",
-    } as Record<string, unknown>);
+      action: "process_refund",
+      refund_method: "store_credit",
+    });
     expect(r.success).toBe(true);
-    if (r.success) {
-      expect(r.data.provider_notes).toBeUndefined();
-    }
+  });
+
+  it("accepts process_refund with cash refund_method", () => {
+    const r = updateSchema.safeParse({
+      action: "process_refund",
+      refund_method: "cash",
+    });
+    expect(r.success).toBe(true);
   });
 });

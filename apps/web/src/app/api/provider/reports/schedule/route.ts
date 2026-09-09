@@ -10,7 +10,7 @@ import { requireProviderReportsAccess } from "@/lib/reports/require-provider-rep
  */
 export async function POST(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "analytics_only" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "analytics_only" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

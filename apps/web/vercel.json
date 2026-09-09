@@ -46,6 +46,7 @@
     { "path": "/api/cron/process-notification-queue", "schedule": "*/2 * * * *" },
     { "path": "/api/cron/sync-whatsapp-template-status", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/grant-marketing-credits", "schedule": "0 0 1 * *" },
+    { "path": "/api/cron/issue-provider-invoices", "schedule": "0 6 1 * *" },
     { "path": "/api/cron/dispatch-scheduled-campaigns", "schedule": "*/5 * * * *" },
     { "path": "/api/cron/reconcile-push-delivery", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/prune-idempotency-keys", "schedule": "0 3 * * *" },

@@ -81,6 +81,18 @@ function isAtHomeBooking(booking: ProviderBookingActionInput): boolean {
   );
 }
 
+/**
+ * A booking whose slot has already elapsed. Cancelling one is allowed — the
+ * appointment may genuinely not have happened — but the provider is warned,
+ * because "no-show" or "complete" is usually the truthful close-out.
+ */
+export function isBookingScheduledInPast(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return false;
+  return d.getTime() < Date.now();
+}
+
 function isToday(value: string | null | undefined): boolean {
   if (!value) return false;
   const d = new Date(value);

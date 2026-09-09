@@ -114,7 +114,7 @@ export async function maybeNotifyProviderSubscriptionLimits(providerId: string):
         current_usage: String(current),
         limit_value: String(limitValue),
         percent_used: String(pct),
-        upgrade_cta: "Upgrade your plan in the app to unlock higher limits.",
+        upgrade_cta: "Open Subscription in the app to unlock higher limits.",
         app_url: appUrl,
       };
 
@@ -130,8 +130,8 @@ export async function maybeNotifyProviderSubscriptionLimits(providerId: string):
 
       const message =
         level === "reached"
-          ? `You've reached ${current}/${limitValue} on your ${planName} for ${label} this month. Upgrade to continue growing.`
-          : `You're at ${pct}% (${current}/${limitValue}) of your ${planName} limit for ${label} this month. Upgrade before you hit the cap.`;
+          ? `You've reached ${current}/${limitValue} on your ${planName} for ${label} this month. Open Subscription to continue growing.`
+          : `You're at ${pct}% (${current}/${limitValue}) of your ${planName} limit for ${label} this month. Open Subscription before you hit the cap.`;
 
       try {
         await sendTemplateNotification(templateKey, [ownerUserId], vars, ["push", "email"], {

@@ -9,12 +9,13 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { FinanceReportError } from "@/components/finance/FinanceReportError";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -131,9 +132,9 @@ export default function RevenueReport() {
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
   const rangeCaption = formatReportRangeCaption(from, to);
   const revenueReportUrl = appendReportLocation(`/api/provider/reports/revenue?from=${from}&to=${to}`, selectedLocationId);
-  const { data, loading, error: dataError, timedOut, refresh } = useApi<RevenueData>(
+  const { data, loading, error: dataError, errorCode: dataErrorCode, timedOut, refresh } = useApi<RevenueData>(
     revenueReportUrl,
-    { timeoutMs: 15000 }
+    { timeoutMs: MONEY_SURFACE_TIMEOUT_MS }
   );
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
@@ -203,7 +204,9 @@ export default function RevenueReport() {
         />
       )}
 
-      {dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {dataError && !data && (
+        <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
+      )}
 
       {loading && !data && !timedOut && !dataError && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
 

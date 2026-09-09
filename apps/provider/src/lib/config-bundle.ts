@@ -110,7 +110,7 @@ export interface PublicContentSafetyPolicy {
 
 export const DEFAULT_CONTENT_SAFETY_POLICY: PublicContentSafetyPolicy = {
   social_min_age: 13,
-  social_age_gate_mode: "log",
+  social_age_gate_mode: "enforce",
   controls_enabled: true,
 };
 

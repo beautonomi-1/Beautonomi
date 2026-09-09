@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, Redirect } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
-import { useApi, useApiMutation, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useApi, useApiMutation, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -178,6 +178,7 @@ export function PayoutsContent() {
     "/api/provider/payouts",
     {
       staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+      timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
       revalidateOnFocus: true,
     },
   );
@@ -195,9 +196,10 @@ export function PayoutsContent() {
       pending_payouts?: number;
       minimum_payout_amount?: number;
       payout_hold_days?: number;
+      payout_balance_unavailable?: boolean;
       payout_reconciliation?: PayoutReconciliation;
     };
-  }>("/api/provider/finance?range=month");
+  }>("/api/provider/finance?range=month", { timeoutMs: MONEY_SURFACE_TIMEOUT_MS });
   const { execute: postPayout, loading: requesting } = useApiMutation<Payout>("post");
 
   const payouts: Payout[] = useMemo(() => (Array.isArray(payoutsList) ? payoutsList : []), [payoutsList]);
@@ -214,6 +216,7 @@ export function PayoutsContent() {
     [activeAccounts, bankAccountId],
   );
   const availableBalance = financeData?.earnings?.available_balance ?? 0;
+  const payoutBalanceUnavailable = financeData?.earnings?.payout_balance_unavailable === true;
   const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
   const minimumPayout = financeData?.earnings?.minimum_payout_amount;
   const defaultCurrency = getTenantDefaultCurrency();
@@ -231,8 +234,9 @@ export function PayoutsContent() {
   }, [refresh, refreshFinance, refreshAccounts, refreshNextDate]);
 
   const handleRequestPayout = useCallback(async () => {
-    const num = parseFloat(amount.replace(/,/g, "."));
-    if (Number.isNaN(num) || num <= 0) {
+    const raw = parseFloat(amount.replace(/,/g, "."));
+    const num = Math.round((raw + Number.EPSILON) * 100) / 100;
+    if (Number.isNaN(raw) || Number.isNaN(num) || num <= 0) {
       Alert.alert("Invalid amount", "Enter a valid amount greater than 0.");
       return;
     }
@@ -247,7 +251,11 @@ export function PayoutsContent() {
       );
       return;
     }
-    if (num > availableBalance + 0.005) {
+    if (payoutBalanceUnavailable) {
+      Alert.alert("Balance unavailable", "Withdrawable balance is still loading. Pull to refresh and try again.");
+      return;
+    }
+    if (num > Math.round((availableBalance + Number.EPSILON) * 100) / 100 + 1e-6) {
       Alert.alert(
         "Insufficient balance",
         `Available: ${formatCurrency(availableBalance, defaultCurrency)}. You requested ${formatCurrency(num, defaultCurrency)}.`,
@@ -301,6 +309,7 @@ export function PayoutsContent() {
     refreshNextDate,
     minimumPayout,
     availableBalance,
+    payoutBalanceUnavailable,
     pendingPayouts,
     defaultCurrency,
     nextDate,
@@ -343,13 +352,17 @@ export function PayoutsContent() {
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
           <Text style={twStyle("text-sm text-emerald-700 mb-1")}>All-time available to withdraw</Text>
           <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
-            {formatCurrency(availableBalance, defaultCurrency)}
+            {payoutBalanceUnavailable ? "—" : formatCurrency(availableBalance, defaultCurrency)}
           </Text>
-          {pendingPayouts > 0 && (
+          {payoutBalanceUnavailable ? (
+            <Text style={twStyle("text-xs text-amber-700 mt-1")}>
+              Withdrawable balance is still loading. Pull to refresh.
+            </Text>
+          ) : pendingPayouts > 0 ? (
             <Text style={twStyle("text-xs text-amber-700 mt-1")}>
               {formatCurrency(pendingPayouts, defaultCurrency)} pending payout
             </Text>
-          )}
+          ) : null}
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
             Minimum payout:{" "}
             {minimumPayout != null ? formatCurrency(minimumPayout, defaultCurrency) : "—"}

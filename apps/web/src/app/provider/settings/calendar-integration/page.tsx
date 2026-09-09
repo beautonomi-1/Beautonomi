@@ -24,6 +24,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { FetchError } from "@/lib/http/fetcher";
+import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 
 export default function CalendarIntegrationPage() {
   const searchParams = useSearchParams();
@@ -34,6 +37,8 @@ export default function CalendarIntegrationPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [_selectedProvider, _setSelectedProvider] = useState<CalendarProvider | null>(null);
   const [_enabledProviders, setEnabledProviders] = useState<string[]>([]);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
 
   // Check for OAuth callback results
   useEffect(() => {
@@ -69,6 +74,11 @@ export default function CalendarIntegrationPage() {
         setEnabledProviders(["google", "outlook", "apple"]);
       }
     } catch (error) {
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
+        setSubscriptionRequired(true);
+        setSubscriptionGateMessage(error.message || getUpgradeMessage("integrations.calendar"));
+        return;
+      }
       console.error("Failed to load calendar syncs:", error);
       toast.error("Failed to load calendar integrations");
     } finally {
@@ -88,8 +98,8 @@ export default function CalendarIntegrationPage() {
     } catch (error: any) {
       console.error("Failed to initiate calendar connection:", error);
       const errorMessage = error?.error?.message || error?.message || "Failed to connect calendar";
-      const errorCode = error?.error?.code;
-      
+      const errorCode = error?.error?.code || error?.code;
+
       if (errorCode === "CONFIG_ERROR") {
         toast.error(
           "Calendar integration is not configured. Please contact your administrator to set up OAuth credentials.",
@@ -100,6 +110,13 @@ export default function CalendarIntegrationPage() {
           errorMessage || "This calendar provider is not enabled. Please contact your administrator.",
           { duration: 8000 }
         );
+      } else if (isPlanGateErrorCode(errorCode)) {
+        toast.error(errorMessage || getUpgradeMessage("integrations.calendar"), {
+          action: {
+            label: "View plans",
+            onClick: () => router.push("/provider/subscription"),
+          },
+        });
       } else {
         toast.error(errorMessage);
       }
@@ -126,6 +143,15 @@ export default function CalendarIntegrationPage() {
       toast.success("Calendar synced successfully");
       loadSyncs();
     } catch (error) {
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
+        toast.error(error.message || getUpgradeMessage("integrations.calendar"), {
+          action: {
+            label: "View plans",
+            onClick: () => router.push("/provider/subscription"),
+          },
+        });
+        return;
+      }
       console.error("Failed to sync calendar:", error);
       toast.error("Failed to sync calendar");
     }
@@ -148,6 +174,23 @@ export default function CalendarIntegrationPage() {
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading calendar integrations..." />;
+  }
+
+  if (subscriptionRequired) {
+    return (
+      <div>
+        <PageHeader
+          title="Calendar Integration"
+          subtitle="Sync your appointments with external calendars"
+        />
+        <SectionCard className="p-12">
+          <SubscriptionGate
+            feature="Calendar sync"
+            message={subscriptionGateMessage || getUpgradeMessage("integrations.calendar")}
+          />
+        </SectionCard>
+      </div>
+    );
   }
 
   return (

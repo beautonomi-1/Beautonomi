@@ -144,7 +144,7 @@ export type ProviderRefundsReportResponse = {
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "payments" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

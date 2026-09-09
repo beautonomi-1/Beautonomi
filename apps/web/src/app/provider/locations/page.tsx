@@ -10,6 +10,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -443,9 +444,8 @@ function LocationModal({
       }
       
       onSave();
-    } catch (error: any) {
-      const errorMessage = error?.message || "Failed to save location";
-      toast.error(errorMessage);
+    } catch (error: unknown) {
+      toastPlanGateError(error, "Failed to save location");
     } finally {
       setIsSaving(false);
     }

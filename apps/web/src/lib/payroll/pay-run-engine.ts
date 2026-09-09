@@ -70,24 +70,41 @@ export async function calculatePayRun(
     const commissionAdjustments =
       linesSummary?.adjustment_breakdown?.commission ?? linesSummary?.adjustments ?? 0;
     const tipAdjustments = linesSummary?.adjustment_breakdown?.tips ?? 0;
-    const commission =
-      linesSummary && (linesSummary.commission !== 0 || linesSummary.tips !== 0 || linesSummary.adjustments !== 0)
-        ? {
-            totalCommission: Math.max(0, linesSummary.commission + commissionAdjustments),
-            totalBookings: 0,
-            serviceCommission: linesSummary.commission,
-            productCommission: 0,
-            serviceRevenue: 0,
-            productRevenue: 0,
-            totalRevenue: 0,
-          }
-        : await calculateStaffCommission(
-            supabaseAdmin,
-            providerId,
-            staff.id,
-            periodStart,
-            periodEnd,
-          );
+    const useLinesPath =
+      linesSummary &&
+      (linesSummary.commission !== 0 ||
+        linesSummary.tips !== 0 ||
+        linesSummary.adjustments !== 0);
+    let commission;
+    if (useLinesPath) {
+      const productCalc = await calculateStaffCommission(
+        supabaseAdmin,
+        providerId,
+        staff.id,
+        periodStart,
+        periodEnd,
+      );
+      commission = {
+        totalCommission: Math.max(
+          0,
+          linesSummary.commission + commissionAdjustments + productCalc.productCommission,
+        ),
+        totalBookings: 0,
+        serviceCommission: linesSummary.commission,
+        productCommission: productCalc.productCommission,
+        serviceRevenue: 0,
+        productRevenue: productCalc.productRevenue,
+        totalRevenue: 0,
+      };
+    } else {
+      commission = await calculateStaffCommission(
+        supabaseAdmin,
+        providerId,
+        staff.id,
+        periodStart,
+        periodEnd,
+      );
+    }
 
     const hours = hoursByStaff.get(staff.id) || 0;
     const hourlyRate = Number(staff.hourly_rate || 0);

@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
         },
         content_safety: {
           social_min_age: 13,
-          social_age_gate_mode: "log",
+          social_age_gate_mode: "enforce",
           controls_enabled: true,
         },
       };

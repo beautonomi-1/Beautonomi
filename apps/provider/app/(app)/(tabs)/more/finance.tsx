@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi, MONEY_SURFACE_STALE_TIME_MS } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
 import { useResponsive } from "@/hooks/useResponsive";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
@@ -28,6 +28,7 @@ interface FinanceEarnings {
   period_provider_earnings?: number;
   pending_payouts: number;
   available_balance: number;
+  payout_balance_unavailable?: boolean;
   this_month: number;
   last_month: number;
   growth_percentage: number;
@@ -132,6 +133,7 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
   }`;
   const { data, loading, error, errorCode, refresh, silentRefresh } = useApi<FinanceData>(url, {
     staleTimeMs: MONEY_SURFACE_STALE_TIME_MS,
+    timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
     revalidateOnFocus: true,
   });
   useFocusRevalidate(silentRefresh);
@@ -186,10 +188,14 @@ export function FinanceOverviewContent({ locationId = null }: { locationId?: str
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4")}>
           <Text style={twStyle("text-sm font-medium text-gray-600")}>All-time available to withdraw</Text>
           <Text style={twStyle("mt-1 text-2xl font-bold text-gray-900")}>
-            {formatCurrency(earnings.available_balance ?? 0, currency)}
+            {earnings.payout_balance_unavailable
+              ? "—"
+              : formatCurrency(earnings.available_balance ?? 0, currency)}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-            Platform-held payoutable earnings minus completed payouts and pending requests.
+            {earnings.payout_balance_unavailable
+              ? "Withdrawable balance is still loading. Pull to refresh."
+              : "Platform-held payoutable earnings minus completed payouts and pending requests."}
           </Text>
           {(earnings.pending_payouts ?? 0) > 0 && (
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>

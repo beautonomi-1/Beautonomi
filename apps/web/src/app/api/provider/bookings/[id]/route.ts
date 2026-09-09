@@ -577,6 +577,12 @@ export async function GET(
         (bookingData as { estimated_arrival?: string | null }).estimated_arrival ?? null,
       provider_eta_minutes:
         (bookingData as { provider_eta_minutes?: number | null }).provider_eta_minutes ?? null,
+      // Journey timestamps drive the provider's house-call progress UI.
+      provider_en_route_at:
+        (bookingData as { provider_en_route_at?: string | null }).provider_en_route_at ?? null,
+      provider_arrived_at:
+        (bookingData as { provider_arrived_at?: string | null }).provider_arrived_at ?? null,
+      started_at: (bookingData as { started_at?: string | null }).started_at ?? null,
       created_at: bookingData.created_at,
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,

@@ -21,6 +21,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
+import { useRouter } from "expo-router";
+import { showPlanGateAlert } from "@/lib/plan-gate";
 import { useMarketingCredits } from "@/lib/marketing/useMarketingCredits";
 import { MarketingCreditsCard } from "@/components/marketing/MarketingCreditsCard";
 import { shouldUseAppleIap } from "@/lib/iap/platform";
@@ -148,6 +150,7 @@ function campaignStatusStyles(status: string): { wrap: string; text: string } {
 
 /** Content-only for use in Marketing hub (Campaigns tab). */
 export function MarketingCampaignsContent() {
+  const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -229,7 +232,9 @@ export function MarketingCampaignsContent() {
         ...(scheduled_at ? { scheduled_at } : {}),
       });
       if (res.error || !res.data || typeof res.data !== "object" || !("id" in res.data)) {
-        Alert.alert("Could not create campaign", getApiErrorMessage(res.error, "Try again."));
+        const msg = getApiErrorMessage(res.error, "Try again.");
+        const code = (res.error as { code?: string } | undefined)?.code;
+        showPlanGateAlert({ title: "Could not create campaign", message: msg, errorCode: code, router });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -238,11 +243,16 @@ export function MarketingCampaignsContent() {
       setForm(emptyCampaignForm());
       refresh();
     } catch (e: unknown) {
-      Alert.alert("Could not create campaign", getApiErrorMessage(e, "Try again."));
+      showPlanGateAlert({
+        title: "Could not create campaign",
+        message: getApiErrorMessage(e, "Try again."),
+        errorCode: (e as { code?: string } | undefined)?.code,
+        router,
+      });
     } finally {
       setCreating(false);
     }
-  }, [form, refresh]);
+  }, [form, refresh, router]);
 
   const sendTest = useCallback(async () => {
     const to = testRecipient.trim();
@@ -266,18 +276,28 @@ export function MarketingCampaignsContent() {
         },
       );
       if (res.error) {
-        Alert.alert("Test not sent", getApiErrorMessage(res.error, "Try again."));
+        showPlanGateAlert({
+          title: "Test not sent",
+          message: getApiErrorMessage(res.error, "Try again."),
+          errorCode: (res.error as { code?: string } | undefined)?.code,
+          router,
+        });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Test sent", `We sent a sample ${form.type.toUpperCase()} to ${to}.`);
       void credits.refresh();
     } catch (e: unknown) {
-      Alert.alert("Test not sent", getApiErrorMessage(e, "Try again."));
+      showPlanGateAlert({
+        title: "Test not sent",
+        message: getApiErrorMessage(e, "Try again."),
+        errorCode: (e as { code?: string } | undefined)?.code,
+        router,
+      });
     } finally {
       setSendingTest(false);
     }
-  }, [testRecipient, form, credits]);
+  }, [testRecipient, form, credits, router]);
 
   const openEditCampaign = useCallback((campaign: Campaign) => {
     setEditingCampaignId(campaign.id);
@@ -370,7 +390,12 @@ export function MarketingCampaignsContent() {
     try {
       const res = await api.post<{ message?: string; sent_count?: number; failed_count?: number }>(`/api/provider/campaigns/${id}/send`, {});
       if (res.error) {
-        Alert.alert("Could not send campaign", getApiErrorMessage(res.error, "Try again."));
+        showPlanGateAlert({
+          title: "Could not send campaign",
+          message: getApiErrorMessage(res.error, "Try again."),
+          errorCode: (res.error as { code?: string } | undefined)?.code,
+          router,
+        });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -384,11 +409,16 @@ export function MarketingCampaignsContent() {
       );
       await Promise.all([refresh(), credits.refresh()]);
     } catch (e: unknown) {
-      Alert.alert("Could not send campaign", getApiErrorMessage(e, "Try again."));
+      showPlanGateAlert({
+        title: "Could not send campaign",
+        message: getApiErrorMessage(e, "Try again."),
+        errorCode: (e as { code?: string } | undefined)?.code,
+        router,
+      });
     } finally {
       setSendingId(null);
     }
-  }, [refresh, credits]);
+  }, [refresh, credits, router]);
 
   // Gate sending behind a cost-aware confirmation. On the platform sending path
   // this shows the estimated credit cost and blocks (offering a top-up) when the

@@ -36,6 +36,8 @@ interface StaffCommission {
   email: string;
   role: string;
   commissionPercentage: number;
+  serviceCommissionRate?: number;
+  productCommissionRate?: number;
   tiers: CommissionTier[];
   totalEarnings?: number;
   totalCommissionPaid?: number;
@@ -44,7 +46,8 @@ interface StaffCommission {
 export default function TeamCommissionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<StaffCommission | null>(null);
-  const [baseRate, setBaseRate] = useState("");
+  const [serviceRate, setServiceRate] = useState("");
+  const [productRate, setProductRate] = useState("");
   const [tiers, setTiers] = useState<CommissionTier[]>([]);
   const [search, setSearch] = useState("");
 
@@ -92,7 +95,10 @@ export default function TeamCommissionsScreen() {
 
   function openEdit(member: StaffCommission) {
     setSelected(member);
-    setBaseRate(String(member.commissionPercentage));
+    const svc = member.serviceCommissionRate ?? member.commissionPercentage;
+    const prod = member.productCommissionRate ?? member.commissionPercentage;
+    setServiceRate(String(svc));
+    setProductRate(String(prod));
     setTiers(member.tiers.length > 0 ? [...member.tiers] : []);
   }
 
@@ -125,16 +131,21 @@ export default function TeamCommissionsScreen() {
 
   async function handleSave() {
     if (!selected) return;
-    const rate = Number(baseRate);
-    if (isNaN(rate) || rate < 0 || rate > 100) {
-      Alert.alert("Invalid", "Commission rate must be between 0 and 100%");
+    const svc = Number(serviceRate);
+    const prod = Number(productRate);
+    if (
+      isNaN(svc) || svc < 0 || svc > 100 ||
+      isNaN(prod) || prod < 0 || prod > 100
+    ) {
+      Alert.alert("Invalid", "Commission rates must be between 0 and 100%");
       return;
     }
     const { error } = await saveCommission(
       "/api/provider/settings/team/commissions",
       {
         staffId: selected.staffId,
-        commissionPercentage: rate,
+        serviceCommissionRate: svc,
+        productCommissionRate: prod,
         tiers: tiers.map((t, i) => ({
           minRevenue: t.minRevenue,
           commissionRate: t.commissionRate,
@@ -317,25 +328,27 @@ export default function TeamCommissionsScreen() {
             </View>
 
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Base Commission Rate (%)
+              Service commission (%)
             </Text>
             <TextInput
-              style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              value={baseRate}
-              onChangeText={setBaseRate}
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+              value={serviceRate}
+              onChangeText={setServiceRate}
               keyboardType="decimal-pad"
               placeholder="0"
               placeholderTextColor="#9ca3af"
             />
-            {baseRate && !isNaN(Number(baseRate)) && (
-              <View style={twStyle("mb-4 h-2 overflow-hidden rounded-full bg-gray-100")}>
-                <View
-                  style={[twStyle("h-2 rounded-full bg-indigo-500"), {
-                    width: `${Math.min(Number(baseRate), 100)}%`,
-                  }]}
-                />
-              </View>
-            )}
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+              Product commission (%)
+            </Text>
+            <TextInput
+              style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+              value={productRate}
+              onChangeText={setProductRate}
+              keyboardType="decimal-pad"
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+            />
 
             <View style={twStyle("mb-2 flex-row items-center justify-between")}>
               <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>

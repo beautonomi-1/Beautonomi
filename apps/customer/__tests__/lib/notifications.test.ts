@@ -123,6 +123,23 @@ describe("navigateFromNotification", () => {
     expect(pushMock).toHaveBeenCalledWith("/(app)/account-settings/membership");
   });
 
+  it("routes product_return_refunded with order_id to my-returns (not order detail)", () => {
+    navigateFromNotification({
+      id: "n-return-refund",
+      type: "product_return_refunded",
+      title: "Refund Processed",
+      message: "Your refund was added to your wallet",
+      is_read: false,
+      created_at: new Date().toISOString(),
+      data: {
+        return_request_id: "return-1",
+        order_id: "order-1",
+      },
+    });
+
+    expect(pushMock).toHaveBeenCalledWith("/(app)/my-returns");
+  });
+
   it("opens product order detail when notification data uses product_order_id", () => {
     navigateFromNotification({
       id: "n4",

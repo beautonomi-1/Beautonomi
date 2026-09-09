@@ -159,13 +159,19 @@ export default function ResourceSelection({
     return null; // Don't show if no resources
   }
 
+  const hasRequiredResources = resources.some((r) => r.is_required);
+
   return (
     <div className={className}>
       <div className="space-y-4">
         <div>
-          <Label className="text-base font-semibold">Select Resources (Optional)</Label>
+          <Label className="text-base font-semibold">
+            {hasRequiredResources ? "Select required resources" : "Select resources (optional)"}
+          </Label>
           <p className="text-sm text-gray-500 mt-1">
-            Choose any additional resources needed for your booking
+            {hasRequiredResources
+              ? "Required resources for this service are marked below"
+              : "Choose any additional resources needed for your booking"}
           </p>
         </div>
 

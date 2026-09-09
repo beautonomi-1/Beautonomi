@@ -2468,7 +2468,7 @@
     "requiredDetailsMissing": "Sicela ugcwalise zonke imininingwane eyengeziwe edingekayo.",
     "providerFormFieldRequired": "Sicela uqedele: {{formTitle}} — {{fieldName}}",
     "sessionVerifyFailed": "Asikwazanga ukuqinisekisa iseshini yakho ebhalisiwe ekukhokheni. Zama futhi; uma kuphinda, vala bese uvula kabusha uhlelo lokusebenza ukuze iseshini ibuyekezwe.",
-    "bookingLimitReached": "Ufinyelele umkhawulo wakho wezibhukhi. Sicela ukhulise uhlelo lwakho.",
+    "bookingLimitReached": "Leli bhizinisi seligcwele kule nkathi. Sicela uzame olunye usuku noma omunye umhlinzeki.",
     "differentMarketProvider": "Lo mhlinzeki usesinye isimakethe. Sicela ubuyekeze indawo yakho.",
     "slotAlreadyClaimed": "Lesi sikhathi sezibhukhi sesivele sithathiwe. Buyela emuva bese ukhetha isikhathi esisha.",
     "noPermissionCompleteBooking": "Awunayo imvume yokuqedela lokhu kubhukha.",

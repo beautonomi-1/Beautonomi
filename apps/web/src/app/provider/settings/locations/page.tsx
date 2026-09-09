@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { useSearchParams } from "next/navigation";
 import {
@@ -130,8 +131,7 @@ export default function LocationsSettings() {
       invalidateProviderPortalCache();
       loadLocations();
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Failed to save location";
-      toast.error(msg);
+      toastPlanGateError(error, "Failed to save location");
     }
   };
 

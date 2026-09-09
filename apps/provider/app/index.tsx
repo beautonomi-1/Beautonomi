@@ -74,6 +74,7 @@ export default function Index() {
    * landed on the dashboard which masked the "waiting for approval" state.
    */
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [setupIncomplete, setSetupIncomplete] = useState<boolean | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [profileLoadError, setProfileLoadError] = useState(false); // timeout or network
@@ -582,6 +583,24 @@ export default function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalState, session?.user?.id, needsOnboarding]);
 
+  // Post-submit: route to setup hub while required checklist steps remain incomplete.
+  useEffect(() => {
+    if (portalState !== "ok" || !session || needsOnboarding || hasProfile !== true) {
+      setSetupIncomplete(null);
+      return;
+    }
+    let cancelled = false;
+    api.get<{ isComplete?: boolean }>("/api/provider/setup-status").then((res) => {
+      if (cancelled) return;
+      setSetupIncomplete(res.data?.isComplete === false);
+    }).catch(() => {
+      if (!cancelled) setSetupIncomplete(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [portalState, session?.user?.id, needsOnboarding, hasProfile]);
+
   // §Cold-resume fix: when the gate is parked on the portal error or profile
   // load error, recover automatically as soon as the app refocuses or
   // connectivity returns. The user no longer has to tap "Try again".
@@ -878,6 +897,10 @@ export default function Index() {
   // the `provider` portal, so those providers fall through to the dashboard
   // (which shows an "under review" banner).
   if (needsOnboarding) {
+    return <Redirect href={"/(app)/onboarding" as never} />;
+  }
+
+  if (setupIncomplete === true) {
     return <Redirect href={"/(app)/onboarding" as never} />;
   }
 

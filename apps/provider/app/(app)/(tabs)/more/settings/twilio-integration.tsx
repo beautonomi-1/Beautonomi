@@ -11,6 +11,8 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
+import { useRouter } from "expo-router";
+import { showPlanGateAlert } from "@/lib/plan-gate";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -108,6 +110,7 @@ function formatDateSafe(value: unknown): string {
 }
 
 export default function TwilioIntegrationScreen() {
+  const router = useRouter();
   const [form, setForm] = useState<Form>(EMPTY_FORM);
   const [dirty, setDirty] = useState(false);
   const [testingChannel, setTestingChannel] = useState<"sms" | "whatsapp" | null>(null);
@@ -168,9 +171,9 @@ export default function TwilioIntegrationScreen() {
       is_sms_enabled: form.smsEnabled,
       is_whatsapp_enabled: form.whatsappEnabled,
     };
-    const { error } = await saveConfig("/api/provider/twilio-integration", payload);
+    const { error, errorCode } = await saveConfig("/api/provider/twilio-integration", payload);
     if (error) {
-      Alert.alert("Error", error);
+      showPlanGateAlert({ title: "Could not save", message: error, errorCode, router });
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

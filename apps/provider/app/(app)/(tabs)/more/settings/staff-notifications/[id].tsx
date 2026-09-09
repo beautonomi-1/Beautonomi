@@ -13,6 +13,8 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { useRouter } from "expo-router";
+import { showPlanGateAlert } from "@/lib/plan-gate";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 
 interface StaffNotificationSettings {
@@ -59,6 +61,7 @@ function isOwnerRole(role: string | null): boolean {
 }
 
 export default function StaffNotificationSettingsScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { role } = useProvider();
   const canEdit = isOwnerRole(role);
@@ -81,16 +84,19 @@ export default function StaffNotificationSettingsScreen() {
   const applyPatch = useCallback(
     async (body: Record<string, unknown>, rollback: StaffNotificationSettings) => {
       if (!id || !canEdit) return;
-      const { error: err } = await patchNotif(`/api/provider/staff/${id}/notifications`, body);
+      const { error: err, errorCode } = await patchNotif(
+        `/api/provider/staff/${id}/notifications`,
+        body,
+      );
       if (err) {
         setLocal(rollback);
-        Alert.alert("Could not save", err);
+        showPlanGateAlert({ title: "Could not save", message: err, errorCode, router });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await refresh();
     },
-    [id, canEdit, patchNotif, refresh]
+    [id, canEdit, patchNotif, refresh, router]
   );
 
   const toggle = useCallback(
@@ -118,10 +124,13 @@ export default function StaffNotificationSettingsScreen() {
 
       setLocal((prev) => {
         if (key === "smsEnabled" && value && !prev.smsPlanAllowed) {
-          Alert.alert(
-            "SMS not available",
-            "Staff SMS is included only on subscription plans that enable it."
-          );
+          showPlanGateAlert({
+            title: "Staff SMS not available",
+            message:
+              "Staff SMS notifications are included on Growth and Scale. Upgrade to enable SMS for your team.",
+            errorCode: "SUBSCRIPTION_REQUIRED",
+            router,
+          });
           return prev;
         }
         const rollback = { ...prev };
@@ -130,7 +139,7 @@ export default function StaffNotificationSettingsScreen() {
         return next;
       });
     },
-    [canEdit, applyPatch]
+    [canEdit, applyPatch, router]
   );
 
   const setReminderTime = useCallback(
@@ -203,7 +212,7 @@ export default function StaffNotificationSettingsScreen() {
             sub={
               local.smsPlanAllowed
                 ? "Text messages to their mobile"
-                : "Upgrade your plan to enable staff SMS"
+                : "Staff SMS is included on Growth and Scale"
             }
             value={local.smsEnabled}
             onValueChange={(v) => toggle("smsEnabled", v)}

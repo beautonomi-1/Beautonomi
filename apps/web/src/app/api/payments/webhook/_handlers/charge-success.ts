@@ -430,6 +430,10 @@ export async function processSuccessfulPayment(data: PaystackChargeData, supabas
       await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees }, supabase);
       return;
     }
+    if (metadata?.provider_invoice_id) {
+      await handleProviderInvoicePaymentSuccess({ reference, metadata, amount }, supabase);
+      return;
+    }
     if (metadata?.kind === "card_verification" && reference) {
       await handleCustomerCardVerificationSuccess(
         {
@@ -2722,6 +2726,40 @@ async function handleAdsBudgetOrderSuccess(
     providerIdHint: payload.metadata?.provider_id ? String(payload.metadata.provider_id) : null,
     campaignIdHint: payload.metadata?.campaign_id ? String(payload.metadata.campaign_id) : null,
   });
+}
+
+// ─── Platform invoice paid online (Beautonomi → provider) ──────────────────
+
+async function handleProviderInvoicePaymentSuccess(
+  payload: { reference: string; metadata: any; amount: number },
+  supabase: SupabaseClient,
+) {
+  const invoiceId = String(payload.metadata?.provider_invoice_id ?? "").trim();
+  if (!invoiceId) {
+    console.error("[provider_invoice] missing provider_invoice_id in charge metadata");
+    return;
+  }
+
+  const { recordProviderInvoicePayment } = await import(
+    "@/lib/invoices/record-provider-invoice-payment"
+  );
+
+  try {
+    await recordProviderInvoicePayment({
+      supabase,
+      invoiceId,
+      amount: convertFromSmallestUnit(Number(payload.amount || 0)),
+      paymentReference: payload.reference,
+      metadata: { source: "paystack", provider_id: payload.metadata?.provider_id ?? null },
+    });
+  } catch (err) {
+    console.error("[provider_invoice] failed to record invoice payment", {
+      invoiceId,
+      reference: payload.reference,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err instanceof Error ? err : new Error(String(err));
+  }
 }
 
 // ─── Customer standalone card verification (profile → add card) ─────────────

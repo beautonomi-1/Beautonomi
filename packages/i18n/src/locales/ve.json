@@ -2376,7 +2376,7 @@
     "requiredDetailsMissing": "Please fill in all required additional details.",
     "providerFormFieldRequired": "Please complete: {{formTitle}} — {{fieldName}}",
     "sessionVerifyFailed": "We couldn't verify your signed-in session for checkout. Please try again; if it repeats, close and reopen the app so your session can refresh.",
-    "bookingLimitReached": "You've reached your booking limit. Please upgrade your plan.",
+    "bookingLimitReached": "This business is fully booked for this period. Please try a different date or another provider.",
     "differentMarketProvider": "This provider is in a different market. Please update your location.",
     "slotAlreadyClaimed": "This booking slot has already been claimed. Please go back and pick a new time.",
     "noPermissionCompleteBooking": "You don't have permission to complete this booking.",

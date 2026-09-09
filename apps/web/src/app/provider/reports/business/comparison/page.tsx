@@ -1,4 +1,6 @@
 "use client";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
 import React, { useState, useEffect } from "react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -8,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, TrendingUp, TrendingDown, Info } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
@@ -124,6 +126,7 @@ export default function BusinessComparisonReport() {
   const [data, setData] = useState<BusinessComparisonData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
 
   useEffect(() => {
     loadReport();
@@ -133,6 +136,7 @@ export default function BusinessComparisonReport() {
     try {
       setIsLoading(true);
       setError(null);
+      setIsSubscriptionRequired(false);
 
       const params = new URLSearchParams();
       params.append("period", period);
@@ -143,8 +147,15 @@ export default function BusinessComparisonReport() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
-      console.error("Error loading business comparison:", err);
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
+        setIsSubscriptionRequired(true);
+        setError(null);
+      } else {
+        setError(parsed.message);
+        setIsSubscriptionRequired(false);
+      }
+      console.error("Error loading report:", err);
     } finally {
       setIsLoading(false);
     }
@@ -167,6 +178,24 @@ export default function BusinessComparisonReport() {
         ]}
       >
         <ReportSkeleton />
+      </SettingsDetailLayout>
+    );
+  }
+
+  if (isSubscriptionRequired) {
+    return (
+      <SettingsDetailLayout
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Provider", href: "/provider" },
+          { label: "Reports", href: "/provider/reports" },
+          { label: "Period Comparison" },
+        ]}
+      >
+        <div className="space-y-6">
+          <PageHeader title="Period Comparison" />
+          <ReportSubscriptionRequired feature="Period Comparison" />
+        </div>
       </SettingsDetailLayout>
     );
   }

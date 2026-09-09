@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 import { getYocoEndpoints } from "@/lib/payments/yoco";
 import {
@@ -227,7 +228,7 @@ export async function POST(request: NextRequest) {
         {
           data: null,
           error: {
-            message: "Yoco integration requires a subscription upgrade. Please upgrade your plan to add payment devices.",
+            message: getUpgradeMessage("integrations.yoco"),
             code: "SUBSCRIPTION_REQUIRED",
           },
         },
@@ -247,7 +248,7 @@ export async function POST(request: NextRequest) {
           {
             data: null,
             error: {
-              message: `You've reached your device limit (${yocoAccess.maxDevices}). Please upgrade your plan to add more devices.`,
+              message: getUpgradeMessage("limits.yoco_devices"),
               code: "LIMIT_REACHED",
             },
           },

@@ -7,9 +7,9 @@ import {
   notFoundResponse,
   handleApiError,
   errorResponse,
-  forbiddenResponse,
 } from "@/lib/supabase/api-helpers";
 import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
@@ -223,8 +223,10 @@ export async function PATCH(
 
     const planAllowsSms = await checkStaffSmsNotificationsFeatureAccess(providerId, supabase);
     if (mapped.sms_notifications_enabled === true && !planAllowsSms) {
-      return forbiddenResponse(
-        "SMS for team notifications is not included in your current plan. Upgrade to enable staff SMS."
+      return errorResponse(
+        getUpgradeMessage("staff.sms"),
+        "SUBSCRIPTION_REQUIRED",
+        403,
       );
     }
     if (!planAllowsSms) {

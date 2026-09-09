@@ -14,6 +14,7 @@ import {
   buildAdsRetryCheckoutReview,
   adsSuccessCopy,
   subscriptionSuccessCopy,
+  isAdsCampaignProvisioned,
 } from "@/lib/payments/providerPaystackReturn";
 
 describe("matchesAdsPaystackReturnUrl", () => {
@@ -241,6 +242,18 @@ describe("adsSuccessCopy", () => {
     );
     expect(copy.title).toBe("Ad budget loaded");
     expect(copy.body).toContain("250");
+  });
+
+  it("treats funded pending_review campaigns as provisioned after payment", () => {
+    expect(isAdsCampaignProvisioned({ id: "c4", status: "pending_review", budget: 199 })).toBe(true);
+    expect(isAdsCampaignProvisioned({ id: "c5", status: "draft", budget: 199 })).toBe(false);
+    expect(isAdsCampaignProvisioned({ id: "c6", status: "active", budget: 0 })).toBe(false);
+    const copy = adsSuccessCopy(
+      { id: "c4", status: "pending_review", budget: 199, billing_model: "time_based", duration_days: 7 },
+      "ZAR",
+    );
+    expect(copy.title).toBe("Payment received");
+    expect(copy.body).toMatch(/review/i);
   });
 });
 

@@ -81,7 +81,7 @@ function inScheduledWindow(scheduledAt: string, fromIso: string, toIso: string):
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "clients" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

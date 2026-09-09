@@ -16,6 +16,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Colors } from "@/constants/colors";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 interface BookingLink {
   id: string;
@@ -219,7 +220,7 @@ export default function ExpressBookingScreen() {
         const status = errObj.status;
         if (status === 403) {
           const bodyCode = errObj.code || (res.data as { code?: string })?.code;
-          if (bodyCode === "SUBSCRIPTION_REQUIRED" || (errObj.message ?? "").toLowerCase().includes("subscription")) {
+          if (bodyCode === "SUBSCRIPTION_REQUIRED") {
             setSubscriptionRequired(true);
             errorOut = null;
             break;
@@ -402,7 +403,15 @@ export default function ExpressBookingScreen() {
         ? await api.patch<ExpressLinkRow>(`/api/provider/express-booking/${editingExpressLink.id}`, payload)
         : await api.post<ExpressLinkRow>("/api/provider/express-booking", payload);
       if (res.error) {
-        setCreateError(getApiErrorMessage(res.error, editingExpressLink ? "Failed to update express link" : "Failed to create express link"));
+        const code = (res.error as { code?: string }).code;
+        const msg = getApiErrorMessage(
+          res.error,
+          editingExpressLink ? "Failed to update express link" : "Failed to create express link",
+        );
+        setCreateError(msg);
+        if (isPlanGateErrorCode(code)) {
+          showPlanGateAlert({ message: msg, errorCode: code });
+        }
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (res.data) {
@@ -740,7 +749,7 @@ export default function ExpressBookingScreen() {
                 </Text>
               </View>
               <Text style={{ fontSize: 14, color: "#78350f", marginBottom: 12 }}>
-                Express booking links are available on a paid subscription plan. Upgrade to unlock this feature.
+                Express booking links are not included on this plan. Upgrade under Subscription to unlock them.
               </Text>
               <TouchableOpacity
                 style={{

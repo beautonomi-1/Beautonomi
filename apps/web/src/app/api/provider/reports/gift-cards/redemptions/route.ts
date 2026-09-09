@@ -19,7 +19,7 @@ import { fetchAllPaged, fetchInIdChunks } from "@/lib/provider-ops/postgrest-unb
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "gift_cards" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

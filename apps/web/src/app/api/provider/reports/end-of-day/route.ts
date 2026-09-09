@@ -43,7 +43,7 @@ export interface EndOfDayResponse {
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "bookings" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

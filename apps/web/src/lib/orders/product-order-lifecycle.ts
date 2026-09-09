@@ -60,93 +60,85 @@ export async function applyProductOrderCancelRefundSideEffects(
   if (isPlatformHeld) {
     const ledgerTenantId =
       (ledgerRows[0] as { tenant_id?: string | null })?.tenant_id ?? order.tenant_id ?? null;
-    const { data: existingRefund } = await (admin.from("finance_transactions") as any)
-      .select("id")
+    const { data: captureRows } = await (admin.from("finance_transactions") as any)
+      .select("transaction_type, amount, net")
       .eq("product_order_id", order.id)
-      .eq("transaction_type", "refund")
-      .limit(1);
-    const alreadyReversed = Array.isArray(existingRefund) && existingRefund.length > 0;
-    if (!alreadyReversed) {
-      const { data: captureRows } = await (admin.from("finance_transactions") as any)
-        .select("transaction_type, amount, net")
-        .eq("product_order_id", order.id)
-        .in("transaction_type", ["provider_earnings", "platform_fee"]);
-      const earningsRow = (captureRows ?? []).find(
-        (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
-      ) as { amount?: number; net?: number } | undefined;
-      const feeRow = (captureRows ?? []).find(
-        (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
-      ) as { amount?: number; net?: number } | undefined;
-      const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
-      const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
-      const orderTotal = Number(order.total_amount ?? 0);
-      const refundRatio =
-        orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
-      const refundProviderEarnings =
-        Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
-      const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
-      const refundDescription = `Refund for product order ${order.order_number || order.id.slice(0, 8)}${
-        refundReason
-          ? ` (${refundReason})`
-          : cancellationReason
-            ? ` (cancelled: ${cancellationReason})`
-            : ""
-      }`;
-      const refundRows: Record<string, unknown>[] = [];
-      if (refundProviderEarnings > 0) {
-        refundRows.push({
-          booking_id: null,
-          product_order_id: order.id,
-          provider_id: order.provider_id,
-          tenant_id: ledgerTenantId,
-          transaction_type: "refund",
-          refund_component: "provider_earnings",
-          amount: refundProviderEarnings,
-          fees: 0,
-          commission: 0,
-          net: -refundProviderEarnings,
-          currency: order.currency || LAST_RESORT_CURRENCY,
-          description: refundDescription,
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (refundPlatformFee > 0) {
-        refundRows.push({
-          booking_id: null,
-          product_order_id: order.id,
-          provider_id: order.provider_id,
-          tenant_id: ledgerTenantId,
-          transaction_type: "refund",
-          refund_component: "platform_fee",
-          amount: refundPlatformFee,
-          fees: 0,
-          commission: 0,
-          net: -refundPlatformFee,
-          currency: order.currency || LAST_RESORT_CURRENCY,
-          description: refundDescription,
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (refundRows.length === 0 && ledgerRefundAmount > 0) {
-        refundRows.push({
-          booking_id: null,
-          product_order_id: order.id,
-          provider_id: order.provider_id,
-          tenant_id: ledgerTenantId,
-          transaction_type: "refund",
-          refund_component: "provider_earnings",
-          amount: ledgerRefundAmount,
-          fees: 0,
-          commission: 0,
-          net: -ledgerRefundAmount,
-          currency: order.currency || LAST_RESORT_CURRENCY,
-          description: refundDescription,
-          created_at: new Date().toISOString(),
-        });
-      }
-      if (refundRows.length > 0) {
-        await (admin.from("finance_transactions") as any).insert(refundRows);
-      }
+      .in("transaction_type", ["provider_earnings", "platform_fee"]);
+    const earningsRow = (captureRows ?? []).find(
+      (r: { transaction_type?: string }) => r.transaction_type === "provider_earnings",
+    ) as { amount?: number; net?: number } | undefined;
+    const feeRow = (captureRows ?? []).find(
+      (r: { transaction_type?: string }) => r.transaction_type === "platform_fee",
+    ) as { amount?: number; net?: number } | undefined;
+    const capturedProviderEarnings = Number(earningsRow?.net ?? earningsRow?.amount ?? 0);
+    const capturedPlatformFee = Number(feeRow?.net ?? feeRow?.amount ?? 0);
+    const orderTotal = Number(order.total_amount ?? 0);
+    const refundRatio =
+      orderTotal > 0 ? Math.min(1, Math.max(0, ledgerRefundAmount / orderTotal)) : 1;
+    const refundProviderEarnings =
+      Math.round(capturedProviderEarnings * refundRatio * 100) / 100;
+    const refundPlatformFee = Math.round(capturedPlatformFee * refundRatio * 100) / 100;
+    const refundDescription = `Refund for product order ${order.order_number || order.id.slice(0, 8)}${
+      refundReason
+        ? ` (${refundReason})`
+        : cancellationReason
+          ? ` (cancelled: ${cancellationReason})`
+          : ""
+    }`;
+    const refundRows: Record<string, unknown>[] = [];
+    if (refundProviderEarnings > 0) {
+      refundRows.push({
+        booking_id: null,
+        product_order_id: order.id,
+        provider_id: order.provider_id,
+        tenant_id: ledgerTenantId,
+        transaction_type: "refund",
+        refund_component: "provider_earnings",
+        amount: refundProviderEarnings,
+        fees: 0,
+        commission: 0,
+        net: -refundProviderEarnings,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        description: refundDescription,
+        created_at: new Date().toISOString(),
+      });
+    }
+    if (refundPlatformFee > 0) {
+      refundRows.push({
+        booking_id: null,
+        product_order_id: order.id,
+        provider_id: order.provider_id,
+        tenant_id: ledgerTenantId,
+        transaction_type: "refund",
+        refund_component: "platform_fee",
+        amount: refundPlatformFee,
+        fees: 0,
+        commission: 0,
+        net: -refundPlatformFee,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        description: refundDescription,
+        created_at: new Date().toISOString(),
+      });
+    }
+    if (refundRows.length === 0 && ledgerRefundAmount > 0) {
+      refundRows.push({
+        booking_id: null,
+        product_order_id: order.id,
+        provider_id: order.provider_id,
+        tenant_id: ledgerTenantId,
+        transaction_type: "refund",
+        refund_component: "provider_earnings",
+        amount: ledgerRefundAmount,
+        fees: 0,
+        commission: 0,
+        net: -ledgerRefundAmount,
+        currency: order.currency || LAST_RESORT_CURRENCY,
+        description: refundDescription,
+        created_at: new Date().toISOString(),
+      });
+    }
+    if (refundRows.length > 0) {
+      await (admin.from("finance_transactions") as any).insert(refundRows);
     }
   }
 
@@ -202,6 +194,8 @@ export type RestockProductOrderOptions = {
   reason?: string | null;
   /** Skip lines already cancelled at line level (partial fulfilment). */
   onlyItemIds?: string[] | null;
+  /** Restock fewer units than the line quantity (partial-quantity returns). Key = order_item id. */
+  quantityOverrides?: Record<string, number>;
 };
 
 /**
@@ -226,11 +220,18 @@ export async function restockProductOrderLineItems(
   const restocked: Array<{ product_id: string; product_variant_id: string | null; quantity: number }> = [];
 
   for (const item of items) {
+    const overrideQty = opts?.quantityOverrides?.[item.id as string];
+    const qty =
+      overrideQty != null && Number.isFinite(overrideQty) && overrideQty > 0
+        ? Math.min(overrideQty, Number(item.quantity) || 0)
+        : Number(item.quantity) || 0;
+    if (qty <= 0) continue;
+
     if (item.product_variant_id) {
       try {
         await (supabase.rpc as any)("increment_product_variant_stock", {
           p_variant_id: item.product_variant_id,
-          p_quantity: item.quantity,
+          p_quantity: qty,
         });
       } catch {
         const { data: v } = await (supabase.from("product_variants") as any)
@@ -239,7 +240,7 @@ export async function restockProductOrderLineItems(
           .single();
         if (v) {
           await (supabase.from("product_variants") as any)
-            .update({ quantity: (v.quantity ?? 0) + item.quantity })
+            .update({ quantity: (v.quantity ?? 0) + qty })
             .eq("id", item.product_variant_id);
         }
       }
@@ -247,7 +248,7 @@ export async function restockProductOrderLineItems(
       try {
         await supabase.rpc("increment_product_stock" as any, {
           p_product_id: item.product_id,
-          p_quantity: item.quantity,
+          p_quantity: qty,
         });
       } catch {
         const { data: prod } = await (supabase.from("products") as any)
@@ -256,7 +257,7 @@ export async function restockProductOrderLineItems(
           .single();
         if (prod) {
           await (supabase.from("products") as any)
-            .update({ quantity: (prod.quantity ?? 0) + item.quantity })
+            .update({ quantity: (prod.quantity ?? 0) + qty })
             .eq("id", item.product_id);
         }
       }
@@ -265,7 +266,7 @@ export async function restockProductOrderLineItems(
       restocked.push({
         product_id: item.product_id,
         product_variant_id: item.product_variant_id ?? null,
-        quantity: Number(item.quantity) || 0,
+        quantity: qty,
       });
     }
   }

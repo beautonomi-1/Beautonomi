@@ -18,6 +18,7 @@ import type { AppointmentService, AppointmentProduct } from "@/components/appoin
 import { calculateBookingPricing } from "@/components/appointments/pricing";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import { formatApiErrorMessage, subscriptionUpgradeHint } from "@/lib/http/api-error";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import {
   mapBookingCreateError,
   PROVIDER_BOOKING_DRAFT_KEY,
@@ -148,6 +149,7 @@ export function AppointmentCreateFlow({
   const [recurrenceOccurrences, setRecurrenceOccurrences] = useState("");
   const [newClientOpen, setNewClientOpen] = useState(false);
   const [subscriptionRequiredOpen, setSubscriptionRequiredOpen] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState("");
   const [depositRequired, setDepositRequired] = useState(false);
   const [depositPercentage, setDepositPercentage] = useState(50);
   const [taxRate, setTaxRate] = useState(0);
@@ -559,7 +561,15 @@ export function AppointmentCreateFlow({
     } catch (error) {
       const err = error as { message?: string; code?: string; errorCode?: string };
       const code = err.code ?? err.errorCode;
-      if (code === BOOKING_ERROR_CODES.SUBSCRIPTION_REQUIRED) {
+      if (
+        code === BOOKING_ERROR_CODES.SUBSCRIPTION_REQUIRED ||
+        code === "LIMIT_REACHED" ||
+        code === "SUBSCRIPTION_LIMIT_EXCEEDED" ||
+        code === "BOOKING_LIMIT_REACHED"
+      ) {
+        setSubscriptionGateMessage(
+          err.message?.trim() || getUpgradeMessage("limits.bookings"),
+        );
         setSubscriptionRequiredOpen(true);
         return;
       }
@@ -1005,7 +1015,7 @@ export function AppointmentCreateFlow({
       <SubscriptionRequiredSheet
         open={subscriptionRequiredOpen}
         onOpenChange={setSubscriptionRequiredOpen}
-        description="Upgrade your plan to create more bookings or use premium features."
+        description={subscriptionGateMessage || getUpgradeMessage("limits.bookings")}
       />
     </BookingBottomSheet>
   );

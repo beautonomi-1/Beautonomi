@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 import { verifyYocoConfig, type YocoEnvironment } from "@/lib/payments/yoco";
 import { resolveProviderCredentialMode } from "@/lib/payments/yoco-oauth";
@@ -263,8 +264,7 @@ export async function PUT(request: Request) {
         {
           data: null,
           error: {
-            message:
-              "Yoco integration requires a subscription upgrade. Please upgrade your plan to use Yoco payment devices.",
+            message: getUpgradeMessage("integrations.yoco"),
             code: "SUBSCRIPTION_REQUIRED",
           },
         },

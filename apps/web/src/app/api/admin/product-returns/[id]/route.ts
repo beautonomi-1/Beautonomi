@@ -1,13 +1,20 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection,
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  requireAdminSection,
   successResponse,
   notFoundResponse,
   handleApiError,
- } from "@/lib/supabase/api-helpers";
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  processProductReturnRefund,
+  ProductReturnRefundError,
+} from "@/lib/ecommerce/process-product-return-refund";
 
 const resolveSchema = z.object({
   resolution: z.enum(["full_refund", "partial_refund", "replacement", "store_credit", "denied"]),
@@ -58,16 +65,46 @@ export async function PATCH(
     const body = await request.json();
     const parsed = resolveSchema.parse(body);
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
 
-    const { data: req } = await supabase
+    const { data: reqRow } = await supabase
       .from("product_return_requests")
-      .select("id, status, refund_amount")
+      .select(
+        "id, status, refund_amount, order_id, order_item_id, quantity, customer_id, provider_id",
+      )
       .eq("id", id)
       .single();
 
-    if (!req) return notFoundResponse("Return request not found");
+    if (!reqRow) return notFoundResponse("Return request not found");
 
     const isRefund = ["full_refund", "partial_refund", "store_credit"].includes(parsed.resolution);
+
+    if (isRefund) {
+      if (!reqRow.order_id) {
+        return errorResponse("Return is missing its order reference.", "VALIDATION_ERROR", 400);
+      }
+      const refundAmount =
+        parsed.refund_processed_amount ?? Number(reqRow.refund_amount ?? 0);
+      try {
+        await processProductReturnRefund({
+          supabase,
+          admin,
+          returnId: id,
+          orderId: reqRow.order_id,
+          orderItemId: reqRow.order_item_id ?? null,
+          returnQuantity: reqRow.quantity ?? 1,
+          refundAmount,
+          refundMethod: "store_credit",
+          actorUserId: user.id,
+          refundReason: parsed.admin_notes ?? "Admin return resolution",
+        });
+      } catch (err) {
+        if (err instanceof ProductReturnRefundError) {
+          return errorResponse(err.message, err.code, err.status);
+        }
+        throw err;
+      }
+    }
 
     const update: Record<string, unknown> = {
       status: isRefund ? "refunded" : "resolved_by_admin",
@@ -79,8 +116,8 @@ export async function PATCH(
     if (isRefund) {
       update.refunded_at = new Date().toISOString();
       update.refund_processed_amount =
-        parsed.refund_processed_amount ?? Number(req.refund_amount);
-      update.refund_method = "admin_override";
+        parsed.refund_processed_amount ?? Number(reqRow.refund_amount);
+      update.refund_method = "store_credit";
     }
 
     const { data, error } = await supabase

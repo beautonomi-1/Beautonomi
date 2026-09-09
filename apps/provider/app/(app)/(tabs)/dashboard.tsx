@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { format, subDays, addDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
-import { useApi } from "@/hooks/useApi";
+import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
@@ -454,7 +454,7 @@ export default function DashboardScreen() {
     `/api/provider/dashboard${locQFirst}`,
     {
       enabled: isFocused,
-      timeoutMs: 15000,
+      timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
       staleTimeMs: 0,
     },
   );
@@ -467,7 +467,7 @@ export default function DashboardScreen() {
     `/api/provider/dashboard${locQFirst}${locQFirst ? "&" : "?"}include=insights`,
     {
       enabled: isFocused && secondaryEnabled && metrics !== null,
-      timeoutMs: 15000,
+      timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
       staleTimeMs: 60_000,
     },
   );
@@ -537,6 +537,7 @@ export default function DashboardScreen() {
 
   const {
     data: fallbackUpcomingBookings,
+    loading: fallbackUpcomingLoading,
     error: fallbackUpcomingError,
     refresh: refreshFallbackUpcoming,
   } = useApi<Booking[]>(
@@ -561,10 +562,17 @@ export default function DashboardScreen() {
     return getReportDateRange(key, { timezone: provider?.timezone });
   }, [dateRange, provider?.timezone]);
 
+  /**
+   * Period-scoped top services. This is the primary source, not a fallback: the
+   * dashboard insights bundle always aggregates a fixed 29-day window, which does
+   * not match the Today / This week / This month chip the heading advertises.
+   */
   const {
-    data: fallbackTopServices,
-    error: fallbackTopServicesError,
-    refresh: refreshFallbackTopServices,
+    data: periodTopServicesPayload,
+    loading: periodTopServicesLoading,
+    error: periodTopServicesError,
+    errorCode: periodTopServicesErrorCode,
+    refresh: refreshPeriodTopServices,
   } = useApi<unknown>(
     `/api/provider/reports/top-services?limit=5&from=${topServicesRange.from}&to=${topServicesRange.to}${locQ}`,
     {
@@ -605,14 +613,32 @@ export default function DashboardScreen() {
     });
   }, [upcomingBookingsRaw]);
   const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
+  /**
+   * Without this the section renders "No upcoming appointments" while the insights
+   * bundle is still in flight — indistinguishable from an genuinely empty week.
+   */
+  const upcomingLoading =
+    upcomingBookings == null && (insightsPending || fallbackUpcomingLoading);
+  const refreshUpcoming = useCallback(
+    () => (hasBundledInsights ? refreshInsights() : refreshFallbackUpcoming()),
+    [hasBundledInsights, refreshInsights, refreshFallbackUpcoming],
+  );
 
   const weeklyRevenue = dashboardView?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
-  const topServices =
-    normalizeTopServicesPayload(dashboardView?.insights?.top_services ?? fallbackTopServices) ?? null;
+  const periodTopServices = normalizeTopServicesPayload(periodTopServicesPayload);
+  const bundledTopServices = normalizeTopServicesPayload(dashboardView?.insights?.top_services);
+  /** The bundle's fixed 29-day figures stand in only when the period request fails. */
+  const topServices = periodTopServices ?? bundledTopServices ?? null;
+  const topServicesArePeriodScoped = periodTopServices != null;
+  const topServicesError =
+    periodTopServices == null &&
+    periodTopServicesErrorCode !== "SUBSCRIPTION_REQUIRED"
+      ? periodTopServicesError
+      : null;
+  const topServicesLoading = periodTopServicesLoading && topServices == null;
   const recentActivity =
     dashboardView?.insights?.recent_activity ?? unwrapActivityFeedPayload(fallbackActivityPayload);
   const bookingEligibility = dashboardView?.booking_eligibility ?? fallbackBookingEligibility ?? null;
-  const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
   const activityError = hasBundledInsights ? null : fallbackActivityError;
 
   const refreshRealtimeDashboardData = useCallback(() => {
@@ -623,8 +649,8 @@ export default function DashboardScreen() {
         tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
       }
     }
-    if (secondaryEnabled && !hasBundledInsights) {
-      tasks.push(refreshFallbackTopServices());
+    if (secondaryEnabled) {
+      tasks.push(refreshPeriodTopServices());
     }
     if (!hasBundledBookingEligibility) {
       tasks.push(refreshFallbackBookingEligibility());
@@ -637,7 +663,7 @@ export default function DashboardScreen() {
     hasBundledBookingEligibility,
     refreshFallbackUpcoming,
     refreshFallbackWeekly,
-    refreshFallbackTopServices,
+    refreshPeriodTopServices,
     refreshFallbackActivity,
     refreshFallbackBookingEligibility,
     secondaryEnabled,
@@ -653,8 +679,8 @@ export default function DashboardScreen() {
           tasks.push(refreshFallbackWeekly(), refreshFallbackActivity());
         }
       }
-      if (secondaryEnabled && !hasBundledInsights) {
-        tasks.push(refreshFallbackTopServices());
+      if (secondaryEnabled) {
+        tasks.push(refreshPeriodTopServices());
       }
       if (!hasBundledBookingEligibility) {
         tasks.push(refreshFallbackBookingEligibility());
@@ -670,7 +696,7 @@ export default function DashboardScreen() {
     hasBundledBookingEligibility,
     refreshFallbackUpcoming,
     refreshFallbackWeekly,
-    refreshFallbackTopServices,
+    refreshPeriodTopServices,
     refreshFallbackActivity,
     refreshFallbackBookingEligibility,
     secondaryEnabled,
@@ -753,7 +779,6 @@ export default function DashboardScreen() {
   }, [refreshRealtimeDashboardData]);
 
   const m = metrics;
-  const statColumns = isTablet ? (columns >= 3 ? 4 : 2) : 2;
   /** Inline dashboard figures: keep compact on narrow phones (four-up row). */
   const dashMetricLg = isTablet ? 22 : 17;
   const dashMetricMd = isTablet ? 19 : 15;
@@ -1488,16 +1513,24 @@ export default function DashboardScreen() {
         </>
       ) : null}
 
-      <SectionHeader title={`Top services (${periodLabel.toLowerCase()})`} />
+      <SectionHeader
+        title={
+          topServicesArePeriodScoped
+            ? `Top services (${periodLabel.toLowerCase()})`
+            : "Top services (last 29 days)"
+        }
+      />
       <Text style={{ marginTop: -6, marginBottom: 8, fontSize: 11, color: Colors.gray[500] }}>
-        Completed appointments scheduled {topServicesRange.from} – {topServicesRange.to}.
+        {topServicesArePeriodScoped
+          ? `Completed appointments scheduled ${topServicesRange.from} – ${topServicesRange.to}.`
+          : "Showing the last 29 days — the figures for this period couldn't be loaded."}
       </Text>
-      {insightsLoading ? (
+      {topServicesLoading ? (
         <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}>
           <SkeletonList rows={3} />
         </View>
       ) : topServicesError && !topServices ? (
-        <TouchableOpacity onPress={refreshFallbackTopServices} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+        <TouchableOpacity onPress={refreshPeriodTopServices} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
         </TouchableOpacity>
@@ -1718,8 +1751,12 @@ export default function DashboardScreen() {
         actionLabel="See All"
         onAction={() => router.push("/(app)/(tabs)/bookings" as never)}
       />
-      {upcomingError && !upcomingBookings ? (
-        <TouchableOpacity onPress={refreshFallbackUpcoming} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+      {upcomingLoading ? (
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}>
+          <SkeletonList rows={3} />
+        </View>
+      ) : upcomingError && !upcomingBookings ? (
+        <TouchableOpacity onPress={refreshUpcoming} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
         </TouchableOpacity>

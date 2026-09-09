@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows express booking
     const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("express.feature"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const { data: links, error } = await supabase
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows express booking
     const expressAccess = await checkExpressBookingFeatureAccess(providerId, supabase);
     if (!expressAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("express.feature"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Check link limit
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
       if ((existingLinks?.length || 0) >= expressAccess.maxLinks) {
         return errorResponse(
-          `You've reached your express booking link limit (${expressAccess.maxLinks}). Please upgrade your plan to create more links.`,
+          getUpgradeMessage("limits.express_links"),
           "LIMIT_REACHED",
           403
         );

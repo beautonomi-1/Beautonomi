@@ -274,6 +274,7 @@ export default function ProductOrderDetailScreen() {
             mobile_app: "customer",
           },
         },
+        { timeout: 120_000 },
       );
 
       if (paystackRes.error || !paystackRes.data?.authorization_url) {

@@ -2514,7 +2514,9 @@ export default function BookCheckoutScreen() {
           const serverMsg = (res.error as { message?: string }).message?.trim();
           const msg403 =
             errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
-              ? t("checkout.bookingLimitReached")
+              ? serverMsg && serverMsg.length > 0
+                ? serverMsg
+                : t("checkout.bookingLimitBusinessFull")
               : errCode === "MARKET_SWITCH_REQUIRED"
                 ? t("checkout.differentMarketProvider")
                 : errCode === "HOLD_OWNERSHIP"

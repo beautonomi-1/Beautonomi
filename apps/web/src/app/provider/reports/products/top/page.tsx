@@ -1,4 +1,6 @@
 "use client";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
@@ -8,7 +10,7 @@ import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, ShoppingBag, DollarSign, Hash } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher , FetchError } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
@@ -55,6 +57,7 @@ export default function TopProductsReport() {
   const [data, setData] = useState<TopProductsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
 
   useEffect(() => {
     loadReport();
@@ -64,6 +67,7 @@ export default function TopProductsReport() {
     try {
       setIsLoading(true);
       setError(null);
+      setIsSubscriptionRequired(false);
 
       const params = new URLSearchParams();
       appendReportDateParams(params, dateRange);
@@ -76,8 +80,15 @@ export default function TopProductsReport() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
-      console.error("Error loading top products:", err);
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
+        setIsSubscriptionRequired(true);
+        setError(null);
+      } else {
+        setError(parsed.message);
+        setIsSubscriptionRequired(false);
+      }
+      console.error("Error loading report:", err);
     } finally {
       setIsLoading(false);
     }
@@ -107,6 +118,24 @@ export default function TopProductsReport() {
         ]}
       >
         <ReportSkeleton />
+      </SettingsDetailLayout>
+    );
+  }
+
+  if (isSubscriptionRequired) {
+    return (
+      <SettingsDetailLayout
+        breadcrumbs={[
+          { label: "Home", href: "/" },
+          { label: "Provider", href: "/provider" },
+          { label: "Reports", href: "/provider/reports" },
+          { label: "Top Products" },
+        ]}
+      >
+        <div className="space-y-6">
+          <PageHeader title="Top Products" />
+          <ReportSubscriptionRequired feature="Top Products" />
+        </div>
       </SettingsDetailLayout>
     );
   }

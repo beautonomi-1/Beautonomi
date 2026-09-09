@@ -90,12 +90,16 @@ import {
 } from "@/lib/provider-booking-status-transitions";
 import {
   buildProviderBookingActionModel,
+  isBookingScheduledInPast,
   mapProviderBookingActionError,
 } from "@/lib/provider-booking-action-policy";
 import { getBookingNextStepCard } from "@/lib/provider-booking-next-step-card";
 import { BookingEditSheet } from "@/components/bookings/BookingEditSheet";
 import { PostCompletionSheet, POST_COMPLETION_STORAGE_PREFIX } from "@/components/bookings/PostCompletionSheet";
+import { LoveTheAppSheet } from "@/components/LoveTheAppSheet";
+import { useStoreReviewAfterRating } from "@/hooks/useStoreReviewAfterRating";
 import { EtaPicker } from "@/components/bookings/EtaPicker";
+import { JourneyProgress } from "@/components/bookings/JourneyProgress";
 import { ReassignStaffSheet } from "@/components/bookings/ReassignStaffSheet";
 import { BookingReferencePanel } from "@/components/bookings/BookingReferencePanel";
 import { BookingPaymentTimeline } from "@/components/bookings/BookingPaymentTimeline";
@@ -217,6 +221,9 @@ type BookingDetail = {
   /** Raw DB status when API sends it (pending vs confirmed). */
   db_status?: string;
   scheduled_at: string;
+  /** Set by POST /start-service; drives the in-service elapsed timer. */
+  started_at?: string | null;
+  completed_at?: string | null;
   total_amount?: number;
   currency?: string;
   location_type?: "at_salon" | "at_home";
@@ -652,6 +659,7 @@ function AutoYocoCollectGate({ shouldRun, onTrigger }: { shouldRun: boolean; onT
 
 export default function BookingDetailScreen() {
   const router = useRouter();
+  const { afterRatingSubmitted, sheetProps: storeReviewSheetProps } = useStoreReviewAfterRating("client_rating");
   const { id, focusPayment, collectYoco, collectPaystack, collectPaycloud, return_group_id, openReschedule, openCancel, highlightConfirm, step } =
     useLocalSearchParams<{
     id: string;
@@ -668,8 +676,10 @@ export default function BookingDetailScreen() {
   const [etaMinutes, setEtaMinutes] = useState<number | null>(15);
   const [updateEtaMinutes, setUpdateEtaMinutes] = useState<number | null>(15);
   const [isUpdatingEta, setIsUpdatingEta] = useState(false);
+  /** Live tracking is best-effort; surface it instead of failing the journey silently. */
+  const [liveLocationBlocked, setLiveLocationBlocked] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
+  const { data, loading, error, refresh, mutate } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
 
   // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
   // back to device local via buildZonedIsoForWallClock when unavailable.
@@ -728,6 +738,42 @@ export default function BookingDetailScreen() {
     setOptimisticBookingStatus(optimisticBookingFieldsForDbTarget(dbTarget));
   }, []);
 
+  /**
+   * Journey endpoints return the updated `bookings` row. Applying its stage fields
+   * straight away means the card advances the moment the server confirms, instead
+   * of waiting on a refetch that can serve a stale body. Only journey fields are
+   * merged — the raw row uses DB status vocabulary and would clobber `BookingDetail`.
+   */
+  const applyBookingFromResponse = useCallback(
+    (booking: unknown) => {
+      if (!data || !booking || typeof booking !== "object") return;
+      const row = booking as Record<string, unknown>;
+      const journeyFields: (keyof BookingDetail | string)[] = [
+        "current_stage",
+        "provider_en_route_at",
+        "provider_arrived_at",
+        "estimated_arrival",
+        "provider_eta_minutes",
+        "eta_source",
+        "arrival_otp_verified",
+        "qr_code_verified",
+        "arrival_otp_pending",
+        "qr_arrival_pending",
+        "started_at",
+        "completed_at",
+        "version",
+      ];
+      const patch: Record<string, unknown> = {};
+      for (const field of journeyFields) {
+        if (row[field as string] !== undefined) patch[field as string] = row[field as string];
+      }
+      if (Object.keys(patch).length === 0) return;
+      invalidateApiCacheForPath("/api/provider/bookings");
+      mutate({ ...(data as BookingDetail), ...patch } as BookingDetail);
+    },
+    [data, mutate],
+  );
+
   const resolvedBooking = useMemo((): BookingDetail | null => {
     if (!data) return null;
     if (!optimisticBookingStatus) return data as BookingDetail;
@@ -781,7 +827,21 @@ export default function BookingDetailScreen() {
     const targets = actionModel?.statusTargets ?? [];
     return targets.filter((target) => (target === "cancelled" ? canCancelAppointments : canEditAppointments));
   }, [actionModel, canCancelAppointments, canEditAppointments]);
-  const statusDisabledReasons = actionModel?.disabledReasons ?? [];
+  /**
+   * When the policy offers actions but permissions strip them all, say so — an
+   * empty action row with the policy's generic copy reads as "nothing to do here".
+   */
+  const statusDisabledReasons = useMemo(() => {
+    const reasons = actionModel?.disabledReasons ?? [];
+    const policyTargets = actionModel?.statusTargets ?? [];
+    if (policyTargets.length > 0 && allowedStatusTargets.length === 0) {
+      return [
+        "You do not have permission to change this booking's status. Ask an owner for appointment permissions.",
+        ...reasons,
+      ];
+    }
+    return reasons;
+  }, [actionModel, allowedStatusTargets]);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
   const mainScrollRef = useRef<ScrollView>(null);
@@ -1461,11 +1521,22 @@ export default function BookingDetailScreen() {
     }
   }, [showReschedule, rescheduleSlotsLoading, rescheduleTimeRows, rescheduleTime]);
 
-  const listActionOpenedRef = useRef(false);
+    const listActionOpenedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!data || listActionOpenedRef.current) return;
-    if (providerParamTruthy(openReschedule) && canEditAppointments) {
-      listActionOpenedRef.current = true;
+    if (!data) return;
+    // Key on the request itself so a second attempt from the list is honoured
+    // instead of being swallowed by a ref left over from the first one.
+    const requestKey = `${openReschedule ?? ""}|${openCancel ?? ""}|${bookingIdStr}`;
+    if (listActionOpenedRef.current === requestKey) return;
+    if (providerParamTruthy(openReschedule)) {
+      listActionOpenedRef.current = requestKey;
+      if (!canEditAppointments) {
+        Alert.alert(
+          "Permission",
+          "You do not have permission to reschedule this booking. Ask an owner for appointment permissions.",
+        );
+        return;
+      }
       if (data.scheduled_at) {
         const datePart = extractIsoDatePart(data.scheduled_at);
         if (datePart) setRescheduleDate(parseISO(datePart));
@@ -1474,11 +1545,25 @@ export default function BookingDetailScreen() {
       setShowReschedule(true);
       return;
     }
-    if (providerParamTruthy(openCancel) && canCancelAppointments) {
-      listActionOpenedRef.current = true;
+    if (providerParamTruthy(openCancel)) {
+      listActionOpenedRef.current = requestKey;
+      if (!canCancelAppointments) {
+        Alert.alert(
+          "Permission",
+          "You do not have permission to cancel this booking. Ask an owner for cancellation permissions.",
+        );
+        return;
+      }
       setShowCancelModal(true);
     }
-  }, [data, openReschedule, openCancel, canEditAppointments, canCancelAppointments]);
+  }, [
+    data,
+    bookingIdStr,
+    openReschedule,
+    openCancel,
+    canEditAppointments,
+    canCancelAppointments,
+  ]);
 
   // Audit log load (must be before early return to satisfy rules of hooks)
   useEffect(() => {
@@ -1601,13 +1686,14 @@ export default function BookingDetailScreen() {
         Alert.alert("Error", res.error.message || "Failed to submit rating.");
         return;
       }
+      const submittedStars = Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0));
       setShowRateClientSheet(false);
       setRateClientStars(0);
       setRateClientComment("");
       setHasProviderClientRating(true);
-      setProviderClientRatingValue(Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0)));
+      setProviderClientRatingValue(submittedStars);
       if (typeof refresh === "function") refresh();
-      Alert.alert("Done", "Thanks for rating this client.");
+      await afterRatingSubmitted(submittedStars);
     } catch (e: unknown) {
       const msg =
         e && typeof e === "object" && "message" in e
@@ -1798,6 +1884,42 @@ export default function BookingDetailScreen() {
     isArrived &&
     !isStarted &&
     allowedStatusTargets.includes("in_progress");
+  /**
+   * The house-call journey does not end at "Start service". Keeping the card mounted
+   * through `service_started` is what lets the provider finish where they started,
+   * rather than hunting for Complete in the generic status sheet.
+   */
+  const isInService = isAtHome && (isStarted || b.current_stage === "service_started");
+  const isJourneyComplete =
+    isAtHome && (currentDbStatus === "completed" || b.current_stage === "service_completed");
+  const serviceStartedAtMs = (b as { started_at?: string | null }).started_at
+    ? new Date((b as { started_at?: string }).started_at as string).getTime()
+    : NaN;
+  const serviceElapsedLabel = (() => {
+    if (!Number.isFinite(serviceStartedAtMs)) return null;
+    const mins = Math.max(0, Math.round((nowMs - serviceStartedAtMs) / 60000));
+    if (mins < 60) return `${mins} min`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h ${mins % 60}m`;
+  })();
+  const canCompleteServiceInJourney =
+    canEditAppointments && isInService && allowedStatusTargets.includes("completed");
+  const isPastBooking = isBookingScheduledInPast(b.scheduled_at);
+  const isScheduledToday = (() => {
+    const at = new Date(b.scheduled_at);
+    if (!Number.isFinite(at.getTime())) return true;
+    const now = new Date(nowMs);
+    return (
+      at.getFullYear() === now.getFullYear() &&
+      at.getMonth() === now.getMonth() &&
+      at.getDate() === now.getDate()
+    );
+  })();
+  const completedAtLabel = (() => {
+    if (!b.completed_at) return null;
+    const at = new Date(b.completed_at);
+    return Number.isFinite(at.getTime()) ? format(at, "HH:mm") : null;
+  })();
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
@@ -2088,7 +2210,7 @@ export default function BookingDetailScreen() {
         entity_id: id,
         expected_amount: chargeAmount,
         customer_reference: customerReference,
-      }));
+      }), { timeout: 120_000 });
       if (res.error) {
         Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
         return;
@@ -2642,17 +2764,24 @@ export default function BookingDetailScreen() {
         });
         journeyLocation = loc;
       }
+      setLiveLocationBlocked(!allowed);
     } catch {
-      // Continue without live location if permission or GPS lookup fails.
+      // Continue without live location if permission or GPS lookup fails, but
+      // tell the provider — the customer's tracking map stays empty otherwise.
+      setLiveLocationBlocked(true);
     }
     if (etaMinutes != null && etaMinutes > 0) {
       body.eta_minutes = etaMinutes;
     }
     const res = await postMutation(`/api/provider/bookings/${id}/start-journey`, body);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert(
+        "Journey not started",
+        mapProviderBookingActionError(res.error, res.errorCode),
+      );
       return;
     }
+    applyBookingFromResponse(res.data?.booking);
     if (journeyLocation) {
       await api.post(`/api/provider/bookings/${id}/location`, {
         latitude: journeyLocation.coords.latitude,
@@ -2705,14 +2834,17 @@ export default function BookingDetailScreen() {
         body.latitude = loc.coords.latitude;
         body.longitude = loc.coords.longitude;
       }
+      setLiveLocationBlocked(!allowed);
     } catch {
       // Send without location if permission denied or get position fails
+      setLiveLocationBlocked(true);
     }
     const res = await postMutation(`/api/provider/bookings/${id}/arrive`, body);
     if (res.error) {
-      Alert.alert("Error", res.error);
+      Alert.alert("Arrival not recorded", mapProviderBookingActionError(res.error, res.errorCode));
       return;
     }
+    applyBookingFromResponse(res.data?.booking);
     await refresh();
   };
 
@@ -3462,9 +3594,22 @@ export default function BookingDetailScreen() {
             </View>
           </View>
 
-        {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
+        {isAtHome && (canStartJourney || isEnRoute || isArrived || isInService || isJourneyComplete) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2")}>Journey steps</Text>
+            <JourneyProgress
+              stage={
+                isJourneyComplete
+                  ? "service_completed"
+                  : isInService
+                    ? "service_started"
+                    : isArrived
+                      ? "provider_arrived"
+                      : isEnRoute
+                        ? "provider_on_way"
+                        : "confirmed"
+              }
+            />
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>At-home visit</Text>
               {addressLine ? (
@@ -3637,8 +3782,91 @@ export default function BookingDetailScreen() {
                 ) : null}
               </>
             )}
+            {isInService && !isJourneyComplete && (
+              <View style={twStyle("mb-1")}>
+                <View style={twStyle("rounded-lg bg-primary/10 border border-primary/20 py-2 px-3 mb-3")}>
+                  <Text style={twStyle("text-sm font-medium text-primary")}>
+                    Service in progress
+                    {serviceElapsedLabel ? ` · started ${serviceElapsedLabel} ago` : ""}
+                  </Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-700")}>
+                    When you&apos;re finished, complete the booking here so the client is asked to
+                    review and your earnings are released.
+                  </Text>
+                </View>
+                {!completionChecklist.allDone ? (
+                  <View style={twStyle("rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 mb-3")}>
+                    <Text style={twStyle("text-xs font-semibold uppercase text-amber-900")}>
+                      Before you finish
+                    </Text>
+                    {completionChecklist.items.map((item) => (
+                      <View key={item.id} style={twStyle("mt-1 flex-row items-center")}>
+                        <Ionicons
+                          name={item.done ? "checkmark-circle" : "ellipse-outline"}
+                          size={14}
+                          color={item.done ? "#16a34a" : "#d97706"}
+                        />
+                        <Text style={twStyle("ml-1.5 text-xs text-amber-950")}>
+                          {item.label}
+                          {!item.done && item.detail ? ` — ${item.detail}` : ""}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {outstanding > 0 && canProcessPayments ? (
+                  <TouchableOpacity
+                    onPress={() => setShowMarkPaid(true)}
+                    style={twStyle("rounded-xl border border-primary py-3 items-center mb-2")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Collect payment"
+                  >
+                    <Text style={twStyle("text-primary font-semibold")}>
+                      Collect payment ({b.currency ?? getTenantDefaultCurrency()}{" "}
+                      {outstanding.toFixed(2)})
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {canCompleteServiceInJourney ? (
+                  <TouchableOpacity
+                    onPress={() => void applyDbStatusTransition("completed")}
+                    disabled={mutating || patchLoading}
+                    style={twStyle("rounded-xl bg-primary py-3 items-center")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Complete service"
+                  >
+                    {mutating ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={twStyle("text-white font-semibold")}>Complete service</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            )}
+            {isJourneyComplete && (
+              <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3 mb-1")}>
+                <Text style={twStyle("text-sm font-medium text-green-800")}>
+                  Visit complete
+                  {completedAtLabel ? ` · ${completedAtLabel}` : ""}
+                </Text>
+                <Text style={twStyle("mt-0.5 text-xs text-green-900")}>
+                  {outstanding > 0
+                    ? `Still outstanding: ${b.currency ?? getTenantDefaultCurrency()} ${outstanding.toFixed(2)}.`
+                    : "Paid in full."}
+                </Text>
+              </View>
+            )}
             {isEnRoute && !isArrived && (
               <View style={twStyle("mb-3")}>
+                {liveLocationBlocked ? (
+                  <View style={twStyle("rounded-lg border border-amber-200 bg-amber-50 py-2 px-3 mb-3")}>
+                    <Text style={twStyle("text-xs text-amber-900")}>
+                      Live location is off, so the client can&apos;t watch you approach. Your ETA is
+                      still shared. Enable location for this app to turn tracking back on.
+                    </Text>
+                  </View>
+                ) : null}
                 <View
                   style={twStyle(
                     `rounded-lg border py-2 px-3 mb-3 ${
@@ -3680,6 +3908,15 @@ export default function BookingDetailScreen() {
             )}
             {canStartJourney && (
               <>
+                {!isScheduledToday ? (
+                  <View style={twStyle("rounded-lg border border-amber-200 bg-amber-50 py-2 px-3 mb-3")}>
+                    <Text style={twStyle("text-xs text-amber-900")}>
+                      {isPastBooking
+                        ? "This appointment was scheduled for an earlier date. Starting the journey now will notify the client."
+                        : "This appointment isn't today. Starting the journey now will notify the client that you're on the way."}
+                    </Text>
+                  </View>
+                ) : null}
                 <EtaPicker
                   value={etaMinutes}
                   onChange={setEtaMinutes}
@@ -5533,6 +5770,38 @@ export default function BookingDetailScreen() {
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Cancel Booking</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Please provide a reason for cancellation:</Text>
+            {isPastBooking ? (
+              <View
+                style={{
+                  backgroundColor: "#fffbeb",
+                  borderWidth: 1,
+                  borderColor: "#fde68a",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: "#92400e" }}>
+                  This appointment time has already passed. Cancelling refunds the client in full.
+                  If they didn&apos;t show up, mark it a no-show instead; if you did the work, complete it.
+                </Text>
+                {allowedStatusTargets.includes("no_show") ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowCancelModal(false);
+                      void applyDbStatusTransition("no_show");
+                    }}
+                    style={{ marginTop: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mark as no-show instead"
+                  >
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400e" }}>
+                      Mark as no-show instead
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
             <Text style={{ fontSize: 13, color: "#047857", backgroundColor: "#ecfdf5", borderRadius: 10, padding: 12, marginBottom: 16 }}>
               The client will receive a full refund to their Beautonomi wallet for amounts already paid. Your cancellation policy does not apply to cancellations you initiate.
             </Text>
@@ -5921,6 +6190,7 @@ export default function BookingDetailScreen() {
         errorMessage={qrScanError}
         onValidScan={(jsonPayload) => submitVerifyQrBody({ qr_data: jsonPayload })}
       />
+      <LoveTheAppSheet {...storeReviewSheetProps} />
     </ScreenContainer>
   );
 }

@@ -446,6 +446,21 @@ export function navigateFromNotification(n: Notification): void {
     return;
   }
 
+  // ── Returns (before generic order_id routing — return payloads carry order_id) ──
+  const isReturnNotification =
+    data.return_request_id != null ||
+    nType === "return_update" ||
+    nType === "return_approved" ||
+    nType === "return_rejected" ||
+    nType === "product_return_approved" ||
+    nType === "product_return_rejected" ||
+    nType === "product_return_refunded" ||
+    nType.startsWith("product_return_");
+  if (isReturnNotification) {
+    router.push("/(app)/my-returns");
+    return;
+  }
+
   // ── Product orders ───────────────────────────────────────────────────────
   const productOrderId =
     (data.product_order_id != null ? String(data.product_order_id).trim() : "") ||
@@ -460,12 +475,6 @@ export function navigateFromNotification(n: Notification): void {
   }
   if (nType === "order_update" || nType === "product_order_update" || nType === "order_confirmed" || nType === "order_shipped" || nType === "order_delivered") {
     router.push("/(app)/product-orders");
-    return;
-  }
-
-  // ── Returns ──────────────────────────────────────────────────────────────
-  if (nType === "return_update" || nType === "return_approved" || nType === "return_rejected") {
-    router.push("/(app)/my-returns");
     return;
   }
 

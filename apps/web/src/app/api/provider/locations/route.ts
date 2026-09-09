@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkLocationFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import {
   ensureProviderHasPrimaryLocation,
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
     const locationAccess = await checkLocationFeatureAccess(providerId, supabase);
     if (!locationAccess.enabled) {
       return errorResponse(
-        "Multiple locations require a subscription upgrade. Please upgrade your plan to add more locations.",
+        getUpgradeMessage("limits.locations"),
         "SUBSCRIPTION_REQUIRED",
         403
       );
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
 
       if ((existingLocations?.length || 0) >= locationAccess.maxLocations) {
         return errorResponse(
-          `You've reached your location limit (${locationAccess.maxLocations}). Please upgrade your plan to add more locations.`,
+          getUpgradeMessage("limits.locations"),
           "LIMIT_REACHED",
           403
         );

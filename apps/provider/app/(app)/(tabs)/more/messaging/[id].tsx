@@ -39,6 +39,7 @@ import {
   PERMISSION_COPY,
 } from "@/lib/native-permissions";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -529,7 +530,7 @@ export default function ChatScreen() {
     // Always follow our own outgoing message to the bottom.
     isNearBottomRef.current = true;
     requestAnimationFrame(() => flatListRef.current?.scrollToEnd({ animated: true }));
-    const { error } = await sendMessage({
+    const { error, errorCode } = await sendMessage({
       content: text,
       ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
     });
@@ -539,9 +540,14 @@ export default function ChatScreen() {
       setOptimisticMessage(null);
       setMessage(text);
       if (replyTarget) setReplyingTo(replyTarget);
-      Alert.alert("Send failed", typeof error === "string" ? error : "Message could not be sent. Please try again.");
+      const msg = typeof error === "string" ? error : "Message could not be sent. Please try again.";
+      if (isPlanGateErrorCode(errorCode)) {
+        showPlanGateAlert({ message: msg, errorCode, router });
+      } else {
+        Alert.alert("Send failed", msg);
+      }
     }
-  }, [message, conversationId, sending, sendMessage, refresh, replyingTo, conversation?.customer_name, getMessagePreviewText]);
+  }, [message, conversationId, sending, sendMessage, refresh, replyingTo, conversation?.customer_name, getMessagePreviewText, router]);
 
   const uploadNativeFile = useCallback(
     async (file: { uri: string; name: string; type: string }) => {
@@ -570,12 +576,17 @@ export default function ChatScreen() {
           return;
         }
         const replyTarget = replyingTo;
-        const { error } = await sendMessage({
+        const { error, errorCode } = await sendMessage({
           attachments: atts,
           ...(replyTarget?.id ? { reply_to_message_id: replyTarget.id } : {}),
         } as never);
-        if (error) Alert.alert("Error", error);
-        else {
+        if (error) {
+          if (isPlanGateErrorCode(errorCode)) {
+            showPlanGateAlert({ message: error, errorCode, router });
+          } else {
+            Alert.alert("Error", error);
+          }
+        } else {
           setReplyingTo(null);
           await refresh();
         }
@@ -583,7 +594,7 @@ export default function ChatScreen() {
         setUploading(false);
       }
     },
-    [conversationId, sending, uploading, sendMessage, refresh, replyingTo],
+    [conversationId, sending, uploading, sendMessage, refresh, replyingTo, router],
   );
 
   const openAttachmentMenu = useCallback(() => {

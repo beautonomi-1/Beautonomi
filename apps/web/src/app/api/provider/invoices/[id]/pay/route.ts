@@ -7,10 +7,12 @@ import {
   userHasProviderAccessAdmin,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { recordProviderInvoicePayment } from "@/lib/invoices/record-provider-invoice-payment";
 
 /**
  * POST /api/provider/invoices/[id]/pay
- * Record a payment against an invoice
+ * Record a payment made outside the platform (EFT, cash, card machine) against
+ * an invoice. Online card payment goes through `/initialize-payment` instead.
  */
 export async function POST(
   request: NextRequest,
@@ -38,7 +40,7 @@ export async function POST(
 
     const { data: invoice, error: invoiceError } = await admin
       .from("provider_invoices")
-      .select("*")
+      .select("id, provider_id")
       .eq("id", id)
       .maybeSingle();
 
@@ -65,40 +67,38 @@ export async function POST(
       return forbiddenResponse("You do not have access to this invoice");
     }
 
-    // Check if payment amount exceeds amount due
-    const amountDue = invoice.total_amount - (invoice.amount_paid || 0);
-    if (amount > amountDue) {
-      return handleApiError(
-        new Error("Payment amount exceeds amount due"),
-        `Payment amount cannot exceed ${amountDue}`,
-        "VALIDATION_ERROR",
-        400
-      );
-    }
+    // Amount validation, idempotency and the amount_paid/status trigger all live
+    // in the shared recorder so offline and gateway payments cannot diverge.
+    const result = await recordProviderInvoicePayment({
+      supabase: admin,
+      invoiceId: id,
+      amount: Number(amount),
+      paymentMethodId: paymentMethodId || null,
+      paymentDate: paymentDate || null,
+      paymentReference: paymentReference || null,
+      createdBy: permissionCheck.user!.id,
+      metadata: { source: "provider_manual" },
+    });
 
-    // Create payment record — use admin to bypass RLS (authorization already verified above)
-    const { data: payment, error: paymentError } = await admin
-      .from("provider_invoice_payments")
-      .insert({
-        invoice_id: id,
-        payment_method_id: paymentMethodId || null,
-        amount,
-        payment_date: paymentDate || new Date().toISOString().split("T")[0],
-        payment_reference: paymentReference || null,
-        status: "completed",
-        created_by: permissionCheck.user!.id,
-      })
-      .select()
-      .single();
+    const { data: updatedInvoice } = await admin
+      .from("provider_invoices")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
 
-    if (paymentError) {
-      throw paymentError;
-    }
-
-    // The trigger will automatically update invoice amount_paid and status
-
-    return successResponse(payment);
+    return successResponse({
+      applied: result.applied,
+      amount_applied: result.amountApplied,
+      invoice: updatedInvoice,
+    });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/cannot exceed|greater than 0/i.test(message)) {
+      return handleApiError(error, message, "VALIDATION_ERROR", 400);
+    }
+    if (/Invoice not found/i.test(message)) {
+      return handleApiError(error, message, "NOT_FOUND", 404);
+    }
     return handleApiError(error, "Failed to record payment");
   }
 }

@@ -43,12 +43,12 @@ API: `GET /api/provider/dashboard?include=insights` → `get-provider-dashboard.
 | 7-day chart | `insights.weekly_revenue` | Ledger per civil day | **Truthful** | Empty-state fallback used device TZ — **fixed** |
 | Booking Status: period column | `appointments_*` | Scheduled count in period | **Truthful** | Label shows period name |
 | Booking Status: Pending/Confirmed/Completed | `pending/confirmed/completed_bookings` | All loaded bookings by status | **Mislabeled** | All-time counts beside period column — **labels fixed** |
-| Top Services | `insights.top_services` | `buildServiceLedgerPerformance` | **Truthful** | Last 29 days completed |
+| Top Services | `/api/provider/reports/top-services?from&to` | `buildServiceLedgerPerformance` | **Was mislabeled** | Heading said "today/week/month" over `insights.top_services`, which is always the last 29 days — mobile now reads the period-scoped report endpoint and only falls back to the 29-day bundle when that request fails, relabelling itself when it does |
 | Performance: rating | `average_rating` | `providers.rating_average` | **Truthful** | |
 | Performance: no-show rate | `no_show_rate` | Terminal bookings ratio | **Truthful** | |
 | Performance: completed count | `completed_bookings` | All-time | **Redundant** | Duplicates booking status |
 | Performance: completion rate | `completion_rate` | completed / terminal | **Missing on mobile** | API sends it; web shows — **fixed** |
-| Upcoming bookings | `insights.upcoming_bookings` | `fetchUpcomingBookingsForDashboard` | **Truthful** | Client also filters future |
+| Upcoming bookings | `insights.upcoming_bookings` | `fetchUpcomingBookingsForDashboard` | **Truthful** | Client also filters future. Had no loading state, so it showed "No upcoming appointments" while insights were in flight — **skeleton added** |
 | Recent activity | `insights.recent_activity` | `buildProviderActivityFeed` | **Truthful** | 14-day merge: booking milestones + reschedules/confirmations/service-started events, CRM client adds, retail, full provider ledger slice (earnings, subscription, ads, gift card, membership, refunds, payouts), reviews. See `activity-feed-coverage.ts` + feed `basis.excluded`. |
 | Gamification | `gamification.*` | `provider_points`, badges | **Truthful** | |
 | Setup card | `/api/provider/setup-status` | Setup steps | **Truthful** | |

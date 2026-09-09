@@ -12,6 +12,7 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getCalendarScopeForUser, filterBookingsByCalendarScope } from "@/lib/auth/calendar-scope";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { formatLimitUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import type { Booking } from "@/types/beautonomi";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
@@ -1008,8 +1009,20 @@ async function handleCreateProviderBooking(request: NextRequest) {
         .gte("created_at", monthStartUtc.toISOString());
 
       if ((bookingsThisMonth?.length || 0) >= bookingAccess.maxBookingsPerMonth) {
+        const used = bookingsThisMonth?.length || 0;
+        const cap = bookingAccess.maxBookingsPerMonth;
         return errorResponse(
-          `You've reached your monthly booking limit (${bookingAccess.maxBookingsPerMonth}). Please upgrade your plan to create more bookings.`,
+          formatLimitUpgradeMessage(
+            {
+              canProceed: false,
+              reason: "Monthly booking limit reached",
+              currentCount: used,
+              limitValue: cap,
+              planName: "",
+              isUnlimited: false,
+            },
+            "bookings",
+          ),
           "LIMIT_REACHED",
           403
         );

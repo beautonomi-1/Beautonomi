@@ -6,6 +6,8 @@ export type BookingCreateErrorCode =
   | "CONFLICT"
   | "SUBSCRIPTION_REQUIRED"
   | "BOOKING_LIMIT_REACHED"
+  | "LIMIT_REACHED"
+  | "SUBSCRIPTION_LIMIT_EXCEEDED"
   | "VALIDATION_ERROR"
   | "FORBIDDEN"
   | "INSUFFICIENT_STOCK";
@@ -27,8 +29,12 @@ export function mapBookingCreateError(
       };
     case "SUBSCRIPTION_REQUIRED":
     case "BOOKING_LIMIT_REACHED":
+    case "LIMIT_REACHED":
+    case "SUBSCRIPTION_LIMIT_EXCEEDED":
       return {
-        message: error || "Upgrade your subscription to create more bookings.",
+        message:
+          error ||
+          "You've reached your monthly online booking limit on your current plan. Upgrade for unlimited bookings.",
         returnToTimePicker: false,
       };
     case "INSUFFICIENT_STOCK":

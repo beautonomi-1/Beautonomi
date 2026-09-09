@@ -12,7 +12,7 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import {
   ADVANCED_RECURRENCE_UPGRADE,
-  SUBSCRIPTION_UPGRADE_SHORT,
+  getUpgradeMessage,
 } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { isDateOnOrBeforeEnd, nextRecurringOccurrenceDate } from "@/lib/recurring/next-due-date";
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
     // Check subscription allows recurring appointments
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("recurring.feature"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const { searchParams } = new URL(request.url);
@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
     // Check subscription allows recurring appointments
     const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("recurring.feature"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     const body = await request.json();

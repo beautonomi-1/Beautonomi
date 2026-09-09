@@ -15,6 +15,8 @@ import { CheckCircle2, XCircle, ExternalLink, Mail, Loader2 } from "lucide-react
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 
 interface EmailIntegration {
@@ -74,7 +76,7 @@ export default function EmailIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to load email integration";
-      if (error.code === "SUBSCRIPTION_REQUIRED" || errorMessage.includes("subscription")) {
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         setSubscriptionRequired(true);
       } else {
         toast.error(errorMessage);
@@ -116,11 +118,8 @@ export default function EmailIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to save email integration";
-      if (error.code === "SUBSCRIPTION_REQUIRED" || errorMessage.includes("subscription")) {
+      if (toastPlanGateError(error, errorMessage)) {
         setSubscriptionRequired(true);
-        toast.error("Subscription upgrade required to use custom email integrations");
-      } else {
-        toast.error(errorMessage);
       }
     } finally {
       setIsSaving(false);
@@ -149,7 +148,9 @@ export default function EmailIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to update integration";
-      toast.error(errorMessage);
+      if (toastPlanGateError(error, errorMessage)) {
+        setSubscriptionRequired(true);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -221,9 +222,8 @@ export default function EmailIntegrationPage() {
         {/* Subscription Gate */}
         {subscriptionRequired && (
           <SubscriptionGate
-            feature="email_integration"
-            message="Custom email integrations require a subscription upgrade"
-            upgradeMessage="Upgrade to Professional or Enterprise plan to connect your own SendGrid or Mailchimp account"
+            feature="Custom email integrations"
+            message={getUpgradeMessage("integrations.custom")}
           />
         )}
 

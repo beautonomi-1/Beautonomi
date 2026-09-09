@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkCalendarSyncFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { SUBSCRIPTION_UPGRADE_SHORT } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const updateCalendarSyncSchema = z.object({
@@ -34,7 +34,7 @@ export async function PATCH(
     // Check subscription allows calendar sync
     const calendarAccess = await checkCalendarSyncFeatureAccess(providerId, supabase);
     if (!calendarAccess.enabled) {
-      return errorResponse(SUBSCRIPTION_UPGRADE_SHORT, "SUBSCRIPTION_REQUIRED", 403);
+      return errorResponse(getUpgradeMessage("integrations.calendar"), "SUBSCRIPTION_REQUIRED", 403);
     }
 
     // Verify sync belongs to provider
@@ -55,7 +55,7 @@ export async function PATCH(
     // Check API access for bidirectional sync
     if (validated.sync_direction === "bidirectional" && !calendarAccess.apiAccess) {
       return errorResponse(
-        "Bidirectional calendar sync requires an Enterprise plan. Please upgrade to access this feature.",
+        getUpgradeMessage("integrations.calendar"),
         "SUBSCRIPTION_REQUIRED",
         403
       );

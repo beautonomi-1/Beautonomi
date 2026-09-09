@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
   CreditCard,
   Plus,
@@ -274,8 +276,8 @@ export default function CardMachinesPage() {
       setDialogOpen(false);
       setForm({ terminal_sn: "", display_name: "", location_id: "" });
       await loadData();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to add card machine");
+    } catch (e: unknown) {
+      toastPlanGateError(e, "Failed to add card machine");
     }
   };
 
@@ -522,13 +524,13 @@ export default function CardMachinesPage() {
                 <div>
                   <div className="font-medium text-amber-950">{planBlocker.title}</div>
                   <div className="text-sm text-amber-800">
-                    Upgrade your plan to add card machines and collect in-person payments.
+                    {getUpgradeMessage("integrations.paycloud")}
                   </div>
                 </div>
                 <Button asChild>
                   <Link href={planBlocker.href ?? "/provider/subscription"}>
                     <ArrowUpRight className="mr-2 h-4 w-4" />
-                    Upgrade plan
+                    View plans
                   </Link>
                 </Button>
               </div>

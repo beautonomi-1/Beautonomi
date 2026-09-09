@@ -25,6 +25,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
+import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 import {
   AlertDialog,
@@ -53,7 +55,7 @@ export default function ExpressBookingLinksPage() {
       const data = await providerApi.listExpressBookingLinks();
       setLinks(data);
     } catch (error) {
-      if (error instanceof FetchError && (error.status === 403 || error.code === "SUBSCRIPTION_REQUIRED")) {
+      if (error instanceof FetchError && error.code === "SUBSCRIPTION_REQUIRED") {
         setSubscriptionRequired(true);
         return;
       }
@@ -127,13 +129,9 @@ export default function ExpressBookingLinksPage() {
           subtitle="Create quick booking links for specific services or team members"
         />
         <SectionCard className="p-12">
-          <EmptyState
-            title="Subscription Required"
-            description="Express Booking Links are available on a paid plan. Upgrade your subscription to create and manage booking links."
-            action={{
-              label: "Upgrade Subscription",
-              onClick: () => { window.location.href = "/provider/subscription"; },
-            }}
+          <SubscriptionGate
+            feature="Express booking links"
+            message={getUpgradeMessage("express.feature")}
           />
         </SectionCard>
       </div>
@@ -603,6 +601,17 @@ function ExpressBookingLinkDialog({
       }
       onOpenChange(false);
     } catch (error) {
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
+        toast.error(error.message || getUpgradeMessage("limits.express_links"), {
+          action: {
+            label: "View plans",
+            onClick: () => {
+              window.location.assign("/provider/subscription");
+            },
+          },
+        });
+        return;
+      }
       console.error("Failed to save link:", error);
       toast.error("Failed to save link");
     } finally {

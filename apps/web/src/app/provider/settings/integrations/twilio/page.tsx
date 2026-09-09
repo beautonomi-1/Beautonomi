@@ -15,6 +15,8 @@ import { CheckCircle2, XCircle, ExternalLink, MessageSquare, Phone, Loader2 } fr
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
@@ -77,7 +79,7 @@ export default function TwilioIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to load Twilio integration";
-      if (error.code === "SUBSCRIPTION_REQUIRED" || errorMessage.includes("subscription")) {
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         setSubscriptionRequired(true);
       } else {
         toast.error(errorMessage);
@@ -137,11 +139,8 @@ export default function TwilioIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to save Twilio integration";
-      if (error.code === "SUBSCRIPTION_REQUIRED" || errorMessage.includes("subscription")) {
+      if (toastPlanGateError(error, errorMessage)) {
         setSubscriptionRequired(true);
-        toast.error("Subscription upgrade required to use custom SMS/WhatsApp integrations");
-      } else {
-        toast.error(errorMessage);
       }
     } finally {
       setIsSaving(false);
@@ -183,7 +182,9 @@ export default function TwilioIntegrationPage() {
       const errorMessage = error instanceof FetchError
         ? error.message
         : error?.error?.message || "Failed to update integration";
-      toast.error(errorMessage);
+      if (toastPlanGateError(error, errorMessage)) {
+        setSubscriptionRequired(true);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -263,9 +264,8 @@ export default function TwilioIntegrationPage() {
         {/* Subscription Gate */}
         {subscriptionRequired && (
           <SubscriptionGate
-            feature="twilio_integration"
-            message="Custom SMS & WhatsApp integrations require a subscription upgrade"
-            upgradeMessage="Upgrade to Professional or Enterprise plan to connect your own Twilio account"
+            feature="Custom SMS & WhatsApp"
+            message={getUpgradeMessage("integrations.custom")}
           />
         )}
 

@@ -754,7 +754,7 @@ export default function WalkInSaleScreen() {
           entity_id: order.id,
           expected_amount: Number(order.total_amount ?? cartTotalDue),
           customer_reference: customerReference,
-        }));
+        }), { timeout: 120_000 });
         if (res.error) {
           Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
           return;

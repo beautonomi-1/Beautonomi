@@ -2468,7 +2468,7 @@
     "requiredDetailsMissing": "Vul asseblief alle vereiste bykomende besonderhede in.",
     "providerFormFieldRequired": "Voltooi asseblief: {{formTitle}} — {{fieldName}}",
     "sessionVerifyFailed": "Ons kon nie jou aangemelde sessie vir afreken verifieer nie. Probeer weer; as dit herhaal, sluit en maak die app weer oop sodat jou sessie kan verfris.",
-    "bookingLimitReached": "Jy het jou besprekingslimiet bereik. Gradeer asseblief jou plan op.",
+    "bookingLimitReached": "Hierdie besigheid is volbespreek vir hierdie tydperk. Probeer asseblief 'n ander datum of 'n ander verskaffer.",
     "differentMarketProvider": "Hierdie verskaffer is in 'n ander mark. Dateer asseblief jou ligging by.",
     "slotAlreadyClaimed": "Hierdie besprekingstydgleuf is reeds geëis. Gaan terug en kies 'n nuwe tyd.",
     "noPermissionCompleteBooking": "Jy het nie toestemming om hierdie bespreking te voltooi nie.",

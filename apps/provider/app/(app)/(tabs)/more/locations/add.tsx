@@ -25,6 +25,7 @@ import { ensureForegroundLocationPermission, PERMISSION_COPY } from "@/lib/nativ
 import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { getCachedConfigBundle } from "@/lib/config-bundle";
+import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 function tenantCountryFallback(): string {
   return getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() || "";
@@ -121,7 +122,13 @@ export default function AddLocationScreen() {
     });
     setSaving(false);
     if (res.error) {
-      Alert.alert("Error", res.error.message);
+      const code = (res.error as { code?: string }).code;
+      const msg = res.error.message || "Could not add location.";
+      if (isPlanGateErrorCode(code)) {
+        showPlanGateAlert({ message: msg, errorCode: code, router });
+      } else {
+        Alert.alert("Error", msg);
+      }
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

@@ -67,6 +67,7 @@ export default function ProviderReturnsPage() {
   const [dialog, setDialog] = useState<ActionDialog | null>(null);
   const [dialogNotes, setDialogNotes] = useState("");
   const [dialogReturnMethod, setDialogReturnMethod] = useState("drop_off");
+  const [dialogRefundMethod, setDialogRefundMethod] = useState<"store_credit" | "cash">("store_credit");
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
@@ -98,6 +99,7 @@ export default function ProviderReturnsPage() {
     setDialog({ returnId, action, label });
     setDialogNotes("");
     setDialogReturnMethod("drop_off");
+    setDialogRefundMethod("store_credit");
   };
 
   const submitAction = async () => {
@@ -110,6 +112,9 @@ export default function ProviderReturnsPage() {
       if (dialog.action === "approve") {
         payload.return_method = dialogReturnMethod;
         payload.resolution = "full_refund";
+      }
+      if (dialog.action === "process_refund") {
+        payload.refund_method = dialogRefundMethod;
       }
 
       await fetcher.patch(`/api/provider/returns/${dialog.returnId}`, payload);
@@ -258,6 +263,31 @@ export default function ProviderReturnsPage() {
                       onClick={() => setDialogReturnMethod(m.value)}
                       className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-colors ${
                         dialogReturnMethod === m.value
+                          ? "border-pink-500 bg-pink-50 text-pink-700"
+                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {dialog.action === "process_refund" && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Refund Method</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { value: "store_credit", label: "Wallet credit" },
+                    { value: "cash", label: "Cash in person" },
+                  ].map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setDialogRefundMethod(m.value as "store_credit" | "cash")}
+                      className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-colors ${
+                        dialogRefundMethod === m.value
                           ? "border-pink-500 bg-pink-50 text-pink-700"
                           : "border-gray-200 text-gray-600 hover:bg-gray-50"
                       }`}

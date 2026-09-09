@@ -3,7 +3,12 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
-import { buildAdReachKey, runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import {
+  buildAdReachKey,
+  buildAdImpressionIdempotencyPrefix,
+  runAdsAuction,
+  recordAdImpressions,
+} from "@/lib/ads/auction";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -778,7 +783,11 @@ export async function GET(request: Request) {
         const organicOnly = transformedProviders.filter((p: any) => !sponsoredProviderIds.has(p.id));
         finalProviders = [...sponsoredCards, ...organicOnly];
         const reachKey = buildAdReachKey(request);
-        const idempotencyPrefix = `search:${reachKey}:${filters.category ?? "all"}:${page}:${Date.now()}`;
+        const idempotencyPrefix = buildAdImpressionIdempotencyPrefix(
+          "search",
+          reachKey,
+          `${filters.category ?? "all"}:${page}`,
+        );
         await recordAdImpressions(winners, idempotencyPrefix, {
           placement: "search",
           reach_key: reachKey,

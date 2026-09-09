@@ -131,9 +131,10 @@ export type CampaignProvisionedResult =
   | { state: "pending"; campaign: AdsCampaignSnapshot | null }
   | { state: "unknown" };
 
-function isCampaignProvisioned(c: AdsCampaignSnapshot | null | undefined): boolean {
+export function isAdsCampaignProvisioned(c: AdsCampaignSnapshot | null | undefined): boolean {
   if (!c) return false;
-  return c.status === "active" && Number(c.budget) > 0;
+  if (!(Number(c.budget) > 0)) return false;
+  return c.status === "active" || c.status === "pending_review";
 }
 
 /**
@@ -163,7 +164,7 @@ export async function pollCampaignProvisioned(
             : [];
         const match = list.find((c) => c?.id === campaignId) ?? null;
         if (match) lastCampaign = match;
-        if (isCampaignProvisioned(match)) {
+        if (isAdsCampaignProvisioned(match)) {
           return { state: "provisioned", campaign: match as AdsCampaignSnapshot };
         }
       }
@@ -363,6 +364,12 @@ export function adsSuccessCopy(
   campaign: AdsCampaignSnapshot,
   currency: string,
 ): AdsSuccessCopy {
+  if (campaign.status === "pending_review") {
+    return {
+      title: "Payment received",
+      body: "Your ad is funded and waiting for creative review. It will go live once approved.",
+    };
+  }
   const budget = Number(campaign.budget ?? 0);
   if (campaign.billing_model === "time_based") {
     const days = Number(campaign.duration_days ?? 0);

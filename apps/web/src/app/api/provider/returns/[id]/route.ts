@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getProviderIdForUser,
   successResponse,
@@ -10,6 +11,10 @@ import {
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import {
+  processProductReturnRefund,
+  ProductReturnRefundError,
+} from "@/lib/ecommerce/process-product-return-refund";
 
 /** Exported for contract tests; keep in sync with mobile `PATCH` bodies. */
 export const updateSchema = z.object({
@@ -18,6 +23,8 @@ export const updateSchema = z.object({
   return_method: z.enum(["drop_off", "courier", "not_required"]).optional(),
   resolution: z.enum(["full_refund", "partial_refund", "replacement", "store_credit", "denied"]).optional(),
   refund_processed_amount: z.number().min(0).optional(),
+  /** How money is returned — mirrors product-order refunds (wallet or in-person cash). */
+  refund_method: z.enum(["cash", "store_credit"]).optional(),
 });
 
 const STATUS_TRANSITIONS: Record<string, Record<string, string>> = {
@@ -82,6 +89,7 @@ export async function PATCH(
     }
     const { user } = permissionCheck;
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
@@ -91,7 +99,15 @@ export async function PATCH(
       .eq("provider_id", providerId)
       .single();
 
-    type ReturnRequestRow = { id: string; status: string; refund_amount?: number; order_id?: string; quantity?: number; order_item_id?: string; customer_id?: string };
+    type ReturnRequestRow = {
+      id: string;
+      status: string;
+      refund_amount?: number;
+      order_id?: string;
+      quantity?: number;
+      order_item_id?: string | null;
+      customer_id?: string;
+    };
     const reqRow = req as ReturnRequestRow | null;
     if (!reqRow) return notFoundResponse("Return request not found");
 
@@ -125,53 +141,61 @@ export async function PATCH(
       update.item_received_at = new Date().toISOString();
     }
 
+    let processRefundMessage = "";
     if (parsed.action === "process_refund") {
+      if (!reqRow.order_id) {
+        return errorResponse("Return is missing its order reference.", "VALIDATION_ERROR", 400);
+      }
+
+      const refundAmount =
+        parsed.refund_processed_amount ?? Number(reqRow.refund_amount ?? 0);
+      const refundMethod = parsed.refund_method ?? "store_credit";
+
+      try {
+        await processProductReturnRefund({
+          supabase,
+          admin,
+          returnId: id,
+          orderId: reqRow.order_id,
+          orderItemId: reqRow.order_item_id ?? null,
+          returnQuantity: reqRow.quantity ?? 1,
+          refundAmount,
+          refundMethod,
+          actorUserId: user.id,
+          refundReason: parsed.provider_notes ?? "Return refunded",
+        });
+      } catch (err) {
+        if (err instanceof ProductReturnRefundError) {
+          return errorResponse(err.message, err.code, err.status);
+        }
+        throw err;
+      }
+
       update.refunded_at = new Date().toISOString();
-      update.refund_processed_amount =
-        parsed.refund_processed_amount ?? Number(reqRow.refund_amount);
-      update.refund_method = "original_payment";
+      update.refund_processed_amount = refundAmount;
+      update.refund_method = refundMethod;
       update.resolved_by = user.id;
 
-      // Restore stock (variant or product-level)
-      if (reqRow.order_item_id) {
-        const { data: orderItem } = await supabase.from("product_order_items")
-          .select("product_id, product_variant_id, quantity")
-          .eq("id", reqRow.order_item_id)
-          .single();
-        if (orderItem) {
-          const qty = reqRow.quantity ?? (orderItem as { quantity?: number }).quantity ?? 1;
-          if (orderItem.product_variant_id) {
-            try {
-              await supabase.rpc("increment_product_variant_stock", {
-                p_variant_id: orderItem.product_variant_id,
-                p_quantity: qty,
-              });
-            } catch {
-              const { data: v } = await supabase.from("product_variants")
-                .select("quantity")
-                .eq("id", orderItem.product_variant_id)
-                .single();
-              const variantRow = v as { quantity?: number } | null;
-              if (variantRow) {
-                await supabase.from("product_variants")
-                  .update({ quantity: (variantRow.quantity ?? 0) + qty })
-                  .eq("id", orderItem.product_variant_id);
-              }
-            }
-          } else {
-            const { data: prod } = await supabase.from("products")
-              .select("quantity")
-              .eq("id", orderItem.product_id)
-              .single();
-            const prodRow = prod as { quantity?: number } | null;
-            if (prodRow) {
-              await supabase.from("products")
-                .update({ quantity: (prodRow.quantity ?? 0) + qty })
-                .eq("id", orderItem.product_id);
-            }
-          }
-        }
+      const { data: ord } = await supabase
+        .from("product_orders")
+        .select("tenant_id, order_number")
+        .eq("id", reqRow.order_id)
+        .maybeSingle();
+      let refundTenantId = (ord as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
+      if (!refundTenantId) {
+        const { data: pr } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        refundTenantId = (pr as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
       }
+      const orderNumber = (ord as { order_number?: string } | null)?.order_number;
+      const { format } = await getTenantMoneyFormatter(refundTenantId);
+      processRefundMessage =
+        refundMethod === "store_credit"
+          ? `Your refund of ${format(refundAmount)} for order ${orderNumber} has been added to your wallet.`
+          : `Your refund of ${format(refundAmount)} for order ${orderNumber} has been recorded. Please confirm receipt in the app.`;
     }
 
     const { data, error } = await supabase.from("product_return_requests")
@@ -183,29 +207,7 @@ export async function PATCH(
     if (error) throw error;
 
     const orderNumber = (data as { order?: { order_number?: string } })?.order?.order_number;
-    const refundAmt = Number(update.refund_processed_amount ?? reqRow.refund_amount);
-    let processRefundMessage = "";
-    if (parsed.action === "process_refund") {
-      let refundTenantId: string | null | undefined;
-      if (reqRow.order_id) {
-        const { data: ord } = await supabase
-          .from("product_orders")
-          .select("tenant_id")
-          .eq("id", reqRow.order_id)
-          .maybeSingle();
-        refundTenantId = (ord as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
-      }
-      if (!refundTenantId) {
-        const { data: pr } = await supabase
-          .from("providers")
-          .select("tenant_id")
-          .eq("id", providerId)
-          .maybeSingle();
-        refundTenantId = (pr as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
-      }
-      const { format } = await getTenantMoneyFormatter(refundTenantId);
-      processRefundMessage = `Your refund of ${format(refundAmt)} for order ${orderNumber} has been processed.`;
-    }
+
     // Notify customer of return status change
     const notifMap: Record<string, { type: string; title: string; message: string }> = {
       approve: {
@@ -233,8 +235,8 @@ export async function PATCH(
           type: notif.type,
           title: notif.title,
           message: notif.message,
-          data: { return_request_id: id },
-          action_url: "/product-orders",
+          data: { return_request_id: id, order_id: reqRow.order_id ?? null },
+          action_url: "/my-returns",
         })
       );
     }

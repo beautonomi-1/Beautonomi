@@ -34,7 +34,7 @@ function sumMapValues(m: Map<string, number>): number {
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "sales" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

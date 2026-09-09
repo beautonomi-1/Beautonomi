@@ -10,6 +10,10 @@ import {
   getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { checkMarketingFeatureAccess, canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
+import {
+  campaignChannelUpgradeMessage,
+  getUpgradeMessage,
+} from "@/lib/subscriptions/subscription-upgrade-copy";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { subDays, startOfDay } from "date-fns";
@@ -195,7 +199,7 @@ export async function POST(request: NextRequest) {
     );
     if (!canUseChannel) {
       return errorResponse(
-        `${type === "email" ? "Email" : type === "sms" ? "SMS" : "WhatsApp"} campaigns are not enabled on your plan.`,
+        campaignChannelUpgradeMessage(type as "email" | "sms" | "whatsapp"),
         "SUBSCRIPTION_REQUIRED",
         403,
       );
@@ -204,7 +208,7 @@ export async function POST(request: NextRequest) {
     const marketingAccess = await checkMarketingFeatureAccess(providerId, supabase);
     if (recipient_type === "segment" && !marketingAccess.advancedSegmentation) {
       return errorResponse(
-        "Segment campaigns require advanced segmentation on your subscription plan.",
+        getUpgradeMessage("marketing.segmentation"),
         "SUBSCRIPTION_REQUIRED",
         403,
       );

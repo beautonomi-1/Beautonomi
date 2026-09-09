@@ -112,7 +112,7 @@ export function usePaystackPayment() {
             customer_id: params.customer_id,
             set_as_default: params.save_card ?? false,
           },
-        });
+        }, { timeout: 120_000 });
 
         if (res.error) {
           setError(res.error.message || "Failed to initialize payment");
@@ -221,7 +221,7 @@ export function usePaystackPayment() {
           email: params.email,
           currency: params.currency || getTenantDefaultCurrency(),
           metadata: params.metadata,
-        });
+        }, { timeout: 120_000 });
 
         if (res.error) {
           setError(res.error.message || "Failed to charge card");

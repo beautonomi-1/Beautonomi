@@ -18,10 +18,11 @@ import {
   XCircle,
   Info,
 } from "lucide-react";
-import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
+import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
+import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
@@ -84,6 +85,7 @@ export default function BusinessOverviewReport() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubscriptionRequired, setIsSubscriptionRequired] = useState(false);
+  const [subscriptionGateMessage, setSubscriptionGateMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadReport();
@@ -104,12 +106,15 @@ export default function BusinessOverviewReport() {
       );
       setData(response.data);
     } catch (err) {
-      if (err instanceof FetchError && err.code === "SUBSCRIPTION_REQUIRED") {
+      const parsed = parseReportLoadError(err);
+      if (parsed.subscriptionRequired) {
         setIsSubscriptionRequired(true);
+        setSubscriptionGateMessage(parsed.message);
         setError(null);
       } else {
-        setError(err instanceof Error ? err.message : "Failed to load report");
+        setError(parsed.message);
         setIsSubscriptionRequired(false);
+        setSubscriptionGateMessage(null);
       }
       console.error("Error loading business overview:", err);
     } finally {
@@ -153,11 +158,7 @@ export default function BusinessOverviewReport() {
             title="Business Overview"
             subtitle="Ledger + scheduled bookings — period to date"
           />
-          <SubscriptionGate
-            feature="Business Overview Reports"
-            message="Reports require a subscription upgrade."
-            upgradeMessage="Upgrade your platform plan under Subscription to access business analytics."
-          />
+          <ReportSubscriptionRequired feature="Business overview" message={subscriptionGateMessage} />
         </div>
       </SettingsDetailLayout>
     );

@@ -14,7 +14,7 @@ import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useProvider } from "@/providers/ProviderContext";
 import { useAuth } from "@/providers/AuthProvider";
-import { prefetchApi } from "@/hooks/useApi";
+import { prefetchApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
@@ -132,7 +132,10 @@ export default function TabsLayout() {
     // worth warming. The bookings tab is deliberately absent: it loads through
     // usePagedProviderBookings, which calls api.get directly with date-filtered
     // paged URLs, so a prefetch there would just be an extra cold-start request.
-    void prefetchApi(`/api/provider/dashboard${locQ}`, { userId });
+    void prefetchApi(`/api/provider/dashboard${locQ}`, {
+      userId,
+      timeoutMs: MONEY_SURFACE_TIMEOUT_MS,
+    });
     void prefetchApi("/api/provider/conversations", { userId });
   }, [provider?.id, session?.user?.id, selectedLocationId]);
 

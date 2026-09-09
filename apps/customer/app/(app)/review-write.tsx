@@ -11,6 +11,16 @@ import { trackReviewSubmitted } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/providers/AuthProvider";
+import { LoveTheAppSheet } from "@/components/LoveTheAppSheet";
+import {
+  shouldPromptStoreReview,
+  recordStoreReviewAccepted,
+  recordStoreReviewNotNow,
+  recordStoreReviewDontAsk,
+  requestAppStoreReview,
+  trackStoreReviewEvent,
+} from "@/lib/store-review-prompt";
 export default function ReviewWriteScreen() {
   useScreenTracking("Review Write");
   const { t } = useTranslation();
@@ -47,6 +57,8 @@ export default function ReviewWriteScreen() {
   const [androidKb, setAndroidKb] = useState(0);
   /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
   const [hasExistingReview, setHasExistingReview] = useState(false);
+  const [storeReviewOpen, setStoreReviewOpen] = useState(false);
+  const { user } = useAuth();
   const isEdit = !!reviewId || hasExistingReview;
 
   const uniqueStaff = useMemo(() => {
@@ -194,6 +206,34 @@ export default function ReviewWriteScreen() {
         if (res.error) Alert.alert(errTitle, res.error.message || rw("submitReviewError"));
         else {
           trackReviewSubmitted(providerSlugParam ?? "", rating, bookingId);
+          if (rating >= 4) {
+            const prompt = await shouldPromptStoreReview({
+              userId: user?.id,
+              stars: rating,
+              isEdit: false,
+            });
+            if (prompt) {
+              await new Promise((r) => setTimeout(r, 800));
+              trackStoreReviewEvent("store_review_prompt_shown", "booking_review", { rating });
+              setStoreReviewOpen(true);
+              return;
+            }
+          } else if (rating >= 1) {
+            trackStoreReviewEvent("low_score_feedback", "booking_review", { rating });
+            Alert.alert(
+              t("common.storeReview.lowScoreTitle"),
+              t("common.storeReview.lowScoreBody"),
+              [
+                { text: t("common.cancel"), style: "cancel", onPress: () => router.back() },
+                {
+                  text: t("common.storeReview.lowScoreAction"),
+                  onPress: () =>
+                    router.replace("/(app)/(tabs)/support-tickets/new" as never),
+                },
+              ],
+            );
+            return;
+          }
           router.back();
         }
       }
@@ -340,6 +380,35 @@ export default function ReviewWriteScreen() {
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>
+      <LoveTheAppSheet
+        visible={storeReviewOpen}
+        stars={rating}
+        onRate={() => {
+          void (async () => {
+            if (user?.id) await recordStoreReviewAccepted(user.id);
+            trackStoreReviewEvent("accepted", "booking_review", { rating });
+            await requestAppStoreReview();
+            setStoreReviewOpen(false);
+            router.back();
+          })();
+        }}
+        onNotNow={() => {
+          void (async () => {
+            if (user?.id) await recordStoreReviewNotNow(user.id);
+            trackStoreReviewEvent("not_now", "booking_review", { rating });
+            setStoreReviewOpen(false);
+            router.back();
+          })();
+        }}
+        onDontAsk={() => {
+          void (async () => {
+            if (user?.id) await recordStoreReviewDontAsk(user.id);
+            trackStoreReviewEvent("dont_ask", "booking_review", { rating });
+            setStoreReviewOpen(false);
+            router.back();
+          })();
+        }}
+      />
     </>
   );
 }

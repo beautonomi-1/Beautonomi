@@ -38,6 +38,8 @@ import {
   formatApiErrorMessage,
   subscriptionUpgradeHint,
 } from "@/lib/http/api-error";
+import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 
 export default function RecurringAppointmentsPage() {
   const router = useRouter();
@@ -179,13 +181,13 @@ export default function RecurringAppointmentsPage() {
           role="alert"
         >
           <p className="font-light leading-relaxed">{loadBlocked.message}</p>
-          {loadBlocked.code === "SUBSCRIPTION_REQUIRED" && (
+          {loadBlocked.code && isPlanGateErrorCode(loadBlocked.code) && (
             <Button
               type="button"
               className="mt-3 bg-primary hover:bg-primary-hover text-white"
               onClick={() => router.push("/provider/subscription")}
             >
-              View plans & billing
+              View plans
             </Button>
           )}
         </div>
@@ -476,11 +478,8 @@ function RecurringAppointmentEditDialog({
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update appointment:", error);
-      const msg =
-        formatApiErrorMessage(error, "Failed to update appointment") +
-        subscriptionUpgradeHint(error);
-      toast.error(msg);
-      if (error instanceof FetchError && error.code === "SUBSCRIPTION_REQUIRED") {
+      toastPlanGateError(error, "Failed to update appointment");
+      if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         setEditSubscriptionRequired(true);
       }
     } finally {
@@ -508,7 +507,7 @@ function RecurringAppointmentEditDialog({
               role="alert"
             >
               <p className="font-light leading-relaxed">
-                Your plan does not include editing recurring series. Upgrade to continue.
+                {getUpgradeMessage("recurring.feature")}
               </p>
               <Button
                 type="button"

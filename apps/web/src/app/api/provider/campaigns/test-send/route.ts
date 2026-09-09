@@ -9,6 +9,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { canUseMarketingChannel } from "@/lib/subscriptions/feature-access";
+import { campaignChannelUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     const canUseChannel = await canUseMarketingChannel(providerId, type, supabase);
     if (!canUseChannel) {
       return errorResponse(
-        `${type === "email" ? "Email" : type === "sms" ? "SMS" : "WhatsApp"} campaigns require a subscription upgrade.`,
+        campaignChannelUpgradeMessage(type),
         "SUBSCRIPTION_REQUIRED",
         403,
       );

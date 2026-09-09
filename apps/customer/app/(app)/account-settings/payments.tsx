@@ -206,7 +206,7 @@ export default function PaymentsScreen() {
         set_as_default: methods.length === 0,
         /** Paystack redirects here after checkout — must be in-app scheme so Safari returns to the customer app (not the web account page). */
         callback_url: callbackUrl,
-      });
+      }, { timeout: 120_000 });
       if (res.error) {
         Alert.alert(
           t("common.error"),

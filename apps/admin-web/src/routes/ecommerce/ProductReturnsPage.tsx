@@ -87,12 +87,13 @@ export function ProductReturnsPage() {
       setResolveId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productReturns(qk) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
-      const status = String(vars.data.status ?? "");
+      const resolution = String(vars.data.resolution ?? "");
       adminToast.success(
-        status === "approved" ? "Return approved" :
-        status === "rejected" ? "Return rejected" :
-        status === "refunded" ? "Return refunded" :
-        "Return resolved"
+        resolution === "full_refund" || resolution === "partial_refund" || resolution === "store_credit"
+          ? "Return refunded"
+          : resolution === "denied"
+            ? "Return rejected"
+            : "Return resolved",
       );
     },
     onError: (e: Error) => adminToast.error(`Failed to resolve return: ${e.message}`),
@@ -142,7 +143,7 @@ export function ProductReturnsPage() {
             <option value="escalated">Escalated</option>
             <option value="refunded">Refunded</option>
             <option value="resolved_by_admin">Resolved</option>
-            <option value="denied">Denied</option>
+            <option value="rejected">Rejected</option>
           </select>
         </label>
       </AdminPanel>

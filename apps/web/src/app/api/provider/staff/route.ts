@@ -10,7 +10,8 @@ import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_STAFF_INVITED } from "@/lib/analytics/amplitude/types";
 import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
-import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
+import { checkStaffLimit } from "@/lib/subscriptions/limit-checker";
+import { formatLimitUpgradeMessage, getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { resolveStaffLocationScope } from "@/lib/provider/staff-location-scope";
 import { z } from "zod";
 
@@ -347,7 +348,7 @@ export async function POST(request: Request) {
     const staffAccess = await checkStaffManagementFeatureAccess(providerId, supabase);
     if (!staffAccess.enabled) {
       return errorResponse(
-        "Staff management requires a subscription upgrade. Please upgrade your plan to add staff members.",
+        getUpgradeMessage("limits.staff"),
         "SUBSCRIPTION_REQUIRED",
         403
       );
@@ -357,7 +358,7 @@ export async function POST(request: Request) {
     const staffLimitCheck = await checkStaffLimit(providerId, supabase);
     if (!staffLimitCheck.canProceed) {
       return errorResponse(
-        formatLimitError(staffLimitCheck, "Plan"),
+        formatLimitUpgradeMessage(staffLimitCheck, "staff"),
         "SUBSCRIPTION_LIMIT_EXCEEDED",
         403
       );

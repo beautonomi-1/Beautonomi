@@ -268,12 +268,11 @@ export function ServiceCreateEditDialog({
         ...prev,
         selectedTeamMembers: [...prev.selectedTeamMembers, newMember.id],
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       handleError(error, {
         action: "createTeamMember",
         resource: "team member",
       });
-      toast.error(error?.message || "Failed to create team member");
     }
   };
 

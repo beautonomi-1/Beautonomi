@@ -13,6 +13,9 @@ import { providerApi } from "@/lib/provider-portal/api";
 import { fetcher } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { toast } from "sonner";
+import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
+import { getUpgradeMessage } from "@/lib/subscriptions/subscription-upgrade-copy";
+import Link from "next/link";
 import { Bell, Mail, Phone, Monitor, Clock, Calendar, User, AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -142,9 +145,9 @@ export default function NotificationsSettings() {
         reminder_time: settings.reminder_time,
       });
       toast.success("Notification settings saved successfully");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save notification settings:", error);
-      toast.error(error.message || "Failed to save notification settings");
+      toastPlanGateError(error, "Failed to save notification settings");
     } finally {
       setIsSaving(false);
     }
@@ -276,8 +279,16 @@ export default function NotificationsSettings() {
                       <p className="text-xs text-gray-500 mt-1">
                         {settings.sms_plan_allowed
                           ? `Send SMS notifications to ${selectedMemberData?.mobile || "their mobile number"}`
-                          : "Staff SMS is available on subscription plans that include it. Upgrade to enable."}
+                          : getUpgradeMessage("staff.sms")}
                       </p>
+                      {!settings.sms_plan_allowed ? (
+                        <Link
+                          href="/provider/subscription"
+                          className="inline-block mt-2 text-xs font-medium text-primary underline"
+                        >
+                          View plans
+                        </Link>
+                      ) : null}
                     </div>
                   </div>
 

@@ -7,7 +7,7 @@ import { getProviderReportContext, reportDateRangeFromParams } from "@/lib/repor
 
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requireProviderReportsAccess(request);
+    const permissionCheck = await requireProviderReportsAccess(request, { reportType: "staff" });
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
