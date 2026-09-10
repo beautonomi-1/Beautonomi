@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
     if (gate) return gate;
 
     const from = reconcileWindowFromDays(7).toISOString();
-    const { data: payments, error } = await supabase
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: payments, error } = await supabaseAdmin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("provider_id", providerId)
@@ -52,7 +53,6 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    const supabaseAdmin = getSupabaseAdmin();
     const summary = await reconcilePaycloudPaymentsBatch({
       supabase: supabaseAdmin,
       payments: payments ?? [],

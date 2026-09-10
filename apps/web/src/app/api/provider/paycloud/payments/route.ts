@@ -185,6 +185,8 @@ export async function POST(request: NextRequest) {
     }
     const ctx = resolved.ctx;
 
+    const admin = getSupabaseAdmin();
+
     const guard = await validatePaycloudPaymentInitiate(supabase, {
       providerId,
       terminalId: parsed.data.terminal_id,
@@ -198,7 +200,7 @@ export async function POST(request: NextRequest) {
         (guard.code === "ENTITY_IN_FLIGHT" || guard.code === "TERMINAL_IN_FLIGHT") &&
         guard.existingPaymentId
       ) {
-        const { data: existing } = await supabase
+        const { data: existing } = await admin
           .from("provider_paycloud_payments")
           .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("id", guard.existingPaymentId)
@@ -337,7 +339,7 @@ export async function POST(request: NextRequest) {
     }
     if (parsed.data.serial_source) deviceDiagnostics.serial_source = parsed.data.serial_source;
 
-    const { data: paymentRow, error: insertError } = await supabase
+    const { data: paymentRow, error: insertError } = await admin
       .from("provider_paycloud_payments")
       .insert({
         tenant_id: provider.tenant_id,
@@ -371,9 +373,20 @@ export async function POST(request: NextRequest) {
       .select()
       .single();
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      console.error("POST /api/provider/paycloud/payments insert:", insertError);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: insertError.message || "Failed to start payment",
+            code: "INTERNAL_ERROR",
+          },
+        },
+        { status: 500 },
+      );
+    }
 
-    const admin = getSupabaseAdmin();
     const { data: claimed } = await admin
       .from("paycloud_terminals")
       .update({ in_flight_payment_id: paymentRow.id })
@@ -396,7 +409,7 @@ export async function POST(request: NextRequest) {
 
       const inFlightId = terminalNow?.in_flight_payment_id;
       if (inFlightId) {
-        const { data: existing } = await supabase
+        const { data: existing } = await admin
           .from("provider_paycloud_payments")
           .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("id", inFlightId)
@@ -481,7 +494,7 @@ export async function POST(request: NextRequest) {
     });
 
     const status = orderResult.success ? "processing" : "failed";
-    await supabase
+    await admin
       .from("provider_paycloud_payments")
       .update({
         status,
@@ -497,7 +510,7 @@ export async function POST(request: NextRequest) {
     if (!orderResult.success) {
       // Code 113 = duplicate merchant_order_no / duplicate request — reuse any recent pending for this entity
       if (orderResult.response_code === "113") {
-        const { data: existing } = await supabase
+        const { data: existing } = await admin
           .from("provider_paycloud_payments")
           .select("id, merchant_order_no, status, amount, currency, initiation_channel")
           .eq("provider_id", providerId)
@@ -509,7 +522,7 @@ export async function POST(request: NextRequest) {
           .limit(1)
           .maybeSingle();
 
-        await supabase
+        await admin
           .from("provider_paycloud_payments")
           .update({
             status: "cancelled",
@@ -522,7 +535,7 @@ export async function POST(request: NextRequest) {
           .eq("id", paymentRow.id);
 
         if (existing) {
-          await supabase
+          await admin
             .from("paycloud_terminals")
             .update({ in_flight_payment_id: existing.id })
             .eq("id", parsed.data.terminal_id);
@@ -542,7 +555,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      await supabase.from("paycloud_terminals").update({ in_flight_payment_id: null }).eq("id", parsed.data.terminal_id);
+      await admin.from("paycloud_terminals").update({ in_flight_payment_id: null }).eq("id", parsed.data.terminal_id);
       return NextResponse.json({
         data: null,
         error: {

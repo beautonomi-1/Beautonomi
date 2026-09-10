@@ -61,7 +61,7 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const parsed = confirmSchema.safeParse(body);
 
-    const { data: payment } = await supabase
+    const { data: payment } = await admin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
@@ -136,10 +136,11 @@ export async function POST(
       .maybeSingle();
 
     const result = await reconcilePaycloudPayment(admin, (refreshed ?? payment) as any);
-    const { data: finalPayment } = await supabase
+    const { data: finalPayment } = await admin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
+      .eq("provider_id", providerId)
       .maybeSingle();
 
     return NextResponse.json({

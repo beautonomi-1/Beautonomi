@@ -20,7 +20,8 @@ export async function GET(
     const gate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
-    const { data: payment } = await supabase
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: payment } = await supabaseAdmin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
@@ -32,14 +33,14 @@ export async function GET(
     }
 
     if (payment.status === "pending" || payment.status === "processing") {
-      const supabaseAdmin = getSupabaseAdmin();
       await reconcilePaycloudPayment(supabaseAdmin, payment);
     }
 
-    const { data: updated } = await supabase
+    const { data: updated } = await supabaseAdmin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
+      .eq("provider_id", providerId)
       .maybeSingle();
 
     return NextResponse.json({ data: updated ?? payment, error: null });

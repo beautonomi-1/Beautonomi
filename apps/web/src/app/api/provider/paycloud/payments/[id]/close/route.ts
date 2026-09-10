@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { requirePaycloudPlatformEnabledForProvider } from "@/lib/payments/paycloud-feature-gate";
@@ -23,7 +24,8 @@ export async function POST(
     const gate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
-    const { data: payment } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: payment } = await admin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
@@ -44,7 +46,7 @@ export async function POST(
       (payment.status === "pending" || payment.status === "processing");
 
     if (isSameTerminalPending) {
-      await supabase
+      await admin
         .from("provider_paycloud_payments")
         .update({
           status: "closed",
@@ -54,13 +56,13 @@ export async function POST(
         .eq("id", id);
 
       if (payment.terminal_id) {
-        await supabase
+        await admin
           .from("paycloud_terminals")
           .update({ in_flight_payment_id: null })
           .eq("id", payment.terminal_id);
       }
 
-      const { data: updated } = await supabase
+      const { data: updated } = await admin
         .from("provider_paycloud_payments")
         .select("*")
         .eq("id", id)
@@ -96,7 +98,7 @@ export async function POST(
     });
 
     const status = closeResult.success ? "closed" : payment.status;
-    await supabase
+    await admin
       .from("provider_paycloud_payments")
       .update({
         status,
@@ -108,10 +110,10 @@ export async function POST(
       .eq("id", id);
 
     if (closeResult.success && payment.terminal_id) {
-      await supabase.from("paycloud_terminals").update({ in_flight_payment_id: null }).eq("id", payment.terminal_id);
+      await admin.from("paycloud_terminals").update({ in_flight_payment_id: null }).eq("id", payment.terminal_id);
     }
 
-    const { data: updated } = await supabase.from("provider_paycloud_payments").select("*").eq("id", id).single();
+    const { data: updated } = await admin.from("provider_paycloud_payments").select("*").eq("id", id).single();
     return NextResponse.json({ data: updated, error: null });
   } catch (error: any) {
     console.error("POST /api/provider/paycloud/payments/[id]/close:", error);

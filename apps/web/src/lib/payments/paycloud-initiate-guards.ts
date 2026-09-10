@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const COLLECTIBLE_ENTITY_TYPES = new Set([
   "booking",
@@ -32,6 +33,8 @@ export async function validatePaycloudPaymentInitiate(
     environment: string;
   },
 ): Promise<PaycloudInitiateGuardResult> {
+  const admin = getSupabaseAdmin();
+
   if (!COLLECTIBLE_ENTITY_TYPES.has(params.entityType)) {
     return { ok: false, code: "INVALID_ENTITY", message: "This item can't be charged on a card machine.", status: 400 };
   }
@@ -75,7 +78,7 @@ export async function validatePaycloudPaymentInitiate(
     }
   }
 
-  const { data: pendingSameEntity } = await supabase
+  const { data: pendingSameEntity } = await admin
     .from("provider_paycloud_payments")
     .select("id")
     .eq("provider_id", params.providerId)
@@ -194,7 +197,7 @@ export async function validatePaycloudPaymentInitiate(
 
     const bookingId = (charge as { booking_id?: string }).booking_id;
     if (bookingId) {
-      const { data: bookingLevelInFlight } = await supabase
+      const { data: bookingLevelInFlight } = await admin
         .from("provider_paycloud_payments")
         .select("id")
         .eq("provider_id", params.providerId)
@@ -218,7 +221,7 @@ export async function validatePaycloudPaymentInitiate(
   }
 
   if (params.entityType === "booking") {
-    const { data: chargeInFlight } = await supabase
+    const { data: chargeInFlight } = await admin
       .from("provider_paycloud_payments")
       .select("id, additional_charge_id")
       .eq("provider_id", params.providerId)

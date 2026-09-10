@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     const to = searchParams.get("to");
     const status = searchParams.get("status");
 
-    let query = supabase
+    let query = getSupabaseAdmin()
       .from("provider_paycloud_payments")
       .select(
         "id, merchant_order_no, amount, expected_amount, amount_match_status, status, currency, entity_type, entity_id, created_at, updated_at",

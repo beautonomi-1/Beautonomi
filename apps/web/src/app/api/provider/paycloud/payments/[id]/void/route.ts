@@ -27,7 +27,8 @@ export async function POST(
     const gate = await requirePaycloudPlatformEnabledForProvider(supabase, providerId);
     if (gate) return gate;
 
-    const { data: payment } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: payment } = await admin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", id)
@@ -57,10 +58,11 @@ export async function POST(
         ? (payment.metadata as Record<string, unknown>)
         : {};
     if (metadata.void_payment_id) {
-      const { data: voidRow } = await supabase
+      const { data: voidRow } = await admin
         .from("provider_paycloud_payments")
         .select("*")
         .eq("id", String(metadata.void_payment_id))
+        .eq("provider_id", providerId)
         .maybeSingle();
       if (voidRow) {
         return NextResponse.json({ data: voidRow, error: null });
@@ -92,7 +94,7 @@ export async function POST(
         Math.max(0, Number(payment.cashback_amount ?? 0)),
     );
 
-    const { data: voidPaymentRow, error: insertError } = await supabase
+    const { data: voidPaymentRow, error: insertError } = await admin
       .from("provider_paycloud_payments")
       .insert({
         tenant_id: provider?.tenant_id,
@@ -126,7 +128,6 @@ export async function POST(
     if (insertError) throw insertError;
 
     // Atomic claim — same as create payment (avoid racing another charge onto the terminal).
-    const admin = getSupabaseAdmin();
     const { data: claimed } = await admin
       .from("paycloud_terminals")
       .update({ in_flight_payment_id: voidPaymentRow.id })
@@ -166,7 +167,7 @@ export async function POST(
     });
 
     const status = voidResult.success ? "processing" : "failed";
-    await supabase
+    await admin
       .from("provider_paycloud_payments")
       .update({
         status,
@@ -178,7 +179,7 @@ export async function POST(
       })
       .eq("id", voidPaymentRow.id);
 
-    await supabase
+    await admin
       .from("provider_paycloud_payments")
       .update({
         metadata: { ...metadata, void_payment_id: voidPaymentRow.id },
@@ -187,7 +188,7 @@ export async function POST(
       .eq("id", payment.id);
 
     if (!voidResult.success) {
-      await supabase
+      await admin
         .from("paycloud_terminals")
         .update({ in_flight_payment_id: null })
         .eq("id", payment.terminal_id);
@@ -203,7 +204,7 @@ export async function POST(
       );
     }
 
-    const { data: updated } = await supabase
+    const { data: updated } = await admin
       .from("provider_paycloud_payments")
       .select("*")
       .eq("id", voidPaymentRow.id)
