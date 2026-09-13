@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **479** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **495** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -132,7 +132,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 40 | `/admin/content` | W3 | content_catalog | Y | Broad: catalog/content endpoints (many `GET/POST/PATCH/DELETE` under `/api/admin/content`, `/api/admin/catalog`, media) | Highest API surface area |
 | 41 | `/admin/content/learning` | W3 | content_catalog | Y | Learning center admin APIs | |
 | 42 | `/admin/catalog` | W3 | content_catalog | Y | `GET/POST/PATCH /api/admin/catalog` (+ services/categories) | |
-| 43 | `/admin/explore` | W3 | content_catalog | Y | Via `ExploreModerationTable`: `GET/PATCH/POST /api/admin/explore/posts` | |
+| 43 | `/admin/explore` | W3 | content_catalog | Y | Via `ExploreModerationTable`: `GET/PATCH/POST /api/admin/explore/posts`. Advisory `POST .../posts/[id]/moderation-suggest` is API-only (does not write `is_hidden`). | |
 | 44 | `/admin/addons` | W3 | content_catalog | N | `GET/POST/PUT/DELETE /api/admin/addons`, `GET /api/admin/catalog/services` | Not in sidebar |
 | 45 | `/admin/ecommerce/orders` | W3 | ecommerce | Y | `GET /api/admin/ecommerce/orders` | |
 | 46 | `/admin/ecommerce/returns` | W3 | ecommerce | Y | `GET /api/admin/ecommerce/returns` | |
@@ -178,9 +178,10 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 76 | `/admin/control-plane` | W5 | platform_config | N | — | Redirect → `/admin/control-plane/overview` (no SPA page needed) |
 | 77 | `/admin/control-plane/overview` | W5 | platform_config | Y | — | Card hub only |
 | 78 | `/admin/control-plane/feature-flags` | W5 | platform_config | Y | `GET /api/admin/feature-flags`, `POST /api/admin/control-plane/flags-preview` | List + resolver preview |
-| 79 | `/admin/control-plane/integrations` | W5 | platform_config | Y | — | Card hub (links to didit/gemini/aura/mapbox/settings/amplitude) |
+| 79 | `/admin/control-plane/integrations` | W5 | platform_config | Y | — | Card hub (links to ai/didit/gemini/aura/mapbox/settings/amplitude) |
 | 80 | `/admin/control-plane/integrations/didit` | W5 | platform_config | Y (superadmin only) | `GET/PUT .../control-plane/integrations/didit`; `POST .../didit/test` | **SPA:** [`CpIntegrationDiditPage`](../../apps/admin-web/src/routes/control-plane/CpIntegrationDiditPage.tsx). Replaces Sumsub. AuthZ `requireRoleInApi(["superadmin"])`. |
-| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | Y | `GET/PUT .../gemini` | |
+| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | Y | `GET/PUT .../gemini` | Legacy Gemini page; SPA redirects to `/admin/control-plane/integrations/ai`. |
+| 81a | `/admin/control-plane/integrations/ai` | W5 | platform_config | Y (superadmin only) | `GET/PUT .../integrations/ai`; `POST .../ai/test`; `POST .../ai/emergency` | **SPA:** [`CpIntegrationAiPage`](../../apps/admin-web/src/routes/control-plane/CpIntegrationAiPage.tsx). Multi-vendor runtime + emergency controls. AuthZ `requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG)`. |
 | 82 | `/admin/control-plane/integrations/aura` | W5 | platform_config | Y | `GET/PUT .../aura` | |
 | 83 | `/admin/control-plane/modules/ads` | W5 | platform_config | Y | `GET/PUT .../modules/ads`, `GET/POST/DELETE .../modules/ads/packs` | |
 | 84 | `/admin/control-plane/modules/on-demand` | W5 | platform_config | Y | `GET/PUT .../on-demand` | |
@@ -303,6 +304,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-08-15 | **Taxonomy / CI:** Added **2** rows for courier shipping integration (`GET/PATCH /api/admin/integrations/shipping`, `POST .../shipping/probe`). SPA: [`ShippingIntegrationPage`](../../apps/admin-web/src/routes/integrations/ShippingIntegrationPage.tsx). §1.1 inventory **474**; §4 row **61g**. |
 | 2026-08-19 | **Taxonomy / CI:** Added `GET /api/admin/user-blocks` (`ADMIN_SECTION_USERS_TRUST`, `resolveAdminApiTenantId`). SPA: [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx) at `/admin/user-blocks`. §1.1 inventory **475**; §4 row **17b**. |
 | 2026-09-13 | **Taxonomy / CI:** Added FX reference desk routes (`GET/POST/DELETE /api/admin/finance/fx-rates`, `GET .../history`, `GET .../audit`, `POST .../refresh`). SPA: [`FxRatesPage`](../../apps/admin-web/src/routes/finance/FxRatesPage.tsx) at `/admin/fx-rates`. §1.1 inventory **479**; §4 row **29b**. |
+| 2026-09-13 | **Taxonomy / CI:** Added AI provider runtime routes (`GET/PUT /api/admin/control-plane/integrations/ai`, `POST .../ai/test`, `POST .../ai/emergency`) and advisory `POST /api/admin/explore/posts/[id]/moderation-suggest`. SPA: [`CpIntegrationAiPage`](../../apps/admin-web/src/routes/control-plane/CpIntegrationAiPage.tsx); moderation-suggest is API-only. §1.1 inventory **495**; §4 rows **43**, **81**, **81a**. |
 
 ---
 
@@ -350,3 +352,5 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-07-27 | Taxonomy: `+1` route (`GET /api/admin/paycloud-operations/payments/[id]`); §4 row **61e**; SPA [`PaycloudPaymentDetailModal`](../../apps/admin-web/src/routes/integrations/PaycloudPaymentDetailModal.tsx). §1.1 inventory **458**. |
 | 2026-08-15 | Taxonomy: `+2` routes (`GET/PATCH /api/admin/integrations/shipping`, `POST .../shipping/probe`); §4 row **61g**; SPA [`ShippingIntegrationPage`](../../apps/admin-web/src/routes/integrations/ShippingIntegrationPage.tsx). §1.1 inventory **474**. |
 | 2026-08-19 | Taxonomy: `+1` route (`GET /api/admin/user-blocks`); §4 row **17b**; SPA [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx). §1.1 inventory **475**. |
+| 2026-09-13 | Taxonomy: `+4` FX desk routes (`/api/admin/finance/fx-rates` + `history`/`audit`/`refresh`); §4 row **29b**; SPA [`FxRatesPage`](../../apps/admin-web/src/routes/finance/FxRatesPage.tsx). §1.1 inventory **479**. |
+| 2026-09-13 | Taxonomy: `+4` AI runtime + explore moderation-suggest routes (`.../integrations/ai`, `.../ai/test`, `.../ai/emergency`, `.../explore/posts/[id]/moderation-suggest`); §4 rows **43**, **81**, **81a**; SPA [`CpIntegrationAiPage`](../../apps/admin-web/src/routes/control-plane/CpIntegrationAiPage.tsx). §1.1 inventory **495**. |
