@@ -15,6 +15,7 @@
       }
     },
     "overrides": {
+      "@babel/core": "7.29.0",
       "@sentry/core": "10.50.0",
       "react": "19.1.0",
       "react-dom": "19.1.0",
