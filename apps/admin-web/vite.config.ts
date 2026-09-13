@@ -91,10 +91,15 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return;
-          if (id.includes("lucide-react")) return "lucide";
-          if (id.includes("@tanstack/react-query")) return "tanstack-query";
-          if (id.includes("react-dom")) return "react-dom";
-          if (id.includes("react-router")) return "react-router";
+          const nm = id.replace(/\\/g, "/");
+          if (nm.includes("/lucide-react/")) return "lucide";
+          if (nm.includes("/@tanstack/react-query/")) return "tanstack-query";
+          // Keep React + react-dom + scheduler together. Splitting them causes a
+          // TDZ crash (`Cannot access 'O' before initialization`) on the login shell.
+          if (nm.includes("/react-dom/") || nm.includes("/scheduler/") || nm.includes("/react/")) {
+            return "react-vendor";
+          }
+          if (nm.includes("/react-router/")) return "react-router";
         },
       },
     },

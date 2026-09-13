@@ -1,21 +1,16 @@
 /**
- * Shared LLM access for agent workflows. Uses the platform Gemini integration
- * (gemini_integration_config) when enabled; callers must always handle the
- * `configured: false` / failure path with a deterministic fallback so agents
- * degrade gracefully instead of breaking.
- *
- * When a caller passes `runId`, every model call is recorded as an
- * `agent_steps` row (kind = 'model') and its tokens/cost are rolled up into
- * `agent_runs.total_tokens_in / total_tokens_out / total_cost_usd`.
+ * Shared LLM access for agent workflows via callLlm().
  */
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { callGemini } from "@/lib/ai/gemini";
+import { callLlm } from "@/lib/ai/call-llm";
 import { estimateCostUsd } from "@/lib/ai/pricing";
+import { resolveAiRuntime } from "@/lib/ai/resolve-runtime";
+import { GEMINI_MODELS, type ModelTask } from "@beautonomi/agent-model-router";
 
 const ENV = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
 const ENVIRONMENT = ENV === "production" ? "production" : ENV === "staging" ? "staging" : "development";
 
-export const DEFAULT_AGENT_MODEL = "gemini-2.0-flash";
+export const DEFAULT_AGENT_MODEL = GEMINI_MODELS.flashLite;
 
 export type AgentLlmResult =
   | { configured: false }
@@ -35,16 +30,15 @@ export interface CallAgentLlmParams {
   user: string;
   maxTokens?: number;
   temperature?: number;
-  /** Gemini responseSchema for structured JSON output. */
   schema?: Record<string, unknown>;
-  /** agent_runs.id — when set, the call is written to agent_steps and rolled up onto the run. */
   runId?: string;
-  /** Explicit agent_steps.seq; defaults to (max existing seq for the run) + 1. */
   stepSeq?: number;
-  /** Stored as agent_steps.prompt_version. */
   promptVersion?: string;
-  /** Sentry tag on failures, e.g. `agent.support-triage`. */
   featureKey?: string;
+  task?: ModelTask;
+  riskTier?: number;
+  tenantId?: string | null;
+  modelId?: string;
 }
 
 async function nextStepSeq(
@@ -61,14 +55,11 @@ async function nextStepSeq(
   return Number((data as { seq?: number } | null)?.seq ?? 0) + 1;
 }
 
-/**
- * Persist one model step and roll its usage up onto the parent run.
- * Best-effort: metering must never fail the agent workflow.
- */
 export async function recordAgentModelStep(params: {
   runId: string;
   seq?: number;
   model: string;
+  modelProvider?: string;
   tokensIn: number;
   tokensOut: number;
   costUsd: number;
@@ -76,6 +67,7 @@ export async function recordAgentModelStep(params: {
   promptVersion?: string;
   schemaValid?: boolean | null;
   error?: string | null;
+  gateway?: boolean;
 }): Promise<void> {
   try {
     const supabase = getSupabaseAdmin();
@@ -84,7 +76,7 @@ export async function recordAgentModelStep(params: {
       run_id: params.runId,
       seq,
       kind: "model",
-      model_provider: "gemini",
+      model_provider: params.modelProvider ?? "gemini",
       model_id: params.model,
       prompt_version: params.promptVersion ?? null,
       tokens_in: params.tokensIn,
@@ -95,8 +87,6 @@ export async function recordAgentModelStep(params: {
       error: params.error ?? null,
     });
 
-    // Read-modify-write rollup (agent runs are single-writer per run id, so this is race-safe enough
-    // and avoids a new RPC; the step rows remain the source of truth for audits).
     const { data: run } = await supabase
       .from("agent_runs")
       .select("total_tokens_in, total_tokens_out, total_cost_usd")
@@ -121,22 +111,11 @@ export async function recordAgentModelStep(params: {
 }
 
 export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlmResult> {
-  const supabase = getSupabaseAdmin();
-  const { data } = await supabase
-    .from("gemini_integration_config")
-    .select("api_key_secret, default_model")
-    .eq("environment", ENVIRONMENT)
-    .eq("enabled", true)
-    .maybeSingle();
-
-  const apiKey = (data as { api_key_secret?: string } | null)?.api_key_secret;
-  const model = (data as { default_model?: string } | null)?.default_model ?? DEFAULT_AGENT_MODEL;
-  if (!apiKey) return { configured: false };
+  const runtime = await resolveAiRuntime(ENVIRONMENT, params.tenantId ?? null);
+  if (!runtime.config.enabled) return { configured: false };
 
   const startedAt = Date.now();
-  const result = await callGemini({
-    apiKey,
-    model,
+  const result = await callLlm({
     system: params.system,
     user: params.user,
     temperature: params.temperature ?? 0.3,
@@ -144,8 +123,14 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
     schema: params.schema,
     timeoutMs: 60_000,
     featureKey: params.featureKey ?? "agent",
+    task: params.task ?? "complex_reasoning",
+    riskTier: params.riskTier ?? 1,
+    tenantId: params.tenantId ?? null,
+    environment: ENVIRONMENT,
+    modelId: params.modelId,
   });
   const latencyMs = Date.now() - startedAt;
+  const model = result.model || runtime.config.defaultModelId || DEFAULT_AGENT_MODEL;
   const costUsd = await estimateCostUsd(model, result.tokensIn, result.tokensOut);
 
   const failed = !result.success || !result.text.trim();
@@ -154,6 +139,7 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
       runId: params.runId,
       seq: params.stepSeq,
       model,
+      modelProvider: result.modelProvider,
       tokensIn: result.tokensIn,
       tokensOut: result.tokensOut,
       costUsd,
@@ -161,6 +147,7 @@ export async function callAgentLlm(params: CallAgentLlmParams): Promise<AgentLlm
       promptVersion: params.promptVersion,
       schemaValid: params.schema ? (failed ? false : isJsonParseable(result.text)) : null,
       error: failed ? (result.errorCode ?? "EMPTY_RESPONSE") : null,
+      gateway: result.gateway,
     });
   }
 
@@ -182,7 +169,6 @@ function isJsonParseable(text: string): boolean {
   return parseLlmJson(text) !== null;
 }
 
-/** Parse model JSON output tolerantly (strips code fences). Returns null on failure. */
 export function parseLlmJson<T>(text: string): T | null {
   const cleaned = text
     .trim()

@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -17,10 +19,12 @@ import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-
 import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 import type { ClientRetentionResponse } from "@/app/api/provider/reports/clients/retention/route";
 import { ClientRetentionTrendChart, ClientRetentionVolumeChart } from "./components/ClientRetentionCharts";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 export default function ClientRetentionReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const exportCurrency = useReportExportCurrency();
+  const { t } = useTranslation();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<ClientRetentionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +71,7 @@ export default function ClientRetentionReport() {
   };
 
   const handleExportPdf = () => {
-    exportToPDF("client-retention-report", "client-retention-report", "Client retention report");
+    exportToPDF("client-retention-report", "client-retention-report", t("web.provider.reports.pages.clients/retention.pdfTitle"));
   };
 
   const formatPeriodLabel = useCallback(
@@ -75,29 +79,29 @@ export default function ClientRetentionReport() {
       if (period === "month") {
         const [year, month] = periodStr.split("-");
         if (!year || !month) return periodStr;
-        return new Date(parseInt(year, 10), parseInt(month, 10) - 1).toLocaleDateString("en-US", {
+        return new Date(parseInt(year, 10), parseInt(month, 10) - 1).toLocaleDateString(getDefaultMoneyLocale(), {
           month: "long",
           year: "numeric",
         });
       }
       if (period === "quarter") {
         const m = periodStr.match(/^(\d{4})-Q(\d)$/);
-        if (m) return `Q${m[2]} ${m[1]}`;
+        if (m) return t("web.provider.reports.pages.clients/retention.quarterLabel", { q: m[2], year: m[1] });
         return periodStr.replace("-", " ");
       }
       return periodStr;
     },
-    [period],
+    [period, t],
   );
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Retention" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/retention.title") },
         ]}
       >
         <ReportSkeleton />
@@ -109,15 +113,15 @@ export default function ClientRetentionReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Retention" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/retention.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Client Retention" />
-          <ReportSubscriptionRequired feature="Client Retention" />
+          <PageHeader title={t("web.provider.reports.pages.clients/retention.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.clients/retention.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -127,15 +131,15 @@ export default function ClientRetentionReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Client Retention" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/retention.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load client retention data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.clients/retention.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -144,25 +148,25 @@ export default function ClientRetentionReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Client Retention" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.clients/retention.title") },
       ]}
       showCloseButton={false}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <PageHeader
-          title="Client Retention"
-          subtitle="Completed visits only — repeat share and period-over-period overlap"
+          title={t("web.provider.reports.pages.clients/retention.title")}
+          subtitle={t("web.provider.reports.pages.clients/retention.subtitle")}
         />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={handleExportCsv} className="gap-2 rounded-xl">
             <Download className="h-4 w-4" />
-            CSV
+            {t("web.provider.common.csv")}
           </Button>
           <Button variant="outline" onClick={handleExportPdf} className="gap-2 rounded-xl">
-            PDF
+            {t("web.provider.common.pdf")}
           </Button>
         </div>
       </div>
@@ -174,16 +178,15 @@ export default function ClientRetentionReport() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="month">Monthly buckets</SelectItem>
-              <SelectItem value="quarter">Quarterly buckets</SelectItem>
-              <SelectItem value="year">Yearly buckets</SelectItem>
+              <SelectItem value="month">{t("web.provider.reports.pages.clients/retention.monthlyBuckets")}</SelectItem>
+              <SelectItem value="quarter">{t("web.provider.reports.pages.clients/retention.quarterlyBuckets")}</SelectItem>
+              <SelectItem value="year">{t("web.provider.reports.pages.clients/retention.yearlyBuckets")}</SelectItem>
             </SelectContent>
           </Select>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <CalendarRange className="h-4 w-4 shrink-0 text-gray-500" />
             <span>
-              Window {data.analysisFromYmd} → {data.analysisToYmd} · ~{data.monthsOfHistory} mo lookback ·{" "}
-              {data.timezone}
+              {t("web.provider.reports.pages.clients/retention.windowLookback", { from: data.analysisFromYmd, to: data.analysisToYmd, months: data.monthsOfHistory, tz: data.timezone })}
             </span>
           </div>
         </div>
@@ -192,7 +195,7 @@ export default function ClientRetentionReport() {
           <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
             <div>
-              <p className="font-medium text-sky-900">Facts & definitions</p>
+              <p className="font-medium text-sky-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
               <p className="mt-1">{data.basisNote}</p>
             </div>
           </div>
@@ -201,8 +204,8 @@ export default function ClientRetentionReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Distinct clients</CardTitle>
-              <p className="text-xs text-gray-500">With ≥1 completed visit in window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.business/overview.distinctClients")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/retention.withCompletedVisit")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -216,8 +219,8 @@ export default function ClientRetentionReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Single-visit clients</CardTitle>
-              <p className="text-xs text-gray-500">Exactly one completed visit</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/retention.singleVisitClients")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/retention.exactlyOneVisit")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -231,8 +234,8 @@ export default function ClientRetentionReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Repeat clients</CardTitle>
-              <p className="text-xs text-gray-500">Two or more completed visits</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/retention.repeatClients")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/retention.twoOrMoreVisits")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -246,8 +249,8 @@ export default function ClientRetentionReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Repeat share</CardTitle>
-              <p className="text-xs text-gray-500">Repeat ÷ distinct clients</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/retention.repeatShare")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.clients/retention.repeatDivDistinct")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -264,7 +267,7 @@ export default function ClientRetentionReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Avg completed visits / client</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/retention.avgCompletedVisits")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.averageVisitsPerClient.toFixed(2)}</p>
@@ -274,9 +277,9 @@ export default function ClientRetentionReport() {
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Period-over-period retention</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.clients/retention.periodOverPeriod")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Of clients active in the prior bucket, what fraction came back in this bucket (completed visits).
+                {t("web.provider.reports.pages.clients/retention.periodOverPeriodHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -286,9 +289,9 @@ export default function ClientRetentionReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Prior bucket vs carry-over</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.clients/retention.priorVsCarryOver")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Gray = distinct clients in the prior period bucket; rose = also booked again this period.
+                {t("web.provider.reports.pages.clients/retention.priorVsCarryOverHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -299,36 +302,36 @@ export default function ClientRetentionReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Period detail</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.clients/retention.periodDetail")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.retentionByPeriod.length === 0 ? (
               <EmptyReportState
-                title="No chained periods yet"
-                description="Retention vs prior appears once there are at least two buckets (e.g. two months of completed visits)."
+                title={t("web.provider.reports.pages.clients/retention.noChainedPeriods")}
+                description={t("web.provider.reports.pages.clients/retention.noChainedPeriodsHint")}
               />
             ) : (
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50/80">
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Period</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Prior bucket</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Returned</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Retention</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Clients (bucket)</th>
+                      <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.reports.pages.clients/retention.period")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/retention.priorBucket")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/retention.returned")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/retention.retention")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.clients/retention.clientsBucket")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.retentionByPeriod.map((item) => (
                       <tr key={item.period} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-4 py-3 font-medium text-gray-900">{formatPeriodLabel(item.period)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">{item.clientsInPriorPeriod}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-700">{item.returnedFromPriorPeriod}</td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-rose-800">
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-700">{item.clientsInPriorPeriod}</td>
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-700">{item.returnedFromPriorPeriod}</td>
+                        <td className="px-4 py-3 text-end font-medium tabular-nums text-rose-800">
                           {item.retentionRate.toFixed(1)}%
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-800">{item.clients}</td>
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-800">{item.clients}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, TextInput } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import { useState } from "react";
@@ -68,6 +69,8 @@ export function ParentServicePicker({
   onChangeVariantName,
   onChangeSortOrder,
 }: ParentServicePickerProps) {
+  const { t } = useTranslation();
+  const sf = (key: string) => t(`provider.mobile.screens.serviceForm.${key}`) as string;
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const parentOptions = services.filter(
@@ -80,13 +83,13 @@ export function ParentServicePicker({
   const selectedLabel =
     parentOptions.find((s) => s.id === parentServiceId)?.title ??
     parentOptions.find((s) => s.id === parentServiceId)?.name ??
-    "Select parent service";
+    sf("selectParentService");
 
   return (
     <View style={twStyle("mb-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3")}>
-      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Variant settings</Text>
+      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{sf("variantSettings")}</Text>
 
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Parent service *</Text>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{sf("parentServiceRequired")}</Text>
       <TouchableOpacity
         style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3")}
         onPress={() => setSheetOpen(true)}
@@ -95,21 +98,21 @@ export function ParentServicePicker({
       </TouchableOpacity>
 
       <FormField
-        label="Variant name"
+        label={sf("variantName")}
         value={variantName}
         onChangeText={onChangeVariantName}
-        placeholder="e.g. Short, Long"
+        placeholder={sf("variantNamePlaceholder")}
       />
 
       <FormField
-        label="Sort order"
+        label={sf("sortOrder")}
         value={String(variantSortOrder)}
         onChangeText={(t) => onChangeSortOrder(parseInt(t, 10) || 0)}
         placeholder="0"
         keyboardType="numeric"
       />
 
-      <BottomSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Parent service">
+      <BottomSheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title={sf("parentServiceTitle")}>
         {parentOptions.map((svc) => (
           <TouchableOpacity
             key={svc.id}
@@ -124,7 +127,7 @@ export function ParentServicePicker({
         ))}
         {parentOptions.length === 0 ? (
           <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>
-            Create a basic service first to use as parent.
+            {sf("createParentFirst")}
           </Text>
         ) : null}
       </BottomSheet>

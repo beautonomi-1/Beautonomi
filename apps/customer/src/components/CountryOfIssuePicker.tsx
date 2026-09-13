@@ -21,6 +21,7 @@ import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT } from "@/constants/layout";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 type CountryOfIssuePickerProps = {
   value: string;
@@ -34,11 +35,15 @@ type CountryOfIssuePickerProps = {
 export function CountryOfIssuePicker({
   value,
   onChange,
-  label = "Country of issue",
+  label,
   disabled = false,
   tenantRegionCode,
   tenantRegionName,
 }: CountryOfIssuePickerProps) {
+  const { t } = useTranslation();
+  const cp = (key: string, opts?: Record<string, unknown>) =>
+    t(`customer.mobile.components.countryPicker.${key}`, opts) as string;
+  const resolvedLabel = label ?? cp("labelCountryOfIssue");
   const [countries, setCountries] = useState<VerificationCountryOption[]>(
     STATIC_VERIFICATION_COUNTRIES,
   );
@@ -99,13 +104,13 @@ export function CountryOfIssuePicker({
   return (
     <View>
       <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-        {label}
+        {resolvedLabel}
       </Text>
       <TouchableOpacity
         onPress={() => !disabled && setOpen(true)}
         disabled={disabled || loading}
         accessibilityRole="button"
-        accessibilityLabel={selected ? `Country of issue: ${selected.name}` : "Select country of issue"}
+        accessibilityLabel={selected ? cp("countryOfIssueSelectedA11y", { name: selected.name }) : cp("selectCountryOfIssueA11y")}
         style={{
           borderRadius: RADIUS_INPUT,
           borderWidth: 1,
@@ -120,7 +125,7 @@ export function CountryOfIssuePicker({
         }}
       >
         <Text style={{ fontSize: 16, color: selected ? Colors.gray[900] : Colors.gray[400] }}>
-          {loading ? "Loading countries…" : selected?.name ?? "Select country"}
+          {loading ? cp("loadingCountries") : selected?.name ?? cp("selectCountry")}
         </Text>
         <Ionicons name="chevron-down" size={18} color={Colors.gray[400]} />
       </TouchableOpacity>
@@ -144,7 +149,7 @@ export function CountryOfIssuePicker({
             </View>
             <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select country
+                {cp("selectCountry")}
               </Text>
               <View
                 style={{
@@ -158,7 +163,7 @@ export function CountryOfIssuePicker({
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={cp("searchCountry")}
                   placeholderTextColor="#9CA3AF"
                   value={search}
                   onChangeText={setSearch}

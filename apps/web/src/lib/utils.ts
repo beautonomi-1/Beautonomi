@@ -1,16 +1,21 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number, currency: string = LAST_RESORT_CURRENCY): string {
+export function formatCurrency(
+  amount: number,
+  currency: string = LAST_RESORT_CURRENCY,
+  locale?: string,
+): string {
   const code = (currency || LAST_RESORT_CURRENCY).trim().toUpperCase();
   const safe = /^[A-Z]{3}$/.test(code) ? code : LAST_RESORT_CURRENCY;
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(locale ?? getDefaultMoneyLocale(), {
       style: "currency",
       currency: safe,
       minimumFractionDigits: 2,

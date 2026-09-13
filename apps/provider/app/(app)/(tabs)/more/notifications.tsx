@@ -25,6 +25,7 @@ import {
 } from "@/components/SwipeableNotificationRow";
 import { formatTimeAgo } from "@/lib/format";
 import { navigateFromProviderNotification } from "@/lib/provider-notification-navigation";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 
 interface Notification {
@@ -63,13 +64,6 @@ interface NotificationsResponse {
 const PAGE_SIZE = 20;
 
 type FilterValue = "all" | "unread" | "bookings" | "payments";
-
-const FILTER_OPTIONS: { label: string; value: string }[] = [
-  { label: "All", value: "all" },
-  { label: "Unread", value: "unread" },
-  { label: "Bookings", value: "bookings" },
-  { label: "Payments", value: "payments" },
-];
 
 function getNotificationIcon(type: string): {
   name: keyof typeof Ionicons.glyphMap;
@@ -148,6 +142,8 @@ function NotificationRowContent({
   onPress: () => void;
   isUnread: boolean;
 }) {
+  const { t } = useTranslation();
+  const ns = (key: string) => t(`provider.mobile.screens.notifications.${key}`) as string;
   const iconInfo = getNotificationIcon(notif.type);
 
   return (
@@ -157,14 +153,14 @@ function NotificationRowContent({
         isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
       ]}
       onPress={onPress}
-      accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
+      accessibilityLabel={`${isUnread ? ns("unreadPrefix") : ""}${notif.title}. ${notif.message}`}
       accessibilityRole="button"
-      accessibilityHint="Swipe left to delete, or tap to open"
+      accessibilityHint={ns("swipeHint")}
     >
       <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
         <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
       </View>
-      <View style={{ marginLeft: 12, flex: 1 }}>
+      <View style={{ marginStart: 12, flex: 1 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
           <Text
             style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
@@ -172,7 +168,7 @@ function NotificationRowContent({
           >
             {notif.title}
           </Text>
-          <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
+          <Text style={{ marginStart: 8, fontSize: 12, color: Colors.gray[400] }}>
             {formatTimeAgo(notif.created_at)}
           </Text>
         </View>
@@ -181,13 +177,22 @@ function NotificationRowContent({
         </Text>
       </View>
       {isUnread && (
-        <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
+        <View style={{ marginStart: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
       )}
     </TouchableOpacity>
   );
 }
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
+  const ns = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.notifications.${key}`, opts) as string;
+  const filterOptions = [
+    { label: ns("filterAll"), value: "all" },
+    { label: ns("filterUnread"), value: "unread" },
+    { label: ns("filterBookings"), value: "bookings" },
+    { label: ns("filterPayments"), value: "payments" },
+  ];
   const router = useRouter();
   useResponsive();
   const swipeRegistry = useNotificationSwipeRegistry();
@@ -296,7 +301,7 @@ export default function NotificationsScreen() {
       mutate(previous);
       resetNotificationUnreadBias();
       await refreshCount();
-      Alert.alert("Error", error);
+      Alert.alert(ns("errorTitle"), error);
     } else {
       const body = (data as { total_unread?: number; data?: { total_unread?: number } } | undefined) ?? {};
       const serverNotifUnread =
@@ -363,7 +368,7 @@ export default function NotificationsScreen() {
       );
       if (error) {
         if (wasUnread) adjustUnreadCount(1);
-        Alert.alert("Error", error);
+        Alert.alert(ns("errorTitle"), error);
       } else if (notifications) {
         const updated = notifications.filter((n) => n.id !== notif.id);
         mutate(updated);
@@ -395,19 +400,19 @@ export default function NotificationsScreen() {
   return (
     <ScreenContainer scrollable={false} edges={["top"]}>
       <ScreenHeader
-        title="Notifications"
+        title={ns("title")}
         showBack
-        subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+        subtitle={unreadCount > 0 ? ns("unreadCount", { count: unreadCount }) : undefined}
         rightAction={
           unreadCount > 0 ? (
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
               onPress={handleMarkAllRead}
-              accessibilityLabel="Mark all notifications as read"
+              accessibilityLabel={ns("markAllReadA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="checkmark-done-outline" size={16} color="#6366f1" />
-              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#4f46e6" }}>Mark all read</Text>
+              <Text style={{ marginStart: 4, fontSize: 12, fontWeight: "500", color: "#4f46e6" }}>{ns("markAllRead")}</Text>
             </TouchableOpacity>
           ) : undefined
         }
@@ -415,11 +420,11 @@ export default function NotificationsScreen() {
 
       <View style={{ flex: 1, minHeight: 0 }}>
       <Text style={{ marginBottom: 12, fontSize: 12, color: Colors.gray[500] }}>
-        Tap a notification to open and mark it read. Swipe left on a row to delete.
+        {ns("listHint")}
       </Text>
       <View style={{ marginBottom: 12 }}>
         <FilterChipGroup
-          options={FILTER_OPTIONS}
+          options={filterOptions}
           selected={filter}
           onSelect={(v) => setFilter(v as FilterValue)}
         />
@@ -434,15 +439,17 @@ export default function NotificationsScreen() {
           icon="notifications-outline"
           title={
             filter === "unread"
-              ? "No unread notifications"
+              ? ns("emptyUnread")
               : filter !== "all"
-                ? `No ${filter} notifications`
-                : "No notifications"
+                ? ns("emptyFilter", {
+                    filter: filter === "bookings" ? ns("filterBookings") : ns("filterPayments"),
+                  })
+                : ns("emptyAll")
           }
           description={
             filter === "all"
-              ? "You're all caught up!"
-              : "Try changing the filter to see more"
+              ? ns("emptyAllDesc")
+              : ns("emptyFilterDesc")
           }
         />
       ) : (

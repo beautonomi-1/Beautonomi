@@ -6,16 +6,18 @@ import type mapboxgl from "mapbox-gl";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
+import { formatMoney } from "@beautonomi/utils";
+import { useLocale } from "@/components/i18n/LocaleProvider";
 
-function createPriceMarker(price: number): HTMLDivElement {
+function createPriceMarker(priceLabel: string): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "custom-price-marker";
+  el.className = "custom-price-marker ltr-island";
   el.style.backgroundColor = "white";
   el.style.borderRadius = "50%";
   el.style.padding = "5px 10px";
   el.style.fontWeight = "bold";
   el.style.boxShadow = "0 2px 5px rgba(0,0,0,0.2)";
-  el.textContent = `$${price}`;
+  el.textContent = priceLabel;
   return el;
 }
 
@@ -44,6 +46,7 @@ const listings: Listing[] = [
 ];
 
 const SearchMap: React.FC = () => {
+  const { formatLocale, chargeCurrency } = useLocale();
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -77,7 +80,7 @@ const SearchMap: React.FC = () => {
       detachResize = attachMapResize(map, el);
 
       markersRef.current = listings.map((listing) => {
-        const el = createPriceMarker(listing.price);
+        const el = createPriceMarker(formatMoney(listing.price, chargeCurrency, formatLocale));
         const marker = new mb.Marker({ element: el })
           .setLngLat([listing.lng, listing.lat])
           .addTo(map);
@@ -105,7 +108,7 @@ const SearchMap: React.FC = () => {
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [chargeCurrency, formatLocale]);
 
   return (
     <div className="relative h-screen w-full">
@@ -128,7 +131,9 @@ const SearchMap: React.FC = () => {
               </div>
               <p className="mb-2 text-sm">Stay with {selectedListing.host}</p>
               <p className="mb-4 text-sm">{selectedListing.description}</p>
-              <p className="text-lg font-bold">${selectedListing.price} / night</p>
+              <p className="text-lg font-bold ltr-island">
+                {formatMoney(selectedListing.price, chargeCurrency, formatLocale)}
+              </p>
             </CardContent>
           </Card>
         </div>

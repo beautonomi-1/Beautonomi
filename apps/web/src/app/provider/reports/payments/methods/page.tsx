@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -51,6 +52,7 @@ interface PaymentMethodsData {
 export default function PaymentMethodsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -110,10 +112,10 @@ export default function PaymentMethodsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payment Methods" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/methods.title") },
         ]}
       >
         <ReportSkeleton />
@@ -125,15 +127,15 @@ export default function PaymentMethodsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payment Methods" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/methods.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Payment Methods" />
-          <ReportSubscriptionRequired feature="Payment Methods" />
+          <PageHeader title={t("web.provider.reports.pages.payments/methods.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.payments/methods.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -143,15 +145,15 @@ export default function PaymentMethodsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Payment Methods" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.payments/methods.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load payment methods data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.payments/methods.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -167,21 +169,21 @@ export default function PaymentMethodsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Payment Methods" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.payments/methods.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Payment Methods"
-          subtitle="How customer funds were captured in the selected settlement window — gateways, till logs, and wallet splits"
+          title={t("web.provider.reports.pages.payments/methods.title")}
+          subtitle={t("web.provider.reports.pages.payments/methods.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -194,11 +196,11 @@ export default function PaymentMethodsReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {tz ? <span>Timezone · {tz}</span> : null}
-              {rangeLabel ? <span>Range · {rangeLabel}</span> : null}
+              {tz ? <span>{t("web.provider.reports.common.timezoneDot", { tz })}</span> : null}
+              {rangeLabel ? <span>{t("web.provider.reports.pages.payments/methods.range", { range: rangeLabel })}</span> : null}
             </div>
           </div>
         ) : null}
@@ -207,7 +209,7 @@ export default function PaymentMethodsReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Settlement line items</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/methods.settlementLines")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -215,14 +217,14 @@ export default function PaymentMethodsReport() {
                 <Layers className="w-5 h-5 text-indigo-600" />
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Rows from payment captures and completed till logs in range (plus wallet split adjustments where applicable).
+                {t("web.provider.reports.pages.payments/methods.settlementHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total attributed amount</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.payments/methods.totalAttributed")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -230,7 +232,7 @@ export default function PaymentMethodsReport() {
                 <DollarSign className="w-5 h-5 text-emerald-600" />
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                Sum of amounts by method; attribution uses capture timestamps, not appointment dates.
+                {t("web.provider.reports.pages.payments/methods.totalAttributedHint")}
               </p>
             </CardContent>
           </Card>
@@ -240,17 +242,18 @@ export default function PaymentMethodsReport() {
           <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50/95 px-4 py-3 text-sm text-amber-950">
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
             <div>
-              <p className="font-medium">Failed gateway captures in this window</p>
+              <p className="font-medium">{t("web.provider.reports.pages.payments/methods.failedCaptures")}</p>
               <p className="mt-1 text-amber-950/90">
-                {failedTotal} failed payment_transaction rows with capture timestamps in range
+                {t("web.provider.reports.pages.payments/methods.failedBody", { total: failedTotal })}
                 {failedAttrib != null ? (
                   <>
                     {" "}
-                    ({failedAttrib} linked to a booking at this provider
-                    {selectedLocationId ? " and location" : ""}).
+                    {selectedLocationId
+                      ? t("web.provider.reports.pages.payments/methods.failedLinkedLocation", { count: failedAttrib })
+                      : t("web.provider.reports.pages.payments/methods.failedLinked", { count: failedAttrib })}
                   </>
                 ) : null}{" "}
-                These are attempts, not settled customer funds — excluded from method totals above.
+                {t("web.provider.reports.pages.payments/methods.failedSuffix")}
               </p>
             </div>
           </div>
@@ -259,17 +262,16 @@ export default function PaymentMethodsReport() {
         {/* Payment Methods Breakdown */}
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Breakdown by method</CardTitle>
+            <CardTitle className="text-base">{t("web.provider.reports.pages.payments/methods.breakdown")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Each row can combine gateway captures (Paystack, Yoco, …), till logs (booking_payments), and wallet split
-              adjustments.
+              {t("web.provider.reports.pages.payments/methods.breakdownHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.methods.length === 0 ? (
               <EmptyReportState
-                title="No payment activity"
-                description="No settled or logged payments matched this window and filters."
+                title={t("web.provider.reports.pages.payments/methods.emptyTitle")}
+                description={t("web.provider.reports.pages.payments/methods.emptyDesc")}
               />
             ) : (
               <div className="space-y-3">
@@ -294,7 +296,7 @@ export default function PaymentMethodsReport() {
                           <p className="mt-2 text-xs leading-relaxed text-gray-500">
                             {ptN > 0 ? (
                               <span>
-                                {ptN} gateway/settlement row{ptN === 1 ? "" : "s"}
+                                {t("web.provider.reports.pages.payments/methods.gatewayRows", { count: ptN })}
                                 {method.paymentTransactionAmount != null && method.paymentTransactionAmount > 0
                                   ? ` · ${fmt(method.paymentTransactionAmount)}`
                                   : ""}
@@ -303,7 +305,7 @@ export default function PaymentMethodsReport() {
                             {ptN > 0 && (bpN > 0 || wN > 0) ? <span> · </span> : null}
                             {bpN > 0 ? (
                               <span>
-                                {bpN} till / manual log{bpN === 1 ? "" : "s"}
+                                {t("web.provider.reports.pages.payments/methods.tillLogs", { count: bpN })}
                                 {method.bookingPaymentAmount != null && method.bookingPaymentAmount > 0
                                   ? ` · ${fmt(method.bookingPaymentAmount)}`
                                   : ""}
@@ -312,22 +314,21 @@ export default function PaymentMethodsReport() {
                             {(ptN > 0 || bpN > 0) && wN > 0 ? <span> · </span> : null}
                             {wN > 0 ? (
                               <span>
-                                {wN} wallet split adjustment{wN === 1 ? "" : "s"}
+                                {t("web.provider.reports.pages.payments/methods.walletAdj", { count: wN })}
                                 {method.walletBookingAdjustmentAmount != null && method.walletBookingAdjustmentAmount > 0
                                   ? ` · ${fmt(method.walletBookingAdjustmentAmount)}`
                                   : ""}
                               </span>
                             ) : null}
                             {ptN === 0 && bpN === 0 && wN === 0 ? (
-                              <span>{method.totalCount} line item{method.totalCount === 1 ? "" : "s"}</span>
+                              <span>{t("web.provider.reports.pages.payments/methods.lineItems", { count: method.totalCount })}</span>
                             ) : null}
                           </p>
                         </div>
-                        <div className="text-right sm:pl-4">
+                        <div className="text-end sm:ps-4">
                           <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(method.totalAmount)}</p>
                           <p className="text-xs text-gray-500">
-                            Avg {fmt(method.averageAmount)} · {method.totalCount} line item
-                            {method.totalCount === 1 ? "" : "s"}
+                            {t("web.provider.reports.pages.payments/methods.avgLineItems", { amount: fmt(method.averageAmount), count: method.totalCount })}
                           </p>
                         </div>
                       </div>

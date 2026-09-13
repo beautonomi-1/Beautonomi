@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { View, Text, Linking, Pressable, Platform } from "react-native";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 type WrongAppScreenProps = {
   /** "provider" | "provider_onboarding" | "admin" | any string */
@@ -10,19 +11,6 @@ type WrongAppScreenProps = {
 
 const APP_URL = process.env.EXPO_PUBLIC_APP_URL ?? "";
 
-/**
- * §Dual-role launch mitigation (2026-04-17): on web a signed-in provider can
- * still browse customer routes (the Next 16 `src/proxy.ts` does not gate
- * customer routes by role), so the web UX for dual-role users is smooth.
- * On mobile the two apps are siloed bundles with separate session stores —
- * previously this screen was a cul-de-sac that just offered Sign out. Now
- * we deep-link into the correct sibling app (provider:// or customer://),
- * falling back to the store listing if the other app isn't installed, and
- * to the web equivalent as the last resort.
- *
- * Store URLs come from EXPO_PUBLIC_PROVIDER_STORE_URL / ..._CUSTOMER_STORE_URL
- * (set per-market in EAS) so the same binary works for ZA, NG, etc.
- */
 const PROVIDER_SCHEME = "provider://";
 const PLAY_PROVIDER_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.beautonomi.partner";
@@ -34,37 +22,39 @@ function providerStoreUrl(): string | null {
   return null;
 }
 
-function copyForPortal(portal: string): { heading: string; body: string; action: "open_provider" | "open_admin" | "other" } {
-  if (portal === "admin") {
-    return {
-      heading: "Admin access",
-      body: "This account has admin access. Open the web admin console to manage the platform — customer-app features are limited for safety.",
-      action: "open_admin",
-    };
-  }
-  if (portal === "provider" || portal === "provider_owner" || portal === "provider_staff") {
-    return {
-      heading: "Open the Provider app",
-      body: "This account is registered as a provider. Tap below to jump into the Beautonomi Partner app, or continue on the web customer portal to book services.",
-      action: "open_provider",
-    };
-  }
-  if (portal === "provider_onboarding") {
-    return {
-      heading: "Finish setting up your business",
-      body: "Your provider onboarding isn't complete yet. Open the Partner app to finish setup — after that you can still book services from the web.",
-      action: "open_provider",
-    };
-  }
-  return {
-    heading: "Wrong app",
-    body: "This account can't be used in the Customer app. Please sign in with your customer account, or open the app that matches your role.",
-    action: "other",
-  };
-}
-
 export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
-  const { heading, body, action } = copyForPortal(portal);
+  const { t } = useTranslation();
+  const wa = (key: string) => t(`customer.mobile.components.wrongApp.${key}`) as string;
+
+  const { heading, body, action } = useMemo(() => {
+    if (portal === "admin") {
+      return {
+        heading: wa("adminHeading"),
+        body: wa("adminBody"),
+        action: "open_admin" as const,
+      };
+    }
+    if (portal === "provider" || portal === "provider_owner" || portal === "provider_staff") {
+      return {
+        heading: wa("providerHeading"),
+        body: wa("providerBody"),
+        action: "open_provider" as const,
+      };
+    }
+    if (portal === "provider_onboarding") {
+      return {
+        heading: wa("onboardingHeading"),
+        body: wa("onboardingBody"),
+        action: "open_provider" as const,
+      };
+    }
+    return {
+      heading: wa("otherHeading"),
+      body: wa("otherBody"),
+      action: "other" as const,
+    };
+  }, [portal, t]);
+
   const [canOpenProvider, setCanOpenProvider] = useState(false);
 
   useEffect(() => {
@@ -107,6 +97,18 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
     Linking.openURL(APP_URL.replace(/\/$/, "") + "/admin/dashboard").catch(() => {});
   };
 
+  const providerCtaLabel = canOpenProvider
+    ? wa("openPartnerApp")
+    : providerStoreUrl()
+      ? wa("installPartnerApp")
+      : wa("continueOnWeb");
+
+  const providerCtaA11y = canOpenProvider
+    ? wa("openPartnerA11y")
+    : providerStoreUrl()
+      ? wa("installPartnerA11y")
+      : wa("continueOnWebA11y");
+
   return (
     <View
       style={{
@@ -144,13 +146,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
           <Pressable
             onPress={openProvider}
             accessibilityRole="button"
-            accessibilityLabel={
-              canOpenProvider
-                ? "Open Partner app"
-                : providerStoreUrl()
-                  ? "Install Partner app"
-                  : "Continue on web"
-            }
+            accessibilityLabel={providerCtaA11y}
             style={{
               marginBottom: 10,
               minWidth: 240,
@@ -161,19 +157,13 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
               alignItems: "center",
             }}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>
-              {canOpenProvider
-                ? "Open Partner app"
-                : providerStoreUrl()
-                  ? "Install Partner app"
-                  : "Continue on web"}
-            </Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{providerCtaLabel}</Text>
           </Pressable>
           {APP_URL ? (
             <Pressable
               onPress={openWebCustomer}
               accessibilityRole="button"
-              accessibilityLabel="Continue on web"
+              accessibilityLabel={wa("continueOnWebA11y")}
               style={{
                 marginBottom: 10,
                 minWidth: 240,
@@ -186,7 +176,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
               }}
             >
               <Text style={{ color: Colors.gray[800], fontWeight: "500" }}>
-                Book on web instead
+                {wa("bookOnWebInstead")}
               </Text>
             </Pressable>
           ) : null}
@@ -197,7 +187,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
         <Pressable
           onPress={openAdminWeb}
           accessibilityRole="button"
-          accessibilityLabel="Open Admin on web"
+          accessibilityLabel={wa("openAdminWebA11y")}
           style={{
             marginBottom: 12,
             minWidth: 240,
@@ -209,7 +199,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
           }}
         >
           <Text style={{ color: Colors.white, fontWeight: "600" }}>
-            Open Admin on web
+            {wa("openAdminWeb")}
           </Text>
         </Pressable>
       ) : null}
@@ -218,7 +208,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
         <Pressable
           onPress={onSignOut}
           accessibilityRole="button"
-          accessibilityLabel="Sign out"
+          accessibilityLabel={wa("signOutA11y")}
           style={{
             minWidth: 240,
             paddingVertical: 12,
@@ -230,7 +220,7 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
           }}
         >
           <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>
-            Sign out
+            {wa("signOut")}
           </Text>
         </Pressable>
       )}

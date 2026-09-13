@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Clock, MapPin, Check } from "lucide-react";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 interface ServiceDetailModalProps {
   /** Concrete offering id for ?service= (variant id when the service has variants). */
@@ -48,6 +49,7 @@ export default function ServiceDetailModal({
   onClose,
   onBook,
 }: ServiceDetailModalProps) {
+  const { t, pp } = usePartnerProfileT();
   const pageParams = useSearchParams();
   const campaignId = pageParams.get("campaign_id");
 
@@ -77,20 +79,20 @@ export default function ServiceDetailModal({
         <div className="space-y-6 mt-4">
           {service.description ? (
             <div>
-              <h3 className="font-medium mb-2">About this service</h3>
+              <h3 className="font-medium mb-2">{pp("aboutThisService")}</h3>
               <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{service.description}</p>
             </div>
           ) : (
             <div className="bg-gray-50 p-4 rounded-xl">
-              <p className="text-sm text-gray-500 italic">No description available for this service.</p>
+              <p className="text-sm text-gray-500 italic">{pp("noDescriptionForService")}</p>
             </div>
           )}
 
           {service.variants && service.variants.length > 0 && (
             <div className="border-t pt-4">
-              <h3 className="font-medium mb-3">Options</h3>
+              <h3 className="font-medium mb-3">{pp("optionsHeading")}</h3>
               <p className="text-sm text-gray-600 mb-3">
-                This service is offered in multiple options. Choose one when you book — each may differ in time and price.
+                {pp("optionsMultiHint")}
               </p>
               <ul className="space-y-3">
                 {service.variants.map((v) => (
@@ -103,7 +105,7 @@ export default function ServiceDetailModal({
                     <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
-                        {v.duration_minutes} min
+                        {pp("durationMinutes", { minutes: v.duration_minutes })}
                       </span>
                       <span className="font-medium text-gray-900">{v.priceFormatted}</span>
                     </div>
@@ -114,23 +116,23 @@ export default function ServiceDetailModal({
           )}
 
           <div className="border-t pt-4">
-            <h3 className="font-medium mb-3">Service details</h3>
+            <h3 className="font-medium mb-3">{pp("serviceDetails")}</h3>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-600">Duration: {service.duration}</span>
+                <span className="text-sm text-gray-600">{pp("durationLabel", { duration: service.duration })}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">From / base price: {service.price}</span>
+                <span className="text-sm font-medium text-gray-900">{pp("fromBasePrice", { price: service.price })}</span>
               </div>
               {(service.supports_at_home || service.supports_at_salon) && (
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-600">
-                    Available:{" "}
-                    {service.supports_at_salon && "At Salon"}
+                    {pp("availableLabel")}:{" "}
+                    {service.supports_at_salon && pp("atSalon")}
                     {service.supports_at_salon && service.supports_at_home && " • "}
-                    {service.supports_at_home && "At Home"}
+                    {service.supports_at_home && pp("atYourHome")}
                   </span>
                 </div>
               )}
@@ -139,7 +141,7 @@ export default function ServiceDetailModal({
 
           {service.description && (
             <div className="border-t pt-4">
-              <h3 className="font-medium mb-3">What&apos;s included</h3>
+              <h3 className="font-medium mb-3">{pp("whatsIncluded")}</h3>
               <ul className="space-y-2">
                 {service.description
                   .split("\n")
@@ -159,11 +161,11 @@ export default function ServiceDetailModal({
         <div className="flex gap-3 pt-6 border-t mt-6">
           <Link href={createBookingUrl()} className="flex-1">
             <Button onClick={onBook} className="w-full bg-gray-900 hover:bg-gray-800 text-white rounded-full h-12">
-              Book this service
+              {pp("bookThisService")}
             </Button>
           </Link>
           <Button variant="outline" onClick={onClose} className="rounded-full h-12 px-6">
-            Close
+            {t("web.a11y.close")}
           </Button>
         </div>
       </DialogContent>

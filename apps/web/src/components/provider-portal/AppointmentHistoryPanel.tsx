@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { AppointmentHistoryEntry } from "@/lib/provider-portal/types";
@@ -14,6 +16,7 @@ interface AppointmentHistoryPanelProps {
 }
 
 export function AppointmentHistoryPanel({ appointmentId }: AppointmentHistoryPanelProps) {
+  const { t } = useTranslation();
   const [history, setHistory] = useState<AppointmentHistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -79,21 +82,21 @@ export function AppointmentHistoryPanel({ appointmentId }: AppointmentHistoryPan
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading history..." />;
+    return <LoadingTimeout loadingMessage={t("web.providerExtras.loadingHistory")} />;
   }
 
   if (history.length === 0) {
     return (
       <EmptyState
-        title="No history"
-        description="Appointment history will appear here as changes are made"
+        title={t("web.providerExtras.noHistory")}
+        description={t("web.providerExtras.historyEmpty")}
       />
     );
   }
 
   return (
     <div className="space-y-3">
-      <h3 className="text-lg font-semibold mb-4">History</h3>
+      <h3 className="text-lg font-semibold mb-4">{t("web.providerExtras.historyTitle")}</h3>
       <div className="space-y-3">
         {history.map((entry) => (
           <div

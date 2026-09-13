@@ -5,12 +5,19 @@
  * `ReportPayloadView` if the response is unexpected.
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency, formatPercentage, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
 function isObj(data: unknown, key: string): data is Record<string, unknown> {
   return data != null && typeof data === "object" && !Array.isArray(data) && key in data;
+}
+
+function useGf() {
+  const { t } = useTranslation();
+  return (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.genericFormattedReports.${key}`, opts) as string;
 }
 
 function Metric({
@@ -38,11 +45,12 @@ function Metric({
 }
 
 function BasisBanner({ note, timezone }: { note?: string; timezone?: string }) {
+  const gf = useGf();
   if (!note) return null;
   return (
     <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
       <Text style={twStyle("text-sm leading-5 text-sky-950")}>{note}</Text>
-      {timezone ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone: {timezone}</Text> : null}
+      {timezone ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{gf("timezone", { tz: timezone })}</Text> : null}
     </View>
   );
 }
@@ -66,7 +74,7 @@ function Row({
 }) {
   return (
     <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3 last:border-b-0")}>
-      <View style={twStyle("mr-2 flex-1")}>
+      <View style={twStyle("me-2 flex-1")}>
         <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
           {title}
         </Text>
@@ -89,6 +97,7 @@ const num = (v: unknown) => Number(v ?? 0);
 /* ------------------------------------------------------------------ */
 
 export function StaffCommissionReportView({ data }: { data: unknown }) {
+  const gf = useGf();
   if (!isObj(data, "staffCommissions")) return <ReportPayloadView data={data} />;
   const rows = (data.staffCommissions as Array<Record<string, unknown>>) ?? [];
   const zeroCommissionWarning =
@@ -98,27 +107,27 @@ export function StaffCommissionReportView({ data }: { data: unknown }) {
       {zeroCommissionWarning ? (
         <View style={twStyle("rounded-2xl border border-amber-100 bg-amber-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-amber-950")}>
-            {zeroCommissionWarning} Enable staff commission on those services so earnings lines post.
+            {gf("commissionWarning", { warning: zeroCommissionWarning })}
           </Text>
         </View>
       ) : null}
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label="Total commission" value={formatCurrency(num(data.totalCommission))} tone="emerald" />
-        <Metric label="Revenue base" value={formatCurrency(num(data.totalRevenue))} tone="blue" />
-        <Metric label="Avg rate" value={formatPercentage(num(data.averageCommissionRate))} tone="violet" />
+        <Metric label={gf("totalCommission")} value={formatCurrency(num(data.totalCommission))} tone="emerald" />
+        <Metric label={gf("revenueBase")} value={formatCurrency(num(data.totalRevenue))} tone="blue" />
+        <Metric label={gf("avgRate")} value={formatPercentage(num(data.averageCommissionRate))} tone="violet" />
       </View>
-      <SectionLabel>Commission by staff</SectionLabel>
+      <SectionLabel>{gf("commissionByStaff")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {rows.length === 0 ? (
-          <EmptyRows label="No staff commission in this range." />
+          <EmptyRows label={gf("emptyCommission")} />
         ) : (
           rows.map((r, i) => (
             <Row
               key={String(r.staffId ?? i)}
-              title={String(r.staffName ?? "Unknown")}
-              subtitle={`${num(r.totalBookings)} bookings · ${formatPercentage(num(r.commissionRate))} rate`}
+              title={String(r.staffName ?? gf("unknown"))}
+              subtitle={gf("bookingsRate", { count: num(r.totalBookings), rate: formatPercentage(num(r.commissionRate)) })}
               primary={formatCurrency(num(r.totalCommission))}
-              secondary={`Rev ${formatCurrency(num(r.totalRevenue))}`}
+              secondary={gf("revAmount", { amount: formatCurrency(num(r.totalRevenue)) })}
             />
           ))
         )}
@@ -128,27 +137,31 @@ export function StaffCommissionReportView({ data }: { data: unknown }) {
 }
 
 export function StaffHoursReportView({ data }: { data: unknown }) {
+  const gf = useGf();
   if (!isObj(data, "staffHours")) return <ReportPayloadView data={data} />;
   const rows = (data.staffHours as Array<Record<string, unknown>>) ?? [];
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label="Worked hours" value={`${num(data.totalHours).toFixed(1)}h`} tone="emerald" />
-        <Metric label="Scheduled hours" value={`${num(data.totalScheduledHours).toFixed(1)}h`} tone="blue" />
-        <Metric label="Avg / staff" value={`${num(data.averageHoursPerStaff).toFixed(1)}h`} tone="violet" />
+        <Metric label={gf("workedHours")} value={gf("hoursValue", { hours: num(data.totalHours).toFixed(1) })} tone="emerald" />
+        <Metric label={gf("scheduledHours")} value={gf("hoursValue", { hours: num(data.totalScheduledHours).toFixed(1) })} tone="blue" />
+        <Metric label={gf("avgPerStaff")} value={gf("hoursValue", { hours: num(data.averageHoursPerStaff).toFixed(1) })} tone="violet" />
       </View>
-      <SectionLabel>Hours & attendance by staff</SectionLabel>
+      <SectionLabel>{gf("hoursByStaff")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {rows.length === 0 ? (
-          <EmptyRows label="No worked hours in this range." />
+          <EmptyRows label={gf("emptyHours")} />
         ) : (
           rows.map((r, i) => (
             <Row
               key={String(r.staffId ?? i)}
-              title={String(r.staffName ?? "Unknown")}
-              subtitle={`${num(r.completedBookings)} completed · ${formatPercentage(num(r.attendanceRate))} attendance`}
-              primary={`${num(r.totalHours).toFixed(1)}h`}
-              secondary={`${formatPercentage(num(r.onTimeRate))} on time`}
+              title={String(r.staffName ?? gf("unknown"))}
+              subtitle={gf("completedAttendance", {
+                count: num(r.completedBookings),
+                rate: formatPercentage(num(r.attendanceRate)),
+              })}
+              primary={gf("hoursValue", { hours: num(r.totalHours).toFixed(1) })}
+              secondary={gf("onTime", { rate: formatPercentage(num(r.onTimeRate)) })}
             />
           ))
         )}
@@ -158,6 +171,7 @@ export function StaffHoursReportView({ data }: { data: unknown }) {
 }
 
 export function NoShowsReportView({ data }: { data: unknown }) {
+  const gf = useGf();
   if (!isObj(data, "totalNoShows")) return <ReportPayloadView data={data} />;
   const repeatOffenders = (data.repeatOffenders as Array<Record<string, unknown>>) ?? [];
   const staffBreakdown = (data.staffBreakdown as Array<Record<string, unknown>>) ?? [];
@@ -165,32 +179,32 @@ export function NoShowsReportView({ data }: { data: unknown }) {
     <View style={twStyle("gap-5 pb-8")}>
       <BasisBanner note={typeof data.basisNote === "string" ? data.basisNote : undefined} />
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label="No-shows" value={String(num(data.totalNoShows))} tone="amber" />
-        <Metric label="No-show rate" value={formatPercentage(num(data.noShowRate))} tone="amber" />
-        <Metric label="Ledger net recognised" value={formatCurrency(num(data.ledgerNetRecognized ?? data.lostRevenue))} />
+        <Metric label={gf("noShows")} value={String(num(data.totalNoShows))} tone="amber" />
+        <Metric label={gf("noShowRate")} value={formatPercentage(num(data.noShowRate))} tone="amber" />
+        <Metric label={gf("ledgerNetRecognised")} value={formatCurrency(num(data.ledgerNetRecognized ?? data.lostRevenue))} />
       </View>
-      <SectionLabel>Repeat offenders (2+)</SectionLabel>
+      <SectionLabel>{gf("repeatOffenders")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {repeatOffenders.length === 0 ? (
-          <EmptyRows label="No repeat no-shows in this range." />
+          <EmptyRows label={gf("emptyRepeat")} />
         ) : (
           repeatOffenders.map((r, i) => (
             <Row
               key={String(r.email ?? i)}
-              title={String(r.name ?? "Unknown")}
-              subtitle={`${num(r.count)} no-shows`}
+              title={String(r.name ?? gf("unknown"))}
+              subtitle={gf("noShowsCount", { count: num(r.count) })}
               primary={formatCurrency(num(r.booked_value))}
-              secondary="booked value"
+              secondary={gf("bookedValue")}
             />
           ))
         )}
       </View>
       {staffBreakdown.length > 0 ? (
         <>
-          <SectionLabel>By staff</SectionLabel>
+          <SectionLabel>{gf("byStaff")}</SectionLabel>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {staffBreakdown.map((r, i) => (
-              <Row key={String(r.name ?? i)} title={String(r.name ?? "Unknown")} primary={`${num(r.count)}`} />
+              <Row key={String(r.name ?? i)} title={String(r.name ?? gf("unknown"))} primary={`${num(r.count)}`} />
             ))}
           </View>
         </>
@@ -200,28 +214,33 @@ export function NoShowsReportView({ data }: { data: unknown }) {
 }
 
 export function NewClientsReportView({ data }: { data: unknown }) {
+  const gf = useGf();
   if (!isObj(data, "totalNewClients")) return <ReportPayloadView data={data} />;
   const rows = (data.newClients as Array<Record<string, unknown>>) ?? [];
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <BasisBanner note={typeof data.basisNote === "string" ? data.basisNote : undefined} />
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label="New clients" value={String(num(data.totalNewClients))} tone="emerald" />
-        <Metric label="Returned" value={`${num(data.returnedClients)} (${formatPercentage(num(data.returnRate))})`} tone="blue" />
-        <Metric label="Avg first booking" value={formatCurrency(num(data.averageFirstBookingValue))} tone="violet" />
+        <Metric label={gf("newClients")} value={String(num(data.totalNewClients))} tone="emerald" />
+        <Metric label={gf("returned")} value={gf("returnedValue", { count: num(data.returnedClients), rate: formatPercentage(num(data.returnRate)) })} tone="blue" />
+        <Metric label={gf("avgFirstBooking")} value={formatCurrency(num(data.averageFirstBookingValue))} tone="violet" />
       </View>
-      <SectionLabel>New clients (most recent)</SectionLabel>
+      <SectionLabel>{gf("newClientsRecent")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {rows.length === 0 ? (
-          <EmptyRows label="No new clients in this range." />
+          <EmptyRows label={gf("emptyNewClients")} />
         ) : (
           rows.map((r, i) => (
             <Row
               key={String(r.customerId ?? i)}
-              title={String(r.clientName ?? "Unknown")}
-              subtitle={`First visit ${formatDate(String(r.firstVisit ?? ""))}${r.hasReturned ? " · returned" : ""}`}
+              title={String(r.clientName ?? gf("unknown"))}
+              subtitle={
+                r.hasReturned
+                  ? gf("firstVisitReturned", { date: formatDate(String(r.firstVisit ?? "")) })
+                  : gf("firstVisit", { date: formatDate(String(r.firstVisit ?? "")) })
+              }
               primary={formatCurrency(num(r.firstBookingValue))}
-              secondary={`${num(r.totalBookings)} bookings`}
+              secondary={gf("bookingsCount", { count: num(r.totalBookings) })}
             />
           ))
         )}
@@ -231,6 +250,7 @@ export function NewClientsReportView({ data }: { data: unknown }) {
 }
 
 export function ClientLifetimeValueReportView({ data }: { data: unknown }) {
+  const gf = useGf();
   if (!isObj(data, "topClients")) return <ReportPayloadView data={data} />;
   const rows = (data.topClients as Array<Record<string, unknown>>) ?? [];
   const segments = (data.ltvSegments as Array<Record<string, unknown>>) ?? [];
@@ -238,39 +258,39 @@ export function ClientLifetimeValueReportView({ data }: { data: unknown }) {
     <View style={twStyle("gap-5 pb-8")}>
       <BasisBanner note={typeof data.basisNote === "string" ? data.basisNote : undefined} />
       <View style={twStyle("flex-row flex-wrap gap-3")}>
-        <Metric label="Clients" value={String(num(data.totalClients))} tone="blue" />
-        <Metric label="Avg LTV" value={formatCurrency(num(data.averageLTV))} tone="emerald" />
-        <Metric label="Median LTV" value={formatCurrency(num(data.medianLTV))} tone="violet" />
-        <Metric label="Avg visits" value={num(data.averageVisits).toFixed(1)} />
+        <Metric label={gf("clients")} value={String(num(data.totalClients))} tone="blue" />
+        <Metric label={gf("avgLtv")} value={formatCurrency(num(data.averageLTV))} tone="emerald" />
+        <Metric label={gf("medianLtv")} value={formatCurrency(num(data.medianLTV))} tone="violet" />
+        <Metric label={gf("avgVisits")} value={num(data.averageVisits).toFixed(1)} />
       </View>
       {segments.length > 0 ? (
         <>
-          <SectionLabel>Segments</SectionLabel>
+          <SectionLabel>{gf("segments")}</SectionLabel>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {segments.map((s, i) => (
               <Row
                 key={String(s.segment ?? i)}
-                title={String(s.segment ?? "—")}
-                subtitle={`${num(s.count)} clients`}
+                title={String(s.segment ?? gf("emptyValue"))}
+                subtitle={gf("clientsCount", { count: num(s.count) })}
                 primary={formatCurrency(num(s.avgLTV))}
-                secondary="avg LTV"
+                secondary={gf("avgLtvSecondary")}
               />
             ))}
           </View>
         </>
       ) : null}
-      <SectionLabel>Top clients (completed booked gross)</SectionLabel>
+      <SectionLabel>{gf("topClients")}</SectionLabel>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {rows.length === 0 ? (
-          <EmptyRows label="No completed bookings yet." />
+          <EmptyRows label={gf("emptyTopClients")} />
         ) : (
           rows.map((r, i) => (
             <Row
               key={String(r.customerId ?? i)}
-              title={String(r.clientName ?? "Unknown")}
-              subtitle={`${num(r.totalBookings)} bookings · ${num(r.visitsPerMonth).toFixed(1)}/mo`}
+              title={String(r.clientName ?? gf("unknown"))}
+              subtitle={gf("bookingsPerMonth", { count: num(r.totalBookings), visits: num(r.visitsPerMonth).toFixed(1) })}
               primary={formatCurrency(num(r.totalSpent))}
-              secondary={`Avg ${formatCurrency(num(r.averageBookingValue))}`}
+              secondary={gf("avgAmount", { amount: formatCurrency(num(r.averageBookingValue)) })}
             />
           ))
         )}

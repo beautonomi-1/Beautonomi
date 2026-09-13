@@ -170,7 +170,7 @@ export default function LearnHomeClient({ initialData }: { initialData: LearnHom
                 <Link
                   href={`/learn/article/${a.slug}`}
                   className={cn(
-                    "flex min-h-[56px] items-center gap-3 px-4 md:px-6 py-3 text-left",
+                    "flex min-h-[56px] items-center gap-3 px-4 md:px-6 py-3 text-start",
                     "transition-all duration-200 ease-in-out hover:bg-zinc-50 active:scale-[0.99]"
                   )}
                 >

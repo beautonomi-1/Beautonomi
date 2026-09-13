@@ -1,6 +1,8 @@
 # AI (Gemini) Provider Assistant
 
-Provider-facing AI features are powered by the **Google Gemini API**, with strict cost controls, subscription gating, and provider-scoped context.
+> **Superseded by [AI_PROVIDER.md](./AI_PROVIDER.md)** — multi-provider runtime on `callLlm()`. This document describes the legacy Gemini path retained as the default adapter.
+
+Provider-facing AI features are powered by the **Google Gemini API** (default) or the multi-provider runtime, with strict cost controls, subscription gating, and provider-scoped context.
 
 ## Architecture
 
@@ -43,7 +45,7 @@ Provider-facing AI features are powered by the **Google Gemini API**, with stric
 - **Shipped features** (built-in templates in `apps/web/src/lib/ai/feature-templates.ts`):
   - `ai.provider.profile_completion`: suggested_profile_patch (headline, bio, specialties, faq, policies)
   - `ai.provider.content_studio`: post_captions, hashtags, short_description
-- Any other `feature_key` returns 404. The previously documented `smart_replies`, `pricing_assistant`, `booking_ops` and `reputation_coach` features are **not shipped**; adding one requires an entitlement seed, a prompt template, a fallback builder and UI.
+- Additional shipped features: `smart_replies`, `pricing_assistant`, `booking_ops`, `reputation_coach`, `look_describe` (see `feature-templates.ts` and migration 902).
 - **Budget fallback**: when `enforceAiBudget` returns `fallback_mode: "templates_only"` (daily budget, per-provider/user caps, global spend cap) the route returns **200** with a deterministic payload built from the provider capsule (`feature-fallbacks.ts`) and `fallback: true` / `fallback_reason`. `fallback_mode: "off"` (module disabled) still returns 403.
 - **Rate limit**: 30 Gemini calls/minute per provider, enforced through the shared Upstash rate-limit store (`@/lib/rate-limit/store`, in-process fallback when Upstash env is absent). Limited calls return 429.
 - **Failures** are reported to Sentry with tags `source=gemini`, `feature_key`, `model`, `stage`.

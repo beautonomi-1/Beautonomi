@@ -1,9 +1,9 @@
 import { Stack, router } from "expo-router";
 import { TouchableOpacity, Platform } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
 import { useThemedColors } from "@/hooks/useThemedColors";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function AccountSettingsLayout() {
   const { t } = useTranslation();
@@ -27,11 +27,11 @@ export default function AccountSettingsLayout() {
                 router.replace("/(app)/(tabs)/profile");
               }
             }}
-            style={{ marginLeft: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
+            style={{ marginStart: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
             accessibilityLabel={t("common.back")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
         ),
       }}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -38,6 +39,12 @@ interface BookingLink {
 
 export default function BookingLinkScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const bl = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.bookingLink.${key}`, opts) as string,
+    [t],
+  );
   const [slug, setSlug] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -63,13 +70,13 @@ export default function BookingLinkScreen() {
 
   async function handleSave() {
     if (!slug.trim()) {
-      Alert.alert("Required", "Booking URL slug is required");
+      Alert.alert(bl("requiredTitle"), bl("slugRequired"));
       return;
     }
     if (!/^[a-z0-9-]+$/.test(slug)) {
       Alert.alert(
-        "Invalid",
-        "Slug must be lowercase letters, numbers, and dashes only"
+        bl("invalidTitle"),
+        bl("slugInvalid")
       );
       return;
     }
@@ -78,7 +85,7 @@ export default function BookingLinkScreen() {
       is_active: isActive,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(bl("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -97,7 +104,7 @@ export default function BookingLinkScreen() {
     if (!link?.url) return;
     try {
       await Share.share({
-        message: `Book an appointment with ${link.business_name}: ${link.url}`,
+        message: bl("shareMessage", { name: link.business_name, url: link.url }),
         url: link.url,
       });
     } catch {
@@ -108,16 +115,16 @@ export default function BookingLinkScreen() {
   if (loading)
     return (
       <ScreenContainer>
-        <ScreenHeader title="Booking Link" showBack />
-        <LoadingState message="Loading..." />
+        <ScreenHeader title={bl("title")} showBack />
+        <LoadingState message={bl("loading")} />
       </ScreenContainer>
     );
 
   if (loadError && !link)
     return (
       <ScreenContainer>
-        <ScreenHeader title="Booking Link" showBack />
-        <ErrorState message="Could not load booking link. Please try again." onRetry={refresh} />
+        <ScreenHeader title={bl("title")} showBack />
+        <ErrorState message={bl("loadFailed")} onRetry={refresh} />
       </ScreenContainer>
     );
 
@@ -126,17 +133,17 @@ export default function BookingLinkScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Booking Link"
+        title={bl("title")}
         showBack
-        subtitle="Share your booking page"
+        subtitle={bl("subtitle")}
       />
 
       {/* Analytics stats */}
       {stats && (
         <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Visits"
+              title={bl("visits")}
               value={String(stats.total_visits)}
               icon="eye-outline"
               iconColor="#6366f1"
@@ -144,9 +151,9 @@ export default function BookingLinkScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Bookings"
+              title={bl("bookings")}
               value={String(stats.bookings_via_link)}
               icon="calendar-outline"
               iconColor="#22c55e"
@@ -156,7 +163,7 @@ export default function BookingLinkScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Conv. Rate"
+              title={bl("convRate")}
               value={`${stats.conversion_rate.toFixed(1)}%`}
               icon="trending-up-outline"
               iconColor="#f59e0b"
@@ -171,7 +178,7 @@ export default function BookingLinkScreen() {
       {link?.url && (
         <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
           <Text style={twStyle("mb-1 text-xs font-medium text-indigo-600")}>
-            Your Booking URL
+            {bl("yourBookingUrl")}
           </Text>
           <Text
             style={twStyle("mb-3 text-sm font-mono font-semibold text-indigo-800")}
@@ -182,7 +189,7 @@ export default function BookingLinkScreen() {
 
           <View style={twStyle("flex-row")}>
             <TouchableOpacity
-              style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-white py-3 shadow-sm"), { marginRight: 8 }]}
+              style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-white py-3 shadow-sm"), { marginEnd: 8 }]}
               onPress={() => handleCopy(link.url, "url")}
             >
               <Ionicons
@@ -190,8 +197,8 @@ export default function BookingLinkScreen() {
                 size={16}
                 color="#6366f1"
               />
-              <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>
-                {copied === "url" ? "Copied!" : "Copy"}
+              <Text style={twStyle("ms-2 text-sm font-medium text-indigo-600")}>
+                {copied === "url" ? bl("copied") : bl("copy")}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -199,8 +206,8 @@ export default function BookingLinkScreen() {
               onPress={handleShare}
             >
               <Ionicons name="share-outline" size={16} color="#fff" />
-              <Text style={twStyle("ml-2 text-sm font-medium text-white")}>
-                Share
+              <Text style={twStyle("ms-2 text-sm font-medium text-white")}>
+                {bl("share")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -213,10 +220,10 @@ export default function BookingLinkScreen() {
           <View style={twStyle("flex-row items-center justify-between")}>
             <View>
               <Text style={twStyle("text-xs font-medium text-gray-500")}>
-                Embed URL
+                {bl("embedUrl")}
               </Text>
               <Text style={twStyle("text-[10px] text-gray-400")}>
-                For embedding on your website
+                {bl("embedHint")}
               </Text>
             </View>
             <TouchableOpacity
@@ -228,8 +235,8 @@ export default function BookingLinkScreen() {
                 size={14}
                 color="#6366f1"
               />
-              <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                {copied === "embed" ? "Copied!" : "Copy"}
+              <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                {copied === "embed" ? bl("copied") : bl("copy")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -249,15 +256,15 @@ export default function BookingLinkScreen() {
             <QRCode value={link.url} size={128} />
           </View>
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-            QR code for your booking page
+            {bl("qrHint")}
           </Text>
           <TouchableOpacity
             style={twStyle("mt-2 flex-row items-center rounded-lg bg-gray-100 px-3 py-1.5")}
             onPress={handleShare}
           >
             <Ionicons name="share-outline" size={14} color="#6366f1" />
-            <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-              Share link
+            <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+              {bl("shareLink")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -265,7 +272,7 @@ export default function BookingLinkScreen() {
 
       {/* Settings */}
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-        Settings
+        {bl("settings")}
       </Text>
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
@@ -281,14 +288,14 @@ export default function BookingLinkScreen() {
                 color={isActive ? "#22c55e" : "#ef4444"}
               />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
+            <View style={twStyle("ms-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                Online Booking
+                {bl("onlineBooking")}
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
                 {isActive
-                  ? "Clients can book via this link"
-                  : "Booking link is disabled"}
+                  ? bl("linkEnabled")
+                  : bl("linkDisabled")}
               </Text>
             </View>
           </View>
@@ -302,30 +309,30 @@ export default function BookingLinkScreen() {
 
         <View style={twStyle("border-t border-gray-100 pt-3")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Custom URL Slug
+            {bl("customSlug")}
           </Text>
           <TextInput
             style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={slug}
-            onChangeText={(t) =>
+            onChangeText={(text) =>
               update(
                 "slug",
-                t.toLowerCase().replace(/[^a-z0-9-]/g, "")
+                text.toLowerCase().replace(/[^a-z0-9-]/g, "")
               )
             }
-            placeholder="your-business-name"
+            placeholder={bl("slugPlaceholder")}
             placeholderTextColor="#9ca3af"
             autoCapitalize="none"
             autoCorrect={false}
           />
           <Text style={twStyle("text-xs text-gray-400")}>
-            Only lowercase letters, numbers, and dashes
+            {bl("slugHint")}
           </Text>
         </View>
       </View>
 
       <ActionButton
-        label="Save Changes"
+        label={bl("saveChanges")}
         onPress={handleSave}
         loading={saving}
         disabled={!dirty}
@@ -335,10 +342,10 @@ export default function BookingLinkScreen() {
       <TouchableOpacity
         style={twStyle("mt-4 flex-row items-center justify-center rounded-2xl border border-indigo-100 bg-white py-4")}
         onPress={() => router.push("/(app)/(tabs)/more/express-booking" as never)}
-        accessibilityLabel="Open express short links and checkout prefill"
+        accessibilityLabel={bl("expressLinksA11y")}
         accessibilityRole="button"
       >
-        <Text style={twStyle("text-sm font-semibold text-indigo-600")}>Express short links & checkout prefill</Text>
+        <Text style={twStyle("text-sm font-semibold text-indigo-600")}>{bl("expressLinks")}</Text>
       </TouchableOpacity>
 
       <View style={twStyle("h-24")} />

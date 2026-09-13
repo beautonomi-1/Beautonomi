@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -42,6 +43,7 @@ import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subs
 import { toastPlanGateError } from "@/lib/subscriptions/plan-gate-toast";
 
 export default function RecurringAppointmentsPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { selectedLocationId } = useProviderPortal();
   const [appointments, setAppointments] = useState<RecurringAppointment[]>([]);
@@ -73,7 +75,7 @@ export default function RecurringAppointmentsPage() {
     } catch (error) {
       console.error("Failed to load recurring appointments:", error);
       const message =
-        formatApiErrorMessage(error, "Failed to load recurring appointments") +
+        formatApiErrorMessage(error, t("web.provider.recurringAppointments.failedToLoad")) +
         subscriptionUpgradeHint(error);
       setLoadBlocked({
         message,
@@ -105,7 +107,7 @@ export default function RecurringAppointmentsPage() {
   const handleDelete = async (appointment: RecurringAppointment) => {
     if (
       !confirm(
-        "Delete this recurring series? Future auto-created visits will stop; existing bookings already on the calendar stay as they are."
+        t("web.provider.recurringAppointments.deleteConfirm")
       )
     ) {
       return;
@@ -116,12 +118,12 @@ export default function RecurringAppointmentsPage() {
       setAppointments((current) =>
         current.filter((item) => item.id !== appointment.id)
       );
-      toast.success("Series deleted");
+      toast.success(t("web.provider.recurringAppointments.seriesDeleted"));
       void loadAppointments();
     } catch (error) {
       console.error("Failed to delete appointment:", error);
       toast.error(
-        formatApiErrorMessage(error, "Failed to delete appointment") +
+        formatApiErrorMessage(error, t("web.provider.recurringAppointments.failedToDelete")) +
           subscriptionUpgradeHint(error)
       );
     }
@@ -130,13 +132,13 @@ export default function RecurringAppointmentsPage() {
   const getPatternLabel = (pattern: string) => {
     switch (pattern) {
       case "daily":
-        return "Daily";
+        return t("web.provider.recurringAppointments.daily");
       case "weekly":
-        return "Weekly";
+        return t("web.provider.recurringAppointments.weekly");
       case "biweekly":
-        return "Bi-weekly";
+        return t("web.provider.recurringAppointments.biweekly");
       case "monthly":
-        return "Monthly";
+        return t("web.provider.recurringAppointments.monthly");
       default:
         return pattern;
     }
@@ -165,14 +167,14 @@ export default function RecurringAppointmentsPage() {
   }, {} as Record<string, RecurringAppointment[]>);
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading recurring appointments..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.recurringAppointments.loading")} />;
   }
 
   return (
     <div>
       <PageHeader
-        title="Recurring Appointments"
-        subtitle="Manage your repeating appointments and series"
+        title={t("web.provider.recurringAppointments.title")}
+        subtitle={t("web.provider.recurringAppointments.subtitle")}
       />
 
       {loadBlocked && (
@@ -187,7 +189,7 @@ export default function RecurringAppointmentsPage() {
               className="mt-3 bg-primary hover:bg-primary-hover text-white"
               onClick={() => router.push("/provider/subscription")}
             >
-              View plans
+              {t("web.provider.settings.pages.calendar-integration.viewPlans")}
             </Button>
           )}
         </div>
@@ -198,7 +200,7 @@ export default function RecurringAppointmentsPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search by client or service..."
+            placeholder={t("web.provider.recurringAppointments.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -207,11 +209,11 @@ export default function RecurringAppointmentsPage() {
                 handleSearch();
               }
             }}
-            className="pl-10"
+            className="ps-10"
           />
         </div>
         <Button onClick={handleSearch} className="bg-primary hover:bg-primary-hover">
-          Search
+          {t("web.provider.common.search")}
         </Button>
       </div>
 
@@ -219,10 +221,10 @@ export default function RecurringAppointmentsPage() {
       {appointments.length === 0 ? (
         <SectionCard className="p-12">
           <EmptyState
-            title="No recurring appointments"
-            description="From the calendar, open a new appointment, pick a saved client, turn on Repeating visit, then book."
+            title={t("web.provider.recurringAppointments.emptyTitle")}
+            description={t("web.provider.recurringAppointments.emptyBody")}
             action={{
-              label: "Open calendar",
+              label: t("web.provider.recurringAppointments.openCalendar"),
               onClick: () => router.push("/provider/calendar"),
             }}
           />
@@ -234,15 +236,15 @@ export default function RecurringAppointmentsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Service</TableHead>
-                    <TableHead>Team Member</TableHead>
-                    <TableHead>Schedule</TableHead>
-                    <TableHead>Pattern</TableHead>
-                    <TableHead>Next Date</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("web.provider.recurringAppointments.client")}</TableHead>
+                    <TableHead>{t("web.provider.common.service")}</TableHead>
+                    <TableHead>{t("web.provider.settings.pages.calendar/display-preferences.teamMember")}</TableHead>
+                    <TableHead>{t("web.provider.recurringAppointments.schedule")}</TableHead>
+                    <TableHead>{t("web.provider.recurringAppointments.pattern")}</TableHead>
+                    <TableHead>{t("web.provider.recurringAppointments.nextDate")}</TableHead>
+                    <TableHead>{t("web.provider.settings.pages.addons.price")}</TableHead>
+                    <TableHead>{t("web.provider.settings.pages.addons.status")}</TableHead>
+                    <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -275,7 +277,7 @@ export default function RecurringAppointmentsPage() {
                             })}
                           </span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-gray-400">{t("web.provider.common.emDash")}</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -286,12 +288,12 @@ export default function RecurringAppointmentsPage() {
                           {apt.status}
                         </Badge>
                         {apt.is_exception && (
-                          <Badge variant="outline" className="ml-2">
-                            Modified
+                          <Badge variant="outline" className="ms-2">
+                            {t("web.provider.recurringAppointments.modified")}
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm">
@@ -300,15 +302,15 @@ export default function RecurringAppointmentsPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => handleEdit(apt, "series")}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit Series
+                              <Edit className="w-4 h-4 me-2" />
+                              {t("web.provider.recurringAppointments.editSeries")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDelete(apt)}
                               className="text-red-600"
                             >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete Series
+                              <Trash2 className="w-4 h-4 me-2" />
+                              {t("web.provider.recurringAppointments.deleteSeries")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -375,6 +377,7 @@ function RecurringAppointmentEditDialog({
   editMode: "single" | "series";
   onSuccess: (savedAppointment: RecurringAppointment) => void;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const initialForm = useMemo(() => {
     const meta = (appointment.metadata || {}) as Record<string, unknown>;
@@ -459,7 +462,7 @@ function RecurringAppointmentEditDialog({
             occurrences: formData.recurrence_occurrences,
           },
         });
-        toast.success("Series updated");
+        toast.success(t("web.provider.recurringAppointments.seriesUpdated"));
       } else {
         savedAppointment = await providerApi.updateRecurringAppointment(appointment.id, {
           scheduled_date: formData.scheduled_date,
@@ -472,13 +475,13 @@ function RecurringAppointmentEditDialog({
           notes: formData.notes,
           metadata,
         });
-        toast.success("Appointment updated");
+        toast.success(t("web.provider.recurringAppointments.appointmentUpdated"));
       }
       onSuccess(savedAppointment);
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update appointment:", error);
-      toastPlanGateError(error, "Failed to update appointment");
+      toastPlanGateError(error, t("web.provider.recurringAppointments.failedToUpdate"));
       if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         setEditSubscriptionRequired(true);
       }
@@ -492,13 +495,13 @@ function RecurringAppointmentEditDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            Edit Recurring Series
+            {t("web.provider.recurringAppointments.editTitle")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-            Changes update the recurring series. To change one generated visit, open that booking from the calendar.
+            {t("web.provider.recurringAppointments.editHint")}
           </div>
 
           {editSubscriptionRequired && (
@@ -514,14 +517,14 @@ function RecurringAppointmentEditDialog({
                 className="mt-2 bg-primary hover:bg-primary-hover text-white"
                 onClick={() => router.push("/provider/subscription")}
               >
-                View plans & billing
+                {t("web.provider.recurringAppointments.viewPlansBilling")}
               </Button>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="scheduled_date">Date</Label>
+              <Label htmlFor="scheduled_date">{t("web.provider.common.date")}</Label>
               <Input
                 id="scheduled_date"
                 type="date"
@@ -533,7 +536,7 @@ function RecurringAppointmentEditDialog({
               />
             </div>
             <div>
-              <Label htmlFor="scheduled_time">Time</Label>
+              <Label htmlFor="scheduled_time">{t("web.provider.common.time")}</Label>
               <Input
                 id="scheduled_time"
                 type="time"
@@ -548,7 +551,7 @@ function RecurringAppointmentEditDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="duration_minutes">Duration (minutes)</Label>
+              <Label htmlFor="duration_minutes">{t("web.provider.recurringAppointments.durationMinutes")}</Label>
               <Input
                 id="duration_minutes"
                 type="number"
@@ -564,7 +567,7 @@ function RecurringAppointmentEditDialog({
               />
             </div>
             <div>
-              <Label htmlFor="price">Price (R)</Label>
+              <Label htmlFor="price">{t("web.provider.recurringAppointments.priceR")}</Label>
               <Input
                 id="price"
                 type="number"
@@ -584,7 +587,7 @@ function RecurringAppointmentEditDialog({
           {editMode === "series" && (
             <>
               <div>
-                <Label htmlFor="recurrence_pattern">Recurrence Pattern</Label>
+                <Label htmlFor="recurrence_pattern">{t("web.provider.recurringAppointments.recurrencePattern")}</Label>
                 <Select
                   value={formData.recurrence_pattern}
                   onValueChange={(value) =>
@@ -595,17 +598,17 @@ function RecurringAppointmentEditDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Bi-weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="daily">{t("web.provider.recurringAppointments.daily")}</SelectItem>
+                    <SelectItem value="weekly">{t("web.provider.recurringAppointments.weekly")}</SelectItem>
+                    <SelectItem value="biweekly">{t("web.provider.recurringAppointments.biweekly")}</SelectItem>
+                    <SelectItem value="monthly">{t("web.provider.recurringAppointments.monthly")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="recurrence_end_date">End Date (Optional)</Label>
+                  <Label htmlFor="recurrence_end_date">{t("web.provider.recurringAppointments.endDateOptional")}</Label>
                   <Input
                     id="recurrence_end_date"
                     type="date"
@@ -616,7 +619,7 @@ function RecurringAppointmentEditDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="recurrence_occurrences">Number of Occurrences</Label>
+                  <Label htmlFor="recurrence_occurrences">{t("web.provider.recurringAppointments.numberOfOccurrences")}</Label>
                   <Input
                     id="recurrence_occurrences"
                     type="number"
@@ -628,7 +631,7 @@ function RecurringAppointmentEditDialog({
                         recurrence_occurrences: parseInt(e.target.value) || undefined,
                       })
                     }
-                    placeholder="Leave empty for no limit"
+                    placeholder={t("web.provider.recurringAppointments.leaveEmpty")}
                   />
                 </div>
               </div>
@@ -636,7 +639,7 @@ function RecurringAppointmentEditDialog({
           )}
 
           <div>
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">{t("web.provider.recurringAppointments.notes")}</Label>
             <Textarea
               id="notes"
               value={formData.notes}
@@ -652,14 +655,14 @@ function RecurringAppointmentEditDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : "Update"}
+              {isLoading ? t("web.provider.common.saving") : t("web.provider.common.update")}
             </Button>
           </DialogFooter>
         </form>

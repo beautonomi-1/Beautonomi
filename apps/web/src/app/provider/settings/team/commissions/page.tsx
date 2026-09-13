@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -36,6 +37,7 @@ interface CommissionSettings {
 }
 
 export default function CommissionsSettings() {
+  const { t } = useTranslation();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [settings, setSettings] = useState<CommissionSettings>({
@@ -96,7 +98,7 @@ export default function CommissionsSettings() {
       }
     } catch (error) {
       console.error("Failed to load team members:", error);
-      toast.error("Failed to load team members");
+      toast.error(t("web.provider.settings.pages.team/commissions.failedToLoadTeamMembers"));
     } finally {
       setIsLoading(false);
     }
@@ -174,10 +176,10 @@ export default function CommissionsSettings() {
           tier_order: t.tier_order ?? i,
         })),
       });
-      toast.success("Commission settings saved successfully");
+      toast.success(t("web.provider.settings.pages.team/commissions.commissionSettingsSavedSuccessfully"));
     } catch (error: any) {
       console.error("Failed to save commission settings:", error);
-      toast.error(error.message || "Failed to save commission settings");
+      toast.error(error.message || t("web.provider.settings.pages.team/commissions.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -187,16 +189,16 @@ export default function CommissionsSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Commissions & Compensation"
-      subtitle="Configure how your team members are compensated"
+      title={t("web.provider.settings.categories.team.items.commissions.title")}
+      subtitle={t("web.provider.settings.categories.team.items.commissions.description")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Settings"}
+      saveLabel={isSaving ? t("web.provider.common.saving") : t("web.provider.common.saveSettings")}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Team", href: "/provider/settings/team/roles" },
-        { label: "Commissions" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.team/commissions.team"), href: "/provider/settings/team/roles" },
+        { label: t("web.provider.settings.pages.team/commissions.commissions") },
       ]}
     >
       {isLoading ? (
@@ -205,36 +207,36 @@ export default function CommissionsSettings() {
         </SectionCard>
       ) : teamMembers.length === 0 ? (
         <SectionCard className="p-8 sm:p-12 text-center">
-          <p className="text-gray-600 mb-4">No active team members found</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.settings.pages.team/commissions.noActiveMembers")}</p>
           <Button onClick={() => window.location.href = "/provider/team/members"}>
-            Add Team Members
+            {t("web.provider.settings.pages.team/commissions.addTeamMembers")}
           </Button>
         </SectionCard>
       ) : (
         <div className="space-y-4 sm:space-y-6">
           {checklist ? (
             <SectionCard>
-              <p className="text-sm font-semibold text-gray-900 mb-2">Commission setup checklist</p>
+              <p className="text-sm font-semibold text-gray-900 mb-2">{t("web.provider.settings.pages.team/commissions.checklistTitle")}</p>
               <ul className="space-y-2 text-sm text-gray-700">
                 <li>
-                  {checklist.staff_with_commission_enabled > 0 ? "✓" : "○"} Enable commission on at least one staff
-                  member
+                  {checklist.staff_with_commission_enabled > 0 ? "✓" : "○"} {t("web.provider.settings.pages.team/commissions.enableCommissionOnStaff")}
                   {checklist.staff_with_commission_enabled > 0
-                    ? ` (${checklist.staff_with_commission_enabled} enabled)`
+                    ? t("web.provider.settings.pages.team/commissions.enabledCount", { count: checklist.staff_with_commission_enabled })
                     : ""}
                 </li>
                 <li>
-                  {checklist.staff_enabled_zero_rate === 0 ? "✓" : "○"} Set a service or product rate above 0 for
-                  enabled staff
+                  {checklist.staff_enabled_zero_rate === 0 ? "✓" : "○"} {t("web.provider.settings.pages.team/commissions.setRateAboveZero")}
                   {checklist.staff_enabled_zero_rate > 0
-                    ? ` (${checklist.staff_enabled_zero_rate} still at 0%)`
+                    ? t("web.provider.settings.pages.team/commissions.stillAtZero", { count: checklist.staff_enabled_zero_rate })
                     : ""}
                 </li>
                 <li>
-                  {checklist.services_with_staff_commission_disabled === 0 ? "✓" : "○"} Turn on staff commission on
-                  services
+                  {checklist.services_with_staff_commission_disabled === 0 ? "✓" : "○"} {t("web.provider.settings.pages.team/commissions.turnOnStaffCommission")}
                   {checklist.services_with_staff_commission_disabled > 0
-                    ? ` (${checklist.services_with_staff_commission_disabled} of ${checklist.active_services} services are off)`
+                    ? t("web.provider.settings.pages.team/commissions.servicesOff", {
+                        count: checklist.services_with_staff_commission_disabled,
+                        total: checklist.active_services,
+                      })
                     : ""}
                 </li>
               </ul>
@@ -251,11 +253,11 @@ export default function CommissionsSettings() {
                       setShareCancellationFee(checked);
                       toast.success(
                         checked
-                          ? "Staff will share cancellation fees"
-                          : "Cancellation fee share turned off",
+                          ? t("web.provider.settings.pages.team/commissions.shareFeesOn")
+                          : t("web.provider.settings.pages.team/commissions.shareFeesOff"),
                       );
                     } catch (error: unknown) {
-                      toast.error(error instanceof Error ? error.message : "Failed to update policy");
+                      toast.error(error instanceof Error ? error.message : t("web.provider.settings.pages.team/commissions.failedToUpdatePolicy"));
                     } finally {
                       setSavingPolicy(false);
                     }
@@ -263,9 +265,9 @@ export default function CommissionsSettings() {
                   className="mt-1"
                 />
                 <div>
-                  <Label className="text-sm font-medium">Share cancellation fees with staff</Label>
+                  <Label className="text-sm font-medium">{t("web.provider.settings.pages.team/commissions.shareCancellationFees")}</Label>
                   <p className="text-xs text-gray-500 mt-1">
-                    When on, assigned staff receive a commission share of late-cancel and no-show fees.
+                    {t("web.provider.settings.pages.team/commissions.shareCancellationFeesHint")}
                   </p>
                 </div>
               </div>
@@ -276,11 +278,11 @@ export default function CommissionsSettings() {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm sm:text-base font-semibold mb-2 block">
-                  Select Team Member
+                  {t("web.provider.settings.pages.team/commissions.selectTeamMember")}
                 </Label>
                 <Select value={selectedMember || ""} onValueChange={setSelectedMember}>
                   <SelectTrigger className="min-h-[44px] touch-manipulation">
-                    <SelectValue placeholder="Select a team member" />
+                    <SelectValue placeholder={t("web.provider.settings.pages.team/commissions.selectATeamMember")} />
                   </SelectTrigger>
                   <SelectContent>
                     {teamMembers.map((member) => (
@@ -321,10 +323,10 @@ export default function CommissionsSettings() {
           {selectedMember && (
             <Tabs defaultValue="commission" className="w-full">
               <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 sm:mb-6">
-                <TabsTrigger value="commission" className="text-xs sm:text-sm">Commission</TabsTrigger>
-                <TabsTrigger value="hourly" className="text-xs sm:text-sm">Hourly</TabsTrigger>
-                <TabsTrigger value="salary" className="text-xs sm:text-sm">Salary</TabsTrigger>
-                <TabsTrigger value="tips" className="text-xs sm:text-sm">Tips</TabsTrigger>
+                <TabsTrigger value="commission" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.commission")}</TabsTrigger>
+                <TabsTrigger value="hourly" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.hourly")}</TabsTrigger>
+                <TabsTrigger value="salary" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.salary")}</TabsTrigger>
+                <TabsTrigger value="tips" className="text-xs sm:text-sm">{t("web.provider.settings.pages.team/commissions.tips")}</TabsTrigger>
               </TabsList>
 
               {/* Commission Tab */}
@@ -340,19 +342,19 @@ export default function CommissionsSettings() {
                       <div className="flex-1">
                         <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                           <Percent className="w-4 h-4" />
-                          Enable Commission
+                          {t("web.provider.settings.pages.team/commissions.enableCommission")}
                         </Label>
                         <p className="text-xs text-gray-500 mt-1">
-                          Enable commission-based compensation for this team member
+                          {t("web.provider.settings.pages.team/commissions.enableCommissionHint")}
                         </p>
                       </div>
                     </div>
 
                     {settings.enabled && (
-                      <div className="ml-0 sm:ml-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <div>
                           <Label htmlFor="service_commission_rate" className="text-sm font-medium">
-                            Service Commission Rate (%)
+                            {t("web.provider.settings.pages.team/commissions.serviceCommissionRate")}
                           </Label>
                           <div className="relative mt-1.5">
                             <Input
@@ -368,13 +370,13 @@ export default function CommissionsSettings() {
                                   service_commission_rate: parseFloat(e.target.value) || 0,
                                 })
                               }
-                              className="min-h-[44px] touch-manipulation pr-10"
-                              placeholder="0.0"
+                              className="min-h-[44px] touch-manipulation pe-10"
+                              placeholder={t("web.provider.settings.pages.team/commissions.n00")}
                             />
                             <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           </div>
                           <p className="text-xs text-gray-500 mt-1.5">
-                            Percentage of service price paid as commission
+                            {t("web.provider.settings.pages.team/commissions.serviceCommissionRateHint")}
                           </p>
                         </div>
 
@@ -382,7 +384,7 @@ export default function CommissionsSettings() {
 
                         <div>
                           <Label htmlFor="product_commission_rate" className="text-sm font-medium">
-                            Product Commission Rate (%)
+                            {t("web.provider.settings.pages.team/commissions.productCommissionRate")}
                           </Label>
                           <div className="relative mt-1.5">
                             <Input
@@ -398,29 +400,29 @@ export default function CommissionsSettings() {
                                   product_commission_rate: parseFloat(e.target.value) || 0,
                                 })
                               }
-                              className="min-h-[44px] touch-manipulation pr-10"
-                              placeholder="0.0"
+                              className="min-h-[44px] touch-manipulation pe-10"
+                              placeholder={t("web.provider.settings.pages.team/commissions.n00")}
                             />
                             <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                           </div>
                           <p className="text-xs text-gray-500 mt-1.5">
-                            Percentage of product price paid as commission
+                            {t("web.provider.settings.pages.team/commissions.productCommissionRateHint")}
                           </p>
                         </div>
 
                         <Separator />
 
                         <div>
-                          <Label className="text-sm font-medium">Tiered Commission (Optional)</Label>
+                          <Label className="text-sm font-medium">{t("web.provider.settings.pages.team/commissions.tieredCommission")}</Label>
                           <p className="text-xs text-gray-500 mt-1 mb-3">
-                            When period revenue reaches a threshold, the higher rate applies to all revenue. Add tiers in ascending order of min revenue.
+                            {t("web.provider.settings.pages.team/commissions.tieredCommissionHint")}
                           </p>
                           <div className="space-y-3">
                             {settings.tiers.map((tier, idx) => (
                               <div key={tier.id ?? idx} className="flex items-center gap-2 p-3 bg-white border rounded-lg">
                                 <div className="flex-1 grid grid-cols-2 gap-2">
                                   <div>
-                                    <Label className="text-xs">Min Revenue (R)</Label>
+                                    <Label className="text-xs">{t("web.provider.settings.pages.team/commissions.minRevenue")}</Label>
                                     <Input
                                       type="number"
                                       min={0}
@@ -437,7 +439,7 @@ export default function CommissionsSettings() {
                                     />
                                   </div>
                                   <div>
-                                    <Label className="text-xs">Rate (%)</Label>
+                                    <Label className="text-xs">{t("web.provider.settings.pages.team/commissions.ratePct")}</Label>
                                     <Input
                                       type="number"
                                       min={0}
@@ -480,8 +482,8 @@ export default function CommissionsSettings() {
                                 })
                               }
                             >
-                              <Plus className="w-4 h-4 mr-1" />
-                              Add tier
+                              <Plus className="w-4 h-4 me-1" />
+                              {t("web.provider.settings.pages.team/commissions.addTier")}
                             </Button>
                           </div>
                         </div>
@@ -497,7 +499,7 @@ export default function CommissionsSettings() {
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="hourly_rate" className="text-sm sm:text-base font-medium">
-                        Hourly Rate (R)
+                        {t("web.provider.settings.pages.team/commissions.hourlyRate")}
                       </Label>
                       <div className="relative mt-1.5">
                         <Input
@@ -512,13 +514,13 @@ export default function CommissionsSettings() {
                               hourly_rate: parseFloat(e.target.value) || 0,
                             })
                           }
-                          className="min-h-[44px] touch-manipulation pl-8"
-                          placeholder="0.00"
+                          className="min-h-[44px] touch-manipulation ps-8"
+                          placeholder={t("web.provider.settings.pages.team/commissions.n000")}
                         />
                         <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       </div>
                       <p className="text-xs text-gray-500 mt-1.5">
-                        Hourly wage for hourly-based compensation
+                        {t("web.provider.settings.pages.team/commissions.hourlyRateHint")}
                       </p>
                     </div>
 
@@ -527,10 +529,10 @@ export default function CommissionsSettings() {
                         <Clock className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="text-xs font-medium text-blue-900 mb-1">
-                            Time Clock Integration
+                            {t("web.provider.settings.pages.team/commissions.timeClockIntegration")}
                           </p>
                           <p className="text-xs text-blue-700">
-                            Hourly rate will be calculated based on time clock entries. Make sure time clock is enabled for this team member.
+                            {t("web.provider.settings.pages.team/commissions.timeClockHint")}
                           </p>
                         </div>
                       </div>
@@ -545,7 +547,7 @@ export default function CommissionsSettings() {
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="salary" className="text-sm sm:text-base font-medium">
-                        Monthly Salary (R)
+                        {t("web.provider.settings.pages.team/commissions.monthlySalary")}
                       </Label>
                       <div className="relative mt-1.5">
                         <Input
@@ -560,13 +562,13 @@ export default function CommissionsSettings() {
                               salary: parseFloat(e.target.value) || 0,
                             })
                           }
-                          className="min-h-[44px] touch-manipulation pl-8"
-                          placeholder="0.00"
+                          className="min-h-[44px] touch-manipulation ps-8"
+                          placeholder={t("web.provider.settings.pages.team/commissions.n000")}
                         />
                         <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                       </div>
                       <p className="text-xs text-gray-500 mt-1.5">
-                        Fixed monthly salary for salaried staff members
+                        {t("web.provider.settings.pages.team/commissions.monthlySalaryHint")}
                       </p>
                     </div>
 
@@ -575,10 +577,10 @@ export default function CommissionsSettings() {
                         <Calendar className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                         <div>
                           <p className="text-xs font-medium text-blue-900 mb-1">
-                            Salary Payment
+                            {t("web.provider.settings.pages.team/commissions.salaryPayment")}
                           </p>
                           <p className="text-xs text-blue-700">
-                            Salary is paid monthly regardless of hours worked or services performed.
+                            {t("web.provider.settings.pages.team/commissions.salaryPaymentHint")}
                           </p>
                         </div>
                       </div>
@@ -602,24 +604,24 @@ export default function CommissionsSettings() {
                       <div className="flex-1">
                         <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                           <TrendingUp className="w-4 h-4" />
-                          Enable Tips
+                          {t("web.provider.settings.pages.team/commissions.enableTips")}
                         </Label>
                         <p className="text-xs text-gray-500 mt-1">
-                          Allow this team member to receive tips from clients during checkout
+                          {t("web.provider.settings.pages.team/commissions.enableTipsHint")}
                         </p>
                       </div>
                     </div>
 
                     {settings.tips_enabled && (
-                      <div className="ml-0 sm:ml-12 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="ms-0 sm:ms-12 p-4 bg-blue-50 rounded-lg border border-blue-200">
                         <p className="text-xs font-medium text-blue-900 mb-2">
-                          Tips Information
+                          {t("web.provider.settings.pages.team/commissions.tipsInformation")}
                         </p>
                         <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
-                          <li>Tips can be added during checkout</li>
-                          <li>Tips can be split between multiple staff members</li>
-                          <li>Tips are tracked separately from commissions and wages</li>
-                          <li>Tips can be paid out in cash or included in payroll</li>
+                          <li>{t("web.provider.settings.pages.team/commissions.tipsCanBeAdded")}</li>
+                          <li>{t("web.provider.settings.pages.team/commissions.tipsCanBeSplit")}</li>
+                          <li>{t("web.provider.settings.pages.team/commissions.tipsTrackedSeparately")}</li>
+                          <li>{t("web.provider.settings.pages.team/commissions.tipsPaidOut")}</li>
                         </ul>
                       </div>
                     )}

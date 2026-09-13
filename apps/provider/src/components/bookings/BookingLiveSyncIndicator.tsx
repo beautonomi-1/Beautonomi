@@ -28,8 +28,8 @@ export function BookingLiveSyncIndicator({ lastUpdatedAt }: Props) {
 
   return (
     <View style={twStyle("mb-3 flex-row items-center self-start rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1")}>
-      <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-500")} />
-      <Ionicons name="radio-outline" size={12} color="#059669" style={{ marginRight: 4 }} />
+      <View style={twStyle("me-1.5 h-2 w-2 rounded-full bg-emerald-500")} />
+      <Ionicons name="radio-outline" size={12} color="#059669" style={{ marginEnd: 4 }} />
       <Text style={twStyle("text-xs font-medium text-emerald-800")}>
         Live · updated {formatRelativeUpdate(lastUpdatedAt)}
       </Text>

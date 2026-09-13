@@ -85,12 +85,20 @@ export default function EditLocationScreen() {
   }, [latitude, longitude]);
 
   const { t } = useTranslation();
-  const FIELD_LABELS: Record<string, string> = {
-    name: "Location name",
-    address_line1: "Address line 1",
-    city: "City",
-    country: "Country",
-  };
+  const ld = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.locationDetail.${key}`, opts) as string,
+    [t],
+  );
+  const FIELD_LABELS: Record<string, string> = useMemo(
+    () => ({
+      name: ld("fieldLocationName"),
+      address_line1: ld("fieldAddressLine1"),
+      city: ld("fieldCity"),
+      country: ld("fieldCountry"),
+    }),
+    [ld],
+  );
 
   useEffect(() => {
     if (!data) return;
@@ -159,23 +167,22 @@ export default function EditLocationScreen() {
     });
     setSaving(false);
     if (res.error) {
-      Alert.alert("Error", res.error.message);
+      Alert.alert(ld("errorTitle"), res.error.message);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Saved", "Location updated.");
+    Alert.alert(ld("savedTitle"), ld("savedBody"));
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, is_primary, is_active, refresh, t]);
+  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, is_primary, is_active, refresh, t, ld, FIELD_LABELS]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
-      "Delete location",
-      "Remove this location? This cannot be undone.",
+      ld("deleteTitle"),
+      ld("deleteBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: ld("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: ld("delete"),
           style: "destructive",
           onPress: async () => {
             const res = await deleteLocation(`/api/provider/locations/${locationId}`);
@@ -183,13 +190,13 @@ export default function EditLocationScreen() {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               router.back();
             } else {
-              Alert.alert("Error", res.error);
+              Alert.alert(ld("errorTitle"), res.error);
             }
           },
         },
       ]
     );
-  }, [locationId, deleteLocation, router]);
+  }, [locationId, deleteLocation, router, ld]);
 
   const handleUseCurrentLocationPin = useCallback(async () => {
     if (locating) return;
@@ -205,7 +212,7 @@ export default function EditLocationScreen() {
       const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
-        setAddressLine1(mapped.address_line1 || address_line1 || "Current location");
+        setAddressLine1(mapped.address_line1 || address_line1 || ld("currentLocation"));
         setCity(mapped.city || city || "—");
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
@@ -221,11 +228,11 @@ export default function EditLocationScreen() {
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (e) {
-      Alert.alert("Location error", e instanceof Error ? e.message : "Could not fetch current location.");
+      Alert.alert(ld("locationErrorTitle"), e instanceof Error ? e.message : ld("locationErrorBody"));
     } finally {
       setLocating(false);
     }
-  }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country]);
+  }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country, ld]);
 
   const handleDropPinConfirm = useCallback(
     async (lat: number, lng: number) => {
@@ -255,9 +262,9 @@ export default function EditLocationScreen() {
   if (!locationId) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <ScreenHeader title={ld("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center px-4")}>
-          <Text style={twStyle("text-gray-500")}>Invalid location.</Text>
+          <Text style={twStyle("text-gray-500")}>{ld("invalid")}</Text>
         </View>
       </ScreenContainer>
     );
@@ -266,7 +273,7 @@ export default function EditLocationScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <ScreenHeader title={ld("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -277,7 +284,7 @@ export default function EditLocationScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <ScreenHeader title={ld("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -287,7 +294,7 @@ export default function EditLocationScreen() {
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
-      <ScreenHeader title="Edit location" onBack={() => router.back()} />
+      <ScreenHeader title={ld("title")} onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior="padding"
         style={twStyle("flex-1")}
@@ -302,7 +309,7 @@ export default function EditLocationScreen() {
         >
           <View style={twStyle("px-4")}>
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Location name *</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("nameRequired")}</Text>
               <TextInput
                 style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.name ? "border-red-500" : "border-gray-200"}`)}
                 value={name}
@@ -310,7 +317,7 @@ export default function EditLocationScreen() {
                   setName(t);
                   if (errors.name) setErrors((e) => ({ ...e, name: "" }));
                 }}
-                placeholder="e.g. Main salon"
+                placeholder={ld("namePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
               {errors.name ? (
@@ -322,9 +329,9 @@ export default function EditLocationScreen() {
               ) : null}
             </View>
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address *</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("addressRequired")}</Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                Search, drop a pin on the map, or use current location — then edit the lines below if needed.
+                {ld("addressHint")}
               </Text>
               <AddressAutocomplete
                 value={address_line1}
@@ -341,7 +348,7 @@ export default function EditLocationScreen() {
                   if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                 }}
                 onBlur={(text) => setAddressLine1(text)}
-                placeholder="Street address or search…"
+                placeholder={ld("streetPlaceholder")}
                 label={undefined}
                 countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
                 defaultCountryName={country.trim() || undefined}
@@ -360,7 +367,7 @@ export default function EditLocationScreen() {
                   style={twStyle(
                     `rounded-full border px-3 py-1.5 flex-row items-center ${locating ? "border-gray-200 bg-gray-100" : "border-blue-200 bg-blue-50"}`,
                   )}
-                  accessibilityLabel="Use current location"
+                  accessibilityLabel={ld("useCurrentA11y")}
                   accessibilityRole="button"
                 >
                   {locating ? (
@@ -368,18 +375,18 @@ export default function EditLocationScreen() {
                   ) : (
                     <Ionicons name="locate-outline" size={16} color="#2563eb" />
                   )}
-                  <Text style={twStyle("ml-1.5 text-xs font-semibold text-blue-700")}>
-                    {locating ? "Locating…" : "Current location"}
+                  <Text style={twStyle("ms-1.5 text-xs font-semibold text-blue-700")}>
+                    {locating ? ld("locating") : ld("currentLocation")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setMapPinVisible(true)}
                   style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5 flex-row items-center")}
-                  accessibilityLabel="Drop pin on map"
+                  accessibilityLabel={ld("dropPinA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="map-outline" size={16} color="#374151" />
-                  <Text style={twStyle("ml-1.5 text-xs font-semibold text-gray-700")}>Drop pin on map</Text>
+                  <Text style={twStyle("ms-1.5 text-xs font-semibold text-gray-700")}>{ld("dropPin")}</Text>
                 </TouchableOpacity>
               </View>
               {latitude != null && longitude != null ? (
@@ -391,7 +398,7 @@ export default function EditLocationScreen() {
                     height={150}
                     zoom={15}
                   />
-                  <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Map preview</Text>
+                  <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>{ld("mapPreview")}</Text>
                 </View>
               ) : null}
               {errors.address_line1 ? (
@@ -403,18 +410,18 @@ export default function EditLocationScreen() {
               ) : null}
             </View>
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 2</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("addressLine2")}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={address_line2}
                 onChangeText={setAddressLine2}
-                placeholder="Optional"
+                placeholder={ld("optional")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>City *</Text>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("cityRequired")}</Text>
                 <TextInput
                   style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.city ? "border-red-500" : "border-gray-200"}`)}
                   value={city}
@@ -422,7 +429,7 @@ export default function EditLocationScreen() {
                     setCity(t);
                     if (errors.city) setErrors((e) => ({ ...e, city: "" }));
                   }}
-                  placeholder="City"
+                  placeholder={ld("cityPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.city ? (
@@ -434,7 +441,7 @@ export default function EditLocationScreen() {
                 ) : null}
               </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Country *</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("countryRequired")}</Text>
                 <TextInput
                   style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.country ? "border-red-500" : "border-gray-200"}`)}
                   value={country}
@@ -442,7 +449,7 @@ export default function EditLocationScreen() {
                     setCountry(t);
                     if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                   }}
-                  placeholder="Country"
+                  placeholder={ld("countryPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.country ? (
@@ -455,38 +462,38 @@ export default function EditLocationScreen() {
               </View>
             </View>
             <View style={twStyle("mb-4 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>State / Province</Text>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("stateProvince")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={state}
                   onChangeText={setState}
-                  placeholder="Optional"
+                  placeholder={ld("optional")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Postal code</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{ld("postalCode")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={postal_code}
                   onChangeText={setPostalCode}
-                  placeholder="Optional"
+                  placeholder={ld("optional")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
             </View>
             <View style={twStyle("mb-4")}>
               <E164PhoneField
-                label="Phone"
+                label={ld("phone")}
                 valueE164={phoneE164}
                 onChangeE164={setPhoneE164}
                 showHint={false}
-                accessibilityLabel="Location phone"
+                accessibilityLabel={ld("phoneA11y")}
               />
             </View>
             <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}>
-              <Text style={twStyle("text-base text-gray-900")}>Active</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{ld("active")}</Text>
               <Switch
                 value={is_active}
                 onValueChange={setIsActive}
@@ -495,7 +502,7 @@ export default function EditLocationScreen() {
               />
             </View>
             <View style={twStyle("mb-6 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}>
-              <Text style={twStyle("text-base text-gray-900")}>Primary location</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{ld("primaryLocation")}</Text>
               <Switch
                 value={is_primary}
                 onValueChange={setIsPrimary}
@@ -505,7 +512,7 @@ export default function EditLocationScreen() {
             </View>
 
             <ActionButton
-              label="Save changes"
+              label={ld("saveChanges")}
               variant="primary"
               onPress={handleSave}
               loading={saving}
@@ -516,9 +523,9 @@ export default function EditLocationScreen() {
               onPress={handleDelete}
               style={twStyle("mt-6 py-4 items-center")}
               accessibilityRole="button"
-              accessibilityLabel="Delete location"
+              accessibilityLabel={ld("deleteA11y")}
             >
-              <Text style={twStyle("text-sm font-medium text-red-600")}>Delete location</Text>
+              <Text style={twStyle("text-sm font-medium text-red-600")}>{ld("deleteCta")}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

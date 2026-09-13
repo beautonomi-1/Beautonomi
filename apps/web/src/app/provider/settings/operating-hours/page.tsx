@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -31,6 +32,7 @@ interface Location {
 }
 
 export default function OperatingHoursSettings() {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [operatingHours, setOperatingHours] = useState<OperatingHours>({});
@@ -90,7 +92,7 @@ export default function OperatingHoursSettings() {
       }
     } catch (error) {
       console.error("Error loading locations:", error);
-      toast.error("Failed to load locations");
+      toast.error(t("web.provider.settings.pages.operating-hours.failedToLoadLocations"));
     } finally {
       setIsLoading(false);
     }
@@ -98,7 +100,7 @@ export default function OperatingHoursSettings() {
 
   const handleSave = async () => {
     if (!selectedLocationId) {
-      toast.error("Please select a location");
+      toast.error(t("web.provider.settings.pages.operating-hours.pleaseSelectALocation"));
       return;
     }
 
@@ -107,14 +109,14 @@ export default function OperatingHoursSettings() {
       await fetcher.patch(`/api/provider/locations/${selectedLocationId}`, {
         operating_hours: operatingHours,
       });
-      toast.success("Operating hours updated successfully");
+      toast.success(t("web.provider.settings.pages.operating-hours.operatingHoursUpdatedSuccessfully"));
       setHasChanges(false);
       invalidateSetupStatusCache();
       invalidateProviderPortalCache();
       // Reload locations to get updated data
       await loadLocations();
     } catch (error: any) {
-      toast.error(error.message || "Failed to save operating hours");
+      toast.error(error.message || t("web.provider.settings.pages.operating-hours.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -128,20 +130,20 @@ export default function OperatingHoursSettings() {
   const selectedLocation = locations.find((loc) => loc.id === selectedLocationId);
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Operating Hours" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.operating-hours.operatingHours") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Operating Hours"
-        subtitle="Manage opening and closing times for your locations"
+        title={t("web.provider.settings.categories.appointmentActivity.items.operatingHours.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.operatingHours.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading locations..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.operating-hours.loadingLocations")} />
       </SettingsDetailLayout>
     );
   }
@@ -149,16 +151,16 @@ export default function OperatingHoursSettings() {
   if (locations.length === 0) {
     return (
       <SettingsDetailLayout
-        title="Operating Hours"
-        subtitle="Manage opening and closing times for your locations"
+        title={t("web.provider.settings.pages.operating-hours.operatingHours")}
+        subtitle={t("web.provider.settings.pages.operating-hours.manageOpeningAndClosingTimesFor")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard className="p-12">
           <EmptyState
-            title="No locations found"
-            description="Add a location first to manage operating hours"
+            title={t("web.provider.settings.pages.operating-hours.noLocationsFound")}
+            description={t("web.provider.settings.pages.operating-hours.addLocationFirst")}
             action={{
-              label: "Add Location",
+              label: t("web.provider.settings.pages.operating-hours.addLocation"),
               onClick: () => (window.location.href = "/provider/settings/locations"),
             }}
           />
@@ -169,10 +171,10 @@ export default function OperatingHoursSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Operating Hours"
-      subtitle="Manage opening and closing times for your locations"
+      title={t("web.provider.settings.pages.operating-hours.operatingHours")}
+      subtitle={t("web.provider.settings.pages.operating-hours.manageOpeningAndClosingTimesFor")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Changes"}
+      saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.common.saveChanges")}
       saveDisabled={isSaving || !hasChanges || !selectedLocationId}
       breadcrumbs={breadcrumbs}
     >
@@ -180,13 +182,13 @@ export default function OperatingHoursSettings() {
         <div className="space-y-6">
           {/* Location Selector */}
           <div className="space-y-2">
-            <Label htmlFor="location-select">Select Location</Label>
+<Label htmlFor="location-select">{t("web.provider.settings.pages.operating-hours.selectLocation")}</Label>
             <Select
               value={selectedLocationId || ""}
               onValueChange={setSelectedLocationId}
             >
               <SelectTrigger id="location-select" className="w-full sm:w-auto min-w-[300px]">
-                <SelectValue placeholder="Select a location" />
+                <SelectValue placeholder={t("web.provider.settings.pages.operating-hours.selectALocation")} />
               </SelectTrigger>
               <SelectContent>
                 {locations.map((location) => (
@@ -210,10 +212,10 @@ export default function OperatingHoursSettings() {
               <div>
                 <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
                   <Clock className="w-5 h-5" />
-                  Operating Hours
+                  {t("web.provider.settings.pages.operating-hours.operatingHours")}
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Set the opening and closing times for each day of the week. Uncheck "Open" to mark a day as closed.
+{t("web.provider.settings.pages.operating-hours.setHoursHint")}
                 </p>
                 <OperatingHoursEditor
                   hours={operatingHours}
@@ -226,13 +228,13 @@ export default function OperatingHoursSettings() {
           {/* Info Note */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
             <p className="text-sm text-blue-800">
-              <strong>How operating hours work:</strong>
+<strong>{t("web.provider.settings.pages.operating-hours.howItWorks")}</strong>
             </p>
             <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
-              <li>These hours determine when customers can book appointments at this location.</li>
-              <li>Staff members without custom work hours will follow these location hours.</li>
-              <li>Staff with <strong>Custom Work Hours</strong> enabled use their own schedule instead.</li>
-              <li>Time blocks (breaks, meetings) further restrict availability within these hours.</li>
+<li>{t("web.provider.settings.pages.operating-hours.hoursDetermine")}</li>
+<li>{t("web.provider.settings.pages.operating-hours.staffFollow")}</li>
+<li>{t("web.provider.settings.pages.operating-hours.staffWith")} <strong>{t("web.provider.settings.pages.operating-hours.customWorkHours")}</strong> {t("web.provider.settings.pages.operating-hours.enabledUseOwn")}</li>
+<li>{t("web.provider.settings.pages.operating-hours.timeBlocksRestrict")}</li>
             </ul>
           </div>
         </div>

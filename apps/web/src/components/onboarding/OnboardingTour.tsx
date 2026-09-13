@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { X, ChevronRight, ChevronLeft, Sparkles } from "lucide-react";
@@ -20,6 +22,7 @@ interface OnboardingTourProps {
 }
 
 export function OnboardingTour({ steps, storageKey, onComplete }: OnboardingTourProps) {
+  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null);
@@ -172,7 +175,7 @@ export function OnboardingTour({ steps, storageKey, onComplete }: OnboardingTour
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-[#FF0077]" />
               <span className="text-xs font-medium text-gray-500">
-                Step {currentStep + 1} of {steps.length}
+                {t("web.onboarding.tour.stepOf", { current: currentStep + 1, total: steps.length })}
               </span>
             </div>
             <button
@@ -195,8 +198,8 @@ export function OnboardingTour({ steps, storageKey, onComplete }: OnboardingTour
                   onClick={prevStep}
                   className="text-sm"
                 >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  Previous
+                  <ChevronLeft className="w-4 h-4 me-1" />
+                  {t("web.ui.pagination.previous")}
                 </Button>
               )}
             </div>
@@ -207,16 +210,16 @@ export function OnboardingTour({ steps, storageKey, onComplete }: OnboardingTour
                 onClick={skipTour}
                 className="text-sm"
               >
-                Skip Tour
+                {t("web.onboarding.tour.skipTour")}
               </Button>
               <Button
                 size="sm"
                 onClick={nextStep}
                 className="bg-[#FF0077] hover:bg-[#D60565] text-white text-sm"
               >
-                {currentStep === steps.length - 1 ? "Finish" : "Next"}
+                {currentStep === steps.length - 1 ? t("web.onboarding.tour.finish") : t("common.next")}
                 {currentStep < steps.length - 1 && (
-                  <ChevronRight className="w-4 h-4 ml-1" />
+                  <ChevronRight className="w-4 h-4 ms-1" />
                 )}
               </Button>
             </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -34,6 +35,7 @@ interface NotificationSettings {
 }
 
 export default function NotificationsSettings() {
+  const { t } = useTranslation();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [settings, setSettings] = useState<NotificationSettings>({
@@ -72,7 +74,7 @@ export default function NotificationsSettings() {
       }
     } catch (error) {
       console.error("Failed to load team members:", error);
-      toast.error("Failed to load team members");
+      toast.error(t("web.provider.settings.pages.team/notifications.failedToLoadTeamMembers"));
     } finally {
       setIsLoading(false);
     }
@@ -144,10 +146,10 @@ export default function NotificationsSettings() {
         weekly_schedule: settings.weekly_schedule,
         reminder_time: settings.reminder_time,
       });
-      toast.success("Notification settings saved successfully");
+      toast.success(t("web.provider.settings.pages.team/notifications.notificationSettingsSavedSuccessfully"));
     } catch (error: unknown) {
       console.error("Failed to save notification settings:", error);
-      toastPlanGateError(error, "Failed to save notification settings");
+      toastPlanGateError(error, t("web.provider.settings.pages.team/notifications.failedToSaveNotificationSettings"));
     } finally {
       setIsSaving(false);
     }
@@ -157,16 +159,16 @@ export default function NotificationsSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Staff Notifications"
-      subtitle="Configure how team members receive notifications"
+      title={t("web.provider.settings.categories.team.items.teamNotifications.title")}
+      subtitle={t("web.provider.settings.categories.team.items.teamNotifications.description")}
       onSave={handleSave}
-      saveLabel={isSaving ? "Saving..." : "Save Settings"}
+      saveLabel={isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.pages.team/notifications.saveSettings")}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Team", href: "/provider/settings/team/roles" },
-        { label: "Staff Notifications" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.team/notifications.team"), href: "/provider/settings/team/roles" },
+        { label: t("web.provider.settings.pages.team/notifications.staffNotifications") },
       ]}
     >
       {isLoading ? (
@@ -175,9 +177,9 @@ export default function NotificationsSettings() {
         </SectionCard>
       ) : teamMembers.length === 0 ? (
         <SectionCard className="p-8 sm:p-12 text-center">
-          <p className="text-gray-600 mb-4">No active team members found</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.settings.pages.team/notifications.noActiveTeamMembers")}</p>
           <Button onClick={() => window.location.href = "/provider/team/members"}>
-            Add Team Members
+            {t("web.provider.settings.pages.team/notifications.addTeamMembers")}
           </Button>
         </SectionCard>
       ) : (
@@ -187,11 +189,11 @@ export default function NotificationsSettings() {
             <div className="space-y-4">
               <div>
                 <Label className="text-sm sm:text-base font-semibold mb-2 block">
-                  Select Team Member
+                  {t("web.provider.settings.pages.team/notifications.selectTeamMember")}
                 </Label>
                 <Select value={selectedMember || ""} onValueChange={setSelectedMember}>
                   <SelectTrigger className="min-h-[44px] touch-manipulation">
-                    <SelectValue placeholder="Select a team member" />
+                    <SelectValue placeholder={t("web.provider.settings.pages.team/notifications.selectATeamMember")} />
                   </SelectTrigger>
                   <SelectContent>
                     {teamMembers.map((member) => (
@@ -233,9 +235,9 @@ export default function NotificationsSettings() {
           {selectedMember && (
             <SectionCard>
               <div className="space-y-4">
-                <h3 className="text-sm sm:text-base font-semibold">Notification Channels</h3>
+                <h3 className="text-sm sm:text-base font-semibold">{t("web.provider.settings.pages.team/notifications.notificationChannels")}</h3>
                 <p className="text-xs sm:text-sm text-gray-500">
-                  Choose how this team member receives notifications
+                  {t("web.provider.settings.pages.team/notifications.chooseHowReceives")}
                 </p>
 
                 <Separator />
@@ -252,10 +254,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Mail className="w-4 h-4" />
-                        Email Notifications
+                        {t("web.provider.settings.pages.team/notifications.emailNotifications")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Send notifications to {selectedMemberData?.email || "their email address"}
+{t("web.provider.settings.pages.team/notifications.sendNotificationsToEmail", { email: selectedMemberData?.email || t("web.provider.settings.pages.team/notifications.theirEmailAddress") })}
                       </p>
                     </div>
                   </div>
@@ -274,11 +276,11 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Phone className="w-4 h-4" />
-                        SMS Notifications
+                        {t("web.provider.settings.pages.team/notifications.smsNotifications")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
                         {settings.sms_plan_allowed
-                          ? `Send SMS notifications to ${selectedMemberData?.mobile || "their mobile number"}`
+                          ? t("web.provider.settings.pages.team/notifications.sendSmsToMobile", { mobile: selectedMemberData?.mobile || t("web.provider.settings.pages.team/notifications.theirMobileNumber") })
                           : getUpgradeMessage("staff.sms")}
                       </p>
                       {!settings.sms_plan_allowed ? (
@@ -286,7 +288,7 @@ export default function NotificationsSettings() {
                           href="/provider/subscription"
                           className="inline-block mt-2 text-xs font-medium text-primary underline"
                         >
-                          View plans
+                          {t("web.provider.settings.pages.team/notifications.viewPlans")}
                         </Link>
                       ) : null}
                     </div>
@@ -303,10 +305,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Monitor className="w-4 h-4" />
-                        Desktop Notifications
+                        {t("web.provider.settings.pages.team/notifications.desktopNotifications")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Show browser desktop notifications (requires permission)
+                        {t("web.provider.settings.pages.team/notifications.desktopNotificationsHint")}
                       </p>
                     </div>
                   </div>
@@ -319,9 +321,9 @@ export default function NotificationsSettings() {
           {selectedMember && (
             <SectionCard>
               <div className="space-y-4">
-                <h3 className="text-sm sm:text-base font-semibold">What to Notify About</h3>
+                <h3 className="text-sm sm:text-base font-semibold">{t("web.provider.settings.pages.team/notifications.whatToNotifyAbout")}</h3>
                 <p className="text-xs sm:text-sm text-gray-500">
-                  Choose which events trigger notifications
+                  {t("web.provider.settings.pages.team/notifications.chooseWhichEvents")}
                 </p>
 
                 <Separator />
@@ -338,10 +340,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Bell className="w-4 h-4" />
-                        Appointment Reminders
+                        {t("web.provider.settings.pages.team/notifications.appointmentReminders")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Receive reminders before appointments
+                        {t("web.provider.settings.pages.team/notifications.receiveRemindersBefore")}
                       </p>
                     </div>
                   </div>
@@ -357,10 +359,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <AlertCircle className="w-4 h-4" />
-                        Appointment Cancellations
+                        {t("web.provider.settings.pages.team/notifications.appointmentCancellations")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Get notified when appointments are cancelled
+                        {t("web.provider.settings.pages.team/notifications.notifiedWhenCancelled")}
                       </p>
                     </div>
                   </div>
@@ -376,10 +378,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
-                        Appointment Reschedules
+                        {t("web.provider.settings.pages.team/notifications.appointmentReschedules")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Get notified when appointments are rescheduled
+                        {t("web.provider.settings.pages.team/notifications.notifiedWhenRescheduled")}
                       </p>
                     </div>
                   </div>
@@ -395,10 +397,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <User className="w-4 h-4" />
-                        New Bookings
+                        {t("web.provider.settings.pages.team/notifications.newBookings")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Get notified when new appointments are booked for you
+                        {t("web.provider.settings.pages.team/notifications.notifiedWhenBookedForYou")}
                       </p>
                     </div>
                   </div>
@@ -414,10 +416,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        Daily Schedule
+                        {t("web.provider.settings.pages.team/notifications.dailySchedule")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Receive daily schedule summary
+                        {t("web.provider.settings.pages.team/notifications.receiveDailySummary")}
                       </p>
                     </div>
                   </div>
@@ -433,10 +435,10 @@ export default function NotificationsSettings() {
                     <div className="flex-1">
                       <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
-                        Weekly Schedule
+                        {t("web.provider.settings.pages.team/notifications.weeklySchedule")}
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Receive weekly schedule summary
+                        {t("web.provider.settings.pages.team/notifications.receiveWeeklySummary")}
                       </p>
                     </div>
                   </div>
@@ -449,16 +451,16 @@ export default function NotificationsSettings() {
           {selectedMember && settings.appointment_reminders && (
             <SectionCard>
               <div className="space-y-4">
-                <h3 className="text-sm sm:text-base font-semibold">Reminder Timing</h3>
+                <h3 className="text-sm sm:text-base font-semibold">{t("web.provider.settings.pages.team/notifications.reminderTiming")}</h3>
                 <p className="text-xs sm:text-sm text-gray-500">
-                  When to send appointment reminders
+                  {t("web.provider.settings.pages.team/notifications.whenToSendReminders")}
                 </p>
 
                 <Separator />
 
                 <div>
                   <Label htmlFor="reminder_time" className="text-sm font-medium">
-                    Reminder Time
+                    {t("web.provider.settings.pages.team/notifications.reminderTime")}
                   </Label>
                   <Select
                     value={settings.reminder_time}
@@ -470,18 +472,18 @@ export default function NotificationsSettings() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="48h">48 hours before</SelectItem>
-                      <SelectItem value="24h">24 hours before</SelectItem>
-                      <SelectItem value="12h">12 hours before</SelectItem>
-                      <SelectItem value="6h">6 hours before</SelectItem>
-                      <SelectItem value="2h">2 hours before</SelectItem>
-                      <SelectItem value="1h">1 hour before</SelectItem>
-                      <SelectItem value="30m">30 minutes before</SelectItem>
-                      <SelectItem value="15m">15 minutes before</SelectItem>
+                      <SelectItem value="48h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 48 })}</SelectItem>
+                      <SelectItem value="24h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 24 })}</SelectItem>
+                      <SelectItem value="12h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 12 })}</SelectItem>
+                      <SelectItem value="6h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 6 })}</SelectItem>
+                      <SelectItem value="2h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 2 })}</SelectItem>
+                      <SelectItem value="1h">{t("web.provider.settings.pages.team/notifications.hoursBefore", { count: 1 })}</SelectItem>
+                      <SelectItem value="30m">{t("web.provider.settings.pages.team/notifications.minutesBefore", { count: 30 })}</SelectItem>
+                      <SelectItem value="15m">{t("web.provider.settings.pages.team/notifications.minutesBefore", { count: 15 })}</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Choose when to send appointment reminders
+                    {t("web.provider.settings.pages.team/notifications.chooseWhenToSend")}
                   </p>
                 </div>
               </div>

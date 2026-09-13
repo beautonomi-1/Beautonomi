@@ -7,7 +7,15 @@
  * No model call is made and nothing is written to `ai_usage_log`.
  */
 import type { ProviderContextCapsule } from "./provider-context";
-import { AI_FEATURE_CONTENT_STUDIO, AI_FEATURE_PROFILE_COMPLETION } from "./feature-templates";
+import {
+  AI_FEATURE_BOOKING_OPS,
+  AI_FEATURE_CONTENT_STUDIO,
+  AI_FEATURE_LOOK_DESCRIBE,
+  AI_FEATURE_PRICING_ASSISTANT,
+  AI_FEATURE_PROFILE_COMPLETION,
+  AI_FEATURE_REPUTATION_COACH,
+  AI_FEATURE_SMART_REPLIES,
+} from "./feature-templates";
 
 export interface AiFallbackPayload {
   fallback: true;
@@ -94,6 +102,61 @@ function buildContentStudioFallback(
   };
 }
 
+function buildSmartRepliesFallback(input: string): Record<string, unknown> {
+  return {
+    replies: [
+      "Thanks for reaching out! We'd love to help — what service and time works best for you?",
+      "Hi there! You can book online anytime, or tell us your preferred date and we'll confirm availability.",
+      input.trim()
+        ? `Thanks for your message. Regarding "${input.trim().slice(0, 80)}" — we'll follow up shortly.`
+        : "Thanks for your message — we'll get back to you shortly.",
+    ],
+  };
+}
+
+function buildPricingAssistantFallback(capsule: ProviderContextCapsule | null): Record<string, unknown> {
+  const offerings = (capsule?.offerings ?? []).slice(0, 5);
+  return {
+    suggestions: offerings.map((o) => ({
+      offering_name: o.name ?? "Service",
+      suggested_price: Number(o.price ?? 0),
+      rationale: "Keep current price unless market research suggests otherwise.",
+    })),
+  };
+}
+
+function buildBookingOpsFallback(capsule: ProviderContextCapsule | null): Record<string, unknown> {
+  const name = capsule?.name?.trim() || "Our studio";
+  return {
+    reminder_sms: `Reminder: your appointment at ${name} is tomorrow. Reply if you need to reschedule.`,
+    no_show_sms: `We missed you at ${name} today. Rebook online when you're ready — we'd love to see you.`,
+    reschedule_message: `No problem — pick a new time for your visit at ${name} via your booking link.`,
+  };
+}
+
+function buildReputationCoachFallback(input: string): Record<string, unknown> {
+  return {
+    review_replies: [
+      "Thank you for the feedback — we really appreciate you taking the time to share your experience.",
+      "We're sorry this didn't meet expectations. Please contact us directly so we can make it right.",
+    ],
+    recovery_tips: [
+      "Respond within 24 hours with empathy and a concrete next step.",
+      input.trim() ? "Address the specific concern mentioned in the review." : "Invite the guest to return with a personalized offer if appropriate.",
+    ],
+  };
+}
+
+function buildLookDescribeFallback(capsule: ProviderContextCapsule | null, input: string): Record<string, unknown> {
+  const name = capsule?.name?.trim() || "Beauty look";
+  const tag = input.trim() || topOfferings(capsule, 1)[0] || "style";
+  return {
+    caption: `${name} — ${tag} inspiration`,
+    tags: [tag, "beauty", "Beautonomi"],
+    alt_text: `Photo showing ${tag} by ${name}`,
+  };
+}
+
 /**
  * Build the fallback payload for a feature. Returns null for unknown features so
  * the route can 404 consistently.
@@ -106,10 +169,30 @@ export function buildFeatureFallback(params: {
 }): AiFallbackPayload | null {
   const input = params.input ?? "";
   let body: Record<string, unknown> | null = null;
-  if (params.featureKey === AI_FEATURE_PROFILE_COMPLETION) {
-    body = buildProfileCompletionFallback(params.capsule, input);
-  } else if (params.featureKey === AI_FEATURE_CONTENT_STUDIO) {
-    body = buildContentStudioFallback(params.capsule, input);
+  switch (params.featureKey) {
+    case AI_FEATURE_PROFILE_COMPLETION:
+      body = buildProfileCompletionFallback(params.capsule, input);
+      break;
+    case AI_FEATURE_CONTENT_STUDIO:
+      body = buildContentStudioFallback(params.capsule, input);
+      break;
+    case AI_FEATURE_SMART_REPLIES:
+      body = buildSmartRepliesFallback(input);
+      break;
+    case AI_FEATURE_PRICING_ASSISTANT:
+      body = buildPricingAssistantFallback(params.capsule);
+      break;
+    case AI_FEATURE_BOOKING_OPS:
+      body = buildBookingOpsFallback(params.capsule);
+      break;
+    case AI_FEATURE_REPUTATION_COACH:
+      body = buildReputationCoachFallback(input);
+      break;
+    case AI_FEATURE_LOOK_DESCRIBE:
+      body = buildLookDescribeFallback(params.capsule, input);
+      break;
+    default:
+      body = null;
   }
   if (!body) return null;
   return { ...body, fallback: true, fallback_reason: params.reason };

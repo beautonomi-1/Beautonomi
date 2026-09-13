@@ -14,6 +14,11 @@ export function useAppointmentSettings() {
     defaultAppointmentStatus: DEFAULT_APPOINTMENT_STATUS,
     autoConfirmAppointments: false,
     requireConfirmationForBookings: true,
+    confirmationSlaHours: 2,
+    unconfirmedExpireHoursBeforeSlot: 2,
+    closeoutGraceMinutesSalon: 20,
+    closeoutGraceMinutesAtHome: 30,
+    lateArrivalGraceMinutes: 0,
     updatedAt: null,
   });
   const [isLoading, setIsLoading] = useState(true);

@@ -2,6 +2,7 @@
  * Payment methods: settlement-window mix (gateways, till logs, wallet splits).
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency, formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -41,6 +42,10 @@ function isPaymentMethodsPayload(data: unknown): data is {
 }
 
 export function PaymentMethodsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const pm = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.paymentMethodsReport.${key}`, opts) as string;
+
   if (!isPaymentMethodsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -61,47 +66,48 @@ export function PaymentMethodsReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {pm("factsDefinitions")}
       </Text>
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-sky-950")}>{basis}</Text>
-          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
-          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Range · {range}</Text> : null}
+          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{pm("timezone", { tz })}</Text> : null}
+          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{pm("range", { range })}</Text> : null}
         </View>
       ) : null}
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-indigo-900")}>Settlement line items</Text>
+          <Text style={twStyle("text-xs font-medium text-indigo-900")}>{pm("settlementLineItems")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>{totalLineItems}</Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-indigo-900/85")}>
-            Captures and completed till logs in range.
+            {pm("settlementHint")}
           </Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Total attributed</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{pm("totalAttributed")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
             {formatCurrency(totalAmt)}
           </Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>
-            Uses capture timestamps, not appointment dates.
+            {pm("totalAttributedHint")}
           </Text>
         </View>
       </View>
 
       {failedTotal > 0 ? (
         <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50/95 px-4 py-3")}>
-          <Text style={twStyle("text-sm font-medium text-amber-950")}>Failed gateway captures in window</Text>
+          <Text style={twStyle("text-sm font-medium text-amber-950")}>{pm("failedCapturesTitle")}</Text>
           <Text style={twStyle("mt-1 text-sm leading-5 text-amber-950/95")}>
-            {failedTotal} failed payment_transaction rows in range
-            {typeof failedAttrib === "number" ? ` (${failedAttrib} linked to your bookings).` : "."} Excluded from
-            totals above.
+            {pm("failedCaptures", {
+              count: failedTotal,
+              attrib: typeof failedAttrib === "number" ? pm("failedCapturesAttrib", { count: failedAttrib }) : "",
+            })}
           </Text>
         </View>
       ) : null}
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>By method</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{pm("byMethod")}</Text>
       {methods.map((m) => {
         const label = m.label ?? m.method;
         const ptN = m.paymentTransactionCount ?? 0;
@@ -110,21 +116,35 @@ export function PaymentMethodsReportView({ data }: { data: unknown }) {
         const parts: string[] = [];
         if (ptN > 0) {
           parts.push(
-            `${ptN} gateway row${ptN === 1 ? "" : "s"}${m.paymentTransactionAmount ? ` · ${formatCurrency(Number(m.paymentTransactionAmount))}` : ""}`,
+            pm("gatewayRows", {
+              count: ptN,
+              amountSuffix: m.paymentTransactionAmount
+                ? pm("amountSuffix", { amount: formatCurrency(Number(m.paymentTransactionAmount)) })
+                : "",
+            }),
           );
         }
         if (bpN > 0) {
           parts.push(
-            `${bpN} till log${bpN === 1 ? "" : "s"}${m.bookingPaymentAmount ? ` · ${formatCurrency(Number(m.bookingPaymentAmount))}` : ""}`,
+            pm("tillLogs", {
+              count: bpN,
+              amountSuffix: m.bookingPaymentAmount
+                ? pm("amountSuffix", { amount: formatCurrency(Number(m.bookingPaymentAmount)) })
+                : "",
+            }),
           );
         }
         if (wN > 0) {
           parts.push(
-            `${wN} wallet split${wN === 1 ? "" : "s"}${m.walletBookingAdjustmentAmount ? ` · ${formatCurrency(Number(m.walletBookingAdjustmentAmount))}` : ""}`,
+            pm("walletSplits", {
+              count: wN,
+              amountSuffix: m.walletBookingAdjustmentAmount
+                ? pm("amountSuffix", { amount: formatCurrency(Number(m.walletBookingAdjustmentAmount)) })
+                : "",
+            }),
           );
         }
-        const detail =
-          parts.length > 0 ? parts.join(" · ") : `${m.totalCount} line item${m.totalCount === 1 ? "" : "s"}`;
+        const detail = parts.length > 0 ? parts.join(" · ") : pm("lineItems", { count: m.totalCount });
 
         return (
           <View
@@ -140,7 +160,7 @@ export function PaymentMethodsReportView({ data }: { data: unknown }) {
             </Text>
             <Text style={twStyle("mt-1 text-xs leading-5 text-gray-500")}>{detail}</Text>
             <Text style={twStyle("mt-2 text-xs text-gray-400")}>
-              Avg {formatCurrency(m.averageAmount)} · {m.totalCount} lines
+              {pm("avgLines", { amount: formatCurrency(m.averageAmount), count: m.totalCount })}
             </Text>
             <View style={twStyle("mt-3 h-2 overflow-hidden rounded-full bg-gray-100")}>
               <View

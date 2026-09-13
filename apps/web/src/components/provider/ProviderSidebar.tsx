@@ -55,10 +55,11 @@ import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { StaffPermissions } from "@/lib/auth/permissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 type NavItemConfig = {
   icon: React.ElementType;
-  label: string;
+  labelKey: string;
   href: string;
   badge?: string;
   permission?: keyof StaffPermissions;
@@ -66,99 +67,99 @@ type NavItemConfig = {
 };
 
 // Navigation sections with permission requirements
-const navigationSections: { title: string; items: NavItemConfig[] }[] = [
+const navigationSections: { titleKey: string; items: NavItemConfig[] }[] = [
   {
-    title: "Main",
+    titleKey: "web.provider.sidebar.sections.main",
     items: [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard", permission: undefined }, // Always accessible
-      { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarCheck, label: "Bookings", href: "/provider/bookings", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: LayoutDashboard, labelKey: "web.provider.sidebar.items.dashboard", href: "/provider/dashboard", permission: undefined },
+      { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarCheck, labelKey: "web.provider.sidebar.items.bookings", href: "/provider/bookings", permission: "view_calendar" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Operations",
+    titleKey: "web.provider.sidebar.sections.operations",
     items: [
-      { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: UsersRound, label: "Group Bookings", href: "/provider/group-bookings", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
+      { icon: Clock, labelKey: "web.provider.sidebar.items.waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Repeat, labelKey: "web.provider.sidebar.items.recurring", href: "/provider/recurring-appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: UsersRound, labelKey: "web.provider.sidebar.items.groupBookings", href: "/provider/group-bookings", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Monitor, labelKey: "web.provider.sidebar.items.frontDesk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: UserCheck, labelKey: "web.provider.sidebar.items.waitingRoom", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: UsersRound, labelKey: "web.provider.sidebar.items.clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Schedule",
+    titleKey: "web.provider.sidebar.sections.schedule",
     items: [
-      { icon: Calendar, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: Clock, label: "Operating Hours", href: "/provider/settings/operating-hours", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: CalendarRange, label: "Shifts", href: "/provider/team/shifts", permission: "view_team" as keyof StaffPermissions },
-      { icon: CalendarRange, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarOff, label: "Closed Periods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Calendar, labelKey: "web.provider.sidebar.items.schedule", href: "/provider/schedule", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Clock, labelKey: "web.provider.sidebar.items.operatingHours", href: "/provider/settings/operating-hours", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CalendarRange, labelKey: "web.provider.sidebar.items.shifts", href: "/provider/team/shifts", permission: "view_team" as keyof StaffPermissions },
+      { icon: CalendarRange, labelKey: "web.provider.sidebar.items.timeBlocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarOff, labelKey: "web.provider.sidebar.items.daysOff", href: "/provider/team/days-off", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarOff, labelKey: "web.provider.sidebar.items.closedPeriods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Resources & Forms",
+    titleKey: "web.provider.sidebar.sections.resourcesForms",
     items: [
-      { icon: Grid3x3, label: "Resources & Forms", href: "/provider/resources-forms", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: Package, label: "Resources", href: "/provider/resources", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: FileEdit, label: "Forms", href: "/provider/forms", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Grid3x3, labelKey: "web.provider.sidebar.items.resourcesForms", href: "/provider/resources-forms", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Package, labelKey: "web.provider.sidebar.items.resources", href: "/provider/resources", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: FileEdit, labelKey: "web.provider.sidebar.items.forms", href: "/provider/forms", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Orders",
+    titleKey: "web.provider.sidebar.sections.orders",
     items: [
-      { icon: ShoppingBag, label: "Orders", href: "/provider/ecommerce/orders", permission: "view_sales" as keyof StaffPermissions },
-      { icon: Undo2, label: "Returns", href: "/provider/ecommerce/returns", permission: "view_sales" as keyof StaffPermissions },
+      { icon: ShoppingBag, labelKey: "web.provider.sidebar.items.orders", href: "/provider/ecommerce/orders", permission: "view_sales" as keyof StaffPermissions },
+      { icon: Undo2, labelKey: "web.provider.sidebar.items.returns", href: "/provider/ecommerce/returns", permission: "view_sales" as keyof StaffPermissions },
     ],
   },
   {
-    title: "E-Commerce",
+    titleKey: "web.provider.sidebar.sections.ecommerce",
     items: [
-      { icon: Store, label: "E-Commerce", href: "/provider/ecommerce", permission: "view_products" as keyof StaffPermissions },
-      { icon: Store, label: "Products", href: "/provider/ecommerce/products", permission: "view_products" as keyof StaffPermissions },
-      { icon: Truck, label: "Shipping & Collection", href: "/provider/ecommerce/shipping", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Store, labelKey: "web.provider.sidebar.items.ecommerce", href: "/provider/ecommerce", permission: "view_products" as keyof StaffPermissions },
+      { icon: Store, labelKey: "web.provider.sidebar.items.products", href: "/provider/ecommerce/products", permission: "view_products" as keyof StaffPermissions },
+      { icon: Truck, labelKey: "web.provider.sidebar.items.shippingCollection", href: "/provider/ecommerce/shipping", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Business",
+    titleKey: "web.provider.sidebar.sections.business",
     items: [
-      { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions, featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
-      { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
-      { icon: PiggyBank, label: "Bank Accounts", href: "/provider/settings/payout-accounts", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: CreditCard, label: "Card machines", href: "/provider/settings/sales/card-machines", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paycloud" },
-      { icon: CreditCard, label: "Yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
-      { icon: QrCode, label: "Paystack Terminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
-      { icon: CreditCard, label: "Subscription", href: "/provider/subscription", permission: undefined },
-      { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
-      { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
-      { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
-      { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
-      { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
-      { icon: Ticket, label: "Memberships", href: "/provider/settings/services/memberships", permission: "view_services" as keyof StaffPermissions },
+      { icon: Tag, labelKey: "web.provider.sidebar.items.sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions, featureFlag: FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS },
+      { icon: Wallet, labelKey: "web.provider.sidebar.items.finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
+      { icon: PiggyBank, labelKey: "web.provider.sidebar.items.bankAccounts", href: "/provider/settings/payout-accounts", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CreditCard, labelKey: "web.provider.sidebar.items.cardMachines", href: "/provider/settings/sales/card-machines", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paycloud" },
+      { icon: CreditCard, labelKey: "web.provider.sidebar.items.yoco", href: "/provider/settings/sales/yoco-integration", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_yoco" },
+      { icon: QrCode, labelKey: "web.provider.sidebar.items.paystackTerminal", href: "/provider/settings/sales/paystack-terminal", permission: "edit_settings" as keyof StaffPermissions, featureFlag: "payment_paystack_virtual_terminal" },
+      { icon: CreditCard, labelKey: "web.provider.sidebar.items.subscription", href: "/provider/subscription", permission: undefined },
+      { icon: BarChart3, labelKey: "web.provider.sidebar.items.analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
+      { icon: BarChart3, labelKey: "web.provider.sidebar.items.reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
+      { icon: Trophy, labelKey: "web.provider.sidebar.items.rewardsBadges", href: "/provider/gamification", permission: undefined },
+      { icon: Grid3x3, labelKey: "web.provider.sidebar.items.catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
+      { icon: Sparkles, labelKey: "web.provider.sidebar.items.packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
+      { icon: Ticket, labelKey: "web.provider.sidebar.items.memberships", href: "/provider/settings/services/memberships", permission: "view_services" as keyof StaffPermissions },
     ],
   },
   {
-    title: "Team & Marketing",
+    titleKey: "web.provider.sidebar.sections.teamMarketing",
     items: [
-      { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" as keyof StaffPermissions },
-      { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
-      { icon: Users, label: "Team members", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
-      { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" as keyof StaffPermissions },
-      { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_sales" as keyof StaffPermissions },
-      { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
-      { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
-      { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: Target, label: "Paid Ads", href: "/provider/settings/ads", permission: "edit_settings" as keyof StaffPermissions },
-      { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Sparkles, labelKey: "web.provider.sidebar.items.exploreContent", href: "/provider/explore", permission: "create_explore_posts" as keyof StaffPermissions },
+      { icon: Users, labelKey: "web.provider.sidebar.items.team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
+      { icon: Users, labelKey: "web.provider.sidebar.items.teamMembers", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
+      { icon: PiggyBank, labelKey: "web.provider.sidebar.items.payroll", href: "/provider/team/payroll", permission: "view_team" as keyof StaffPermissions },
+      { icon: DollarSign, labelKey: "web.provider.sidebar.items.myEarnings", href: "/provider/team/my-earnings", permission: "view_sales" as keyof StaffPermissions },
+      { icon: Star, labelKey: "web.provider.sidebar.items.reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
+      { icon: MessageSquare, labelKey: "web.provider.sidebar.items.messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
+      { icon: Megaphone, labelKey: "web.provider.sidebar.items.marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Target, labelKey: "web.provider.sidebar.items.paidAds", href: "/provider/settings/ads", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Link2, labelKey: "web.provider.sidebar.items.bookingLinks", href: "/provider/express-booking", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
 ];
 
 const bottomItems = [
-  { icon: HelpCircle, label: "Help & Support", href: "/help" },
-  { icon: Ticket, label: "My tickets", href: "/help/my-tickets" },
-  { icon: Settings, label: "Settings", href: "/provider/settings" },
+  { icon: HelpCircle, labelKey: "web.provider.sidebar.items.helpSupport", href: "/help" },
+  { icon: Ticket, labelKey: "web.provider.sidebar.items.myTickets", href: "/help/my-tickets" },
+  { icon: Settings, labelKey: "web.provider.sidebar.items.settings", href: "/provider/settings" },
 ];
 
 type ProviderNavCounts = {
@@ -283,6 +284,7 @@ const isActiveRoute = (pathname: string, href: string) => {
 };
 
 export function ProviderSidebar() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const { isExpanded, setIsExpanded } = useProviderSidebar();
   const { signOut, user: _user, role } = useAuth();
@@ -401,10 +403,10 @@ export function ProviderSidebar() {
 
     return withFilteredItems
       .map((section) => {
-        if (section.title === "E-Commerce" && section.items.length === 0) {
+        if (section.titleKey === "web.provider.sidebar.sections.ecommerce" && section.items.length === 0) {
           return {
             ...section,
-            items: [{ icon: Store, label: "E-Commerce", href: "/provider/ecommerce/orders", permission: undefined }],
+            items: [{ icon: Store, labelKey: "web.provider.sidebar.items.ecommerce", href: "/provider/ecommerce/orders", permission: undefined }],
           };
         }
         return section;
@@ -469,7 +471,7 @@ export function ProviderSidebar() {
             <button
               onClick={toggleSidebar}
               className="p-2 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white transition-all"
-              aria-label="Collapse sidebar"
+              aria-label={t("web.provider.sidebar.items.collapseSidebar")}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -483,7 +485,7 @@ export function ProviderSidebar() {
           <button
             onClick={toggleSidebar}
             className="mx-auto mb-4 p-2 rounded-lg text-gray-400 hover:bg-white/10 hover:text-white transition-all"
-            aria-label="Expand sidebar"
+            aria-label={t("web.provider.sidebar.items.expandSidebar")}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -492,11 +494,11 @@ export function ProviderSidebar() {
         {/* Navigation Sections */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-6 scrollbar-hide box-border min-w-0">
           {filteredNavigationSections.map((section, _sectionIdx) => (
-            <div key={section.title}>
+            <div key={section.titleKey}>
               {/* Section Title */}
               {isExpanded && (
                 <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3">
-                  {section.title}
+                  {t(section.titleKey)}
                 </p>
               )}
               
@@ -534,7 +536,7 @@ export function ProviderSidebar() {
                       {isExpanded && (
                         <>
                           <span className="text-sm font-medium whitespace-nowrap flex-1 pointer-events-none">
-                            {item.label}
+                            {t(item.labelKey)}
                           </span>
                           {countLabel && (
                             <span className="min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[10px] font-bold text-white pointer-events-none">
@@ -542,19 +544,20 @@ export function ProviderSidebar() {
                             </span>
                           )}
                           {item.badge && (
+                            
                             <span 
                               className="px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#1a1f3c] rounded pointer-events-none"
                               style={{
                                 backgroundColor: secondaryColor,
                               }}
                             >
-                              {item.badge}
+                              {t("web.provider.sidebar.items.badgeHot")}
                             </span>
                           )}
                         </>
                       )}
                       {isActive && !isExpanded && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-r-full" />
+                        <span className="absolute start-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-white rounded-e-full" />
                       )}
                     </Link>
                   );
@@ -567,7 +570,7 @@ export function ProviderSidebar() {
                           {linkContent}
                         </TooltipTrigger>
                         <TooltipContent side="right" className="font-medium">
-                          {item.label}
+                          {t(item.labelKey)}
                         </TooltipContent>
                       </Tooltip>
                     );
@@ -599,7 +602,7 @@ export function ProviderSidebar() {
               >
                 <Icon className="w-5 h-5 flex-shrink-0 pointer-events-none" />
                 {isExpanded && (
-                  <span className="text-sm font-medium pointer-events-none">{item.label}</span>
+                  <span className="text-sm font-medium pointer-events-none">{t(item.labelKey)}</span>
                 )}
               </Link>
             );
@@ -611,7 +614,7 @@ export function ProviderSidebar() {
                     {linkContent}
                   </TooltipTrigger>
                   <TooltipContent side="right" className="font-medium">
-                    {item.label}
+                    {t(item.labelKey)}
                   </TooltipContent>
                 </Tooltip>
               );
@@ -631,7 +634,7 @@ export function ProviderSidebar() {
               )}
             >
               <LogOut className="w-5 h-5 flex-shrink-0 pointer-events-none" />
-              <span className="text-sm font-medium pointer-events-none">Sign Out</span>
+              <span className="text-sm font-medium pointer-events-none">{t("web.provider.sidebar.items.signOut")}</span>
             </button>
           ) : (
             <Tooltip>
@@ -648,7 +651,7 @@ export function ProviderSidebar() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="font-medium">
-                Sign Out
+                {t("web.provider.sidebar.items.signOut")}
               </TooltipContent>
             </Tooltip>
           )}

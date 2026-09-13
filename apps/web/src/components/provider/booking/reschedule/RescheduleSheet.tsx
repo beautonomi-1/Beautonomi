@@ -17,6 +17,7 @@ import {
   BookingSectionCard,
   BookingSectionLabel,
 } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface RescheduleSheetProps {
   open: boolean;
@@ -31,6 +32,7 @@ export function RescheduleSheet({
   appointment,
   onSuccess,
 }: RescheduleSheetProps) {
+  const { t } = useTranslation();
   const { hasPermission, isOwner } = usePermissions();
   const canEditAppointments = isOwner || hasPermission("edit_appointments");
   const [date, setDate] = useState(appointment.scheduled_date ?? "");
@@ -53,7 +55,7 @@ export function RescheduleSheet({
 
   const handleSave = async () => {
     if (!date || !time) {
-      toast.error("Select a date and time");
+      toast.error(t("web.provider.bookings.rescheduleSheet.selectDateTime"));
       return;
     }
     setSaving(true);
@@ -62,14 +64,14 @@ export function RescheduleSheet({
         notify_customer: notifyClient,
       });
 
-      toast.success("Booking rescheduled");
+      toast.success(t("web.provider.bookings.detail.toast.rescheduled"));
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       toast.error(
         error instanceof FetchError && error.status === 409
-          ? "This booking changed, reload"
-          : formatApiErrorMessage(error, "Failed to reschedule"),
+          ? t("web.provider.bookings.detail.toast.bookingChanged")
+          : formatApiErrorMessage(error, t("web.provider.bookings.detail.toast.rescheduleFailed")),
       );
     } finally {
       setSaving(false);
@@ -80,11 +82,11 @@ export function RescheduleSheet({
     <BookingActionButton disabled={saving || !date || !time} onClick={handleSave}>
       {saving ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Saving…
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+          {t("web.provider.bookings.rescheduleSheet.saving")}
         </>
       ) : (
-        "Save new time"
+        t("web.provider.bookings.rescheduleSheet.saveNewTime")
       )}
     </BookingActionButton>
   ) : undefined;
@@ -94,13 +96,13 @@ export function RescheduleSheet({
       open={open}
       onOpenChange={onOpenChange}
       mode="edit"
-      title="Reschedule"
+      title={t("web.provider.appointmentViewSheet.reschedule")}
       footer={footer}
     >
       {!canEditAppointments ? (
         <PermissionGateInline
           allowed={false}
-          message="You do not have permission to reschedule appointments."
+          message={t("web.provider.bookings.rescheduleSheet.permissionDenied")}
         />
       ) : staffId && locationId ? (
         <>
@@ -117,14 +119,14 @@ export function RescheduleSheet({
           />
           <BookingSectionCard className="mt-4">
             <div className="flex items-center justify-between gap-3">
-              <BookingSectionLabel className="mb-0">Notify client of change</BookingSectionLabel>
+              <BookingSectionLabel className="mb-0">{t("web.provider.bookings.rescheduleSheet.notifyClient")}</BookingSectionLabel>
               <Switch checked={notifyClient} onCheckedChange={setNotifyClient} />
             </div>
           </BookingSectionCard>
         </>
       ) : (
         <p className="text-sm text-gray-500 py-4">
-          Staff or location is missing — reschedule from the full booking editor.
+{t("web.provider.bookings.rescheduleSheet.missingStaffLocation")}
         </p>
       )}
     </BookingBottomSheet>

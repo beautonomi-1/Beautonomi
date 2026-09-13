@@ -704,6 +704,7 @@ export interface Category {
   subcategories: Subcategory[];
   created_at: string;
   updated_at: string;
+  name_i18n?: Record<string, string> | null;
 }
 
 export interface Subcategory {

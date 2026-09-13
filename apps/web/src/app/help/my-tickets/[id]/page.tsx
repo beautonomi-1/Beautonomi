@@ -220,7 +220,7 @@ export default function MyTicketDetailPage() {
           <BeautonomiHeader />
           <div className="container mx-auto px-4 py-8 max-w-2xl">
             <Button variant="ghost" onClick={() => router.push("/help/my-tickets")}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
+              <ArrowLeft className="h-4 w-4 me-2" />
               Back to My tickets
             </Button>
             <p className="mt-6 text-gray-600">Ticket not found.</p>
@@ -238,7 +238,7 @@ export default function MyTicketDetailPage() {
         <BeautonomiHeader />
         <div className="container mx-auto px-4 py-8 max-w-2xl">
           <Button variant="ghost" onClick={() => router.push("/help/my-tickets")} className="mb-6">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <ArrowLeft className="h-4 w-4 me-2" />
             Back to My tickets
           </Button>
 
@@ -368,9 +368,9 @@ export default function MyTicketDetailPage() {
                         onClick={() => fileInputRef.current?.click()}
                       >
                         {uploadingAttachment ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          <Loader2 className="h-4 w-4 me-2 animate-spin" />
                         ) : (
-                          <Paperclip className="h-4 w-4 mr-2" />
+                          <Paperclip className="h-4 w-4 me-2" />
                         )}
                         Attach files
                       </Button>
@@ -400,9 +400,9 @@ export default function MyTicketDetailPage() {
                     className="bg-[#FF0077] hover:bg-[#D60565]"
                   >
                     {sending ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4 mr-2" />
+                      <Send className="h-4 w-4 me-2" />
                     )}
                     Send reply
                   </Button>
@@ -476,7 +476,7 @@ export default function MyTicketDetailPage() {
                           disabled={!csatScore || submittingCsat}
                           className="bg-[#FF0077] hover:bg-[#D60565]"
                         >
-                          {submittingCsat ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                          {submittingCsat ? <Loader2 className="h-4 w-4 me-2 animate-spin" /> : null}
                           {typeof ticket.csat_score === "number" ? "Save rating" : "Submit rating"}
                         </Button>
                         {typeof ticket.csat_score === "number" ? (

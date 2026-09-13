@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +43,7 @@ export function CommandBar({
   locations,
   onLocationChange,
 }: CommandBarProps) {
+  const { t } = useTranslation();
   const handleNewWalkIn = () => {
     const now = new Date();
     const mins = now.getMinutes();
@@ -54,7 +57,7 @@ export function CommandBar({
       date: format(now, "yyyy-MM-dd"),
       startTime: timeStr,
       locationId: locationId || loc?.id || "",
-      locationName: loc?.name || "Location",
+      locationName: loc?.name || t("web.provider.common.location"),
       appointmentKind: "walk_in",
     });
   };
@@ -67,7 +70,7 @@ export function CommandBar({
       date: format(date, "yyyy-MM-dd"),
       startTime: "",
       locationId: locationId || loc?.id || "",
-      locationName: loc?.name || "Location",
+      locationName: loc?.name || t("web.provider.common.location"),
     });
   };
 
@@ -90,8 +93,8 @@ export function CommandBar({
                 !date && "text-[#0F172A]/50"
               )}
             >
-              <CalendarPlus className="mr-2 h-4 w-4" />
-              {date ? format(date, "MMM d, yyyy") : "Pick date"}
+              <CalendarPlus className="me-2 h-4 w-4" />
+              {date ? format(date, "MMM d, yyyy") : t("web.provider.frontDesk.pickDate")}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0 rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_10px_40px_rgba(0,0,0,0.08)]" align="start">
@@ -106,10 +109,10 @@ export function CommandBar({
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-[#0F172A]/40" />
           <Input
-            placeholder="Search client, phone..."
+            placeholder={t("web.provider.frontDesk.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-11 min-h-[48px] rounded-2xl border-[#0F172A]/12 bg-white/80 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.03)] focus-visible:ring-[#0F172A]/20"
+            className="ps-11 min-h-[48px] rounded-2xl border-[#0F172A]/12 bg-white/80 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.03)] focus-visible:ring-[#0F172A]/20"
           />
         </div>
       </div>
@@ -119,25 +122,25 @@ export function CommandBar({
             variant="outline"
             className="min-h-[48px] gap-2 rounded-2xl border-[#0F172A] bg-[#0F172A] text-white hover:bg-[#0F172A]/90 hover:text-white border-0 shadow-[0_4px_14px_rgba(15,23,42,0.25)]"
           >
-            Quick Actions
+{t("web.provider.frontDesk.quickActionsMenu")}
             <ChevronDown className="h-4 w-4 opacity-80" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56 rounded-[2.5rem] border-[#0F172A]/10 shadow-[0_10px_40px_rgba(0,0,0,0.1)] p-2">
           <DropdownMenuItem onClick={handleNewWalkIn} className="gap-3 cursor-pointer rounded-xl py-2.5">
             <UserPlus className="h-4 w-4" />
-            New Walk-in
+{t("web.provider.frontDesk.newWalkIn")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleNewAppointment} className="gap-3 cursor-pointer rounded-xl py-2.5">
             <CalendarPlus className="h-4 w-4" />
-            New Appointment
+{t("web.provider.frontDesk.newAppointment")}
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => window.location.assign("/provider/waitlist")}
             className="gap-3 cursor-pointer rounded-xl py-2.5"
           >
             <ListTodo className="h-4 w-4" />
-            Add to Waitlist
+{t("web.provider.frontDesk.addToWaitlist")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

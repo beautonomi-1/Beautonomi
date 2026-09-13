@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import PlatformLogo from "../platform/PlatformLogo";
-import global from "../../../public/images/global-icon.svg";
 import profile from "../../../public/images/filled-profile-icon.svg";
 import sidebar from "../../../public/images/sidebar-icon.svg";
 import SearchBar from "../global/search-bar";
@@ -13,9 +12,11 @@ import { Menu, Search, ShoppingBag, ShoppingCart } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import MobileSearchBar from "./mobile-search-bar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import LanguagesModal from "../global/langauges-modal";
+import { PreferencesTrigger } from "@/components/global/PreferencesTrigger";
+import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
 import LoginModal from "../global/login-modal";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   Sheet,
   SheetContent,
@@ -25,6 +26,8 @@ import {
 } from "@/components/ui/sheet";
 
 const Navbar: React.FC = () => {
+  const { t } = useTranslation();
+  const openPreferences = useOpenGlobalPreferences();
   const pathname = usePathname();
   const router = useRouter();
   const { user, session, isLoading: authLoading } = useAuth();
@@ -36,7 +39,6 @@ const Navbar: React.FC = () => {
   const lastScrollY = useRef<number>(0);
   const throttleTimeout = useRef<NodeJS.Timeout | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [modalOpen, setModalOpen] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
@@ -151,17 +153,13 @@ const Navbar: React.FC = () => {
     };
   }, [handleOutsideClick, handleScroll, handleKeyDown]);
 
-  const handleOpenModal = () => {
-    setModalOpen(true);
-  };
-
   const handleSearchSubmit = (query: string) => {
     setSearchQuery(query);
     setIsExpanded(false);
   };
 
   const handleOpenLanguageModal = () => {
-    setModalOpen(true);
+    openPreferences({ surface: "navbar" });
     setIsSideMenuOpen(false);
   };
 
@@ -171,28 +169,28 @@ const Navbar: React.FC = () => {
         <div className=" flex lg:hidden items-center justify-between px-4 pt-4 w-full max-w-full overflow-x-hidden">
           <div className="mx-auto  w-44">
             <Link href="/" className="">
-              <PlatformLogo alt="Logo" className="w-44" />
+              <PlatformLogo alt={t("web.layout.navbar.logoAlt")} className="w-44" />
             </Link>
           </div>
           <div className="">
             {isMounted ? (
               <>
-                {/* Show "Become a partner" menu for unauthenticated users */}
+                {/* Show "{t("web.layout.navbar.becomePartner")}" menu for unauthenticated users */}
                 {!user && !authLoading ? (
                   <Sheet open={isSideMenuOpen} onOpenChange={setIsSideMenuOpen}>
                     <SheetTrigger asChild>
                       <button 
                         type="button" 
-                        aria-label="Open menu"
+                        aria-label={t("web.a11y.openMenu")}
                         className="flex items-center justify-center"
                       >
                         <Menu className="h-6 w-6 mt-2 sm:mt-5 text-gray-700" />
                       </button>
                     </SheetTrigger>
-                    <SheetContent side="right" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto bg-white">
+                    <SheetContent side="end" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto bg-white">
                       <SheetHeader>
                         <SheetTitle className="text-center text-lg font-normal">
-                          Become a partner
+                          {t("web.layout.navbar.becomePartner")}
                         </SheetTitle>
                       </SheetHeader>
                       <div className="mt-6 space-y-4">
@@ -206,7 +204,7 @@ const Navbar: React.FC = () => {
                             setIsSideMenuOpen(false);
                           }}
                         >
-                          Log In
+                          {t("web.layout.navbar.logIn")}
                         </Button>
                         <Button 
                           variant="secondary" 
@@ -217,25 +215,16 @@ const Navbar: React.FC = () => {
                             router.push("/signup");
                           }}
                         >
-                          Sign Up
+                          {t("web.layout.navbar.signUp")}
                         </Button>
                       </div>
-                      <button
-                        className="flex items-center space-x-1 cursor-pointer mt-6"
-                        onClick={() => {
-                          setIsSideMenuOpen(false);
-                          handleOpenLanguageModal();
-                        }}
-                      >
-                        <Image
-                          src={global}
-                          alt="Global Settings"
-                          className="w-4 h-4"
+                      <div className="mt-6 px-2">
+                        <PreferencesTrigger
+                          onClick={handleOpenLanguageModal}
+                          className="w-full justify-start rounded-xl px-2"
+                          compactOnMobile={false}
                         />
-                        <span className="font-light text-sm underline">
-                          English (US)
-                        </span>
-                      </button>
+                      </div>
                     </SheetContent>
                   </Sheet>
                 ) : (
@@ -243,60 +232,54 @@ const Navbar: React.FC = () => {
                     <SheetTrigger asChild>
                       <button 
                         type="button" 
-                        aria-label="Open menu"
+                        aria-label={t("web.a11y.openMenu")}
                         className="flex items-center justify-center"
                       >
                         <Menu className="h-6 w-6 mt-2 sm:mt-5 text-gray-700" />
                       </button>
                     </SheetTrigger>
-                    <SheetContent side="right" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto bg-white">
+                    <SheetContent side="end" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto bg-white">
                       <SheetHeader>
-                        <SheetTitle>Menu</SheetTitle>
+                        <SheetTitle>{t("web.layout.navbar.menu")}</SheetTitle>
                       </SheetHeader>
                       <div className="mt-6">
                         <ul className="text-secondary text-base font-light space-y-4">
                           <li>
                             <Link href="/shop" className="flex items-center gap-2">
-                              <ShoppingBag className="h-4 w-4" /> Shop Products
+                              <ShoppingBag className="h-4 w-4" /> {t("web.layout.navbar.shopProducts")}
                             </Link>
                           </li>
                           <li>
                             <Link href="/cart" className="flex items-center gap-2">
-                              <ShoppingCart className="h-4 w-4" /> My Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+                              <ShoppingCart className="h-4 w-4" /> {t("web.layout.navbar.myCart")}{cartCount > 0 ? ` (${cartCount})` : ""}
                             </Link>
                           </li>
                           <li>
-                            <Link href="/become-a-partner">Become a partner</Link>
+                            <Link href="/become-a-partner">{t("web.layout.navbar.becomePartner")}</Link>
                           </li>
                           <li className="border-b pb-4">
-                            <Link href="/">Resources</Link>
+                            <Link href="/">{t("web.layout.navbar.resources")}</Link>
                           </li>
                         </ul>
                         <div className="mt-6 space-y-4 mb-3">
                           <Button variant="outline" className="w-full" size="lg">
-                            Log In
+                            {t("web.layout.navbar.logIn")}
                           </Button>
                           <Button 
                             variant="secondary" 
                             className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white" 
                             size="lg"
                           >
-                            Sign Up
+                            {t("web.layout.navbar.signUp")}
                           </Button>
                         </div>
-                        <button
-                          className="flex items-center space-x-1 cursor-pointer"
-                          onClick={handleOpenLanguageModal}
-                        >
-                          <Image
-                            src={global}
-                            alt="Global Settings"
-                            className="w-4 h-4"
+                        <div className="px-2">
+                          <PreferencesTrigger
+                            onClick={handleOpenLanguageModal}
+                            className="w-full justify-start rounded-xl px-2"
+                            compactOnMobile={false}
                           />
-                          <span className="font-light text-sm underline">
-                            English (US)
-                          </span>
-                        </button>
+                        </div>
                       </div>
                     </SheetContent>
                   </Sheet>
@@ -305,7 +288,7 @@ const Navbar: React.FC = () => {
             ) : (
               <button 
                 type="button" 
-                aria-label="Open menu"
+                aria-label={t("web.a11y.openMenu")}
                 onClick={() => setIsSideMenuOpen(true)}
               >
                 <Menu className="h-6 w-6 mt-2 sm:mt-5 text-gray-700" />
@@ -322,12 +305,12 @@ const Navbar: React.FC = () => {
               }`}
             >
               <div
-                className={`flex items-center gap-2 absolute left-8 transition-all duration-300 z-50 ${
+                className={`flex items-center gap-2 absolute start-8 transition-all duration-300 z-50 ${
                   isSticky && !isExpanded ? "top-2" : "top-4"
                 }`}
               >
                 <Link href="/">
-                  <PlatformLogo alt="Logo" className="h-12 w-auto" />
+                  <PlatformLogo alt={t("web.layout.navbar.logoAlt")} className="h-12 w-auto" />
                 </Link>
               </div>
               <div
@@ -344,13 +327,13 @@ const Navbar: React.FC = () => {
                         className="bg-transparent data-[state=active]:shadow-none"
                         value="booking"
                       >
-                        Bookings
+                        {t("web.layout.navbar.bookings")}
                       </TabsTrigger>
                       <TabsTrigger
                         className="bg-transparent data-[state=active]:shadow-none"
                         value="showcase"
                       >
-                        Show Case
+                        {t("web.layout.navbar.showCase")}
                       </TabsTrigger>
                     </TabsList>
                     <TabsContent value="booking">
@@ -393,19 +376,19 @@ const Navbar: React.FC = () => {
                         onClick={handleMinimizedSearchClick}
                       >
                         <div className="bg-white transition-all hover:shadow-lg cursor-pointer rounded-full searchShadow border border-[#DDDDDD] flex items-center">
-                          <span className="text-secondary text-sm font-medium pl-8 pr-4 py-3">
-                            Service needed?
+                          <span className="text-secondary text-sm font-medium ps-8 pe-4 py-3">
+                            {t("web.layout.navbar.serviceNeeded")}
                           </span>
                           <div className="h-4 w-px bg-gray-300 mx-2" />
                           <span className="text-secondary text-sm font-medium py-3 px-4">
-                            Any time
+                            {t("web.layout.navbar.anyTime")}
                           </span>
                           <div className="h-4 w-px bg-gray-300 mx-2" />
-                          <span className="text-[#767A7C] text-sm font-light py-3 pl-4 pr-4">
-                            Search
+                          <span className="text-[#767A7C] text-sm font-light py-3 ps-4 pe-4">
+                            {t("web.layout.navbar.search")}
                           </span>
                           <Link href="/search">
-                            <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 mr-2 rounded-full">
+                            <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 me-2 rounded-full">
                               <Search className="text-white w-6 h-6" />
                             </Button>
                           </Link>
@@ -453,18 +436,18 @@ const Navbar: React.FC = () => {
                         onClick={handleMinimizedSearchClick}
                       >
                         <div className="bg-white transition-all hover:shadow-lg cursor-pointer rounded-full searchShadow border border-[#DDDDDD] flex items-center">
-                          <span className="text-secondary font-medium pl-8 pr-4 py-3">
-                            Service needed?
+                          <span className="text-secondary font-medium ps-8 pe-4 py-3">
+                            {t("web.layout.navbar.serviceNeeded")}
                           </span>
                           <div className="h-4 w-px bg-gray-300 mx-2" />
                           <span className="text-secondary font-medium py-3 px-4">
-                            Any time
+                            {t("web.layout.navbar.anyTime")}
                           </span>
                           <div className="h-4 w-px bg-gray-300 mx-2" />
-                          <span className="text-[#767A7C] font-light py-3 pl-4 pr-4">
-                            Search
+                          <span className="text-[#767A7C] font-light py-3 ps-4 pe-4">
+                            {t("web.layout.navbar.search")}
                           </span>
-                          <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 mr-2 rounded-full">
+                          <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 me-2 rounded-full">
                             <Search className="text-white w-6 h-6" />
                           </Button>
                         </div>
@@ -475,7 +458,7 @@ const Navbar: React.FC = () => {
                 ) : null}
               </div>
               <div
-                className={`flex items-center gap-3 absolute right-8 transition-all duration-300 z-50 ${
+                className={`flex items-center gap-3 absolute end-8 transition-all duration-300 z-50 ${
                   isSticky && !isExpanded ? "top-4" : "top-6"
                 }`}
               >
@@ -484,75 +467,71 @@ const Navbar: React.FC = () => {
                   className="flex items-center gap-1.5 text-sm font-medium text-secondary hover:text-pink-600 transition-colors px-3 py-2 rounded-full hover:bg-pink-50"
                 >
                   <ShoppingBag className="h-4 w-4" />
-                  Shop
+                  {t("web.layout.navbar.shop")}
                 </Link>
                 <Link
                   href="/cart"
                   className="flex items-center gap-1.5 text-sm font-medium text-secondary hover:text-pink-600 transition-colors px-3 py-2 rounded-full hover:bg-pink-50"
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+                  {t("web.layout.navbar.cart")}{cartCount > 0 ? ` (${cartCount})` : ""}
                 </Link>
                 <div className="text-sm px-4 font-normal Beautonomi-semibold text-secondary hover:bg-primary p-3 rounded-full cursor-pointer">
                   <Link href="/become-a-partner" className="">
-                    <h2 className="">Become a Partner</h2>
+                    <h2 className="">{t("web.layout.navbar.becomePartnerTitle")}</h2>
                   </Link>
                 </div>
-                <div onClick={handleOpenModal} className="cursor-pointer">
-                  <Image
-                    src={global}
-                    alt="Global Settings"
-                    className="h-5 w-5"
-                  />
-                </div>
+                <PreferencesTrigger
+                  onClick={() => openPreferences({ surface: "navbar" })}
+                />
                 <Button
                   className="flex gap-2 border rounded-full h-10 bg-white px-2 py-5"
                   onClick={handleProfileClick}
                 >
                   <Image
                     src={sidebar}
-                    alt="Sidebar Icon"
-                    className="h-5 w-5 mr-1"
+                    alt={t("web.layout.navbar.sidebarIconAlt")}
+                    className="h-5 w-5 me-1"
                   />
                   <Image
                     src={profile}
-                    alt="Profile Icon"
+                    alt={t("web.layout.navbar.profileIconAlt")}
                     className="h-7 w-7 cursor-pointer"
                   />
                 </Button>
                 {isPopupVisible && (
                   <div
                     ref={popupRef}
-                    className="absolute right-0 top-12 bg-white border rounded-lg shadow py-5 z-10"
+                    className="absolute end-0 top-12 bg-white border rounded-lg shadow py-5 z-10"
                   >
                     <ul className="text-secondary text-base font-normal Beautonomi-semibold">
-                      <li className="pr-20 pl-5 mb-5">
-                        <Link href="/learn">All help topics</Link>
+                      <li className="pe-20 ps-5 mb-5">
+                        <Link href="/learn">{t("web.layout.navbar.allHelpTopics")}</Link>
                       </li>
                       <li className=" mb-5">
-                        <Link href="/" className="pr-20 pl-5">
-                          Beauty partner
+                        <Link href="/" className="pe-20 ps-5">
+                          {t("web.layout.navbar.beautyPartner")}
                         </Link>
                       </li>
                       <li className="border-b pb-4 mb-5">
-                        <Link href="/" className="pr-20 pl-5">
-                          Resources
+                        <Link href="/" className="pe-20 ps-5">
+                          {t("web.layout.navbar.resources")}
                         </Link>
                       </li>
-                      <li className="pr-20 pl-5 mb-5">
+                      <li className="pe-20 ps-5 mb-5">
                         <button
                           type="button"
-                          className="pr-20 pl-5 text-left w-full"
+                          className="pe-20 ps-5 text-start w-full"
                           onClick={() => {
                             setLoginModalMode("login");
                             setIsLoginModalOpen(true);
                             setIsPopupVisible(false);
                           }}
                         >
-                          Log In
+                          {t("web.layout.navbar.logIn")}
                         </button>
                       </li>
-                      <li className="pr-20 pl-5">
+                      <li className="pe-20 ps-5">
                         <button
                           className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 py-2 rounded-md text-base font-normal transition-colors"
                           onClick={() => {
@@ -561,7 +540,7 @@ const Navbar: React.FC = () => {
                             setIsPopupVisible(false);
                           }}
                         >
-                          Sign Up
+                          {t("web.layout.navbar.signUp")}
                         </button>
                       </li>
                     </ul>
@@ -606,25 +585,24 @@ const Navbar: React.FC = () => {
                 onClick={handleMinimizedSearchClick}
               >
                 <div className="bg-white transition-all hover:shadow-lg cursor-pointer rounded-full searchShadow border border-[#DDDDDD] flex items-center">
-                  <span className="text-secondary text-sm font-medium pl-8 pr-4 py-3">
-                    Service needed?
+                  <span className="text-secondary text-sm font-medium ps-8 pe-4 py-3">
+                    {t("web.layout.navbar.serviceNeeded")}
                   </span>
                   <div className="h-4 w-px bg-gray-300 text-sm mx-2" />
                   <span className="text-secondary text-sm font-medium py-3 px-4">
-                    Any time
+                    {t("web.layout.navbar.anyTime")}
                   </span>
                   <div className="h-4 w-px bg-gray-300 mx-2" />
-                  <span className="text-[#767A7C] text-sm font-light py-3 pl-4 pr-4">
-                    Search
+                  <span className="text-[#767A7C] text-sm font-light py-3 ps-4 pe-4">
+                    {t("web.layout.navbar.search")}
                   </span>
-                  <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 mr-2 rounded-full">
+                  <Button className="w-9 h-9 bg-[#ff385c] hover:bg-[#DC0E63] text-white p-2 me-2 rounded-full">
                     <Search className="text-white w-6 h-6" />
                   </Button>
                 </div>
               </div>
             </div>
           </div>
-          {isMounted && <LanguagesModal open={modalOpen} onOpenChange={setModalOpen} />}
           <LoginModal 
             open={isLoginModalOpen} 
             setOpen={setIsLoginModalOpen}

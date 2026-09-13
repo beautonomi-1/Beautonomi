@@ -7,12 +7,15 @@ import { api } from "@/lib/api-client";
 import { clearPortalCache } from "@/lib/portal-cache";
 import { persistActiveProviderOrgHint } from "@/lib/active-provider-api-hint";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Staff who do not own a salon can start freelancer/salon onboarding,
  * or leave the current team (Fresha/Square-style memberships).
  */
 export function StartOwnBusinessCard() {
+  const { t } = useTranslation();
+  const sb = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.startOwnBusiness.${key}`, opts) as string;
   const router = useRouter();
   const { user } = useAuth();
   const { provider, role, refresh } = useProvider();
@@ -22,12 +25,12 @@ export function StartOwnBusinessCard() {
   const leaveTeam = () => {
     if (!provider?.id) return;
     Alert.alert(
-      "Leave this team?",
-      `You will lose access to ${provider.business_name ?? "this salon"}. You can start your own business afterwards.`,
+      sb("leaveTitle"),
+      sb("leaveBody", { name: provider.business_name ?? sb("thisSalon") }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: t("common.cancel"), style: "cancel" },
         {
-          text: "Leave team",
+          text: sb("leaveTeam"),
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -38,7 +41,7 @@ export function StartOwnBusinessCard() {
                 provider_id: provider.id,
               });
               if (res.error) {
-                Alert.alert("Could not leave", res.error.message ?? "Try again.");
+                Alert.alert(sb("couldNotLeave"), res.error.message ?? sb("tryAgain"));
                 return;
               }
               await clearPortalCache();
@@ -67,13 +70,13 @@ export function StartOwnBusinessCard() {
       }}
     >
       <Text style={{ fontSize: 11, fontWeight: "700", color: "#6b21a8", textTransform: "uppercase", letterSpacing: 0.6 }}>
-        Your career
+        {sb("career")}
       </Text>
       <Text style={{ marginTop: 6, fontSize: 16, fontWeight: "700", color: "#111827" }}>
-        Ready to work independently?
+        {sb("readyTitle")}
       </Text>
       <Text style={{ marginTop: 4, fontSize: 13, color: "#4b5563" }}>
-        Keep this team job, or open your own Beautonomi business. You can switch between them anytime.
+        {sb("readyBody")}
       </Text>
       <TouchableOpacity
         onPress={() => router.push("/(app)/onboarding/wizard" as never)}
@@ -85,19 +88,19 @@ export function StartOwnBusinessCard() {
           alignItems: "center",
         }}
         accessibilityRole="button"
-        accessibilityLabel="Start my own business"
+        accessibilityLabel={sb("startA11y")}
       >
-        <Text style={{ color: "#fff", fontWeight: "600" }}>Start my own business</Text>
+        <Text style={{ color: "#fff", fontWeight: "600" }}>{sb("startCta")}</Text>
       </TouchableOpacity>
       {provider?.id ? (
         <TouchableOpacity
           onPress={leaveTeam}
           style={{ marginTop: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
           accessibilityRole="button"
-          accessibilityLabel="Leave this team"
+          accessibilityLabel={sb("leaveThisTeamA11y")}
         >
           <Ionicons name="exit-outline" size={16} color="#6b7280" />
-          <Text style={{ color: "#6b7280", fontSize: 13, fontWeight: "500" }}>Leave this team</Text>
+          <Text style={{ color: "#6b7280", fontSize: 13, fontWeight: "500" }}>{sb("leaveThisTeam")}</Text>
         </TouchableOpacity>
       ) : null}
     </View>

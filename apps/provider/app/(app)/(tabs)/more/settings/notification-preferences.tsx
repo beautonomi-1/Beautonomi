@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import * as Notifications from "expo-notifications";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { requestOneSignalPushPermission } from "@/lib/onesignal-client";
 import { openAppNotificationSettings } from "@/lib/native-permissions";
@@ -14,6 +15,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ChannelPrefs {
   email: boolean;
@@ -45,31 +47,31 @@ interface NotifPreferences {
   [key: string]: ChannelPrefs | boolean | string | undefined;
 }
 
-const PREF_LABELS: Record<string, { label: string; icon: string }> = {
-  booking_updates: { label: "Booking Updates", icon: "calendar-outline" },
-  booking_cancellations: { label: "Cancellations", icon: "close-circle-outline" },
-  booking_reminders: { label: "Booking Reminders", icon: "alarm-outline" },
-  new_reviews: { label: "New Reviews", icon: "star-outline" },
-  review_responses: { label: "Review Responses", icon: "chatbubbles-outline" },
-  client_messages: { label: "Client Messages", icon: "chatbubble-outline" },
-  payment_received: { label: "Payment Received", icon: "card-outline" },
-  payout_updates: { label: "Payout Updates", icon: "wallet-outline" },
-  waitlist_notifications: { label: "Waitlist", icon: "hourglass-outline" },
-  system_updates: { label: "System Updates", icon: "settings-outline" },
-  marketing: { label: "Marketing", icon: "megaphone-outline" },
+const PREF_META: Record<string, { labelKey: string; icon: string }> = {
+  booking_updates: { labelKey: "prefBookingUpdates", icon: "calendar-outline" },
+  booking_cancellations: { labelKey: "prefCancellations", icon: "close-circle-outline" },
+  booking_reminders: { labelKey: "prefBookingReminders", icon: "alarm-outline" },
+  new_reviews: { labelKey: "prefNewReviews", icon: "star-outline" },
+  review_responses: { labelKey: "prefReviewResponses", icon: "chatbubbles-outline" },
+  client_messages: { labelKey: "prefClientMessages", icon: "chatbubble-outline" },
+  payment_received: { labelKey: "prefPaymentReceived", icon: "card-outline" },
+  payout_updates: { labelKey: "prefPayoutUpdates", icon: "wallet-outline" },
+  waitlist_notifications: { labelKey: "prefWaitlist", icon: "hourglass-outline" },
+  system_updates: { labelKey: "prefSystemUpdates", icon: "settings-outline" },
+  marketing: { labelKey: "prefMarketing", icon: "megaphone-outline" },
 };
 
 const SECTIONS = [
   {
-    title: "Bookings",
+    titleKey: "sectionBookings",
     keys: ["booking_updates", "booking_cancellations", "booking_reminders"],
   },
   {
-    title: "Communication",
+    titleKey: "sectionCommunication",
     keys: ["client_messages", "new_reviews", "review_responses", "waitlist_notifications"],
   },
-  { title: "Payments", keys: ["payment_received", "payout_updates"] },
-  { title: "Other", keys: ["system_updates", "marketing"] },
+  { titleKey: "sectionPayments", keys: ["payment_received", "payout_updates"] },
+  { titleKey: "sectionOther", keys: ["system_updates", "marketing"] },
 ];
 
 const DEFAULT_PREFS: NotifPreferences = {
@@ -95,12 +97,18 @@ const DEFAULT_PREFS: NotifPreferences = {
 };
 
 const DIGEST_OPTIONS = [
-  { label: "Instant", value: "none", desc: "Get notified immediately" },
-  { label: "Daily Digest", value: "daily", desc: "Summary once a day" },
-  { label: "Weekly Digest", value: "weekly", desc: "Summary once a week" },
+  { labelKey: "digestInstant", descKey: "digestInstantDesc", value: "none" },
+  { labelKey: "digestDaily", descKey: "digestDailyDesc", value: "daily" },
+  { labelKey: "digestWeekly", descKey: "digestWeeklyDesc", value: "weekly" },
 ];
 
 export default function NotificationPreferencesScreen() {
+  const { t } = useTranslation();
+  const np = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.notificationPreferences.${key}`, opts) as string,
+    [t],
+  );
   const { data: prefs, loading, error: loadError, refresh } =
     useApi<NotifPreferences>("/api/provider/notification-preferences");
   const { execute: savePrefs, loading: saving } = useApiMutation("patch");
@@ -133,21 +141,21 @@ export default function NotificationPreferencesScreen() {
     const { status } = await Notifications.getPermissionsAsync();
     if (status === "granted") {
       setPushPermissionStatus("granted");
-      Alert.alert("Push enabled", "Notifications are already allowed for this device.");
+      Alert.alert(np("pushEnabledTitle"), np("pushAlreadyAllowed"));
       return;
     }
     const accepted = await requestOneSignalPushPermission(true);
     await refreshPushPermission();
     if (accepted) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Push enabled", "You will receive push alerts on this device.");
+      Alert.alert(np("pushEnabledTitle"), np("pushWillReceive"));
     } else {
       Alert.alert(
-        "Enable notifications",
-        "Allow notifications in system settings to receive push alerts.",
+        np("enableNotificationsTitle"),
+        np("enableNotificationsBody"),
         [
-          { text: "Not now", style: "cancel" },
-          { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
+          { text: np("notNow"), style: "cancel" },
+          { text: np("openSettings"), onPress: () => void openAppNotificationSettings() },
         ],
       );
     }
@@ -225,7 +233,7 @@ export default function NotificationPreferencesScreen() {
       local
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(np("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -239,10 +247,10 @@ export default function NotificationPreferencesScreen() {
       "/api/provider/notification-preferences/test",
       {}
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(np("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Sent", "Test notification sent to all enabled channels");
+      Alert.alert(np("sentTitle"), np("testSentBody"));
     }
   }
 
@@ -251,8 +259,8 @@ export default function NotificationPreferencesScreen() {
   if (loadError && !prefs) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Notification Preferences" showBack subtitle="Control how you receive alerts" />
-        <ErrorState message={typeof loadError === "string" ? loadError : "Failed to load preferences"} onRetry={refresh} />
+        <ScreenHeader title={np("title")} showBack subtitle={np("subtitle")} />
+        <ErrorState message={typeof loadError === "string" ? loadError : np("loadFailed")} onRetry={refresh} />
       </ScreenContainer>
     );
   }
@@ -260,9 +268,9 @@ export default function NotificationPreferencesScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Notification Preferences"
+        title={np("title")}
         showBack
-        subtitle="Control how you receive alerts"
+        subtitle={np("subtitle")}
       />
 
       {Platform.OS !== "web" && (
@@ -276,8 +284,8 @@ export default function NotificationPreferencesScreen() {
           accessibilityRole="button"
           accessibilityLabel={
             pushPermissionStatus === "granted"
-              ? "Push notifications enabled on this device"
-              : "Turn on push notifications"
+              ? np("pushEnabledA11y")
+              : np("enablePushA11y")
           }
         >
           <Ionicons
@@ -291,7 +299,7 @@ export default function NotificationPreferencesScreen() {
                   : "#6366f1"
             }
           />
-          <View style={twStyle("ml-2 flex-1")}>
+          <View style={twStyle("ms-2 flex-1")}>
             <Text
               style={twStyle(
                 pushPermissionStatus === "denied"
@@ -300,10 +308,10 @@ export default function NotificationPreferencesScreen() {
               )}
             >
               {pushPermissionStatus === "granted"
-                ? "Push notifications enabled"
+                ? np("pushEnabled")
                 : pushPermissionStatus === "denied"
-                  ? "System notifications are off"
-                  : "Enable push notifications"}
+                  ? np("systemNotificationsOff")
+                  : np("enablePush")}
             </Text>
             <Text
               style={twStyle(
@@ -311,18 +319,18 @@ export default function NotificationPreferencesScreen() {
               )}
             >
               {pushPermissionStatus === "granted"
-                ? "This device can receive push alerts"
+                ? np("pushEnabledDesc")
                 : pushPermissionStatus === "denied"
-                  ? "Beautonomi can’t send push alerts until you allow notifications in your phone’s settings"
-                  : "Turn on system permission if you skipped push during setup"}
+                  ? np("systemNotificationsOffDesc")
+                  : np("enablePushDesc")}
             </Text>
           </View>
           {pushPermissionStatus === "denied" ? (
             <View style={twStyle("rounded-lg bg-red-600 px-3 py-2")}>
-              <Text style={twStyle("text-xs font-semibold text-white")}>Turn on</Text>
+              <Text style={twStyle("text-xs font-semibold text-white")}>{np("turnOn")}</Text>
             </View>
           ) : (
-            <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+            <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
           )}
         </TouchableOpacity>
       )}
@@ -334,10 +342,10 @@ export default function NotificationPreferencesScreen() {
         disabled={testing}
       >
         <Ionicons name="notifications-outline" size={18} color="#6366f1" />
-        <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-indigo-700")}>
-          Send Test Notification
+        <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-indigo-700")}>
+          {np("sendTest")}
         </Text>
-        <Ionicons name="chevron-forward" size={16} color="#6366f1" />
+        <DirectionalIcon name="chevron-forward" size={16} color="#6366f1" />
       </TouchableOpacity>
 
       {/* Booking alert sound */}
@@ -347,13 +355,12 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-emerald-50")}>
               <Ionicons name="volume-high-outline" size={18} color="#10b981" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
+            <View style={twStyle("ms-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                Booking Alert Sound
+                {np("bookingAlertSound")}
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                When on, new booking alerts play audio if your market sets a normal-booking ringtone in Control Plane;
-                otherwise vibration (mobile).
+                {np("bookingAlertSoundDesc")}
               </Text>
             </View>
           </View>
@@ -376,10 +383,10 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-blue-50")}>
               <Ionicons name="bag-handle-outline" size={18} color="#2563eb" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Order Alert Sound</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{np("orderAlertSound")}</Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Play a sound when a new product order arrives while the app is open.
+                {np("orderAlertSoundDesc")}
               </Text>
             </View>
           </View>
@@ -402,10 +409,10 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-indigo-50")}>
               <Ionicons name="chatbubble-ellipses-outline" size={18} color="#4f46e5" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Message Alert Sound</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{np("messageAlertSound")}</Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Play a sound when a client sends a message while you are on another screen.
+                {np("messageAlertSoundDesc")}
               </Text>
             </View>
           </View>
@@ -428,14 +435,14 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-purple-50")}>
               <Ionicons name="moon-outline" size={18} color="#a855f7" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
+            <View style={twStyle("ms-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                Quiet Hours
+                {np("quietHours")}
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
                 {local.quiet_hours_enabled
-                  ? `${local.quiet_hours_start} – ${local.quiet_hours_end}`
-                  : "Mute push notifications during specified hours"}
+                  ? np("quietHoursRange", { start: local.quiet_hours_start, end: local.quiet_hours_end })
+                  : np("quietHoursOffDesc")}
               </Text>
             </View>
           </View>
@@ -453,7 +460,7 @@ export default function NotificationPreferencesScreen() {
 
       {/* Digest mode */}
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-        Delivery Mode
+        {np("deliveryMode")}
       </Text>
       <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {DIGEST_OPTIONS.map((opt, idx) => (
@@ -472,9 +479,9 @@ export default function NotificationPreferencesScreen() {
           >
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                {opt.label}
+                {np(opt.labelKey)}
               </Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{opt.desc}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{np(opt.descKey)}</Text>
             </View>
             {local.digest_mode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -490,12 +497,12 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-red-50")}>
               <Ionicons name="mail-unread-outline" size={18} color="#ef4444" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
+            <View style={twStyle("ms-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                Unsubscribe from Marketing
+                {np("unsubscribeMarketing")}
               </Text>
               <Text style={twStyle("text-xs text-gray-500")}>
-                Stop all promotional emails and messages
+                {np("unsubscribeMarketingDesc")}
               </Text>
             </View>
           </View>
@@ -513,18 +520,18 @@ export default function NotificationPreferencesScreen() {
 
       {/* Channel preferences */}
       {SECTIONS.map((section) => (
-        <View key={section.title} style={twStyle("mb-5")}>
+        <View key={section.titleKey} style={twStyle("mb-5")}>
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
             <Text style={twStyle("text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-              {section.title}
+              {np(section.titleKey)}
             </Text>
             <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                style={{ marginRight: 8 }}
+                style={{ marginEnd: 8 }}
                 onPress={() => enableAllInSection(section.keys)}
               >
                 <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
-                  Enable All
+                  {np("enableAll")}
                 </Text>
               </TouchableOpacity>
               <Text style={twStyle("text-[10px] text-gray-300")}>|</Text>
@@ -532,7 +539,7 @@ export default function NotificationPreferencesScreen() {
                 onPress={() => disableAllInSection(section.keys)}
               >
                 <Text style={twStyle("text-[10px] font-medium text-gray-400")}>
-                  Disable All
+                  {np("disableAll")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -541,16 +548,16 @@ export default function NotificationPreferencesScreen() {
             <View style={twStyle("flex-row items-center border-b border-gray-50 px-4 py-2")}>
               <View style={twStyle("flex-1")} />
               <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
-                Email
+                {np("channelEmail")}
               </Text>
               <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
-                SMS
+                {np("channelSms")}
               </Text>
               <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
-                WA
+                {np("channelWa")}
               </Text>
               <Text style={twStyle("w-12 text-center text-[10px] font-semibold text-gray-400")}>
-                Push
+                {np("channelPush")}
               </Text>
             </View>
             {section.keys.map((key, idx) => (
@@ -565,13 +572,13 @@ export default function NotificationPreferencesScreen() {
                 <View style={twStyle("flex-row flex-1 items-center")}>
                   <Ionicons
                     name={
-                      (PREF_LABELS[key]?.icon as keyof typeof Ionicons.glyphMap) ?? "notifications-outline"
+                      (PREF_META[key]?.icon as keyof typeof Ionicons.glyphMap) ?? "notifications-outline"
                     }
                     size={16}
                     color="#6b7280"
                   />
-                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>
-                    {PREF_LABELS[key]?.label ?? key}
+                  <Text style={twStyle("ms-2 text-sm font-medium text-gray-900")}>
+                    {PREF_META[key] ? np(PREF_META[key].labelKey) : key}
                   </Text>
                 </View>
                 {(["email", "sms", "whatsapp", "push"] as const).map((ch) => (
@@ -600,7 +607,7 @@ export default function NotificationPreferencesScreen() {
       {dirty && (
         <View style={twStyle("mb-6")}>
           <ActionButton
-            label="Save Preferences"
+            label={np("savePreferences")}
             onPress={handleSave}
             loading={saving}
             fullWidth

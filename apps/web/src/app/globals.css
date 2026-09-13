@@ -12,6 +12,16 @@
     -webkit-text-size-adjust: 100%;
     min-height: 100%;
   }
+  /* RTL: prefer logical properties; isolate LTR for numbers/maps */
+  [dir="rtl"] .ltr-island {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  [dir="rtl"] .text-start {
+    text-align: start;
+  }
+
   body {
     touch-action: manipulation;
     /* Full viewport height: legacy 100vh, dynamic viewport, iOS safe-area fill */
@@ -236,7 +246,7 @@
   }
 
   .provider-portal .provider-table thead th {
-    @apply h-11 px-4 py-3 text-left align-middle text-xs font-semibold uppercase tracking-wide text-gray-500;
+    @apply h-11 px-4 py-3 text-start align-middle text-xs font-semibold uppercase tracking-wide text-gray-500;
     font-size: 0.6875rem;
     letter-spacing: 0.05em;
   }

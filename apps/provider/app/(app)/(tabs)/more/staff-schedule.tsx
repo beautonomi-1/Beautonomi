@@ -30,6 +30,8 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -113,9 +115,12 @@ function parseTime(t: string | null | undefined): { h: number; m: number } {
   return { h, m };
 }
 
-function formatTimeLabel(t: string | null | undefined): string {
+function formatTimeLabel(
+  t: string | null | undefined,
+  meridium: { am: string; pm: string },
+): string {
   const { h, m } = parseTime(t);
-  const ampm = h >= 12 ? "PM" : "AM";
+  const ampm = h >= 12 ? meridium.pm : meridium.am;
   const h12 = h % 12 || 12;
   return `${h12}:${pad(m)} ${ampm}`;
 }
@@ -219,6 +224,14 @@ function emptyDateShiftForm(tz?: string | null): DateShiftFormData {
 /* ------------------------------------------------------------------ */
 
 export default function StaffScheduleScreen() {
+  const { t } = useTranslation();
+  const ss = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.staffSchedule.${key}`, opts) as string;
+  const meridium = { am: ss("am"), pm: ss("pm") };
+  const fmtTime = (time: string | null | undefined) => formatTimeLabel(time, meridium);
+  const dayLabel = (day: string) => ss(`days.${day}`);
+  const dayShort = (day: string) => ss(`daysShort.${day}`);
+  const dayAbbr = (day: string) => ss(`daysAbbr.${day}`);
   const router = useRouter();
   const params = useLocalSearchParams<{ staffId?: string }>();
   useResponsive();
@@ -293,12 +306,12 @@ export default function StaffScheduleScreen() {
       if (first.errorCode !== "FUTURE_BOOKINGS_CONFLICT") return first;
       return await new Promise<typeof first>((resolve) => {
         Alert.alert(
-          "Upcoming bookings",
-          "Some upcoming bookings fall outside these hours. Save anyway?",
+          ss("upcomingBookingsTitle"),
+          ss("upcomingBookingsSaveBody"),
           [
-            { text: "Cancel", style: "cancel", onPress: () => resolve(first) },
+            { text: ss("cancel"), style: "cancel", onPress: () => resolve(first) },
             {
-              text: "Save anyway",
+              text: ss("saveAnyway"),
               onPress: () => {
                 void saveShift(url, { ...body, force: true }).then(resolve);
               },
@@ -375,7 +388,7 @@ export default function StaffScheduleScreen() {
         (s) => s.start_time && s.end_time && s.is_working !== false,
       );
       if (working.length === 0) {
-        Alert.alert("No shifts", "This staff member has no weekly shifts to copy.");
+        Alert.alert(ss("noShiftsTitle"), ss("noShiftsCopyBody"));
         return;
       }
       let failed = 0;
@@ -388,11 +401,11 @@ export default function StaffScheduleScreen() {
         if (err) failed++;
       }
       if (failed > 0) {
-        Alert.alert("Partial failure", `${failed} shift(s) could not be copied. Please try again.`);
+        Alert.alert(ss("partialFailureTitle"), ss("partialFailureCopy", { count: failed }));
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setSelectedStaffId(targetStaffId);
-        Alert.alert("Done", `Weekly schedule copied to ${targetName}.`);
+        Alert.alert(ss("doneTitle"), ss("copiedTo", { name: targetName }));
       }
     },
     [shifts, saveWeeklyShift],
@@ -403,12 +416,15 @@ export default function StaffScheduleScreen() {
     if (otherStaff.length === 0) return;
     const run = (target: StaffMember) => {
       Alert.alert(
-        "Copy schedule",
-        `Copy ${selectedStaff?.name ?? "this staff member"}'s weekly schedule to ${target.name}? Existing weekly rows for the same days will be updated.`,
+        ss("copyScheduleTitle"),
+        ss("copyScheduleBody", {
+          source: selectedStaff?.name ?? ss("thisStaffMember"),
+          target: target.name,
+        }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: ss("cancel"), style: "cancel" },
           {
-            text: "Copy",
+            text: ss("copy"),
             onPress: () => void copyWeeklyScheduleToTarget(target.id, target.name),
           },
         ],
@@ -421,9 +437,9 @@ export default function StaffScheduleScreen() {
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options: ["Cancel", ...otherStaff.map((s) => s.name)],
+          options: [ss("cancel"), ...otherStaff.map((member) => member.name)],
           cancelButtonIndex: 0,
-          title: "Copy weekly schedule to",
+          title: ss("copyWeeklyToTitle"),
         },
         (buttonIndex) => {
           if (buttonIndex <= 0) return;
@@ -432,8 +448,8 @@ export default function StaffScheduleScreen() {
         },
       );
     } else {
-      Alert.alert("Copy weekly schedule to", "Choose a team member", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(ss("copyWeeklyToTitle"), ss("chooseTeamMember"), [
+        { text: ss("cancel"), style: "cancel" },
         ...otherStaff.map((s) => ({
           text: s.name,
           onPress: () => run(s),
@@ -466,8 +482,8 @@ export default function StaffScheduleScreen() {
   function openEditDateShift(shift: ScheduledShift) {
     if (!shift.id || shift.is_synthetic || shift.source !== "shift") {
       Alert.alert(
-        "Weekly template",
-        "This row comes from weekly hours or location hours. Add a date-specific shift to override it.",
+        ss("weeklyTemplateTitle"),
+        ss("weeklyTemplateEditBody"),
       );
       return;
     }
@@ -495,7 +511,7 @@ export default function StaffScheduleScreen() {
   }
 
   function validateShift(): string | null {
-    if (!form.staff_id) return "Please select a staff member";
+    if (!form.staff_id) return ss("selectStaffMember");
     const startMin = timeToMinutes(form.start_time);
     const endMin = timeToMinutes(form.end_time);
     // Weekly schedule rows are stored per day_of_week with a `start_time <
@@ -503,28 +519,28 @@ export default function StaffScheduleScreen() {
     // separate days. Steer the user to date-specific shifts instead of
     // silently failing at the database layer.
     if (endMin < startMin) {
-      return "Overnight weekly shifts aren't supported. Add a date-specific shift for that night instead.";
+      return ss("overnightWeeklyUnsupported");
     }
-    if (endMin === startMin) return "End time must be after start time";
+    if (endMin === startMin) return ss("endAfterStart");
     return null;
   }
 
   function validateDateShift(): string | null {
-    if (!dateForm.staff_id) return "Please select a staff member";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateForm.date)) return "Enter a valid date";
+    if (!dateForm.staff_id) return ss("selectStaffMember");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateForm.date)) return ss("validDate");
     const startMin = timeToMinutes(dateForm.start_time);
     const endMin = timeToMinutes(dateForm.end_time);
     // For date-specific shifts an end-time earlier than start-time is treated
     // as an overnight shift that wraps past midnight (the staff_shifts table
     // has no `start < end` constraint). Only zero-length is rejected.
-    if (endMin === startMin) return "End time must be after start time";
+    if (endMin === startMin) return ss("endAfterStart");
     return null;
   }
 
   async function handleSaveShift() {
     const validationError = validateShift();
     if (validationError) {
-      Alert.alert("Validation Error", validationError);
+      Alert.alert(ss("validationError"), validationError);
       return;
     }
 
@@ -547,7 +563,7 @@ export default function StaffScheduleScreen() {
         {},
       );
       if (delErr) {
-        Alert.alert("Error", delErr);
+        Alert.alert(ss("errorTitle"), delErr);
         return;
       }
     }
@@ -557,7 +573,7 @@ export default function StaffScheduleScreen() {
       payload,
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ss("errorTitle"), error);
       return;
     }
 
@@ -569,7 +585,7 @@ export default function StaffScheduleScreen() {
   async function handleSaveDateShift() {
     const validationError = validateDateShift();
     if (validationError) {
-      Alert.alert("Validation Error", validationError);
+      Alert.alert(ss("validationError"), validationError);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -584,7 +600,7 @@ export default function StaffScheduleScreen() {
         },
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(ss("errorTitle"), error);
         return;
       }
     } else {
@@ -598,7 +614,7 @@ export default function StaffScheduleScreen() {
         recurring_pattern: null,
       });
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(ss("errorTitle"), error);
         return;
       }
     }
@@ -611,19 +627,19 @@ export default function StaffScheduleScreen() {
   function handleDeleteDateShift(shift: ScheduledShift) {
     if (!shift.id || shift.is_synthetic || shift.source !== "shift") {
       Alert.alert(
-        "Weekly template",
-        "This row comes from weekly hours or location hours. Edit the weekly schedule below, or add a date-specific shift to override it.",
+        ss("weeklyTemplateTitle"),
+        ss("weeklyTemplateDeleteBody"),
       );
       return;
     }
-    Alert.alert("Delete date-specific shift", `Delete this shift on ${shift.date}?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(ss("deleteDateShiftTitle"), ss("deleteDateShiftBody", { date: shift.date }), [
+      { text: ss("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: ss("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteDateShift(`/api/provider/shifts/${shift.id}`, {});
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(ss("errorTitle"), error);
           else {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             refreshScheduledShifts();
@@ -636,12 +652,16 @@ export default function StaffScheduleScreen() {
   function handleDeleteShift(shift: Shift) {
     if (!shift.id) return; // No saved schedule row to delete
     Alert.alert(
-      "Delete Shift",
-      `Delete this ${shift.day_of_week} shift (${formatTimeLabel(shift.start_time)} - ${formatTimeLabel(shift.end_time)})?`,
+      ss("deleteShiftTitle"),
+      ss("deleteShiftBody", {
+        day: dayLabel(shift.day_of_week),
+        start: fmtTime(shift.start_time),
+        end: fmtTime(shift.end_time),
+      }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: ss("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: ss("delete"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -649,16 +669,16 @@ export default function StaffScheduleScreen() {
             const first = await deleteShift(path, {});
             if (first.errorCode === "FUTURE_BOOKINGS_CONFLICT") {
               Alert.alert(
-                "Upcoming bookings",
-                "Bookings exist on this weekday. Delete the hours anyway?",
+                ss("upcomingBookingsTitle"),
+                ss("upcomingBookingsDeleteBody"),
                 [
-                  { text: "Cancel", style: "cancel" },
+                  { text: ss("cancel"), style: "cancel" },
                   {
-                    text: "Delete anyway",
+                    text: ss("deleteAnyway"),
                     style: "destructive",
                     onPress: async () => {
                       const retry = await deleteShift(`${path}?force=true`, {});
-                      if (retry.error) Alert.alert("Error", retry.error);
+                      if (retry.error) Alert.alert(ss("errorTitle"), retry.error);
                       else {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         refreshShifts();
@@ -670,7 +690,7 @@ export default function StaffScheduleScreen() {
               return;
             }
             if (first.error) {
-              Alert.alert("Error", first.error);
+              Alert.alert(ss("errorTitle"), first.error);
             } else {
               Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success,
@@ -737,19 +757,19 @@ export default function StaffScheduleScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Staff Schedules"
+        title={ss("title")}
         showBack
-        subtitle={selectedStaff ? selectedStaff.name : "Select a staff member"}
+        subtitle={selectedStaff ? selectedStaff.name : ss("selectStaffSubtitle")}
         rightAction={
           <TouchableOpacity
             onPress={() => openAddShift()}
             style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
-            accessibilityLabel="Add shift"
+            accessibilityLabel={ss("addShiftA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>
-              Add Shift
+            <Text style={twStyle("ms-1 text-sm font-semibold text-white")}>
+              {ss("addShift")}
             </Text>
           </TouchableOpacity>
         }
@@ -765,7 +785,7 @@ export default function StaffScheduleScreen() {
       >
         <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
-          Weekly schedules define normal availability. Date-specific shifts below support split shifts and one-off overrides for busy days, events, or alternate rosters.
+          {ss("intro")}
         </Text>
       </View>
 
@@ -779,12 +799,12 @@ export default function StaffScheduleScreen() {
             params: { add: "1" },
           } as never);
         }}
-        accessibilityLabel="Add team member and set shifts"
+        accessibilityLabel={ss("addTeamMemberA11y")}
         accessibilityRole="button"
       >
         <Ionicons name="person-add-outline" size={18} color="#6366f1" />
-        <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-          Add team member (set shifts in one step)
+        <Text style={twStyle("ms-2 text-sm font-medium text-indigo-700")}>
+          {ss("addTeamMember")}
         </Text>
       </TouchableOpacity>
 
@@ -803,7 +823,7 @@ export default function StaffScheduleScreen() {
             {(staff ?? []).filter((s) => s.is_active).length === 0 ? (
               <View style={twStyle("rounded-xl border border-amber-100 bg-amber-50 px-4 py-3")}>
                 <Text style={twStyle("text-sm text-amber-900")}>
-                  No active team members. Add someone from Team, then set their weekly hours here.
+                  {ss("noActiveTeam")}
                 </Text>
               </View>
             ) : null}
@@ -818,9 +838,9 @@ export default function StaffScheduleScreen() {
                       isSelected
                         ? "border border-indigo-200 bg-indigo-50"
                         : "border border-gray-100 bg-white"
-                    }`), { marginRight: 8 }]}
+                    }`), { marginEnd: 8 }]}
                     onPress={() => setSelectedStaffId(member.id)}
-                    accessibilityLabel={`Select ${member.name}`}
+                    accessibilityLabel={ss("selectStaffA11y", { name: member.name })}
                     accessibilityRole="button"
                   >
                     <Avatar
@@ -828,7 +848,7 @@ export default function StaffScheduleScreen() {
                       imageUrl={member.avatar_url}
                       size="sm"
                     />
-                    <View style={twStyle("ml-2")}>
+                    <View style={twStyle("ms-2")}>
                       <Text
                         style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}
                         numberOfLines={1}
@@ -840,7 +860,7 @@ export default function StaffScheduleScreen() {
                       </Text>
                     </View>
                     {isSelected && (
-                      <View style={twStyle("ml-2")}>
+                      <View style={twStyle("ms-2")}>
                         <Ionicons
                           name="checkmark-circle"
                           size={16}
@@ -862,18 +882,18 @@ export default function StaffScheduleScreen() {
             <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
               <Ionicons name="time-outline" size={20} color="#6366f1" />
             </View>
-            <View style={twStyle("ml-3")}>
-              <Text style={twStyle("text-xs text-gray-500")}>Total Weekly Hours</Text>
+            <View style={twStyle("ms-3")}>
+              <Text style={twStyle("text-xs text-gray-500")}>{ss("totalWeeklyHours")}</Text>
               <Text style={twStyle("text-lg font-bold text-gray-900")}>
-                {totalWeeklyHours}h
+                {ss("hoursAbbrev", { hours: totalWeeklyHours })}
               </Text>
             </View>
           </View>
           <View style={twStyle("flex-row items-center rounded-full bg-indigo-50 px-3 py-1")}>
             <Text style={twStyle("text-xs font-medium text-indigo-700")}>
-              {Array.from(shiftsByDay.values()).filter((s) => s.length > 0)
-                .length}{" "}
-              days
+              {ss("daysCount", {
+                count: Array.from(shiftsByDay.values()).filter((dayShifts) => dayShifts.length > 0).length,
+              })}
             </Text>
           </View>
         </View>
@@ -884,15 +904,15 @@ export default function StaffScheduleScreen() {
         <View style={twStyle("mb-4")}>
           <View style={twStyle("flex-row")}>
           <TouchableOpacity
-            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginRight: 8 }]}
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginEnd: 8 }]}
             onPress={() => {
               Alert.alert(
-                "Set Standard Hours",
-                "Set Mon–Fri 09:00–17:00 for this staff member? This will overwrite existing shifts.",
+                ss("setStandardHoursTitle"),
+                ss("setStandardHoursBody"),
                 [
-                  { text: "Cancel", style: "cancel" },
+                  { text: ss("cancel"), style: "cancel" },
                   {
-                    text: "Apply",
+                    text: ss("apply"),
                     onPress: async () => {
                       const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
                       const failures: string[] = [];
@@ -905,7 +925,7 @@ export default function StaffScheduleScreen() {
                         if (err) failures.push(day);
                       }
                       if (failures.length > 0) {
-                        Alert.alert("Partial failure", `Could not set hours for: ${failures.join(", ")}. Please try again.`);
+                        Alert.alert(ss("partialFailureTitle"), ss("partialFailureHours", { days: failures.map(dayLabel).join(", ") }));
                       } else {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                       }
@@ -917,18 +937,18 @@ export default function StaffScheduleScreen() {
             }}
           >
             <Ionicons name="calendar-outline" size={16} color="#6366f1" />
-            <Text style={twStyle("ml-1.5 text-xs font-medium text-indigo-600")}>Standard Hours</Text>
+            <Text style={twStyle("ms-1.5 text-xs font-medium text-indigo-600")}>{ss("standardHours")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
             onPress={() => {
               Alert.alert(
-                "Set Extended Hours",
-                "Set Mon–Sat 08:00–20:00 for this staff member?",
+                ss("setExtendedHoursTitle"),
+                ss("setExtendedHoursBody"),
                 [
-                  { text: "Cancel", style: "cancel" },
+                  { text: ss("cancel"), style: "cancel" },
                   {
-                    text: "Apply",
+                    text: ss("apply"),
                     onPress: async () => {
                       const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
                       const failures: string[] = [];
@@ -941,7 +961,7 @@ export default function StaffScheduleScreen() {
                         if (err) failures.push(day);
                       }
                       if (failures.length > 0) {
-                        Alert.alert("Partial failure", `Could not set hours for: ${failures.join(", ")}. Please try again.`);
+                        Alert.alert(ss("partialFailureTitle"), ss("partialFailureHours", { days: failures.map(dayLabel).join(", ") }));
                       } else {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                       }
@@ -953,7 +973,7 @@ export default function StaffScheduleScreen() {
             }}
           >
             <Ionicons name="time-outline" size={16} color="#8b5cf6" />
-            <Text style={twStyle("ml-1.5 text-xs font-medium text-violet-600")}>Extended Hours</Text>
+            <Text style={twStyle("ms-1.5 text-xs font-medium text-violet-600")}>{ss("extendedHours")}</Text>
           </TouchableOpacity>
           </View>
           {!calendarScopeOwn && (staff ?? []).filter((s) => s.is_active && s.id !== selectedStaffId).length > 0 ? (
@@ -965,7 +985,7 @@ export default function StaffScheduleScreen() {
               }}
             >
               <Ionicons name="copy-outline" size={16} color="#0ea5e9" />
-              <Text style={twStyle("ml-1.5 text-xs font-medium text-sky-600")}>Copy weekly schedule to…</Text>
+              <Text style={twStyle("ms-1.5 text-xs font-medium text-sky-600")}>{ss("copyWeeklySchedule")}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -978,9 +998,9 @@ export default function StaffScheduleScreen() {
               <View style={twStyle("h-9 w-9 items-center justify-center rounded-xl bg-pink-50")}>
                 <Ionicons name="calendar-number-outline" size={18} color="#db2777" />
               </View>
-              <View style={twStyle("ml-3")}>
-                <Text style={twStyle("text-sm font-semibold text-gray-900")}>Date-specific shifts</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Split shifts and one-off overrides this week</Text>
+              <View style={twStyle("ms-3")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>{ss("dateSpecificShifts")}</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{ss("dateSpecificShiftsSubtitle")}</Text>
               </View>
             </View>
             <TouchableOpacity
@@ -988,7 +1008,7 @@ export default function StaffScheduleScreen() {
               style={twStyle("rounded-xl bg-pink-50 px-3 py-2")}
               accessibilityRole="button"
             >
-              <Text style={twStyle("text-xs font-semibold text-pink-700")}>Add</Text>
+              <Text style={twStyle("text-xs font-semibold text-pink-700")}>{ss("add")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -1000,10 +1020,10 @@ export default function StaffScheduleScreen() {
                 setWeekStart(next);
               }}
               style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
-              accessibilityLabel="Previous week"
+              accessibilityLabel={ss("prevWeekA11y")}
               accessibilityRole="button"
             >
-              <Ionicons name="chevron-back" size={18} color="#6b7280" />
+              <DirectionalIcon name="chevron-back" size={18} color="#6b7280" />
             </TouchableOpacity>
             <Text style={twStyle("text-xs font-medium text-gray-600")}>
               {(() => {
@@ -1012,7 +1032,7 @@ export default function StaffScheduleScreen() {
                 const sameMonth = end.getMonth() === weekStart.getMonth();
                 const startStr = weekStart.toLocaleDateString(undefined, { month: "short", day: "numeric" });
                 const endStr = end.toLocaleDateString(undefined, sameMonth ? { day: "numeric" } : { month: "short", day: "numeric" });
-                return `Mon ${startStr} – Sun ${endStr}`;
+                return ss("weekRange", { start: startStr, end: endStr });
               })()}
             </Text>
             <TouchableOpacity
@@ -1022,25 +1042,25 @@ export default function StaffScheduleScreen() {
                 setWeekStart(next);
               }}
               style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}
-              accessibilityLabel="Next week"
+              accessibilityLabel={ss("nextWeekA11y")}
               accessibilityRole="button"
             >
-              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#6b7280" />
             </TouchableOpacity>
           </View>
 
           {loadingScheduledShifts ? (
-            <Text style={twStyle("text-sm text-gray-500")}>Loading date-specific shifts…</Text>
+            <Text style={twStyle("text-sm text-gray-500")}>{ss("loadingDateShifts")}</Text>
           ) : dateSpecificShifts.length === 0 ? (
             <View style={twStyle("rounded-xl bg-gray-50 px-4 py-3")}>
               <Text style={twStyle("text-sm text-gray-500")}>
-                No date-specific shifts this week. Weekly hours below still apply.
+                {ss("noDateShifts")}
               </Text>
             </View>
           ) : (
             dateSpecificShifts.map((shift) => (
               <View key={`${shift.id}-${shift.date}`} style={twStyle("mb-2 flex-row items-center rounded-xl bg-pink-50/60 px-3 py-3")}>
-                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-lg bg-white")}>
+                <View style={twStyle("me-3 h-9 w-9 items-center justify-center rounded-lg bg-white")}>
                   <Text style={twStyle("text-[10px] font-bold text-pink-700")}>
                     {new Date(`${shift.date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}
                   </Text>
@@ -1050,15 +1070,15 @@ export default function StaffScheduleScreen() {
                     {new Date(`${shift.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-600")}>
-                    {formatTimeLabel(shift.start_time)} - {formatTimeLabel(shift.end_time)}
-                    {isOvernight(shift.start_time, shift.end_time) ? " (next day)" : ""}
+                    {fmtTime(shift.start_time)} - {fmtTime(shift.end_time)}
+{isOvernight(shift.start_time, shift.end_time) ? ss("nextDaySuffix") : ""}
                     {shift.notes ? ` · ${shift.notes}` : ""}
                   </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => openEditDateShift(shift)}
-                  style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white"), { marginRight: 4 }]}
-                  accessibilityLabel="Edit date-specific shift"
+                  style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white"), { marginEnd: 4 }]}
+                  accessibilityLabel={ss("editDateShiftA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="create-outline" size={15} color="#6b7280" />
@@ -1066,7 +1086,7 @@ export default function StaffScheduleScreen() {
                 <TouchableOpacity
                   onPress={() => handleDeleteDateShift(shift)}
                   style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-white")}
-                  accessibilityLabel="Delete date-specific shift"
+                  accessibilityLabel={ss("deleteDateShiftA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={15} color="#dc2626" />
@@ -1081,16 +1101,16 @@ export default function StaffScheduleScreen() {
       {!selectedStaffId ? (
         <EmptyState
           icon="people-outline"
-          title="No staff selected"
-          description="Select a staff member above to view their schedule"
+          title={ss("noStaffSelected")}
+          description={ss("noStaffSelectedDesc")}
         />
       ) : loadingShifts ? (
         <SkeletonList rows={7} />
       ) : shiftsError && !shifts ? (
         <View style={twStyle("px-4 py-8")}>
-          <Text style={twStyle("text-center text-sm text-red-600 mb-3")}>Could not load shifts. Pull down to retry.</Text>
+          <Text style={twStyle("text-center text-sm text-red-600 mb-3")}>{ss("couldNotLoadShifts")}</Text>
           <TouchableOpacity onPress={handleRefresh} style={twStyle("self-center rounded-lg bg-gray-100 px-5 py-2.5")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Retry</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{ss("retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -1100,8 +1120,8 @@ export default function StaffScheduleScreen() {
               style={twStyle("mb-1 flex-row items-start rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3")}
             >
               <Ionicons name="information-circle" size={16} color="#047857" style={{ marginTop: 1 }} />
-              <Text style={twStyle("ml-2 flex-1 text-xs leading-5 text-emerald-900")}>
-                Days marked &ldquo;Inherited&rdquo; follow your location operating hours. Customers can still book those days. Add a weekly shift to set custom hours for this staff member.
+              <Text style={twStyle("ms-2 flex-1 text-xs leading-5 text-emerald-900")}>
+                {ss("inheritedBanner")}
               </Text>
             </View>
           ) : null}
@@ -1113,7 +1133,7 @@ export default function StaffScheduleScreen() {
               <View
                 key={day}
                 style={twStyle("rounded-xl border border-gray-100 bg-white")}
-                accessibilityLabel={`${day} schedule`}
+                accessibilityLabel={ss("dayScheduleA11y", { day: dayLabel(day) })}
               >
                 {/* Day header */}
                 <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3")}>
@@ -1124,19 +1144,19 @@ export default function StaffScheduleScreen() {
                       <Text
                         style={twStyle(`text-xs font-bold ${hasShifts ? "text-indigo-600" : "text-gray-400"}`)}
                       >
-                        {day.slice(0, 2)}
+{dayAbbr(day)}
                       </Text>
                     </View>
                     <Text
-                      style={twStyle(`ml-3 text-base font-semibold ${hasShifts ? "text-gray-900" : "text-gray-400"}`)}
+                      style={twStyle(`ms-3 text-base font-semibold ${hasShifts ? "text-gray-900" : "text-gray-400"}`)}
                     >
-                      {day}
+                      {dayLabel(day)}
                     </Text>
                   </View>
                   <TouchableOpacity
                     style={twStyle("flex-row items-center rounded-lg bg-gray-50 px-3 py-1.5")}
                     onPress={() => openAddShift(day)}
-                    accessibilityLabel={`Add shift on ${day}`}
+                    accessibilityLabel={ss("addShiftOnA11y", { day: dayLabel(day) })}
                     accessibilityRole="button"
                   >
                     <Ionicons
@@ -1144,8 +1164,8 @@ export default function StaffScheduleScreen() {
                       size={14}
                       color="#6366f1"
                     />
-                    <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                      Add
+                    <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                      {ss("add")}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1157,7 +1177,7 @@ export default function StaffScheduleScreen() {
                       key={shift.id}
                       style={twStyle(`flex-row items-center px-4 py-3 ${idx < dayShifts.length - 1 ? "border-b border-gray-50" : ""}`)}
                     >
-                      <View style={twStyle("mr-3 h-8 w-1 rounded-full bg-indigo-400")} />
+                      <View style={twStyle("me-3 h-8 w-1 rounded-full bg-indigo-400")} />
                       <View style={twStyle("flex-1")}>
                         <View style={twStyle("flex-row items-center")}>
                           <Ionicons
@@ -1165,9 +1185,9 @@ export default function StaffScheduleScreen() {
                             size={14}
                             color="#6b7280"
                           />
-                          <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>
-                            {formatTimeLabel(shift.start_time)} –{" "}
-                            {formatTimeLabel(shift.end_time)}
+                          <Text style={twStyle("ms-1.5 text-sm font-medium text-gray-900")}>
+                            {fmtTime(shift.start_time)} –{" "}
+                            {fmtTime(shift.end_time)}
                           </Text>
                         </View>
                         {shift.notes && (
@@ -1176,16 +1196,17 @@ export default function StaffScheduleScreen() {
                           </Text>
                         )}
                         <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>
-                          {(shiftDurationMinutes(shift.start_time, shift.end_time) / 60).toFixed(1)}
-                          h shift
-                          {isOvernight(shift.start_time, shift.end_time) ? " · ends next day" : ""}
+                          {ss("hoursShift", {
+                            hours: (shiftDurationMinutes(shift.start_time, shift.end_time) / 60).toFixed(1),
+                          })}
+                          {isOvernight(shift.start_time, shift.end_time) ? ss("endsNextDay") : ""}
                         </Text>
                       </View>
                       <View style={twStyle("flex-row items-center")}>
                         <TouchableOpacity
-                          style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-gray-50"), { marginRight: 4 }]}
+                          style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-gray-50"), { marginEnd: 4 }]}
                           onPress={() => openEditShift(shift)}
-                          accessibilityLabel="Edit shift"
+                          accessibilityLabel={ss("editShiftA11y")}
                           accessibilityRole="button"
                         >
                           <Ionicons
@@ -1198,7 +1219,7 @@ export default function StaffScheduleScreen() {
                           <TouchableOpacity
                             style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-red-50")}
                             onPress={() => handleDeleteShift(shift)}
-                            accessibilityLabel="Delete shift"
+                            accessibilityLabel={ss("deleteShiftA11y")}
                             accessibilityRole="button"
                           >
                             <Ionicons
@@ -1218,9 +1239,14 @@ export default function StaffScheduleScreen() {
                     return (
                       <View
                         style={twStyle("flex-row items-center px-4 py-3")}
-                        accessibilityLabel={`${day} inherited ${isLocation ? "location" : "schedule"} hours ${formatTimeLabel(inherited.start_time)} to ${formatTimeLabel(inherited.end_time)}`}
+                        accessibilityLabel={ss("inheritedHoursA11y", {
+                          day: dayLabel(day),
+                          source: isLocation ? ss("inheritedSourceLocation") : ss("inheritedSourceSchedule"),
+                          start: fmtTime(inherited.start_time),
+                          end: fmtTime(inherited.end_time),
+                        })}
                       >
-                        <View style={twStyle("mr-3 h-8 w-1 rounded-full bg-emerald-300")} />
+                        <View style={twStyle("me-3 h-8 w-1 rounded-full bg-emerald-300")} />
                         <View style={twStyle("flex-1")}>
                           <View style={twStyle("flex-row items-center")}>
                             <Ionicons
@@ -1228,17 +1254,17 @@ export default function StaffScheduleScreen() {
                               size={14}
                               color="#059669"
                             />
-                            <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>
-                              {formatTimeLabel(inherited.start_time)} – {formatTimeLabel(inherited.end_time)}
+                            <Text style={twStyle("ms-1.5 text-sm font-medium text-gray-900")}>
+                              {fmtTime(inherited.start_time)} – {fmtTime(inherited.end_time)}
                             </Text>
                           </View>
                           <Text style={twStyle("mt-0.5 text-[10px] font-medium text-emerald-700")}>
                             {isLocation
-                              ? "Inherited from location operating hours"
-                              : "Inherited from weekly schedule"}
+                              ? ss("inheritedLocation")
+                              : ss("inheritedSchedule")}
                           </Text>
                           <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>
-                            Add a weekly shift to override this for {selectedStaff?.name ?? "this staff member"}.
+                            {ss("addWeeklyToOverride", { name: selectedStaff?.name ?? ss("thisStaffMember") })}
                           </Text>
                         </View>
                       </View>
@@ -1247,7 +1273,7 @@ export default function StaffScheduleScreen() {
                 ) : (
                   <View style={twStyle("px-4 py-3")}>
                     <Text style={twStyle("text-sm italic text-gray-400")}>
-                      No shifts – Day off
+                      {ss("noShiftsDayOff")}
                     </Text>
                   </View>
                 )}
@@ -1264,13 +1290,13 @@ export default function StaffScheduleScreen() {
       <BottomSheet
         visible={shiftFormOpen}
         onClose={() => setShiftFormOpen(false)}
-        title={editingShift ? "Edit Shift" : "Add Shift"}
+        title={editingShift ? ss("editShiftTitle") : ss("addShiftTitle")}
       >
         {/* Staff selector (only when adding) */}
         {!editingShift && (
           <>
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-              Staff Member *
+              {ss("staffMemberRequired")}
             </Text>
             <ScrollView
               horizontal
@@ -1285,11 +1311,11 @@ export default function StaffScheduleScreen() {
                   return (
                     <TouchableOpacity
                       key={member.id}
-                      style={[twStyle(`flex-row items-center rounded-xl px-3 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8 }]}
+                      style={[twStyle(`flex-row items-center rounded-xl px-3 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginEnd: 8 }]}
                       onPress={() =>
                         setForm((prev) => ({ ...prev, staff_id: member.id }))
                       }
-                      accessibilityLabel={`Select ${member.name}`}
+                      accessibilityLabel={ss("selectStaffA11y", { name: member.name })}
                       accessibilityRole="button"
                     >
                       <Avatar
@@ -1298,7 +1324,7 @@ export default function StaffScheduleScreen() {
                         size="sm"
                       />
                       <Text
-                        style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}
+                        style={twStyle(`ms-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}
                       >
                         {member.name}
                       </Text>
@@ -1311,7 +1337,7 @@ export default function StaffScheduleScreen() {
 
         {/* Day of Week */}
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-          Day of Week *
+          {ss("dayOfWeekRequired")}
         </Text>
         <View style={twStyle("mb-4 flex-row flex-wrap")}>
           {DAYS.map((day) => {
@@ -1319,17 +1345,17 @@ export default function StaffScheduleScreen() {
             return (
               <TouchableOpacity
                 key={day}
-                style={[twStyle(`rounded-full px-3.5 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
+                style={[twStyle(`rounded-full px-3.5 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() =>
                   setForm((prev) => ({ ...prev, day_of_week: day }))
                 }
-                accessibilityLabel={`Select ${day}`}
+                accessibilityLabel={ss("selectDayA11y", { day: dayLabel(day) })}
                 accessibilityRole="button"
               >
                 <Text
                   style={twStyle(`text-sm font-medium ${isSelected ? "text-white" : "text-gray-600"}`)}
                 >
-                  {day.slice(0, 3)}
+{dayShort(day)}
                 </Text>
               </TouchableOpacity>
             );
@@ -1338,32 +1364,32 @@ export default function StaffScheduleScreen() {
 
         {/* Time selection */}
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-          Shift Times *
+          {ss("shiftTimesRequired")}
         </Text>
         <View style={twStyle("mb-4 flex-row items-center")}>
           <TouchableOpacity
-            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginRight: 12 }]}
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginEnd: 12 }]}
             onPress={() => setPickerField("start_time")}
-            accessibilityLabel={`Start time: ${formatTimeLabel(form.start_time)}`}
+            accessibilityLabel={ss("startTimeA11y", { time: fmtTime(form.start_time) })}
             accessibilityRole="button"
           >
             <Ionicons name="time-outline" size={16} color="#6366f1" />
-            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
-              {formatTimeLabel(form.start_time)}
+            <Text style={twStyle("ms-2 text-base font-medium text-gray-900")}>
+              {fmtTime(form.start_time)}
             </Text>
           </TouchableOpacity>
 
-          <Text style={twStyle("text-sm text-gray-400")}>to</Text>
+          <Text style={twStyle("text-sm text-gray-400")}>{ss("to")}</Text>
 
           <TouchableOpacity
             style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
             onPress={() => setPickerField("end_time")}
-            accessibilityLabel={`End time: ${formatTimeLabel(form.end_time)}`}
+            accessibilityLabel={ss("endTimeA11y", { time: fmtTime(form.end_time) })}
             accessibilityRole="button"
           >
             <Ionicons name="time-outline" size={16} color="#6366f1" />
-            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
-              {formatTimeLabel(form.end_time)}
+            <Text style={twStyle("ms-2 text-base font-medium text-gray-900")}>
+              {fmtTime(form.end_time)}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1406,21 +1432,22 @@ export default function StaffScheduleScreen() {
         {timeToMinutes(form.end_time) > timeToMinutes(form.start_time) ? (
           <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5")}>
             <Ionicons name="hourglass-outline" size={16} color="#6366f1" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-              {(
-                (timeToMinutes(form.end_time) - timeToMinutes(form.start_time)) /
-                60
-              ).toFixed(1)}{" "}
-              hours shift
+            <Text style={twStyle("ms-2 text-sm font-medium text-indigo-700")}>
+              {ss("hoursShiftPreview", {
+                hours: (
+                  (timeToMinutes(form.end_time) - timeToMinutes(form.start_time)) /
+                  60
+                ).toFixed(1),
+              })}
             </Text>
           </View>
         ) : timeToMinutes(form.end_time) < timeToMinutes(form.start_time) ? (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}>
             <Text style={twStyle("text-sm font-semibold text-amber-900")}>
-              Overnight weekly shifts are not supported
+              {ss("overnightNotSupportedTitle")}
             </Text>
             <Text style={twStyle("mt-1 text-xs text-amber-800")}>
-              The weekly schedule stores one slot per day. For shifts that cross midnight, add a date-specific shift below — those support overnight times.
+              {ss("overnightNotSupportedBody")}
             </Text>
             <TouchableOpacity
               style={twStyle("mt-2 self-start rounded-lg bg-amber-600 px-3 py-1.5")}
@@ -1431,7 +1458,7 @@ export default function StaffScheduleScreen() {
               accessibilityRole="button"
             >
               <Text style={twStyle("text-xs font-semibold text-white")}>
-                Add date-specific shift instead
+                {ss("addDateShiftInstead")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1439,7 +1466,7 @@ export default function StaffScheduleScreen() {
 
         {/* Notes */}
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Notes (optional)
+          {ss("notesOptional")}
         </Text>
         <View style={twStyle("mb-4")}>
           <TextInput
@@ -1447,13 +1474,13 @@ export default function StaffScheduleScreen() {
               twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
               { minHeight: 72, textAlignVertical: "top" },
             ]}
-            placeholder="e.g. Split shift, on call..."
+            placeholder={ss("notesPlaceholder")}
             placeholderTextColor="#9ca3af"
             value={form.notes}
             onChangeText={(text) => setForm((prev) => ({ ...prev, notes: text }))}
             multiline
             maxLength={200}
-            accessibilityLabel="Shift notes"
+            accessibilityLabel={ss("shiftNotesA11y")}
           />
         </View>
 
@@ -1461,10 +1488,10 @@ export default function StaffScheduleScreen() {
         <ActionButton
           label={
             isSaving
-              ? "Saving…"
+              ? ss("saving")
               : editingShift
-                ? "Update Shift"
-                : "Add Shift"
+                ? ss("updateShift")
+                : ss("addShift")
           }
           onPress={handleSaveShift}
           loading={isSaving}
@@ -1478,16 +1505,16 @@ export default function StaffScheduleScreen() {
           setDateShiftFormOpen(false);
           setEditingDateShift(null);
         }}
-        title={editingDateShift ? "Edit date-specific shift" : "Add date-specific shift"}
+        title={editingDateShift ? ss("editDateShiftTitle") : ss("addDateShiftTitle")}
         subtitle={
           editingDateShift
-            ? "Update times, date or notes for this one-off shift."
-            : "Use this for split shifts, special event rosters, or one-off overrides."
+            ? ss("editDateShiftSubtitle")
+            : ss("addDateShiftSubtitle")
         }
       >
         {editingDateShift ? null : (
           <>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Staff Member *</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ss("staffMemberRequired")}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1506,13 +1533,13 @@ export default function StaffScheduleScreen() {
                             isSelected ? "bg-pink-600" : "border border-gray-200 bg-gray-50"
                           }`,
                         ),
-                        { marginRight: 8 },
+                        { marginEnd: 8 },
                       ]}
                       onPress={() => setDateForm((prev) => ({ ...prev, staff_id: member.id }))}
                       accessibilityRole="button"
                     >
                       <Avatar name={member.name} imageUrl={member.avatar_url} size="sm" />
-                      <Text style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>
+                      <Text style={twStyle(`ms-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}>
                         {member.name}
                       </Text>
                     </TouchableOpacity>
@@ -1522,14 +1549,14 @@ export default function StaffScheduleScreen() {
           </>
         )}
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ss("dateRequired")}</Text>
         <TouchableOpacity
           onPress={() => setPickerField("date")}
           style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-          accessibilityLabel="Shift date"
+          accessibilityLabel={ss("shiftDateA11y")}
         >
           <Ionicons name="calendar-outline" size={20} color="#db2777" />
-          <Text style={twStyle("ml-2 text-base text-gray-900")}>
+          <Text style={twStyle("ms-2 text-base text-gray-900")}>
             {dateForm.date}
           </Text>
         </TouchableOpacity>
@@ -1551,25 +1578,25 @@ export default function StaffScheduleScreen() {
           />
         )}
 
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Shift Times *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ss("shiftTimesRequired")}</Text>
         <View style={twStyle("mb-4 flex-row items-center")}>
           <TouchableOpacity
-            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginRight: 12 }]}
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginEnd: 12 }]}
             onPress={() => setPickerField("date_start_time")}
           >
             <Ionicons name="time-outline" size={16} color="#db2777" />
-            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
-              {formatTimeLabel(dateForm.start_time)}
+            <Text style={twStyle("ms-2 text-base font-medium text-gray-900")}>
+              {fmtTime(dateForm.start_time)}
             </Text>
           </TouchableOpacity>
-          <Text style={twStyle("text-sm text-gray-400")}>to</Text>
+          <Text style={twStyle("text-sm text-gray-400")}>{ss("to")}</Text>
           <TouchableOpacity
             style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
             onPress={() => setPickerField("date_end_time")}
           >
             <Ionicons name="time-outline" size={16} color="#db2777" />
-            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
-              {formatTimeLabel(dateForm.end_time)}
+            <Text style={twStyle("ms-2 text-base font-medium text-gray-900")}>
+              {fmtTime(dateForm.end_time)}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1611,20 +1638,25 @@ export default function StaffScheduleScreen() {
         {timeToMinutes(dateForm.end_time) !== timeToMinutes(dateForm.start_time) && (
           <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-pink-50 px-4 py-2.5")}>
             <Ionicons name="hourglass-outline" size={16} color="#db2777" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-pink-700")}>
-              {(shiftDurationMinutes(dateForm.start_time, dateForm.end_time) / 60).toFixed(1)} hours
-              {isOvernight(dateForm.start_time, dateForm.end_time) ? " · ends next day" : ""}
+            <Text style={twStyle("ms-2 text-sm font-medium text-pink-700")}>
+              {isOvernight(dateForm.start_time, dateForm.end_time)
+                ? ss("hoursDurationNextDay", {
+                    hours: (shiftDurationMinutes(dateForm.start_time, dateForm.end_time) / 60).toFixed(1),
+                  })
+                : ss("hoursDuration", {
+                    hours: (shiftDurationMinutes(dateForm.start_time, dateForm.end_time) / 60).toFixed(1),
+                  })}
             </Text>
           </View>
         )}
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ss("notesOptional")}</Text>
         <TextInput
           style={[
             twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
             { minHeight: 72, textAlignVertical: "top" },
           ]}
-          placeholder="e.g. Morning split shift, event coverage..."
+          placeholder={ss("dateNotesPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={dateForm.notes}
           onChangeText={(text) => setDateForm((prev) => ({ ...prev, notes: text }))}
@@ -1635,10 +1667,10 @@ export default function StaffScheduleScreen() {
         <ActionButton
           label={
             savingDateShift || patchingDateShift
-              ? "Saving…"
+              ? ss("saving")
               : editingDateShift
-                ? "Update date-specific shift"
-                : "Add date-specific shift"
+                ? ss("updateDateShift")
+                : ss("addDateShiftTitle")
           }
           onPress={handleSaveDateShift}
           loading={savingDateShift || patchingDateShift}

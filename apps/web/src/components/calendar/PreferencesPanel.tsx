@@ -30,6 +30,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PreferencesPanelProps {
   className?: string;
@@ -56,6 +57,7 @@ export function PreferencesPanel({
     toggleShowIcons,
     updatePreference,
   } = useCalendarPreferences();
+  const { t } = useTranslation();
 
   if (!isLoaded) {
     return null;
@@ -64,10 +66,15 @@ export function PreferencesPanel({
   const triggerContent = variant === "button" ? (
     <Button variant="ghost" size="sm" className={cn("gap-2", className)}>
       <Settings2 className="w-4 h-4" />
-      <span className="hidden md:inline">Preferences</span>
+      <span className="hidden md:inline">{t("web.calendar.preferencesPanel.preferences")}</span>
     </Button>
   ) : (
-    <Button variant="ghost" size="icon" className={cn("h-9 w-9", className)}>
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("h-9 w-9", className)}
+      aria-label={t("web.calendar.preferencesPanel.preferences")}
+    >
       <Settings2 className="w-4 h-4" />
     </Button>
   );
@@ -79,9 +86,9 @@ export function PreferencesPanel({
       </PopoverTrigger>
       <PopoverContent align={align} className="w-80 p-0">
         <div className="px-4 py-3 border-b">
-          <h3 className="font-semibold text-sm">Calendar Preferences</h3>
+          <h3 className="font-semibold text-sm">{t("web.calendar.preferencesPanel.title")}</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Customize how your calendar looks
+            {t("web.calendar.preferencesPanel.subtitle")}
           </p>
         </div>
 
@@ -89,7 +96,7 @@ export function PreferencesPanel({
           {/* Display Section */}
           <div className="space-y-3">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Display
+              {t("web.calendar.preferencesPanel.display")}
             </h4>
 
             {/* High Contrast Mode */}
@@ -98,10 +105,10 @@ export function PreferencesPanel({
                 <Contrast className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="high-contrast" className="text-sm font-normal cursor-pointer">
-                    High Contrast
+                    {t("web.calendar.preferencesPanel.highContrast")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Better visibility
+                    {t("web.calendar.preferencesPanel.highContrastHint")}
                   </p>
                 </div>
               </div>
@@ -122,10 +129,10 @@ export function PreferencesPanel({
                 )}
                 <div>
                   <Label htmlFor="show-canceled" className="text-sm font-normal cursor-pointer">
-                    Show Canceled
+                    {t("web.calendar.preferencesPanel.showCanceled")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Display canceled appointments
+                    {t("web.calendar.preferencesPanel.showCanceledHint")}
                   </p>
                 </div>
               </div>
@@ -142,10 +149,10 @@ export function PreferencesPanel({
                 <Grid3X3 className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="compact-mode" className="text-sm font-normal cursor-pointer">
-                    Compact Mode
+                    {t("web.calendar.preferencesPanel.compactMode")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Smaller appointment blocks
+                    {t("web.calendar.preferencesPanel.compactModeHint")}
                   </p>
                 </div>
               </div>
@@ -162,10 +169,10 @@ export function PreferencesPanel({
                 <Tag className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="show-icons" className="text-sm font-normal cursor-pointer">
-                    Show Icons
+                    {t("web.calendar.preferencesPanel.showIcons")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    New client, notes, etc.
+                    {t("web.calendar.preferencesPanel.showIconsHint")}
                   </p>
                 </div>
               </div>
@@ -182,10 +189,10 @@ export function PreferencesPanel({
                 <DollarSign className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="show-prices" className="text-sm font-normal cursor-pointer">
-                    Show Prices
+                    {t("web.calendar.preferencesPanel.showPrices")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Display price on appointment blocks
+                    {t("web.calendar.preferencesPanel.showPricesHint")}
                   </p>
                 </div>
               </div>
@@ -201,10 +208,10 @@ export function PreferencesPanel({
                 <Clock className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="notify-drag" className="text-sm font-normal cursor-pointer">
-                    Notify client on drag
+                    {t("web.calendar.preferencesPanel.notifyOnDrag")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    Email/SMS the customer when you reschedule by dragging
+                    {t("web.calendar.preferencesPanel.notifyOnDragHint")}
                   </p>
                 </div>
               </div>
@@ -221,14 +228,14 @@ export function PreferencesPanel({
           {/* Color Section */}
           <div className="space-y-3">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Colors
+              {t("web.calendar.preferencesPanel.colors")}
             </h4>
 
             {/* Color By */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Palette className="w-4 h-4 text-muted-foreground" />
-                <Label className="text-sm font-normal">Color By</Label>
+                <Label className="text-sm font-normal">{t("web.calendar.preferencesPanel.colorBy")}</Label>
               </div>
               <Select
                 value={preferences.colorBy}
@@ -240,9 +247,9 @@ export function PreferencesPanel({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="status">Status</SelectItem>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="team_member">Staff</SelectItem>
+                  <SelectItem value="status">{t("web.calendar.preferencesPanel.status")}</SelectItem>
+                  <SelectItem value="service">{t("web.calendar.preferencesPanel.service")}</SelectItem>
+                  <SelectItem value="team_member">{t("web.calendar.preferencesPanel.staff")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -253,14 +260,14 @@ export function PreferencesPanel({
           {/* Time Section */}
           <div className="space-y-3">
             <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Time Grid
+              {t("web.calendar.preferencesPanel.timeGrid")}
             </h4>
 
             {/* Time Increment */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-muted-foreground" />
-                <Label className="text-sm font-normal">Time Slots</Label>
+                <Label className="text-sm font-normal">{t("web.calendar.preferencesPanel.timeSlots")}</Label>
               </div>
               <Select
                 value={preferences.timeIncrementMinutes.toString()}
@@ -272,9 +279,9 @@ export function PreferencesPanel({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="5">5 min</SelectItem>
-                  <SelectItem value="10">10 min</SelectItem>
-                  <SelectItem value="15">15 min</SelectItem>
+                  <SelectItem value="5">{t("web.calendar.preferencesPanel.minutes", { count: 5 })}</SelectItem>
+                  <SelectItem value="10">{t("web.calendar.preferencesPanel.minutes", { count: 10 })}</SelectItem>
+                  <SelectItem value="15">{t("web.calendar.preferencesPanel.minutes", { count: 15 })}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -285,10 +292,10 @@ export function PreferencesPanel({
                 <Clock className="w-4 h-4 text-muted-foreground" />
                 <div>
                   <Label htmlFor="scroll-to-now" className="text-sm font-normal cursor-pointer">
-                    Scroll to Now
+                    {t("web.calendar.preferencesPanel.scrollToNow")}
                   </Label>
                   <p className="text-[10px] text-muted-foreground">
-                    On calendar load
+                    {t("web.calendar.preferencesPanel.scrollToNowHint")}
                   </p>
                 </div>
               </div>
@@ -308,7 +315,7 @@ export function PreferencesPanel({
             className="text-xs text-muted-foreground p-0 h-auto"
             onClick={() => window.location.href = "/provider/settings/calendar/display-preferences"}
           >
-            More settings →
+            {t("web.calendar.preferencesPanel.moreSettings")}
           </Button>
         </div>
       </PopoverContent>

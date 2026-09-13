@@ -25,7 +25,7 @@ export default function Component() {
             className="w-20 h-20 rounded-md"
             style={{ aspectRatio: "50/50", objectFit: "cover" }}
           />
-          <p className="ml-4 text-lg font-light">Stay in Prince’s Purple Rain house</p>
+          <p className="ms-4 text-lg font-light">Stay in Prince’s Purple Rain house</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Button variant="outline" className="flex items-center justify-start px-4 gap-4 font-light hover:bg-[#f7f7f7] rounded-xl max-h-[50px]">

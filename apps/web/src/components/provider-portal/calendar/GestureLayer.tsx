@@ -9,6 +9,7 @@ import {
 import { slotIsOutsideWeekly, type WeeklyHours } from "@beautonomi/utils";
 import { HOUR_HEIGHT } from "./constants";
 import { parseScheduledTime } from "./utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface GestureLayerProps {
   timeSlots: string[];
@@ -37,6 +38,7 @@ function GestureLayerComponent({
   staffWorkingHours,
   onTimeSlotClick,
 }: GestureLayerProps) {
+  const { t } = useTranslation();
   const handleSlotClick = useCallback(
     (time: string) => onTimeSlotClick(date, time, staffId),
     [date, staffId, onTimeSlotClick],
@@ -123,7 +125,7 @@ function GestureLayerComponent({
               {isNonWorking && (
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                   <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900/70 bg-white/85 px-1.5 py-0.5 rounded border border-amber-200 shadow-sm">
-                    Closed
+                    {t("web.provider.calendarMobile.closed")}
                   </span>
                 </div>
               )}

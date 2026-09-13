@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CreditCard, Banknote, Link2 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -51,6 +53,7 @@ export function BookingPaymentCollectSection({
   initialOpenPaycloud = false,
   initialOpenPaystack = false,
 }: BookingPaymentCollectSectionProps) {
+  const { t } = useTranslation();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const paystackEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
@@ -146,7 +149,7 @@ export function BookingPaymentCollectSection({
   const handleMarkPaid = async (method: "cash" | "card") => {
     const amount = chargeAmount > 0 ? chargeAmount : Number(outstanding.toFixed(2));
     if (amount <= 0) {
-      toast.error("There is no remaining balance on this booking.");
+      toast.error(t("web.provider.bookings.detail.toast.noBalance"));
       return;
     }
     const setBusy = method === "cash" ? setMarkingCash : setMarkingCard;
@@ -157,10 +160,10 @@ export function BookingPaymentCollectSection({
         amount,
         settle_additional_charges: true,
       });
-      toast.success("Booking marked as paid");
+      toast.success(t("web.provider.bookings.detail.toast.markedPaid"));
       onUpdated?.();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.bookings.detail.toast.markPaidFailed"));
     } finally {
       setBusy(false);
     }
@@ -172,15 +175,15 @@ export function BookingPaymentCollectSection({
   const paycloudInFlight = (terminals?.inFlight ?? 0) > 0;
 
   return (
-    <PermissionGateInline allowed={canProcessPayments} message="You do not have permission to collect payments.">
+    <PermissionGateInline allowed={canProcessPayments} message={t("web.provider.bookings.detail.toast.permissionToCollect")}>
       <BookingSectionCard data-testid="booking-collect-payment">
         <BookingSectionLabel className="mb-3 flex items-center gap-1.5">
           <CreditCard className="h-4 w-4" />
-          Collect payment
+          {t("web.provider.bookings.detail.leftoverCopy.collectPayment")}
         </BookingSectionLabel>
         {depositAmount != null && depositAmount > 0 ? (
           <p className="text-xs text-gray-600 mb-2">
-            Deposit due now · {depositAmount.toFixed(2)} of {fullOutstanding.toFixed(2)} outstanding
+            {t("web.provider.bookings.detail.leftoverCopy.depositDueNow", { deposit: depositAmount.toFixed(2), outstanding: fullOutstanding.toFixed(2) })}
           </p>
         ) : null}
         <div className="flex flex-col gap-2">
@@ -194,7 +197,7 @@ export function BookingPaymentCollectSection({
               fullOutstanding={fullOutstanding}
               onClick={() => {
                 if (terminalAmount <= 0) {
-                  toast.error("There is no remaining balance to collect.");
+                  toast.error(t("web.provider.bookings.detail.toast.noBalanceCollect"));
                   return;
                 }
                 setPaycloudOpen(true);
@@ -205,12 +208,12 @@ export function BookingPaymentCollectSection({
           ) : null}
           {yocoEnabled ? (
             <BookingActionButton variant="outline" onClick={() => setYocoOpen(true)}>
-              Collect with Yoco · {terminalAmount.toFixed(2)}
+              {t("web.provider.bookings.detail.leftoverCopy.collectWithYoco", { amount: terminalAmount.toFixed(2) })}
             </BookingActionButton>
           ) : null}
           {paystackEnabled && paystackReady ? (
             <BookingActionButton variant="outline" onClick={() => setPaystackOpen(true)}>
-              Paystack Terminal
+              {t("web.provider.bookings.detail.leftoverCopy.paystackTerminal")}
             </BookingActionButton>
           ) : null}
           <BookingActionButton
@@ -218,8 +221,8 @@ export function BookingPaymentCollectSection({
             disabled={markingCash}
             onClick={() => void handleMarkPaid("cash")}
           >
-            <Banknote className="mr-2 h-4 w-4" />
-            {markingCash ? "Recording…" : `Mark paid (cash) · ${terminalAmount.toFixed(2)}`}
+            <Banknote className="me-2 h-4 w-4" />
+            {markingCash ? t("web.provider.bookings.detail.leftoverCopy.recording") : t("web.provider.bookings.detail.leftoverCopy.markPaidCash", { amount: terminalAmount.toFixed(2) })}
           </BookingActionButton>
           {manualCardEnabled ? (
             <BookingActionButton
@@ -227,14 +230,14 @@ export function BookingPaymentCollectSection({
               disabled={markingCard}
               onClick={() => void handleMarkPaid("card")}
             >
-              <CreditCard className="mr-2 h-4 w-4" />
-              {markingCard ? "Recording…" : `${manualCardCollectOptionLabel()} · ${terminalAmount.toFixed(2)}`}
+              <CreditCard className="me-2 h-4 w-4" />
+              {markingCard ? t("web.provider.bookings.detail.leftoverCopy.recording") : `${manualCardCollectOptionLabel()} · ${terminalAmount.toFixed(2)}`}
             </BookingActionButton>
           ) : null}
           {canSendPaymentLink ? (
             <BookingActionButton variant="outline" onClick={() => setPaymentLinkOpen(true)}>
-              <Link2 className="mr-2 h-4 w-4" />
-              Send payment link
+              <Link2 className="me-2 h-4 w-4" />
+              {t("web.provider.bookings.detail.leftoverCopy.sendPaymentLink")}
             </BookingActionButton>
           ) : null}
         </div>

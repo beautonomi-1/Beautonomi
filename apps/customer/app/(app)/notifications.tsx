@@ -26,6 +26,7 @@ import { Colors, Shadows } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM, RADIUS_CARD } from "@/constants/layout";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   SwipeableNotificationRow,
   useNotificationSwipeRegistry,
@@ -323,7 +324,7 @@ export default function NotificationsScreen() {
               ) : null}
               <Text style={styles.cardTime}>{formatNotificationTime(item.created_at)}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} style={styles.chevron} />
+            <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[300]} style={styles.chevron} />
           </Pressable>
         </SwipeableNotificationRow>
       );
@@ -399,7 +400,7 @@ export default function NotificationsScreen() {
           >
             <Ionicons name="mail-outline" size={16} color={Colors.primary} />
             <Text style={styles.prefsLinkText}>{nc("prefsLink")}</Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+            <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
           </TouchableOpacity>
           <Text style={styles.gestureHint}>{nc("swipeHint")}</Text>
         </View>
@@ -494,7 +495,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    marginRight: Platform.OS === "ios" ? 4 : 8,
+    marginEnd: Platform.OS === "ios" ? 4 : 8,
   },
   markAllText: {
     color: Colors.primary,
@@ -602,7 +603,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gray[100],
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginEnd: 12,
   },
   iconWrapUnread: {
     backgroundColor: Colors.primaryLight,
@@ -646,7 +647,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   chevron: {
-    marginLeft: 8,
+    marginStart: 8,
     marginTop: 4,
   },
   emptyWrap: {

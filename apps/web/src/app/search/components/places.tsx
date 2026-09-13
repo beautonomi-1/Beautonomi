@@ -37,7 +37,7 @@ interface Listing {
   lng: number;
   price: number;
   slides: Array<{ src: string; alt: string }>;
-  content: Record<string, string>;
+  content: Record<string, string | number | null>;
   alwaysShowMarker: boolean;
   provider: PublicProviderCard;
 }
@@ -96,6 +96,8 @@ const createListingsFromProviders = (providers: PublicProviderCard[], userLat?: 
         amountstatus: provider.starting_price 
           ? `${provider.currency || "ZAR"}${provider.starting_price}+`
           : "Price on request",
+        startingPrice: provider.starting_price ?? null,
+        chargeCurrency: provider.currency || "ZAR",
         ratings: provider.rating?.toFixed(1) || "0.0",
         ratingsVisible: provider.review_count && provider.review_count > 0 ? "true" : "false",
         guestfav: provider.is_featured ? "true" : "false",
@@ -456,7 +458,7 @@ export default function Places() {
                 alt=""
                 width={16}
                 height={16}
-                className="h-4 w-4 mr-2 group-hover:scale-110"
+                className="h-4 w-4 me-2 group-hover:scale-110"
               />
               <span className="group-hover:text-gray-700">Filters</span>
             </Button>

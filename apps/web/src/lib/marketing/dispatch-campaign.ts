@@ -16,6 +16,7 @@ import {
   campaignChannelUpgradeMessage,
   getUpgradeMessage,
 } from "@/lib/subscriptions/subscription-upgrade-copy";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 export type DispatchableCampaign = {
   id: string;
@@ -210,11 +211,12 @@ export async function dispatchCampaign(
         .from("marketing_campaigns")
         .update({ status: campaign.status === "scheduled" ? "scheduled" : "draft", updated_at: new Date().toISOString() })
         .eq("id", id);
+      const { format: formatMoney } = await getTenantMoneyFormatter(tenantId);
       return {
         ok: false,
         code: "INSUFFICIENT_CREDIT",
         status: 402,
-        message: `Insufficient marketing credit. Need ~R${estimated.toFixed(2)}, have R${balance.total_zar.toFixed(2)}.`,
+        message: `Insufficient marketing credit. Need ~${formatMoney(estimated)}, have ${formatMoney(balance.total_zar)}.`,
       };
     }
   }

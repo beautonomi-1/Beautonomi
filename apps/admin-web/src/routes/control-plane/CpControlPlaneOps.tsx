@@ -508,6 +508,12 @@ export function CpAiUsagePage() {
       id: string;
       feature_key: string;
       model: string;
+      model_provider?: string | null;
+      runtime?: string | null;
+      gateway?: boolean;
+      latency_ms?: number | null;
+      fallback_used?: boolean;
+      breaker_tripped?: boolean;
       tokens_in: number;
       tokens_out: number;
       cost_estimate: number;
@@ -587,7 +593,12 @@ export function CpAiUsagePage() {
               <tr>
                 <AdminTh>Feature</AdminTh>
                 <AdminTh>Model</AdminTh>
+                <AdminTh>Provider</AdminTh>
+                <AdminTh>Runtime</AdminTh>
                 <AdminTh>Tokens</AdminTh>
+                <AdminTh>Cost</AdminTh>
+                <AdminTh>Latency</AdminTh>
+                <AdminTh>Fallback</AdminTh>
                 <AdminTh>OK</AdminTh>
                 <AdminTh>When</AdminTh>
               </tr>
@@ -597,9 +608,17 @@ export function CpAiUsagePage() {
                 <tr key={r.id}>
                   <AdminTd className="text-xs">{r.feature_key}</AdminTd>
                   <AdminTd className="text-xs">{r.model}</AdminTd>
+                  <AdminTd className="text-xs">{r.model_provider ?? "—"}</AdminTd>
+                  <AdminTd className="text-xs">
+                    {r.runtime ?? "—"}
+                    {r.gateway ? " (gw)" : ""}
+                  </AdminTd>
                   <AdminTd className="text-xs">
                     {r.tokens_in}/{r.tokens_out}
                   </AdminTd>
+                  <AdminTd className="text-xs">${Number(r.cost_estimate ?? 0).toFixed(5)}</AdminTd>
+                  <AdminTd className="text-xs">{r.latency_ms != null ? `${r.latency_ms}ms` : "—"}</AdminTd>
+                  <AdminTd className="text-xs">{r.fallback_used || r.breaker_tripped ? "yes" : "—"}</AdminTd>
                   <AdminTd>{r.success ? "yes" : "no"}</AdminTd>
                   <AdminTd className="text-xs">{new Date(r.created_at).toLocaleString()}</AdminTd>
                 </tr>
@@ -950,6 +969,7 @@ type TemplateRow = {
   enabled: boolean;
   template: string;
   system_instructions: string;
+  model_id?: string | null;
 };
 
 export function CpAiTemplatesPage() {
@@ -967,7 +987,9 @@ export function CpAiTemplatesPage() {
     template: "",
     system_instructions: "",
     output_schema: "{}",
+    model_id: "",
   });
+  const [catalogModels, setCatalogModels] = useState<string[]>([]);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -983,6 +1005,19 @@ export function CpAiTemplatesPage() {
 
   useEffect(() => {
     void fetchTemplates();
+    void adminApi
+      .getJson<{
+        selectable_models?: Array<{ model_id: string }>;
+        direct_gemini_models?: Array<{ id: string; enabled: boolean }>;
+      }>("/api/admin/control-plane/integrations/ai?environment=production")
+      .then((d) => {
+        const gateway = (d?.selectable_models ?? []).map((c) => c.model_id);
+        const direct = (d?.direct_gemini_models ?? [])
+          .filter((c) => c.enabled)
+          .map((c) => c.id);
+        setCatalogModels([...direct, ...gateway]);
+      })
+      .catch(() => setCatalogModels([]));
   }, [fetchTemplates]);
 
   const create = async () => {
@@ -1009,6 +1044,7 @@ export function CpAiTemplatesPage() {
         template: form.template,
         system_instructions: form.system_instructions,
         output_schema,
+        model_id: form.model_id.trim() || null,
       });
       setMsg("Created.");
       setForm({
@@ -1020,6 +1056,7 @@ export function CpAiTemplatesPage() {
         template: "",
         system_instructions: "",
         output_schema: "{}",
+        model_id: "",
       });
       void fetchTemplates();
     } catch (e) {
@@ -1095,6 +1132,23 @@ export function CpAiTemplatesPage() {
             onChange={(e) => setForm((p) => ({ ...p, output_schema: e.target.value }))}
           />
         </CpField>
+        <CpField label="Model override (optional)">
+          <select
+            className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+            value={form.model_id}
+            onChange={(e) => setForm((p) => ({ ...p, model_id: e.target.value }))}
+          >
+            <option value="">Entitlement tier default</option>
+            {form.model_id && !catalogModels.includes(form.model_id) ? (
+              <option value={form.model_id}>{form.model_id} (custom)</option>
+            ) : null}
+            {catalogModels.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </CpField>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -1123,6 +1177,30 @@ export function CpAiTemplatesPage() {
                   {t.key} v{t.version}
                 </span>{" "}
                 {t.enabled ? "" : "(disabled)"}
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-gray-500">Model override</label>
+                  <select
+                    className="rounded border px-1 py-0.5 text-xs"
+                    value={t.model_id ?? ""}
+                    onChange={(e) => {
+                      const model_id = e.target.value || null;
+                      void adminApi
+                        .patchJson(`/api/admin/control-plane/modules/ai/templates/${t.id}`, { model_id })
+                        .then(() => fetchTemplates())
+                        .catch((err) => setMsg(err instanceof Error ? err.message : "Update failed"));
+                    }}
+                  >
+                    <option value="">Entitlement tier default</option>
+                    {t.model_id && !catalogModels.includes(t.model_id) ? (
+                      <option value={t.model_id}>{t.model_id} (custom)</option>
+                    ) : null}
+                    {catalogModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <p className="mt-1 line-clamp-2 text-xs text-gray-500">{t.template}</p>
               </li>
             ))}

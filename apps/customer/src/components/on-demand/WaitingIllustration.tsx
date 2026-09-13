@@ -95,8 +95,8 @@ export function WaitingIllustration() {
         </AnimatedView>
       </View>
       <View style={{ flexDirection: "row", marginTop: 24, opacity: 0.6 }}>
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,0,119,0.5)", marginRight: 12 }} />
-        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "rgba(255,0,119,0.3)", marginRight: 12 }} />
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,0,119,0.5)", marginEnd: 12 }} />
+        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "rgba(255,0,119,0.3)", marginEnd: 12 }} />
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,0,119,0.5)" }} />
       </View>
     </View>

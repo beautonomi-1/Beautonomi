@@ -1,5 +1,5 @@
 import { View, Text, TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { performCustomerStackBack } from "@/lib/customer-safety-navigation";
@@ -42,7 +42,7 @@ export function ScreenHeader({
           <TouchableOpacity
             onPress={handleBack}
             style={{
-              marginRight: 12,
+              marginEnd: 12,
               height: 44,
               width: 44,
               alignItems: "center",
@@ -54,7 +54,7 @@ export function ScreenHeader({
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Ionicons name="chevron-back" size={20} color="#111" />
+            <DirectionalIcon name="chevron-back" size={20} color="#111" />
           </TouchableOpacity>
         ) : null}
         {leadingContent}
@@ -67,7 +67,7 @@ export function ScreenHeader({
               {title}
             </Text>
             {titleAccessory ? (
-              <View style={{ marginLeft: 8, flexShrink: 0 }}>{titleAccessory}</View>
+              <View style={{ marginStart: 8, flexShrink: 0 }}>{titleAccessory}</View>
             ) : null}
           </View>
           {subtitle ? (
@@ -76,7 +76,7 @@ export function ScreenHeader({
         </View>
       </View>
       {rightAction ? (
-        <View style={{ marginLeft: 12, flexShrink: 0, alignSelf: "flex-start" }}>{rightAction}</View>
+        <View style={{ marginStart: 12, flexShrink: 0, alignSelf: "flex-start" }}>{rightAction}</View>
       ) : null}
     </View>
   );

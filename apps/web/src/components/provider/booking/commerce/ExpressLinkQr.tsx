@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { Copy, Loader2 } from "lucide-react";
@@ -18,9 +20,11 @@ interface ExpressLinkQrProps {
 export function ExpressLinkQr({
   url,
   size = 200,
-  label = "Scan to open link",
+  label,
   className,
 }: ExpressLinkQrProps) {
+  const { t } = useTranslation();
+  const displayLabel = label ?? t("web.expressLinkQr.scanToOpen");
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState(false);
 
@@ -52,22 +56,22 @@ export function ExpressLinkQr({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Link copied");
+      toast.success(t("web.expressLinkQr.copied"));
     } catch {
-      toast.error("Could not copy link");
+      toast.error(t("web.explore.postDetail.copyFailed"));
     }
   };
 
   if (error) {
     return (
       <BookingSectionCard className={className}>
-        <p className="text-sm text-gray-500">Could not generate QR code.</p>
+        <p className="text-sm text-gray-500">{t("web.expressLinkQr.generateFailed")}</p>
         <button
           type="button"
           onClick={handleCopy}
           className="mt-2 text-sm font-semibold text-blue-600 underline"
         >
-          Copy link instead
+          {t("web.expressLinkQr.copyInstead")}
         </button>
       </BookingSectionCard>
     );
@@ -77,7 +81,7 @@ export function ExpressLinkQr({
     <BookingSectionCard className={cn("flex flex-col items-center gap-3", className)}>
       <div className="rounded-xl border bg-white p-3">
         {dataUrl ? (
-          <img src={dataUrl} alt="QR code" width={size} height={size} className="block" />
+          <img src={dataUrl} alt={t("web.expressLinkQr.qrAlt")} width={size} height={size} className="block" />
         ) : (
           <div
             className="flex items-center justify-center text-gray-400"
@@ -87,14 +91,14 @@ export function ExpressLinkQr({
           </div>
         )}
       </div>
-      {label ? <p className="text-xs text-center text-gray-500 max-w-[220px]">{label}</p> : null}
+      {displayLabel ? <p className="text-xs text-center text-gray-500 max-w-[220px]">{displayLabel}</p> : null}
       <button
         type="button"
         onClick={handleCopy}
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 touch-manipulation min-h-[44px]"
       >
         <Copy className="h-4 w-4" />
-        Copy link
+        {t("web.explore.postDetail.copyLink")}
       </button>
     </BookingSectionCard>
   );

@@ -1,7 +1,9 @@
 /**
  * Package usage: event counts per package and distinct clients (individual + group participants).
  */
+import { useCallback } from "react";
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { twStyle } from "@/lib/twStyle";
 
@@ -40,13 +42,20 @@ function isPackageUsagePayload(data: unknown): data is {
   );
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  usage: "Usage events",
-  uniqueClients: "Distinct clients",
-  topClients: "Top clients",
+const BASIS_KEYS: Record<string, string> = {
+  usage: "basisUsage",
+  uniqueClients: "basisUniqueClients",
+  topClients: "basisTopClients",
 };
 
 export function PackageUsageReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const pu = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.packageUsageReport.${key}`, opts) as string,
+    [t],
+  );
+
   if (!isPackageUsagePayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -68,21 +77,21 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {pu("factsDefinitions")}
       </Text>
 
       {basisText ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>
-            What this report counts
+            {pu("whatThisCounts")}
           </Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-sky-950")}>{basisText}</Text>
           <View style={twStyle("mt-2 gap-1")}>
             {tz ? (
-              <Text style={twStyle("text-xs text-sky-900/85")}>Timezone · {tz}</Text>
+              <Text style={twStyle("text-xs text-sky-900/85")}>{pu("timezone", { tz })}</Text>
             ) : null}
             {period ? (
-              <Text style={twStyle("text-xs text-sky-900/85")}>Calendar window · {period}</Text>
+              <Text style={twStyle("text-xs text-sky-900/85")}>{pu("calendarWindow", { period })}</Text>
             ) : null}
           </View>
         </View>
@@ -91,11 +100,11 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
       {basisEntries.length > 0 ? (
         <View style={twStyle("rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>
-            Definitions
+            {pu("definitions")}
           </Text>
           {basisEntries.map(([k, v]) => (
             <Text key={k} style={twStyle("mt-2 text-sm leading-5 text-violet-950")}>
-              <Text style={twStyle("font-medium")}>{BASIS_LABELS[k] ?? k} · </Text>
+              <Text style={twStyle("font-medium")}>{BASIS_KEYS[k] ? pu(BASIS_KEYS[k]) : k} · </Text>
               {v}
             </Text>
           ))}
@@ -104,30 +113,30 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-cyan-100 bg-cyan-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-cyan-950")}>Usage events</Text>
+          <Text style={twStyle("text-xs font-medium text-cyan-950")}>{pu("usageEvents")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-cyan-950")}>
             {data.totalPackagesUsed}
           </Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-cyan-950/90")}>
-            One per qualifying booking or group event tied to a package in range.
+            {pu("usageHint")}
           </Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-indigo-900")}>Distinct clients</Text>
+          <Text style={twStyle("text-xs font-medium text-indigo-900")}>{pu("distinctClients")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>
             {data.totalUniqueClients}
           </Text>
           <Text style={twStyle("mt-1 text-[11px] leading-4 text-indigo-900/90")}>
-            Union of customer IDs from bookings and group participants (deduped).
+            {pu("distinctHint")}
           </Text>
         </View>
       </View>
 
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        By package
+        {pu("byPackage")}
       </Text>
       {rows.length === 0 ? (
-        <Text style={twStyle("text-sm text-gray-500")}>No package usage in this range.</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>{pu("empty")}</Text>
       ) : (
         rows.map((p, i) => (
           <View
@@ -142,22 +151,22 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
                   <Text style={twStyle("text-xs font-bold text-white")}>{i + 1}</Text>
                 </View>
                 <Text style={twStyle("flex-1 font-medium text-gray-900")} numberOfLines={2}>
-                  {p.packageName ?? "Package"}
+                  {p.packageName ?? pu("packageFallback")}
                 </Text>
               </View>
             </View>
-            <View style={twStyle("mt-2 flex-row flex-wrap gap-x-4 gap-y-1 pl-10")}>
+            <View style={twStyle("mt-2 flex-row flex-wrap gap-x-4 gap-y-1 ps-10")}>
               <Text style={twStyle("text-xs text-gray-600")}>
-                Events · <Text style={twStyle("font-semibold text-gray-900")}>{Number(p.totalUsage ?? 0)}</Text>
+                {pu("eventsPrefix")} <Text style={twStyle("font-semibold text-gray-900")}>{Number(p.totalUsage ?? 0)}</Text>
               </Text>
               <Text style={twStyle("text-xs text-gray-600")}>
-                Distinct clients ·{" "}
+                {pu("clientsPrefix")}{" "}
                 <Text style={twStyle("font-semibold text-gray-900")}>
                   {Number(p.uniqueClientsCount ?? 0)}
                 </Text>
               </Text>
               <Text style={twStyle("text-xs text-gray-600")}>
-                Avg events / client ·{" "}
+                {pu("avgPrefix")}{" "}
                 <Text style={twStyle("font-semibold text-gray-900")}>
                   {Number(p.averageUsagePerClient ?? 0).toFixed(2)}
                 </Text>
@@ -170,7 +179,7 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
       {top.length > 0 ? (
         <>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-            Top clients (by package-included bookings)
+            {pu("topClients")}
           </Text>
           {top.map((c, i) => (
             <View
@@ -179,9 +188,9 @@ export function PackageUsageReportView({ data }: { data: unknown }) {
                 "flex-row items-center justify-between rounded-2xl border border-gray-100 bg-gray-50/90 px-4 py-3",
               )}
             >
-              <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("flex-1 pe-3")}>
                 <Text style={twStyle("font-medium text-gray-900")} numberOfLines={1}>
-                  {c.clientName ?? "Client"}
+                  {c.clientName ?? pu("clientFallback")}
                 </Text>
                 {c.email ? (
                   <Text style={twStyle("text-xs text-gray-500")} numberOfLines={1}>

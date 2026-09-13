@@ -9,7 +9,7 @@ const mockEnforceAiBudget = vi.fn();
 const mockLogAiUsage = vi.fn();
 const mockCheckEntitlement = vi.fn();
 const mockGetProviderContext = vi.fn();
-const mockCallGemini = vi.fn();
+const mockCallLlm = vi.fn();
 const mockTrackServer = vi.fn().mockResolvedValue(undefined);
 const mockReadAiCache = vi.fn();
 const mockWriteAiCache = vi.fn();
@@ -49,8 +49,15 @@ vi.mock("@/lib/ai/provider-context", () => ({
   getProviderContext: (...args: unknown[]) => mockGetProviderContext(...args),
   formatCapsuleForPrompt: (c: unknown) => `ctx:${JSON.stringify(c)}`,
 }));
-vi.mock("@/lib/ai/gemini", () => ({
-  callGemini: (...args: unknown[]) => mockCallGemini(...args),
+vi.mock("@/lib/ai/call-llm", () => ({
+  callLlm: (...args: unknown[]) => mockCallLlm(...args),
+}));
+vi.mock("@/lib/ai/resolve-runtime", () => ({
+  resolveAiRuntime: vi.fn().mockResolvedValue({
+    config: { enabled: true, defaultModelId: "gemini-2.5-flash-lite", runtime: "direct_gemini" },
+    emergency: { stopAllCalls: false, forceTemplateFallback: false },
+    catalog: [],
+  }),
 }));
 vi.mock("@/lib/ai/ai-cache", () => ({
   buildAiCacheKeyHash: (...parts: string[]) => parts.join("|"),
@@ -79,9 +86,16 @@ const CAPSULE = {
   stats: {},
 };
 
-function adminClientWith(rows: { aiConfig?: unknown; gemini?: unknown }) {
+function adminClientWith(rows: { aiConfig?: unknown; gemini?: unknown; provider?: unknown }) {
   const from = vi.fn((table: string) => {
-    const data = table === "ai_module_config" ? rows.aiConfig ?? null : table === "gemini_integration_config" ? rows.gemini ?? null : null;
+    const data =
+      table === "ai_module_config"
+        ? rows.aiConfig ?? null
+        : table === "providers"
+          ? rows.provider ?? { tenant_id: null }
+          : table === "gemini_integration_config"
+            ? rows.gemini ?? null
+            : null;
     return {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
@@ -135,7 +149,7 @@ describe("POST /api/provider/ai/[feature_key]", () => {
     expect(body.data.hashtags).toContain("#Beautonomi");
     expect(body.data.short_description).toContain("Glow Studio");
 
-    expect(mockCallGemini).not.toHaveBeenCalled();
+    expect(mockCallLlm).not.toHaveBeenCalled();
     expect(mockLogAiUsage).not.toHaveBeenCalled();
     expect(mockTrackServer).toHaveBeenCalledWith(
       "ai_feature_called",
@@ -169,13 +183,18 @@ describe("POST /api/provider/ai/[feature_key]", () => {
       system: "DB SYSTEM",
       userPrompt: "DB USER PROMPT",
       outputSchema: { type: "object", properties: { post_captions: { type: "array", items: { type: "string" } } } },
+      modelId: null,
       source: "db",
     });
-    mockCallGemini.mockResolvedValue({
+    mockCallLlm.mockResolvedValue({
       success: true,
       text: JSON.stringify({ post_captions: ["a"], hashtags: ["#x"], short_description: "d" }),
       tokensIn: 300,
       tokensOut: 120,
+      model: "gemini-2.5-flash-lite",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
     });
 
     const res = await post("ai.provider.content_studio");
@@ -184,12 +203,12 @@ describe("POST /api/provider/ai/[feature_key]", () => {
     expect(body.data.post_captions).toEqual(["a"]);
     expect(body.data.fallback).toBeUndefined();
 
-    const geminiArgs = mockCallGemini.mock.calls[0][0] as Record<string, unknown>;
-    expect(geminiArgs.system).toContain("DB SYSTEM");
-    expect(geminiArgs.user).toBe("DB USER PROMPT");
-    expect(geminiArgs.schema).toEqual({ type: "object", properties: { post_captions: { type: "array", items: { type: "string" } } } });
-    expect(geminiArgs.providerId).toBe("provider-1");
-    expect(geminiArgs.featureKey).toBe("ai.provider.content_studio");
+    const llmArgs = mockCallLlm.mock.calls[0][0] as Record<string, unknown>;
+    expect(llmArgs.system).toContain("DB SYSTEM");
+    expect(llmArgs.user).toBe("DB USER PROMPT");
+    expect(llmArgs.schema).toEqual({ type: "object", properties: { post_captions: { type: "array", items: { type: "string" } } } });
+    expect(llmArgs.providerId).toBe("provider-1");
+    expect(llmArgs.featureKey).toBe("ai.provider.content_studio");
 
     expect(mockEstimateCostUsd).toHaveBeenCalledWith("gemini-2.5-flash-lite", 300, 120);
     expect(mockLogAiUsage).toHaveBeenCalledWith(expect.objectContaining({ cost_estimate: 0.00042, tokens_in: 300, tokens_out: 120 }));
@@ -201,14 +220,14 @@ describe("POST /api/provider/ai/[feature_key]", () => {
     );
   });
 
-  it("serves cache hits without calling Gemini and reports cache_hit", async () => {
+  it("serves cache hits without calling the LLM and reports cache_hit", async () => {
     mockEnforceAiBudget.mockResolvedValue({ allowed: true });
     mockReadAiCache.mockResolvedValue({ post_captions: ["cached"], hashtags: [], short_description: "c" });
 
     const res = await post("ai.provider.content_studio");
     expect(res.status).toBe(200);
     expect((await res.json()).data.post_captions).toEqual(["cached"]);
-    expect(mockCallGemini).not.toHaveBeenCalled();
+    expect(mockCallLlm).not.toHaveBeenCalled();
     expect(mockTrackServer).toHaveBeenCalledWith(
       "ai_feature_called",
       expect.objectContaining({ cache_hit: true }),
@@ -218,16 +237,44 @@ describe("POST /api/provider/ai/[feature_key]", () => {
 
   it("maps GEMINI_RATE_LIMITED to 429", async () => {
     mockEnforceAiBudget.mockResolvedValue({ allowed: true });
-    mockCallGemini.mockResolvedValue({ success: false, errorCode: "GEMINI_RATE_LIMITED", text: "", tokensIn: 0, tokensOut: 0 });
+    mockCallLlm.mockResolvedValue({
+      success: false,
+      errorCode: "GEMINI_RATE_LIMITED",
+      text: "",
+      tokensIn: 0,
+      tokensOut: 0,
+      model: "gemini-2.5-flash-lite",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
+    });
     const res = await post("ai.provider.content_studio");
     expect(res.status).toBe(429);
   });
 
-  it("404s unknown feature keys (stubs are not shipped)", async () => {
+  it("ships documented stub features with template fallbacks when the model fails", async () => {
     mockEnforceAiBudget.mockResolvedValue({ allowed: true });
-    for (const key of ["ai.provider.smart_replies", "ai.provider.pricing_assistant", "ai.provider.booking_ops", "ai.provider.reputation_coach"]) {
-      const res = await post(key);
-      expect(res.status).toBe(404);
-    }
+    mockCallLlm.mockResolvedValue({
+      success: false,
+      errorCode: "LLM_NETWORK",
+      text: "",
+      tokensIn: 0,
+      tokensOut: 0,
+      model: "gemini-2.5-flash-lite",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
+    });
+    const res = await post("ai.provider.smart_replies", "Can I reschedule?");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(Array.isArray(body.data.replies)).toBe(true);
+    expect(body.data.fallback).toBe(true);
+  });
+
+  it("404s unknown feature keys", async () => {
+    mockEnforceAiBudget.mockResolvedValue({ allowed: true });
+    const res = await post("ai.provider.unknown_feature");
+    expect(res.status).toBe(404);
   });
 });

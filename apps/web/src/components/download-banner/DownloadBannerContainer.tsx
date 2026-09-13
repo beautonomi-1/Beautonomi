@@ -10,6 +10,7 @@ import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { isBookingEmbedSurface } from "@/lib/booking/embed-host";
 
 const DISMISS_KEY = "download_banner_dismissed";
 
@@ -202,8 +203,13 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
     setDismissed(true);
   }, [appContext, consentReady, allowsFunctional]);
 
-  /** Admin embed should not promote consumer/provider store installs. */
-  const hideForRoute = Boolean(pathname?.startsWith("/admin"));
+  const [hideEmbedChrome, setHideEmbedChrome] = useState(searchParams.get("embed") === "1");
+  useEffect(() => {
+    if (isBookingEmbedSurface()) setHideEmbedChrome(true);
+  }, []);
+
+  /** Admin and salon iframe widget must not cover booking CTAs or leave the frame. */
+  const hideForRoute = Boolean(pathname?.startsWith("/admin") || hideEmbedChrome);
 
   const showMobile = Boolean(!hideForRoute && mobileOs && mobileLink && !dismissed);
   const showDesktop = Boolean(!hideForRoute && isDesktopLike && hasAnyDesktopLink && !dismissed);

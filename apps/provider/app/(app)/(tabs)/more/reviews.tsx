@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -53,12 +54,18 @@ function formatDateSafe(value: unknown): string {
 }
 
 const STATUS_FILTERS = [
-  { value: "all", label: "All" },
-  { value: "pending_response", label: "To respond" },
-  { value: "responded", label: "Responded" },
+  { value: "all", labelKey: "filterAll" },
+  { value: "pending_response", labelKey: "filterToRespond" },
+  { value: "responded", labelKey: "filterResponded" },
 ];
 
 export default function ReviewsScreen() {
+  const { t } = useTranslation();
+  const rv = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.reviews." + key, opts) as string,
+    [t],
+  );
   const { screenPadding } = useResponsive();
   const [status, setStatus] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -93,11 +100,11 @@ export default function ReviewsScreen() {
     if (!respondReview) return;
     const trimmed = responseText.trim();
     if (!trimmed) {
-      Alert.alert("Required", "Enter your response to the review.");
+      Alert.alert(rv("requiredTitle"), rv("requiredBody"));
       return;
     }
     if (trimmed.length > 1000) {
-      Alert.alert("Too long", "Response must be under 1000 characters.");
+      Alert.alert(rv("tooLongTitle"), rv("tooLongBody"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -108,7 +115,7 @@ export default function ReviewsScreen() {
       if (isEdit) {
         const res = await api.patch<{ review?: Review; message?: string }>(path, { response: trimmed });
         if (res.error) {
-          Alert.alert("Error", getApiErrorMessage(res.error, "Could not update reply."));
+          Alert.alert(rv("errorTitle"), getApiErrorMessage(res.error, rv("updateReplyFailed")));
           return;
         }
         if (data && res.data?.review) {
@@ -121,7 +128,7 @@ export default function ReviewsScreen() {
       } else {
         const { data: wrote, error: err } = await postRespond(path, { response: trimmed });
         if (err) {
-          Alert.alert("Error", err);
+          Alert.alert(rv("errorTitle"), err);
           return;
         }
         if (data && wrote?.review) {
@@ -148,11 +155,13 @@ export default function ReviewsScreen() {
 
   const reviews: Review[] = data?.reviews ?? [];
   const reviewTotalCount = data?.pagination?.total ?? reviews.length;
+  const filterLabel = (value: string) =>
+    value === "pending_response" ? rv("filterToRespond") : rv("filterResponded");
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Reviews" showBack />
+        <ScreenHeader title={rv("title")} showBack />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -163,7 +172,7 @@ export default function ReviewsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Reviews" showBack />
+        <ScreenHeader title={rv("title")} showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -174,21 +183,21 @@ export default function ReviewsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Reviews"
+        title={rv("title")}
         showBack
-        subtitle={`${reviewTotalCount} review${reviewTotalCount === 1 ? "" : "s"}`}
+        subtitle={rv("subtitle", { count: reviewTotalCount })}
       />
       <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16 }}>
         {STATUS_FILTERS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
             onPress={() => setStatus(opt.value)}
-            style={{ marginRight: 8, marginBottom: 8, borderRadius: 9999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: status === opt.value ? "#f59e0b" : Colors.gray[100] }}
+            style={{ marginEnd: 8, marginBottom: 8, borderRadius: 9999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: status === opt.value ? "#f59e0b" : Colors.gray[100] }}
           >
             <Text
               style={{ fontSize: 14, fontWeight: "500", color: status === opt.value ? Colors.white : Colors.gray[700] }}
             >
-              {opt.label}
+              {rv(opt.labelKey)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -204,11 +213,11 @@ export default function ReviewsScreen() {
         {reviews.length === 0 ? (
           <EmptyState
             icon="star-outline"
-            title="No reviews yet"
+            title={rv("emptyTitle")}
             description={
               status === "all"
-                ? "Customer reviews will appear here after they rate their experience."
-                : `No reviews with status "${status === "pending_response" ? "To respond" : "Responded"}".`
+                ? rv("emptyAllDesc")
+                : rv("emptyFiltered", { status: filterLabel(status) })
             }
           />
         ) : (
@@ -230,12 +239,12 @@ export default function ReviewsScreen() {
                 </View>
                 {!review.provider_response && (
                   <View style={{ borderRadius: 9999, backgroundColor: "#fef3c2", paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>To respond</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>{rv("toRespondBadge")}</Text>
                   </View>
                 )}
               </View>
               <Text style={{ marginTop: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
-                {review.customer?.full_name || "Customer"}
+                {review.customer?.full_name || rv("customerFallback")}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                 {review.booking?.scheduled_at
@@ -248,7 +257,7 @@ export default function ReviewsScreen() {
 
               {review.customer_rating != null && review.customer_rating > 0 ? (
                 <View style={{ marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>YOUR RATING OF CUSTOMER</Text>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>{rv("yourRatingOfCustomer")}</Text>
                   <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
                     {[1, 2, 3, 4, 5].map((star) => (
                       <Ionicons
@@ -256,10 +265,10 @@ export default function ReviewsScreen() {
                         name={star <= (review.customer_rating ?? 0) ? "star" : "star-outline"}
                         size={15}
                         color="#6366f1"
-                        style={{ marginRight: 2 }}
+                        style={{ marginEnd: 2 }}
                       />
                     ))}
-                    <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{review.customer_rating}/5</Text>
+                    <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{rv("ratingOutOf5", { rating: review.customer_rating })}</Text>
                   </View>
                   {review.customer_comment ? (
                     <Text style={{ marginTop: 6, fontSize: 13, color: Colors.gray[600] }}>{review.customer_comment}</Text>
@@ -270,7 +279,7 @@ export default function ReviewsScreen() {
               {review.provider_response ? (
                 <View style={{ marginTop: 10 }}>
                   <View style={{ borderRadius: 8, backgroundColor: Colors.gray[50], padding: 10 }}>
-                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Your public reply</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{rv("yourPublicReply")}</Text>
                     <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[800] }}>{review.provider_response}</Text>
                     {review.provider_response_at ? (
                       <Text style={{ marginTop: 6, fontSize: 11, color: Colors.gray[400] }}>{formatDateSafe(review.provider_response_at)}</Text>
@@ -279,11 +288,11 @@ export default function ReviewsScreen() {
                   <TouchableOpacity
                     onPress={() => openRespond(review, { edit: true })}
                     style={{ marginTop: 8, flexDirection: "row", alignItems: "center", alignSelf: "flex-start" }}
-                    accessibilityLabel="Edit your reply to this review"
+                    accessibilityLabel={rv("editReplyA11y")}
                     accessibilityRole="button"
                   >
                     <Ionicons name="create-outline" size={16} color="#b45309" />
-                    <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "600", color: "#b45309" }}>Edit reply</Text>
+                    <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "600", color: "#b45309" }}>{rv("editReply")}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -292,8 +301,8 @@ export default function ReviewsScreen() {
                   style={{ marginTop: 8, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#fffbeb", paddingHorizontal: 12, paddingVertical: 8 }}
                 >
                   <Ionicons name="chatbubble-outline" size={14} color="#f59e0b" />
-                  <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: "#b45309" }}>
-                    Respond
+                  <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "500", color: "#b45309" }}>
+                    {rv("respond")}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -305,20 +314,20 @@ export default function ReviewsScreen() {
       <BottomSheet
         visible={respondReview !== null}
         onClose={() => { setRespondReview(null); setResponseText(""); }}
-        title={respondReview?.provider_response ? "Edit your reply" : "Respond to review"}
-        subtitle={respondReview ? (respondReview.customer?.full_name || "Customer") : ""}
+        title={respondReview?.provider_response ? rv("editReplyTitle") : rv("respondTitle")}
+        subtitle={respondReview ? (respondReview.customer?.full_name || rv("customerFallback")) : ""}
         snapHeight="full"
       >
         {respondReview?.comment ? (
           <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
-            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Their review</Text>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{rv("theirReview")}</Text>
             <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[800] }}>{respondReview.comment}</Text>
           </View>
         ) : null}
-        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Your response *</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{rv("yourResponse")}</Text>
         <TextInput
           style={{ marginBottom: 16, minHeight: 100, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-          placeholder="Thank you for your feedback..."
+          placeholder={rv("responsePlaceholder")}
           placeholderTextColor="#9ca3af"
           value={responseText}
           onChangeText={setResponseText}
@@ -326,9 +335,9 @@ export default function ReviewsScreen() {
           maxLength={1000}
           textAlignVertical="top"
         />
-        <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{responseText.length}/1000</Text>
+        <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{rv("charCount", { count: responseText.length })}</Text>
         <ActionButton
-          label={responding || savingReply ? "Saving…" : respondReview?.provider_response ? "Save changes" : "Send response"}
+          label={responding || savingReply ? rv("saving") : respondReview?.provider_response ? rv("saveChanges") : rv("sendResponse")}
           onPress={handleSubmitResponse}
           loading={responding || savingReply}
           fullWidth

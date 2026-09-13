@@ -1,4 +1,5 @@
 import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import * as Location from "expo-location";
 import {
   View,
@@ -101,6 +102,7 @@ import {
   type ServiceFormState,
 } from "@/features/catalogue/service-form-state";
 import type { RefDataOption } from "@/features/catalogue/types";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const labelCls = "mb-1.5 text-[13px] font-semibold tracking-wide text-slate-800";
 const inputCls =
@@ -115,6 +117,15 @@ const KEYBOARD_ACCESSORY = {
   payroll: "provider-onboarding-payroll",
 } as const;
 
+function useOw() {
+  const { t } = useTranslation();
+  return useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.onboardingWizard.${key}`, opts) as string,
+    [t],
+  );
+}
+
 // ─── Step 1: Team size ───────────────────────────────────────────────────────
 
 type TeamSizeOpt = {
@@ -126,19 +137,20 @@ type TeamSizeOpt = {
 
 function Step1TeamSize() {
   const { formData, updateFormData } = useOnboardingWizard();
+  const ow = useOw();
   const opts: TeamSizeOpt[] = [
     {
       id: "freelancer",
-      title: "Solo / freelancer",
-      sub: "Just me, building my brand",
+      title: ow("teamSize.freelancerTitle"),
+      sub: ow("teamSize.freelancerSub"),
       icon: "person-outline",
     },
-    { id: "small", title: "Small team", sub: "2–10 staff or stylists", icon: "people-outline" },
-    { id: "medium", title: "Medium team", sub: "11–20 staff members", icon: "business-outline" },
+{ id: "small", title: ow("teamSize.smallTitle"), sub: ow("teamSize.smallSub"), icon: "people-outline" },
+{ id: "medium", title: ow("teamSize.mediumTitle"), sub: ow("teamSize.mediumSub"), icon: "business-outline" },
     {
       id: "large",
-      title: "Large team",
-      sub: "20+ staff across locations",
+      title: ow("teamSize.largeTitle"),
+      sub: ow("teamSize.largeSub"),
       icon: "storefront-outline",
     },
   ];
@@ -146,8 +158,7 @@ function Step1TeamSize() {
     <View style={twStyle("gap-4")}>
       <View style={twStyle("mb-2 rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
         <Text style={twStyle("text-[15px] leading-[22px] text-slate-600")}>
-          We use this to tailor payroll questions and booking defaults. You can still run salon,
-          mobile, or both services later.
+          {ow("teamSize.intro")}
         </Text>
       </View>
       {opts.map((o) => {
@@ -207,6 +218,7 @@ function DobFieldsSection({
   dateOfBirth?: string;
   onChange: (iso: string) => void;
 }) {
+  const ow = useOw();
   const parts = parseLegalDobIso(dateOfBirth);
   const [day, setDay] = useState<number | null>(parts.day);
   const [month, setMonth] = useState<number | null>(parts.month);
@@ -236,7 +248,7 @@ function DobFieldsSection({
   );
 
   const years = useMemo(() => legalDobYearRange({ minAge: 13, maxAge: 100 }), []);
-  const monthLabel = LEGAL_DOB_MONTHS.find((m) => m.value === month)?.label ?? "Month";
+  const monthLabel = month != null ? ow(`dob.months.${month}`) : ow("dob.month");
   const maxDay = year != null && month != null ? daysInMonth(year, month) : 31;
   const dayOptions = Array.from({ length: maxDay }, (_, i) => i + 1);
   const dobError =
@@ -246,9 +258,9 @@ function DobFieldsSection({
 
   return (
     <View>
-      <Text style={twStyle(labelCls)}>Date of birth</Text>
+<Text style={twStyle(labelCls)}>{ow("dob.label")}</Text>
       <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
-        Required for age assurance. You must be at least 13 to use Beautonomi.
+{ow("dob.hint")}
       </Text>
       <View style={twStyle("flex-row gap-2")}>
         <TouchableOpacity
@@ -259,9 +271,9 @@ function DobFieldsSection({
           }}
           style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
           accessibilityRole="button"
-          accessibilityLabel="Select day of birth"
+accessibilityLabel={ow("dob.selectDayA11y")}
         >
-          <Text style={twStyle(day != null ? "text-gray-900" : "text-gray-400")}>{day ?? "Day"}</Text>
+          <Text style={twStyle(day != null ? "text-gray-900" : "text-gray-400")}>{day ?? ow("dob.day")}</Text>
           <Ionicons name="chevron-down" size={14} color="#9ca3af" />
         </TouchableOpacity>
         <TouchableOpacity
@@ -272,7 +284,7 @@ function DobFieldsSection({
           }}
           style={twStyle("flex-[1.4] rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
           accessibilityRole="button"
-          accessibilityLabel="Select month of birth"
+accessibilityLabel={ow("dob.selectMonthA11y")}
         >
           <Text style={twStyle(month != null ? "text-gray-900" : "text-gray-400")}>{monthLabel}</Text>
           <Ionicons name="chevron-down" size={14} color="#9ca3af" />
@@ -285,9 +297,9 @@ function DobFieldsSection({
           }}
           style={twStyle("flex-1 rounded-xl border border-gray-200 bg-white px-3 py-3.5 flex-row items-center justify-between")}
           accessibilityRole="button"
-          accessibilityLabel="Select year of birth"
+accessibilityLabel={ow("dob.selectYearA11y")}
         >
-          <Text style={twStyle(year != null ? "text-gray-900" : "text-gray-400")}>{year ?? "Year"}</Text>
+          <Text style={twStyle(year != null ? "text-gray-900" : "text-gray-400")}>{year ?? ow("dob.year")}</Text>
           <Ionicons name="chevron-down" size={14} color="#9ca3af" />
         </TouchableOpacity>
       </View>
@@ -330,7 +342,7 @@ function DobFieldsSection({
                 commit({ day: nextDay, month: m.value, year });
               }}
             >
-              <Text style={twStyle("text-base text-gray-900")}>{m.label}</Text>
+<Text style={twStyle("text-base text-gray-900")}>{ow(`dob.months.${m.value}`)}</Text>
             </TouchableOpacity>
           )}
         />
@@ -372,6 +384,7 @@ function DobFieldsSection({
 const KEYBOARD_ACCESSORY_EMAIL = "step2-email-done";
 
 function Step2Identity() {
+  const ow = useOw();
   const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
   const { user } = useAuth();
   const appleIdentity = isApplePrimaryIdentity(user);
@@ -381,8 +394,8 @@ function Step2Identity() {
   const { bundle } = useConfigBundle();
   const identityVerificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
   const identityVerificationHint = identityVerificationRequired
-    ? "After setup, identity verification with your government ID is required to go live and earn the Verified marketplace badge."
-    : "After setup, you can complete full identity verification (ID document) to earn the Verified marketplace badge. This is optional but increases customer trust.";
+    ? ow("identity.hintRequired")
+    : ow("identity.hintOptional");
   const nameRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
   const phoneRef = useRef<TextInput>(null);
@@ -488,15 +501,15 @@ function Step2Identity() {
   // ── Persist phone helpers ────────────────────────────────────────────────────
   const persistPhoneVerified = useCallback(async (phone: string) => {
     const res = await api.post("/api/me/phone/verify", { phone });
-    if (res.error) throw new Error("Phone verified but could not save. Please try again.");
+    if (res.error) throw new Error(ow("identity.phoneSaveFailed"));
     updateFormData({ phone_verified: true, owner_phone: phone, phone });
-  }, [updateFormData]);
+  }, [updateFormData, ow]);
 
   const persistEmailVerified = useCallback(async (email: string) => {
     const res = await api.post("/api/me/email/verify", { email });
-    if (res.error) throw new Error("Email verified but could not save. Please try again.");
+    if (res.error) throw new Error(ow("identity.emailSaveFailed"));
     updateFormData({ email_verified: true, owner_email: email, email });
-  }, [updateFormData]);
+  }, [updateFormData, ow]);
 
   // ── Auto-detect already-confirmed contacts (run once after draft loads) ──────
   useEffect(() => {
@@ -575,11 +588,11 @@ function Step2Identity() {
     const e164 = composeE164FromNational(countryCode, national);
     const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
     if (!normalized || !isValidOwnerPhoneE164(normalized)) {
-      Alert.alert("Phone", "Enter a valid mobile number.");
+      Alert.alert(ow("identity.phoneTitle"), ow("identity.enterValidMobile"));
       return;
     }
     const err = validateNationalPhoneDigits(national, countryCode);
-    if (err) { Alert.alert("Phone", err); return; }
+    if (err) { Alert.alert(ow("identity.phoneTitle"), err); return; }
 
     setSendingPhone(true);
     try {
@@ -589,7 +602,7 @@ function Step2Identity() {
 
       if (phoneConfirmedAt && authPhone === normalized) {
         await persistPhoneVerified(normalized);
-        Alert.alert("Verified", "Phone number verified.");
+        Alert.alert(ow("identity.verifiedTitle"), ow("identity.phoneVerifiedBody"));
         return;
       }
 
@@ -599,9 +612,9 @@ function Step2Identity() {
       setPhoneOtp("");
       setPhoneCodeSent(true);
       setPhoneResendCooldown(30);
-      Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to your phone.`);
+      Alert.alert(ow("identity.codeSentTitle"), ow("identity.phoneCodeSentBody", { count: SUPABASE_AUTH_OTP_LENGTH }));
     } catch (e) {
-      Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
+      Alert.alert(ow("identity.couldNotSendCode"), e instanceof Error ? e.message : ow("identity.tryAgain"));
     } finally {
       setSendingPhone(false);
     }
@@ -610,7 +623,7 @@ function Step2Identity() {
   const verifyPhoneCode = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? phoneOtp);
     if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
-      Alert.alert("Code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from SMS.`);
+      Alert.alert(ow("identity.codeTitle"), ow("identity.enterPhoneCodeSms", { count: SUPABASE_AUTH_OTP_LENGTH }));
       return;
     }
     setVerifyingPhone(true);
@@ -619,9 +632,9 @@ function Step2Identity() {
       const { error } = await supabase.auth.verifyOtp({ phone, token, type: "phone_change" });
       if (error) throw error;
       await persistPhoneVerified(phone);
-      Alert.alert("Verified", "Phone number verified.");
+      Alert.alert(ow("identity.verifiedTitle"), ow("identity.phoneVerifiedBody"));
     } catch (e) {
-      Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
+      Alert.alert(ow("identity.verificationFailed"), e instanceof Error ? e.message : ow("identity.tryAgain"));
     } finally {
       setVerifyingPhone(false);
     }
@@ -639,7 +652,7 @@ function Step2Identity() {
   const sendEmailCode = async () => {
     const trimmedEmail = formData.owner_email?.trim() || "";
     if (!trimmedEmail || !isMailableEmail(trimmedEmail)) {
-      Alert.alert("Email", "Enter a valid email address first.");
+      Alert.alert(ow("identity.emailTitle"), ow("identity.enterValidEmail"));
       return;
     }
     setSendingEmail(true);
@@ -651,7 +664,7 @@ function Step2Identity() {
       // No-op: email already confirmed in auth and matches what the user typed
       if (emailConfirmedAt && confirmedEmail.toLowerCase() === trimmedEmail.toLowerCase()) {
         await persistEmailVerified(confirmedEmail);
-        Alert.alert("Verified", "Email address verified.");
+        Alert.alert(ow("identity.verifiedTitle"), ow("identity.emailVerifiedBody"));
         return;
       }
 
@@ -662,9 +675,9 @@ function Step2Identity() {
       setEmailOtp("");
       setEmailCodeSent(true);
       setEmailResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
-      Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to ${trimmedEmail}.`);
+      Alert.alert(ow("identity.codeSentTitle"), ow("identity.emailCodeSentBody", { count: SUPABASE_AUTH_OTP_LENGTH, email: trimmedEmail }));
     } catch (e) {
-      Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
+      Alert.alert(ow("identity.couldNotSendCode"), e instanceof Error ? e.message : ow("identity.tryAgain"));
     } finally {
       setSendingEmail(false);
     }
@@ -673,7 +686,7 @@ function Step2Identity() {
   const verifyEmailCode = async (codeOverride?: string) => {
     const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtp);
     if (!pendingEmail || !isCompleteSupabaseSmsOtp(token)) {
-      Alert.alert("Code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email.`);
+      Alert.alert(ow("identity.codeTitle"), ow("identity.enterEmailCodeInbox", { count: SUPABASE_AUTH_OTP_LENGTH }));
       return;
     }
     setVerifyingEmail(true);
@@ -681,9 +694,9 @@ function Step2Identity() {
       const { error } = await supabase.auth.verifyOtp({ email: pendingEmail, token, type: "email_change" });
       if (error) throw error;
       await persistEmailVerified(pendingEmail);
-      Alert.alert("Verified", "Email address verified.");
+      Alert.alert(ow("identity.verifiedTitle"), ow("identity.emailVerifiedBody"));
     } catch (e) {
-      Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
+      Alert.alert(ow("identity.verificationFailed"), e instanceof Error ? e.message : ow("identity.tryAgain"));
     } finally {
       setVerifyingEmail(false);
     }
@@ -714,20 +727,19 @@ function Step2Identity() {
         <View style={twStyle("rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5")}>
           <View style={twStyle("mb-2 flex-row items-center gap-2")}>
             <Ionicons name="logo-apple" size={18} color="#111827" />
-            <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>Signed in with Apple</Text>
+<Text style={twStyle("text-[15px] font-semibold text-gray-900")}>{ow("identity.signedInWithApple")}</Text>
           </View>
           <Text style={twStyle("text-[14px] text-gray-600")}>
-            Your name and email from Apple are already on your account
-            {formData.owner_email ? ` (${formData.owner_email})` : ""}.
+{ow("identity.appleBody", { emailSuffix: formData.owner_email ? ` (${formData.owner_email})` : "" })}
           </Text>
         </View>
       ) : null}
 
       {demoIdentity && !appleIdentity ? (
         <View style={twStyle("rounded-[1.5rem] border border-gray-200 bg-gray-50 p-5")}>
-          <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>App Review demo account</Text>
+<Text style={twStyle("text-[15px] font-semibold text-gray-900")}>{ow("identity.demoTitle")}</Text>
           <Text style={twStyle("text-[14px] text-gray-600 mt-1")}>
-            Email and phone are already verified for this review account.
+{ow("identity.demoBody")}
           </Text>
         </View>
       ) : null}
@@ -736,22 +748,22 @@ function Step2Identity() {
       <>
       {/* Name */}
       <View>
-        <Text style={twStyle(labelCls)}>Full name</Text>
+<Text style={twStyle(labelCls)}>{ow("identity.fullName")}</Text>
         <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
-          The name clients see on your profile and bookings.
+{ow("identity.fullNameHint")}
         </Text>
         <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
-          <View style={twStyle("pl-3 pr-1")}>
+          <View style={twStyle("ps-3 pe-1")}>
             <Ionicons name="person-outline" size={18} color="#9ca3af" />
           </View>
           <FocusAwareTextInput
             ref={nameRef}
             value={formData.owner_name || ""}
             onChangeText={(t) => updateFormData({ owner_name: t })}
-            placeholder="Your name"
+placeholder={ow("identity.yourNamePlaceholder")}
             placeholderTextColor="#9ca3af"
-            style={twStyle("flex-1 py-3.5 pr-4 text-base text-gray-900")}
-            accessibilityLabel="Full name"
+            style={twStyle("flex-1 py-3.5 pe-4 text-base text-gray-900")}
+accessibilityLabel={ow("identity.fullName")}
             textContentType="name"
             autoComplete="name"
             returnKeyType="next"
@@ -763,44 +775,44 @@ function Step2Identity() {
 
       {/* Email with OTP */}
       <View>
-        <Text style={twStyle(labelCls)}>Email</Text>
+<Text style={twStyle(labelCls)}>{ow("identity.emailLabel")}</Text>
         {formData.email_verified ? (
           <View style={twStyle("mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm")}>
             <View style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}>
               <Ionicons name="checkmark" size={18} color="#059669" />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>Email verified</Text>
+<Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>{ow("identity.emailVerified")}</Text>
               <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>{formData.owner_email}</Text>
             </View>
             <TouchableOpacity
               onPress={handleStartChangeEmail}
               accessibilityRole="button"
-              accessibilityLabel="Change email address"
+accessibilityLabel={ow("identity.changeEmailA11y")}
               style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
             >
-              <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
+<Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>{ow("identity.change")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
-              We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to verify your email.
+{ow("identity.emailCodeHint", { count: SUPABASE_AUTH_OTP_LENGTH })}
             </Text>
             <View style={twStyle("flex-row items-center overflow-hidden rounded-xl border border-gray-200 bg-white")}>
-              <View style={twStyle("pl-3 pr-1")}>
+              <View style={twStyle("ps-3 pe-1")}>
                 <Ionicons name="mail-outline" size={18} color="#9ca3af" />
               </View>
               <FocusAwareTextInput
                 ref={emailRef}
                 value={formData.owner_email || ""}
                 onChangeText={handleEmailChange}
-                placeholder="you@example.com"
+placeholder={ow("identity.emailPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="email-address"
                 autoCapitalize="none"
                 style={twStyle("flex-1 py-3.5 text-base text-gray-900")}
-                accessibilityLabel="Email address"
+accessibilityLabel={ow("identity.emailAddressA11y")}
                 textContentType="emailAddress"
                 autoComplete="email"
                 returnKeyType="next"
@@ -820,7 +832,7 @@ function Step2Identity() {
                 `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sendingEmail || emailResendCooldown > 0 || !isMailableEmail(formData.owner_email) ? "bg-gray-200" : "bg-primary"}`
               )}
               accessibilityRole="button"
-              accessibilityLabel={emailCodeSent ? "Resend email verification code" : "Send email verification code"}
+accessibilityLabel={emailCodeSent ? ow("identity.resendEmailCodeA11y") : ow("identity.sendEmailCodeA11y")}
               accessibilityState={{ disabled: sendingEmail || emailResendCooldown > 0 }}
             >
               <Ionicons
@@ -829,7 +841,7 @@ function Step2Identity() {
                 color={sendingEmail || emailResendCooldown > 0 ? "#6b7280" : "#fff"}
               />
               <Text style={twStyle(`font-semibold ${sendingEmail || emailResendCooldown > 0 ? "text-gray-600" : "text-white"}`)}>
-                {sendingEmail ? "Sending…" : emailResendCooldown > 0 ? `Resend in ${emailResendCooldown}s` : emailCodeSent ? "Resend code" : "Send verification code"}
+{sendingEmail ? ow("identity.sending") : emailResendCooldown > 0 ? ow("identity.resendIn", { seconds: emailResendCooldown }) : emailCodeSent ? ow("identity.resendCode") : ow("identity.sendVerificationCode")}
               </Text>
             </TouchableOpacity>
 
@@ -837,7 +849,7 @@ function Step2Identity() {
               <View style={twStyle("mt-3 gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
                 <View style={twStyle("flex-row items-center gap-2")}>
                   <Ionicons name="mail-open-outline" size={16} color={Colors.primary} />
-                  <Text style={twStyle("text-sm font-semibold text-primary")}>Enter email code</Text>
+<Text style={twStyle("text-sm font-semibold text-primary")}>{ow("identity.enterEmailCode")}</Text>
                 </View>
                 <OtpDigitRow
                   value={emailOtp}
@@ -845,7 +857,7 @@ function Step2Identity() {
                   onComplete={(code) => { if (!verifyingEmail) void verifyEmailCode(code); }}
                   disabled={verifyingEmail}
                   autoFocus
-                  accessibilityLabelPrefix="Email verification"
+accessibilityLabelPrefix={ow("identity.emailVerificationPrefix")}
                 />
                 <TouchableOpacity
                   onPress={() => void verifyEmailCode()}
@@ -855,7 +867,7 @@ function Step2Identity() {
                     { backgroundColor: Colors.primary, opacity: verifyingEmail ? 0.7 : 1 },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Verify email"
+accessibilityLabel={ow("identity.verifyEmail")}
                   accessibilityState={{ disabled: verifyingEmail }}
                 >
                   {verifyingEmail ? (
@@ -863,7 +875,7 @@ function Step2Identity() {
                   ) : (
                     <>
                       <Ionicons name="checkmark-outline" size={16} color="#fff" />
-                      <Text style={twStyle("font-semibold text-white")}>Verify email</Text>
+<Text style={twStyle("font-semibold text-white")}>{ow("identity.verifyEmail")}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -877,36 +889,36 @@ function Step2Identity() {
 
       {/* Phone with OTP */}
       <View>
-        <Text style={twStyle(labelCls)}>Mobile number</Text>
+<Text style={twStyle(labelCls)}>{ow("identity.mobileNumber")}</Text>
         {formData.phone_verified ? (
           <View style={twStyle("mt-2 flex-row items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-5 shadow-sm")}>
             <View style={twStyle("flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100")}>
               <Ionicons name="checkmark" size={18} color="#059669" />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>Phone verified</Text>
+<Text style={twStyle("text-[15px] font-semibold text-emerald-900")}>{ow("identity.phoneVerified")}</Text>
               <Text style={twStyle("text-[14px] text-emerald-700 mt-0.5")}>{formData.owner_phone}</Text>
             </View>
             <TouchableOpacity
               onPress={handleStartChangePhone}
               accessibilityRole="button"
-              accessibilityLabel="Change phone number"
+accessibilityLabel={ow("identity.changePhoneA11y")}
               style={twStyle("bg-white px-3 py-1.5 rounded-full border border-emerald-200 shadow-sm")}
             >
-              <Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>Change</Text>
+<Text style={twStyle("text-[13px] font-semibold text-emerald-700")}>{ow("identity.change")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <Text style={twStyle("mb-2 text-xs leading-5 text-gray-500")}>
-              We verify this number with a one-time code to protect your account.
+{ow("identity.phoneHint")}
             </Text>
             <View style={twStyle("flex-row gap-2")}>
               <TouchableOpacity
                 onPress={() => setCountryModal(true)}
                 style={twStyle("flex-row items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-3.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Change country code"
+accessibilityLabel={ow("identity.changeCountryCodeA11y")}
               >
                 <Text style={twStyle("font-medium text-gray-800")}>
                   {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
@@ -918,12 +930,12 @@ function Step2Identity() {
                 value={national}
                 onChangeText={(t) => setNational(t.replace(/[^\d\s]/g, ""))}
                 onBlur={commitPhoneToContext}
-                placeholder="82 123 4567"
+placeholder={ow("identity.phonePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="phone-pad"
                 style={twStyle(`${inputCls} flex-1`)}
-                accessibilityLabel="Mobile number"
-                accessibilityHint="We verify this number with a one-time code"
+accessibilityLabel={ow("identity.mobileNumber")}
+accessibilityHint={ow("identity.phoneA11yHint")}
                 textContentType="telephoneNumber"
                 autoComplete="tel"
                 returnKeyType="done"
@@ -935,13 +947,13 @@ function Step2Identity() {
 
             <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
               <View style={twStyle("flex-1 bg-white p-4 pt-12")}>
-                <Text style={twStyle("text-lg font-bold text-gray-900")}>Select country code</Text>
+<Text style={twStyle("text-lg font-bold text-gray-900")}>{ow("identity.selectCountryCode")}</Text>
                 <FocusAwareTextInput
                   value={countrySearch}
                   onChangeText={setCountrySearch}
-                  placeholder="Search country…"
+placeholder={ow("identity.searchCountryPlaceholder")}
                   style={twStyle("mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-base")}
-                  accessibilityLabel="Search country code"
+accessibilityLabel={ow("identity.searchCountryA11y")}
                   returnKeyType="search"
                 />
                 <FlatList<CountryCodeOption>
@@ -963,7 +975,7 @@ function Step2Identity() {
                         setCountrySearch("");
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel={`Use country code ${c.label} ${c.code}`}
+accessibilityLabel={ow("identity.useCountryCodeA11y", { label: c.label, code: c.code })}
                     >
                       <Text style={twStyle("text-xl")}>{c.flag}</Text>
                       <Text style={twStyle("flex-1 text-base text-gray-900")}>{c.label}</Text>
@@ -975,9 +987,9 @@ function Step2Identity() {
                   onPress={() => setCountryModal(false)}
                   style={twStyle("items-center rounded-2xl bg-gray-100 py-3.5")}
                   accessibilityRole="button"
-                  accessibilityLabel="Close country code picker"
+accessibilityLabel={ow("identity.closeCountryPickerA11y")}
                 >
-                  <Text style={twStyle("font-semibold text-gray-700")}>Close</Text>
+<Text style={twStyle("font-semibold text-gray-700")}>{ow("identity.close")}</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -989,7 +1001,7 @@ function Step2Identity() {
                 `mt-3 flex-row items-center justify-center gap-2 rounded-xl py-3.5 ${sendingPhone || phoneResendCooldown > 0 ? "bg-gray-200" : "bg-primary"}`
               )}
               accessibilityRole="button"
-              accessibilityLabel={phoneCodeSent ? "Resend phone verification code" : "Send phone verification code"}
+accessibilityLabel={phoneCodeSent ? ow("identity.resendPhoneCodeA11y") : ow("identity.sendPhoneCodeA11y")}
               accessibilityState={{ disabled: sendingPhone || phoneResendCooldown > 0 }}
             >
               <Ionicons
@@ -998,7 +1010,7 @@ function Step2Identity() {
                 color={sendingPhone || phoneResendCooldown > 0 ? "#6b7280" : "#fff"}
               />
               <Text style={twStyle(`font-semibold ${sendingPhone || phoneResendCooldown > 0 ? "text-gray-600" : "text-white"}`)}>
-                {sendingPhone ? "Sending…" : phoneResendCooldown > 0 ? `Resend in ${phoneResendCooldown}s` : phoneCodeSent ? "Resend code" : "Send verification code"}
+{sendingPhone ? ow("identity.sending") : phoneResendCooldown > 0 ? ow("identity.resendIn", { seconds: phoneResendCooldown }) : phoneCodeSent ? ow("identity.resendCode") : ow("identity.sendVerificationCode")}
               </Text>
             </TouchableOpacity>
 
@@ -1006,7 +1018,7 @@ function Step2Identity() {
               <View style={twStyle("mt-3 gap-3 rounded-2xl border-2 border-primary bg-rose-50 p-4")}>
                 <View style={twStyle("flex-row items-center gap-2")}>
                   <Ionicons name="lock-closed-outline" size={16} color={Colors.primary} />
-                  <Text style={twStyle("text-sm font-semibold text-primary")}>Enter phone code</Text>
+<Text style={twStyle("text-sm font-semibold text-primary")}>{ow("identity.enterPhoneCode")}</Text>
                 </View>
                 <OtpDigitRow
                   value={phoneOtp}
@@ -1015,7 +1027,7 @@ function Step2Identity() {
                   disabled={verifyingPhone}
                   autoFocus
                   smsAutofill
-                  accessibilityLabelPrefix="Phone verification"
+accessibilityLabelPrefix={ow("identity.phoneVerificationPrefix")}
                 />
                 <TouchableOpacity
                   onPress={() => void verifyPhoneCode()}
@@ -1025,7 +1037,7 @@ function Step2Identity() {
                     { backgroundColor: Colors.primary, opacity: verifyingPhone ? 0.7 : 1 },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel="Verify phone"
+accessibilityLabel={ow("identity.verifyPhone")}
                   accessibilityState={{ disabled: verifyingPhone }}
                 >
                   {verifyingPhone ? (
@@ -1033,7 +1045,7 @@ function Step2Identity() {
                   ) : (
                     <>
                       <Ionicons name="checkmark-outline" size={16} color="#fff" />
-                      <Text style={twStyle("font-semibold text-white")}>Verify phone</Text>
+<Text style={twStyle("font-semibold text-white")}>{ow("identity.verifyPhone")}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1069,6 +1081,7 @@ type BizTypeOpt = {
 };
 
 function Step3Business() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const businessNameRef = useRef<TextInput>(null);
   const descriptionRef = useRef<TextInput>(null);
@@ -1076,37 +1089,37 @@ function Step3Business() {
   const types: BizTypeOpt[] = [
     {
       id: "salon",
-      label: "Salon / studio",
-      sub: "Fixed location — clients come to you",
+      label: ow("business.salonLabel"),
+      sub: ow("business.salonSub"),
       icon: "storefront-outline",
     },
-    { id: "mobile", label: "Mobile / at-home", sub: "You travel to clients", icon: "car-outline" },
-    { id: "both", label: "Both", sub: "Fixed location + mobile visits", icon: "apps-outline" },
+{ id: "mobile", label: ow("business.mobileLabel"), sub: ow("business.mobileSub"), icon: "car-outline" },
+{ id: "both", label: ow("business.bothLabel"), sub: ow("business.bothSub"), icon: "apps-outline" },
   ];
   return (
     <View style={twStyle("gap-6")}>
       <View>
-        <Text style={twStyle(labelCls)}>Business name</Text>
+<Text style={twStyle(labelCls)}>{ow("business.name")}</Text>
         <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
-          This is shown to clients on your profile and bookings.
+{ow("business.nameHint")}
         </Text>
         <View
           style={twStyle(
             "flex-row items-center overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm"
           )}
         >
-          <View style={twStyle("pl-4 pr-2")}>
+          <View style={twStyle("ps-4 pe-2")}>
             <Ionicons name="briefcase-outline" size={20} color="#64748b" />
           </View>
           <FocusAwareTextInput
             ref={businessNameRef}
             value={formData.business_name || ""}
             onChangeText={(t) => updateFormData({ business_name: t })}
-            placeholder="Shown to clients"
+placeholder={ow("business.namePlaceholder")}
             placeholderTextColor="#94a3b8"
-            style={twStyle("flex-1 py-4 pr-5 text-[17px] text-slate-900")}
-            accessibilityLabel="Business name"
-            accessibilityHint="Shown to clients"
+            style={twStyle("flex-1 py-4 pe-5 text-[17px] text-slate-900")}
+accessibilityLabel={ow("business.name")}
+accessibilityHint={ow("business.nameA11yHint")}
             returnKeyType="next"
             blurOnSubmit={false}
             onSubmitEditing={() => {
@@ -1117,9 +1130,9 @@ function Step3Business() {
       </View>
 
       <View>
-        <Text style={twStyle(labelCls)}>Business type</Text>
+<Text style={twStyle(labelCls)}>{ow("business.type")}</Text>
         <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
-          Determines which features are enabled and how zones work.
+{ow("business.typeHint")}
         </Text>
         <View style={twStyle("gap-4")}>
           {types.map((t) => {
@@ -1169,11 +1182,11 @@ function Step3Business() {
       <View collapsable={false}>
         <OnboardingTextField
           ref={descriptionRef}
-          label="Description (recommended)"
-          hint="Tell clients what you offer and what makes you stand out."
+label={ow("business.descriptionLabel")}
+hint={ow("business.descriptionHint")}
           value={formData.description || ""}
           onChangeText={(t) => updateFormData({ description: t })}
-          placeholder="e.g. Specialist in balayage and precision cuts, serving Cape Town for 8 years."
+placeholder={ow("business.descriptionPlaceholder")}
           multiline
           numberOfLines={4}
           focusScrollOffset={220}
@@ -1182,8 +1195,8 @@ function Step3Business() {
           blurOnSubmit={false}
           textAlignVertical="top"
         />
-        <Text style={twStyle("mt-2 text-right text-[13px] text-slate-400")}>
-          {(formData.description || "").length} chars · 10 min recommended
+        <Text style={twStyle("mt-2 text-end text-[13px] text-slate-400")}>
+{ow("business.charsHint", { count: (formData.description || "").length })}
         </Text>
       </View>
     </View>
@@ -1272,6 +1285,7 @@ function ChipRow<T extends string>({
 }
 
 function Step4Payment() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const vendorOtherRef = useRef<TextInput>(null);
   const vatNumberRef = useRef<TextInput>(null);
@@ -1281,17 +1295,46 @@ function Step4Payment() {
   const ownershipStatus = formData.terminal_ownership_status;
   const hasTerminal = ownershipStatus === "has_terminal";
   const noOrPlanning = ownershipStatus === "no_terminal" || ownershipStatus === "planning_to_get_terminal";
+  const ownershipOpts = useMemo(
+    () =>
+      TERMINAL_OWNERSHIP_OPTS.map((o) => ({
+        ...o,
+        t: ow(`payment.ownership.${o.id}`),
+        sub: ow(`payment.ownershipSub.${o.id}`),
+      })),
+    [ow],
+  );
+  const vendorOpts = useMemo(
+    () =>
+      TERMINAL_VENDOR_OPTS.map((o) => ({
+        ...o,
+        label: o.id === "other" || o.id === "unsure" ? ow(`payment.vendor.${o.id}`) : o.label,
+      })),
+    [ow],
+  );
+  const countOpts = useMemo(
+    () => TERMINAL_COUNT_OPTS.map((o) => ({ ...o, label: ow(`payment.count.${o.id}`) })),
+    [ow],
+  );
+  const usageOpts = useMemo(
+    () => TERMINAL_USAGE_OPTS.map((o) => ({ ...o, label: ow(`payment.usage.${o.id}`) })),
+    [ow],
+  );
+  const interestOpts = useMemo(
+    () => TERMINAL_INTEREST_OPTS.map((o) => ({ ...o, label: ow(`payment.interest.${o.id}`) })),
+    [ow],
+  );
 
   return (
     <View style={twStyle("gap-6")}>
       {/* Primary question */}
       <View>
-        <Text style={twStyle(labelCls)}>Card machine / payment terminal</Text>
+<Text style={twStyle(labelCls)}>{ow("payment.terminalLabel")}</Text>
         <Text style={twStyle("mb-3 text-[14px] text-slate-500")}>
-          This helps us understand how you accept in-person card payments and whether we can offer better terminal options in future.
+{ow("payment.terminalHint")}
         </Text>
         <View style={twStyle("gap-4")}>
-          {TERMINAL_OWNERSHIP_OPTS.map((o) => {
+{ownershipOpts.map((o) => {
             const sel = ownershipStatus === o.id;
             return (
               <TouchableOpacity
@@ -1328,31 +1371,31 @@ function Step4Payment() {
       {hasTerminal && (
         <View style={twStyle("gap-5 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5")}>
           <View style={twStyle("gap-2")}>
-            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Which terminal provider do you use?</Text>
-            <ChipRow opts={TERMINAL_VENDOR_OPTS} selected={formData.terminal_provider as TerminalVendor | undefined} onSelect={(v) => updateFormData({ terminal_provider: v, terminal_provider_other: v !== "other" ? undefined : formData.terminal_provider_other })} />
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("payment.whichProvider")}</Text>
+<ChipRow opts={vendorOpts} selected={formData.terminal_provider as TerminalVendor | undefined} onSelect={(v) => updateFormData({ terminal_provider: v, terminal_provider_other: v !== "other" ? undefined : formData.terminal_provider_other })} />
             {formData.terminal_provider === "other" && (
               <OnboardingTextField
                 ref={vendorOtherRef}
-                label="Which provider or model?"
+label={ow("payment.vendorOtherLabel")}
                 value={formData.terminal_provider_other || ""}
                 onChangeText={(t) => updateFormData({ terminal_provider_other: t })}
-                placeholder="e.g. Payflex, Square"
+placeholder={ow("payment.vendorOtherPlaceholder")}
                 containerStyle={twStyle("mt-2")}
                 returnKeyType="done"
               />
             )}
           </View>
           <View style={twStyle("gap-2")}>
-            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>How many terminals do you have?</Text>
-            <ChipRow opts={TERMINAL_COUNT_OPTS} selected={formData.terminal_count_range as TerminalCountRange | undefined} onSelect={(v) => updateFormData({ terminal_count_range: v })} />
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("payment.howMany")}</Text>
+<ChipRow opts={countOpts} selected={formData.terminal_count_range as TerminalCountRange | undefined} onSelect={(v) => updateFormData({ terminal_count_range: v })} />
           </View>
           <View style={twStyle("gap-2")}>
-            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Are they actively used for payments?</Text>
-            <ChipRow opts={TERMINAL_USAGE_OPTS} selected={formData.terminal_active_usage_status as TerminalActiveUsageStatus | undefined} onSelect={(v) => updateFormData({ terminal_active_usage_status: v })} />
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("payment.activelyUsed")}</Text>
+<ChipRow opts={usageOpts} selected={formData.terminal_active_usage_status as TerminalActiveUsageStatus | undefined} onSelect={(v) => updateFormData({ terminal_active_usage_status: v })} />
           </View>
           <View style={twStyle("gap-2")}>
-            <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Interested in better or integrated terminal options?</Text>
-            <ChipRow opts={TERMINAL_INTEREST_OPTS} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("payment.interestedIntegrated")}</Text>
+<ChipRow opts={interestOpts} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
           </View>
         </View>
       )}
@@ -1360,9 +1403,9 @@ function Step4Payment() {
       {/* Follow-up: No / Planning */}
       {noOrPlanning && (
         <View style={twStyle("gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5")}>
-          <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Would you be interested in getting a platform-supported card machine in future?</Text>
-          <Text style={twStyle("text-[13px] text-slate-500")}>Buy it outright or include it in your plan when available.</Text>
-          <ChipRow opts={TERMINAL_INTEREST_OPTS} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("payment.interestedFuture")}</Text>
+<Text style={twStyle("text-[13px] text-slate-500")}>{ow("payment.interestedFutureHint")}</Text>
+<ChipRow opts={interestOpts} selected={formData.interested_in_platform_terminal as TerminalInterestLevel | undefined} onSelect={(v) => updateFormData({ interested_in_platform_terminal: v })} />
         </View>
       )}
 
@@ -1374,11 +1417,11 @@ function Step4Payment() {
             <Ionicons name="receipt-outline" size={20} color="#64748b" />
           </View>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
-              VAT registered (SARS)
+<Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
+              {ow("payment.vatTitle")}
             </Text>
             <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>
-              Enables VAT on invoices and financial reports.
+{ow("payment.vatHint")}
             </Text>
           </View>
           <Switch
@@ -1397,12 +1440,12 @@ function Step4Payment() {
             <View style={twStyle("h-px bg-slate-100")} />
             <OnboardingTextField
               ref={vatNumberRef}
-              label="VAT number"
+label={ow("payment.vatNumber")}
               value={formData.vat_number || ""}
               onChangeText={(t) =>
                 updateFormData({ vat_number: t.replace(/\D/g, "").slice(0, 10) })
               }
-              placeholder="10-digit VAT number"
+placeholder={ow("payment.vatPlaceholder")}
               keyboardType="number-pad"
               returnKeyType="done"
               inputAccessoryViewID={KEYBOARD_ACCESSORY.vat}
@@ -1419,8 +1462,7 @@ function Step4Payment() {
       >
         <Ionicons name="information-circle-outline" size={20} color="#b45309" />
         <Text style={twStyle("flex-1 text-[13px] leading-5 text-amber-900")}>
-          Bank payout account is required before go-live. Add it in the setup checklist under
-          Settings → Payout accounts after this wizard.
+{ow("payment.payoutHint")}
         </Text>
       </View>
     </View>
@@ -1488,6 +1530,7 @@ const ALWAYS_BOTTOM: SoftwareOption[] = [
 const SPECIAL_SLUGS = new Set(["none", "other"]);
 
 function Step5Software() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const customSoftwareRef = useRef<TextInput>(null);
 
@@ -1535,7 +1578,7 @@ function Step5Software() {
   }, []);
 
   // All displayed options: dynamic/fallback list + always-bottom fixed options.
-  const allOptions = [...softwareOptions, ...ALWAYS_BOTTOM];
+  const allOptions = [...softwareOptions, ...ALWAYS_BOTTOM.map((o) => ({ ...o, label: ow(`software.${o.id}`) }))];
 
   const selectedId =
     formData.previous_software === "other"
@@ -1563,15 +1606,14 @@ function Step5Software() {
     <View style={twStyle("gap-4")}>
       <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
         <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
-          Optional — helps us understand where you&apos;re coming from. We&apos;ll tailor import
-          tips and onboarding hints.
+{ow("software.intro")}
         </Text>
       </View>
 
       {loadingOptions ? (
         <View style={twStyle("items-center py-6")}>
           <ActivityIndicator color="#0f172a" size="small" />
-          <Text style={twStyle("mt-2 text-[13px] text-slate-400")}>Loading options…</Text>
+<Text style={twStyle("mt-2 text-[13px] text-slate-400")}>{ow("software.loading")}</Text>
         </View>
       ) : (
         <View style={twStyle("flex-row flex-wrap gap-2.5")}>
@@ -1607,7 +1649,7 @@ function Step5Software() {
         <>
           <OnboardingTextField
             ref={customSoftwareRef}
-            label="Other software name"
+label={ow("software.otherName")}
             value={customValue}
             onChangeText={(t) => {
               setCustomValue(t);
@@ -1617,7 +1659,7 @@ function Step5Software() {
                 previous_software_other: slug || undefined,
               });
             }}
-            placeholder="Type the software name…"
+placeholder={ow("software.otherPlaceholder")}
             returnKeyType="done"
             inputAccessoryViewID={KEYBOARD_ACCESSORY.software}
           />
@@ -1638,7 +1680,7 @@ function Step5Software() {
         >
           <Ionicons name="checkmark-circle" size={18} color="#0f172a" />
           <Text style={twStyle("text-[15px] text-slate-700")}>
-            Selected:{" "}
+{ow("software.selected")}
             <Text style={twStyle("font-semibold")}>
               {formData.previous_software.replace(/_/g, " ")}
             </Text>
@@ -1647,9 +1689,9 @@ function Step5Software() {
             onPress={() =>
               updateFormData({ previous_software: undefined, previous_software_other: undefined })
             }
-            style={twStyle("ml-auto")}
+            style={twStyle("ms-auto")}
           >
-            <Text style={twStyle("text-[13px] font-semibold text-slate-400")}>Clear</Text>
+<Text style={twStyle("text-[13px] font-semibold text-slate-400")}>{ow("software.clear")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -1667,30 +1709,31 @@ type PayrollOpt = {
 };
 
 function Step6Payroll() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const opts: PayrollOpt[] = [
     {
       id: "commission",
-      label: "Commission",
-      sub: "Staff earn a % of each service",
+      label: ow("payroll.commission"),
+      sub: ow("payroll.commissionSub"),
       icon: "pie-chart-outline",
     },
     {
       id: "hourly",
-      label: "Hourly / salary",
-      sub: "Fixed rate regardless of bookings",
+      label: ow("payroll.hourly"),
+      sub: ow("payroll.hourlySub"),
       icon: "time-outline",
     },
     {
       id: "both",
-      label: "Mixed",
-      sub: "Combination of commission and fixed pay",
+      label: ow("payroll.mixed"),
+      sub: ow("payroll.mixedSub"),
       icon: "layers-outline",
     },
     {
       id: "other",
-      label: "Other",
-      sub: "We'll discuss this after setup",
+      label: ow("payroll.other"),
+      sub: ow("payroll.otherSub"),
       icon: "ellipsis-horizontal-circle-outline",
     },
   ];
@@ -1698,12 +1741,11 @@ function Step6Payroll() {
     <View style={twStyle("gap-6")}>
       <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
         <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
-          How you compensate your staff or contractors. You can refine this in Payroll settings
-          anytime.
+{ow("payroll.intro")}
         </Text>
       </View>
       <View>
-        <Text style={twStyle(labelCls)}>Payroll model</Text>
+<Text style={twStyle(labelCls)}>{ow("payroll.model")}</Text>
         <View style={twStyle("gap-4 mt-2")}>
           {opts.map((o) => {
             const sel = formData.payroll_type === o.id;
@@ -1749,11 +1791,11 @@ function Step6Payroll() {
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-3 shadow-sm")}
       >
         <OnboardingTextField
-          label="Optional details"
-          hint="Anything about schedules, commission splits, or tools."
+label={ow("payroll.optionalDetails")}
+hint={ow("payroll.optionalHint")}
           value={formData.payroll_details || ""}
           onChangeText={(t) => updateFormData({ payroll_details: t })}
-          placeholder="Optional details"
+placeholder={ow("payroll.optionalPlaceholder")}
           returnKeyType="done"
           inputAccessoryViewID={KEYBOARD_ACCESSORY.payroll}
         />
@@ -1766,6 +1808,7 @@ function Step6Payroll() {
 // ─── Step 7: Location ────────────────────────────────────────────────────────
 
 function Step7Location() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const onboardingScroll = useOnboardingScroll();
   const { width: windowWidth } = useWindowDimensions();
@@ -1817,7 +1860,7 @@ function Step7Location() {
         updateFormData({
           address: {
             ...addr,
-            line1: mapped.address_line1 || addr.line1 || "Current location",
+            line1: mapped.address_line1 || addr.line1 || ow("location.currentLocationFallback"),
             city: mapped.city || addr.city || "",
             state: mapped.state || addr.state || "",
             postal_code: mapped.postal_code || addr.postal_code || "",
@@ -1830,7 +1873,7 @@ function Step7Location() {
         updateFormData({ address: { ...addr, latitude: lat, longitude: lng } });
       }
     } catch (e) {
-      Alert.alert("Location error", e instanceof Error ? e.message : "Could not read location.");
+      Alert.alert(ow("location.errorTitle"), e instanceof Error ? e.message : ow("location.couldNotRead"));
     } finally {
       setLocating(false);
     }
@@ -1862,8 +1905,7 @@ function Step7Location() {
     <View style={twStyle("gap-6")}>
       <View style={twStyle("rounded-[1.5rem] bg-slate-50 px-5 py-4")}>
         <Text style={twStyle("text-[14px] leading-5 text-slate-600")}>
-          Search for your street, drop a pin on the map, or use your current location — we save
-          coordinates for zones and travel.
+{ow("location.intro")}
         </Text>
       </View>
       <AddressAutocomplete
@@ -1876,7 +1918,7 @@ function Step7Location() {
             });
           }
         }}
-        label="Street address"
+label={ow("location.streetAddress")}
         countryCode={mapboxCountry}
         defaultCountryName={DEFAULT_COUNTRY_NAME}
         inputRef={streetSearchRef}
@@ -1898,7 +1940,7 @@ function Step7Location() {
             `rounded-full border px-4 py-2.5 flex-row items-center gap-2 transition-all duration-300 ${locating ? "border-slate-200 bg-slate-100" : "border-primary bg-primary shadow-sm"}`
           )}
           accessibilityRole="button"
-          accessibilityLabel="Use current location"
+accessibilityLabel={ow("location.useCurrentA11y")}
         >
           {locating ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -1910,7 +1952,7 @@ function Step7Location() {
               `text-[14px] font-semibold ${locating ? "text-slate-500" : "text-white"}`
             )}
           >
-            {locating ? "Locating…" : "Current location"}
+{locating ? ow("location.locating") : ow("location.currentLocation")}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -1919,10 +1961,10 @@ function Step7Location() {
             "rounded-full border border-slate-200 bg-white px-4 py-2.5 flex-row items-center gap-2 shadow-sm transition-all duration-300"
           )}
           accessibilityRole="button"
-          accessibilityLabel="Drop pin on map"
+accessibilityLabel={ow("location.dropPinA11y")}
         >
           <Ionicons name="map-outline" size={16} color="#0f172a" />
-          <Text style={twStyle("text-[14px] font-semibold text-slate-800")}>Drop pin on map</Text>
+<Text style={twStyle("text-[14px] font-semibold text-slate-800")}>{ow("location.dropPin")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -1940,7 +1982,7 @@ function Step7Location() {
             />
           </View>
           <Text style={twStyle("mt-2 text-center text-[13px] text-slate-500")}>
-            Map preview · edit fields below if needed
+{ow("location.mapPreview")}
           </Text>
         </View>
       ) : null}
@@ -1948,7 +1990,7 @@ function Step7Location() {
       <View style={twStyle("gap-4 mt-2")}>
         <OnboardingTextField
           ref={line2Ref}
-          label="Apt / suite (optional)"
+label={ow("location.aptOptional")}
           value={addr.line2 || ""}
           onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
           returnKeyType="next"
@@ -1957,7 +1999,7 @@ function Step7Location() {
         />
         <OnboardingTextField
           ref={cityRef}
-          label="City"
+label={ow("location.city")}
           value={addr.city || ""}
           onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
           textContentType="addressCity"
@@ -1965,7 +2007,7 @@ function Step7Location() {
           returnKeyType="done"
         />
         <AddressCountryPicker
-          label="Country"
+label={ow("location.country")}
           value={addr.country || ""}
           onChange={(country) => updateFormData({ address: { ...addr, country } })}
         />
@@ -2038,6 +2080,7 @@ async function uploadOnboardingImage(
 }
 
 function Step8Photos() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const { pickWithOptions, pickMultipleFromLibrary } = useImagePicker();
   const [uploading, setUploading] = useState<{ thumb: boolean; avatar: boolean; gallery: boolean }>(
@@ -2059,8 +2102,8 @@ function Step8Photos() {
       : 1;
     if (isGallery && remainingSlots <= 0) {
       Alert.alert(
-        "Gallery full",
-        `You can upload up to ${ONBOARDING_GALLERY_LIMIT} gallery photos in onboarding. Remove a photo to add more.`,
+        ow("photos.galleryFullTitle"),
+        ow("photos.galleryFullBody", { count: ONBOARDING_GALLERY_LIMIT }),
       );
       return;
     }
@@ -2100,22 +2143,22 @@ function Step8Photos() {
     for (const a of pickedAssets) {
       const mime = inferMime({ mimeType: a.mimeType, fileName: a.fileName });
       if (!ONBOARDING_ALLOWED_MIME.has(mime)) {
-        rejected.push(`${a.fileName || "Image"}: unsupported type`);
+        rejected.push(ow("photos.unsupportedType", { name: a.fileName || ow("photos.imageFallback") }));
         continue;
       }
       const size = (a as { fileSize?: number }).fileSize;
       if (typeof size === "number" && size > ONBOARDING_UPLOAD_MAX_BYTES) {
-        rejected.push(`${a.fileName || "Image"}: larger than 5MB`);
+        rejected.push(ow("photos.largerThan5mb", { name: a.fileName || ow("photos.imageFallback") }));
         continue;
       }
       validAssets.push(a);
     }
     if (rejected.length > 0 && validAssets.length === 0) {
-      Alert.alert("Couldn't add these photos", rejected.join("\n"));
+      Alert.alert(ow("photos.couldntAddTitle"), rejected.join("\n"));
       return;
     }
     if (rejected.length > 0) {
-      Alert.alert("Some photos were skipped", rejected.join("\n"));
+      Alert.alert(ow("photos.someSkippedTitle"), rejected.join("\n"));
     }
     if (validAssets.length === 0) return;
 
@@ -2134,7 +2177,7 @@ function Step8Photos() {
         );
         if (!url) {
           setLocalPreview((p) => ({ ...p, [kind]: undefined }));
-          Alert.alert("Upload failed", "Couldn't upload the photo. Please try again.");
+          Alert.alert(ow("photos.uploadFailedTitle"), ow("photos.uploadFailedRetry"));
           return;
         }
         if (kind === "thumb") updateFormData({ thumbnail_url: url });
@@ -2165,23 +2208,21 @@ function Step8Photos() {
             // duplicate the running list across iterations.
             updateFormData({ gallery: [...baseGallery, ...newUrls] });
           } else {
-            failed.push(a.fileName || `Image ${i + 1}`);
+            failed.push(a.fileName || ow("photos.imageN", { n: i + 1 }));
           }
           setGalleryProgress({ done: i + 1, total: validAssets.length });
         }
         if (newUrls.length === 0) {
           Alert.alert(
-            "Upload failed",
-            "None of the photos could be uploaded. Check your connection and try again.",
+            ow("photos.uploadFailedTitle"),
+            ow("photos.noneUploaded"),
           );
           return;
         }
         if (failed.length > 0) {
           Alert.alert(
-            "Some uploads failed",
-            `${failed.length} of ${validAssets.length} photo${
-              validAssets.length === 1 ? "" : "s"
-            } could not be uploaded:\n${failed.join("\n")}`,
+            ow("photos.someUploadsFailedTitle"),
+            ow("photos.someUploadsFailedBody", { count: validAssets.length, failed: failed.length, total: validAssets.length, names: failed.join("\n") }),
           );
         }
       }
@@ -2236,7 +2277,7 @@ function Step8Photos() {
           {url ? (
             <View style={twStyle("mt-2 flex-row items-center gap-1.5")}>
               <Ionicons name="checkmark-circle" size={16} color="#059669" />
-              <Text style={twStyle("text-[13px] font-medium text-emerald-700")}>Uploaded</Text>
+<Text style={twStyle("text-[13px] font-medium text-emerald-700")}>{ow("photos.uploaded")}</Text>
             </View>
           ) : null}
         </View>
@@ -2249,7 +2290,7 @@ function Step8Photos() {
             `flex-1 flex-row items-center justify-center gap-2 rounded-full py-3.5 transition-all duration-300 ${uploading[kind] ? "bg-slate-100" : "bg-primary shadow-sm"}`
           )}
           accessibilityRole="button"
-          accessibilityLabel={url ? `Replace ${title}` : `Upload ${title}`}
+          accessibilityLabel={url ? ow("photos.replaceA11y", { title }) : ow("photos.uploadA11y", { title })}
         >
           {uploading[kind] ? (
             <ActivityIndicator color="#64748b" size="small" />
@@ -2261,7 +2302,7 @@ function Step8Photos() {
                 color="#fff"
               />
               <Text style={twStyle("text-[15px] font-semibold text-white")}>
-                {url ? "Replace" : "Choose photo"}
+{url ? ow("photos.replace") : ow("photos.choosePhoto")}
               </Text>
             </>
           )}
@@ -2277,7 +2318,7 @@ function Step8Photos() {
               "items-center justify-center rounded-full border border-rose-100 bg-rose-50 px-5 transition-all duration-300"
             )}
             accessibilityRole="button"
-            accessibilityLabel={`Remove ${title}`}
+            accessibilityLabel={ow("photos.removeA11y", { title })}
           >
             <Ionicons name="trash-outline" size={20} color="#e11d48" />
           </TouchableOpacity>
@@ -2295,25 +2336,24 @@ function Step8Photos() {
         )}
       >
         <Text style={twStyle("text-[14px] leading-5 text-amber-900")}>
-          Required — upload both images so your customer web and app provider cards always have a
-          reliable thumbnail and profile avatar.
+{ow("photos.requiredHint")}
         </Text>
       </View>
-      {renderSlot("thumb", "Main business photo", "Required hero image on your public listing", thumbUrl)}
-      {renderSlot("avatar", "Profile photo", "Required avatar shown on cards, chats, reviews, and bookings", avatarUrl)}
+{renderSlot("thumb", ow("photos.mainPhoto"), ow("photos.mainPhotoSub"), thumbUrl)}
+{renderSlot("avatar", ow("photos.profilePhoto"), ow("photos.profilePhotoSub"), avatarUrl)}
 
       <View
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
       >
         <View style={twStyle("flex-row items-center justify-between")}>
-          <View style={twStyle("flex-1 pr-2")}>
-            <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>Gallery</Text>
+          <View style={twStyle("flex-1 pe-2")}>
+<Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{ow("photos.gallery")}</Text>
             <Text style={twStyle("mt-1 text-[14px] text-slate-500")}>
               {galleryProgress
-                ? `Uploading ${galleryProgress.done} of ${galleryProgress.total}…`
+                ? ow("photos.uploadingProgress", { done: galleryProgress.done, total: galleryProgress.total })
                 : gallery.length > 0
-                  ? `${gallery.length} of ${ONBOARDING_GALLERY_LIMIT} photos added`
-                  : `Portfolio-style work photos · up to ${ONBOARDING_GALLERY_LIMIT}`}
+                  ? ow("photos.photosAdded", { count: gallery.length, limit: ONBOARDING_GALLERY_LIMIT })
+                  : ow("photos.galleryEmpty", { limit: ONBOARDING_GALLERY_LIMIT })}
             </Text>
           </View>
           <TouchableOpacity
@@ -2327,7 +2367,7 @@ function Step8Photos() {
               }`
             )}
             accessibilityRole="button"
-            accessibilityLabel="Add gallery photo"
+accessibilityLabel={ow("photos.addGalleryA11y")}
             accessibilityState={{
               disabled: uploading.gallery || gallery.length >= ONBOARDING_GALLERY_LIMIT,
             }}
@@ -2348,7 +2388,7 @@ function Step8Photos() {
                     }`,
                   )}
                 >
-                  {gallery.length >= ONBOARDING_GALLERY_LIMIT ? "Full" : "Add"}
+{gallery.length >= ONBOARDING_GALLERY_LIMIT ? ow("photos.full") : ow("photos.add")}
                 </Text>
               </>
             )}
@@ -2380,7 +2420,7 @@ function Step8Photos() {
                     borderColor: "#fff",
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Remove gallery image ${idx + 1}`}
+                  accessibilityLabel={ow("photos.removeGalleryA11y", { n: idx + 1 })}
                 >
                   <Ionicons name="close" size={14} color="#fff" />
                 </TouchableOpacity>
@@ -2398,6 +2438,7 @@ function Step8Photos() {
 type ZoneRow = { id: string; name: string; zone_type: string; match_reason?: string };
 
 function Step9Zones() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2452,7 +2493,7 @@ function Step9Zones() {
     return (
       <View style={twStyle("py-12 items-center gap-3")}>
         <ActivityIndicator color="#0f172a" size="large" />
-        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Finding nearby zones…</Text>
+<Text style={twStyle("text-[15px] font-medium text-slate-500")}>{ow("zones.finding")}</Text>
       </View>
     );
   }
@@ -2471,12 +2512,11 @@ function Step9Zones() {
         >
           <Ionicons name="map-outline" size={32} color="#94a3b8" />
         </View>
-        <Text style={twStyle("text-[17px] font-semibold text-slate-700")}>
-          No zones found nearby
+<Text style={twStyle("text-[17px] font-semibold text-slate-700")}>
+          {ow("zones.noneTitle")}
         </Text>
         <Text style={twStyle("text-center text-[14px] text-slate-500 max-w-[250px]")}>
-          No service zones matched your address. Ask your marketplace admin to add zones for your
-          area, or go back and check your location — you need at least one zone to continue.
+{ow("zones.noneBody")}
         </Text>
       </View>
     );
@@ -2494,7 +2534,7 @@ function Step9Zones() {
     <View style={twStyle("gap-4")}>
       <View style={twStyle("flex-row items-center justify-between mb-2")}>
         <Text style={twStyle("text-[14px] font-medium text-slate-600")}>
-          {selectedIds.length} of {zones.length} zones selected
+{ow("zones.selectedCount", { selected: selectedIds.length, total: zones.length })}
         </Text>
         <TouchableOpacity
           onPress={() =>
@@ -2505,7 +2545,7 @@ function Step9Zones() {
           style={twStyle("rounded-full bg-slate-100 px-3 py-1.5")}
         >
           <Text style={twStyle("text-[13px] font-semibold text-slate-700")}>
-            {selectedIds.length === zones.length ? "Deselect all" : "Select all"}
+{selectedIds.length === zones.length ? ow("zones.deselectAll") : ow("zones.selectAll")}
           </Text>
         </TouchableOpacity>
       </View>
@@ -2563,6 +2603,7 @@ function Step9Zones() {
 type Cat = { id: string; name: string; icon?: string };
 
 function Step10Categories() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const [cats, setCats] = useState<Cat[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2602,7 +2643,7 @@ function Step10Categories() {
     return (
       <View style={twStyle("py-12 items-center gap-3")}>
         <ActivityIndicator color="#0f172a" size="large" />
-        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading categories…</Text>
+<Text style={twStyle("text-[15px] font-medium text-slate-500")}>{ow("categories.loading")}</Text>
       </View>
     );
   }
@@ -2638,7 +2679,7 @@ function Step10Categories() {
     <View style={twStyle("gap-5")}>
       <View style={twStyle("flex-row items-center justify-between")}>
         <Text style={twStyle("text-[14px] text-slate-600")}>
-          Choose all that apply — you can change these later.
+{ow("categories.chooseHint")}
         </Text>
         {selectedCount > 0 ? (
           <View style={twStyle("rounded-full bg-primary px-3 py-1")}>
@@ -2703,7 +2744,7 @@ function Step10Categories() {
               {on ? (
                 <View style={twStyle("mt-2 flex-row items-center gap-1.5")}>
                   <Ionicons name="checkmark-circle" size={14} color={Colors.primary} />
-                  <Text style={twStyle("text-[12px] font-semibold text-primary")}>Selected</Text>
+<Text style={twStyle("text-[12px] font-semibold text-primary")}>{ow("categories.selected")}</Text>
                 </View>
               ) : null}
             </TouchableOpacity>
@@ -2715,10 +2756,9 @@ function Step10Categories() {
       {selectedCount > 0 ? (
         <View style={twStyle("gap-3 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm")}>
           <View>
-            <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>Your menu categories</Text>
+<Text style={twStyle("text-[16px] font-semibold text-slate-900")}>{ow("categories.menuTitle")}</Text>
             <Text style={twStyle("mt-1 text-[13px] leading-relaxed text-slate-500")}>
-              These group your services on your booking page. Rename them, add your own, or remove
-              any you don&apos;t need — you&apos;ll assign each service to one next.
+{ow("categories.menuHint")}
             </Text>
           </View>
 
@@ -2728,17 +2768,17 @@ function Step10Categories() {
                 <FocusAwareTextInput
                   value={cat.name}
                   onChangeText={(t) => renameCategory(index, t)}
-                  placeholder="Category name"
+placeholder={ow("categories.categoryNamePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle(
                     "rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[15px] text-slate-900 min-h-[48px]",
                   )}
-                  accessibilityLabel={`Menu category ${index + 1} name`}
+                  accessibilityLabel={ow("categories.menuCategoryNameA11y", { n: index + 1 })}
                   returnKeyType="next"
                 />
                 {cat.global_category_id ? (
                   <Text style={twStyle("mt-1 text-[11px] text-slate-400")}>
-                    Listed under “{globalNameById.get(cat.global_category_id) || "marketplace"}” for discovery
+{ow("categories.listedUnder", { name: globalNameById.get(cat.global_category_id) || ow("categories.marketplace") })}
                   </Text>
                 ) : null}
               </View>
@@ -2746,7 +2786,7 @@ function Step10Categories() {
                 onPress={() => removeCategory(index)}
                 style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-rose-50")}
                 accessibilityRole="button"
-                accessibilityLabel="Remove category"
+accessibilityLabel={ow("categories.removeA11y")}
               >
                 <Ionicons name="trash-outline" size={18} color="#e11d48" />
               </TouchableOpacity>
@@ -2759,10 +2799,10 @@ function Step10Categories() {
               "flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 py-3",
             )}
             accessibilityRole="button"
-            accessibilityLabel="Add a custom category"
+accessibilityLabel={ow("categories.addCustomA11y")}
           >
             <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-            <Text style={twStyle("text-[14px] font-semibold text-primary")}>Add a custom category</Text>
+<Text style={twStyle("text-[14px] font-semibold text-primary")}>{ow("categories.addCustom")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -2789,6 +2829,7 @@ function categoryNameFromForm(form: ServiceFormState, categories: { id: string; 
 }
 
 function Step11Services() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const onboardingScroll = useOnboardingScroll();
   const { show: showBanner } = useInAppBanner();
@@ -2915,11 +2956,11 @@ function Step11Services() {
     const parsedAddonPrice = parseFloat(addonPrice);
     const parsedAddonDuration = addonDuration ? parseInt(addonDuration, 10) : undefined;
     if (!addonName.trim()) {
-      Alert.alert("Add-on", "Enter an add-on name.");
+      Alert.alert(ow("services.addonTitle"), ow("services.enterAddonName"));
       return;
     }
     if (Number.isNaN(parsedAddonPrice) || parsedAddonPrice < 0) {
-      Alert.alert("Add-on", "Enter a valid add-on price.");
+      Alert.alert(ow("services.addonTitle"), ow("services.enterAddonPrice"));
       return;
     }
     const parentIndex = editingIndex ?? services.length;
@@ -2943,7 +2984,7 @@ function Step11Services() {
 
   const saveService = () => {
     if (!providerCategories.some((c) => c.name.trim().length > 0)) {
-      Alert.alert("Service", "Add a menu category in the previous step first.");
+      Alert.alert(ow("services.serviceTitle"), ow("services.addCategoryFirst"));
       return;
     }
 
@@ -2963,7 +3004,7 @@ function Step11Services() {
     });
 
     if (error || !service) {
-      setFormError(error ?? "Could not save service.");
+      setFormError(error ?? ow("services.couldNotSave"));
       return;
     }
 
@@ -2985,7 +3026,7 @@ function Step11Services() {
 
     updateFormData({ services: nextServices, service_addons: nextAddons });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const successMessage = editingIndex != null ? "Service updated" : "Service added";
+    const successMessage = editingIndex != null ? ow("services.updated") : ow("services.added");
     resetForm();
     setServiceSuccessMessage(successMessage);
     showBanner({ title: successMessage, tone: "success" });
@@ -3021,11 +3062,11 @@ function Step11Services() {
           style={{ marginTop: 2 }}
         />
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-[15px] font-semibold text-sky-900")}>
-            Add services now or skip
+<Text style={twStyle("text-[15px] font-semibold text-sky-900")}>
+            {ow("services.skipTitle")}
           </Text>
           <Text style={twStyle("mt-1 text-[14px] leading-relaxed text-sky-800")}>
-            If you skip, we&apos;ll draft starter services from your selected categories.
+{ow("services.skipBody")}
           </Text>
         </View>
       </View>
@@ -3040,21 +3081,21 @@ function Step11Services() {
           <View style={twStyle("h-12 w-12 items-center justify-center rounded-full bg-emerald-50")}>
             <Ionicons name="cut-outline" size={20} color="#059669" />
           </View>
-          <View style={twStyle("flex-1 pr-2")}>
+          <View style={twStyle("flex-1 pe-2")}>
             <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>{s.title}</Text>
             <Text style={twStyle("mt-1 text-[13px] font-medium text-slate-500")}>
-              {s.provider_category_name?.trim() || "No category"}
+{s.provider_category_name?.trim() || ow("services.noCategory")}
             </Text>
             <Text style={twStyle("mt-0.5 text-[13px] text-slate-400")}>
-              {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
-              {s.supports_at_salon ? " · Salon" : ""}
-              {s.supports_at_home ? " · Home" : ""}
+{ow("services.meta", { minutes: s.duration_minutes, currency: s.currency || tenantCurrency, price: s.price })}
+              {s.supports_at_salon ? ow("services.salonSuffix") : ""}
+              {s.supports_at_home ? ow("services.homeSuffix") : ""}
               {(() => {
                 const addonCount = (formData.service_addons || []).filter(
                   (a) => a.parent_service_index === i,
                 ).length;
                 return addonCount
-                  ? ` · ${addonCount} add-on${addonCount === 1 ? "" : "s"}`
+                  ? ow("services.addonCount", { count: addonCount })
                   : "";
               })()}
             </Text>
@@ -3063,7 +3104,7 @@ function Step11Services() {
             onPress={() => startEdit(i)}
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-slate-100")}
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${s.title}`}
+            accessibilityLabel={ow("services.editA11y", { title: s.title })}
           >
             <Ionicons name="pencil-outline" size={18} color="#64748b" />
           </TouchableOpacity>
@@ -3071,7 +3112,7 @@ function Step11Services() {
             onPress={() => remove(i)}
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-rose-50")}
             accessibilityRole="button"
-            accessibilityLabel={`Remove ${s.title}`}
+            accessibilityLabel={ow("services.removeA11y", { title: s.title })}
           >
             <Ionicons name="trash-outline" size={18} color="#e11d48" />
           </TouchableOpacity>
@@ -3082,7 +3123,7 @@ function Step11Services() {
         style={twStyle("rounded-[1.5rem] border border-slate-200 bg-white p-5 gap-4 shadow-sm")}
       >
         <Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
-          {isEditing ? "Edit service" : "Add a service"}
+{isEditing ? ow("services.editService") : ow("services.addAService")}
         </Text>
 
         {!providerCategories.some((c) => c.name.trim().length > 0) ? (
@@ -3093,7 +3134,7 @@ function Step11Services() {
           >
             <Ionicons name="alert-circle-outline" size={20} color="#92400e" />
             <Text style={twStyle("flex-1 text-[14px] text-amber-900 leading-relaxed")}>
-              Add a menu category in the previous step first.
+{ow("services.addCategoryFirst")}
             </Text>
           </View>
         ) : (
@@ -3120,7 +3161,7 @@ function Step11Services() {
         )}
 
         <View style={twStyle("rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 gap-3")}>
-          <Text style={twStyle("text-[15px] font-semibold text-slate-900")}>Add-ons (optional)</Text>
+<Text style={twStyle("text-[15px] font-semibold text-slate-900")}>{ow("services.addonsOptional")}</Text>
           {draftAddons.map((addon, idx) => (
             <View
               key={`${addon.name}-${idx}`}
@@ -3128,11 +3169,11 @@ function Step11Services() {
                 "flex-row items-center justify-between rounded-[1rem] bg-white px-4 py-3 border border-slate-100",
               )}
             >
-              <View style={twStyle("flex-1 pr-3")}>
+              <View style={twStyle("flex-1 pe-3")}>
                 <Text style={twStyle("text-[15px] font-medium text-slate-900")}>{addon.name}</Text>
                 <Text style={twStyle("mt-0.5 text-[13px] text-slate-500")}>
                   {addon.currency || tenantCurrency} {addon.price}
-                  {addon.duration_minutes ? ` · +${addon.duration_minutes} min` : ""}
+{addon.duration_minutes ? ow("services.addonMinutes", { minutes: addon.duration_minutes }) : ""}
                 </Text>
               </View>
               <TouchableOpacity
@@ -3146,10 +3187,10 @@ function Step11Services() {
             ref={addonNameRef}
             value={addonName}
             onChangeText={setAddonName}
-            placeholder="Add-on name"
+placeholder={ow("services.addonNamePlaceholder")}
             style={twStyle(inputCls)}
             placeholderTextColor="#94a3b8"
-            accessibilityLabel="Add-on name"
+accessibilityLabel={ow("services.addonNamePlaceholder")}
             returnKeyType="next"
             blurOnSubmit={false}
             onSubmitEditing={() => addonPriceRef.current?.focus()}
@@ -3159,22 +3200,22 @@ function Step11Services() {
               ref={addonPriceRef}
               value={addonPrice}
               onChangeText={setAddonPrice}
-              placeholder={`Price (${tenantCurrency})`}
+              placeholder={ow("services.pricePlaceholder", { currency: tenantCurrency })}
               keyboardType="decimal-pad"
               style={twStyle(`${inputCls} flex-1`)}
               placeholderTextColor="#94a3b8"
-              accessibilityLabel="Add-on price"
+accessibilityLabel={ow("services.addonPriceA11y")}
               inputAccessoryViewID={KEYBOARD_ACCESSORY.addonPrice}
             />
             <FocusAwareTextInput
               ref={addonDurationRef}
               value={addonDuration}
               onChangeText={setAddonDuration}
-              placeholder="+ min"
+placeholder={ow("services.extraMinPlaceholder")}
               keyboardType="number-pad"
               style={twStyle(`${inputCls} w-24`)}
               placeholderTextColor="#94a3b8"
-              accessibilityLabel="Add-on extra minutes"
+accessibilityLabel={ow("services.addonMinutesA11y")}
               inputAccessoryViewID={KEYBOARD_ACCESSORY.addonDuration}
             />
           </View>
@@ -3190,10 +3231,10 @@ function Step11Services() {
             ref={addonDescriptionRef}
             value={addonDescription}
             onChangeText={setAddonDescription}
-            placeholder="Add-on description (optional)"
+placeholder={ow("services.addonDescriptionPlaceholder")}
             style={twStyle(inputCls)}
             placeholderTextColor="#94a3b8"
-            accessibilityLabel="Add-on description"
+accessibilityLabel={ow("services.addonDescriptionA11y")}
             returnKeyType="done"
           />
           <TouchableOpacity
@@ -3203,7 +3244,7 @@ function Step11Services() {
             )}
           >
             <Ionicons name="add" size={18} color={Colors.primary} />
-            <Text style={twStyle("text-[15px] font-semibold text-primary")}>Add add-on</Text>
+<Text style={twStyle("text-[15px] font-semibold text-primary")}>{ow("services.addAddon")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -3240,7 +3281,7 @@ function Step11Services() {
       >
         <Ionicons name={isEditing ? "checkmark-circle-outline" : "add-circle-outline"} size={22} color="#fff" />
         <Text style={twStyle("text-[16px] font-semibold text-white")}>
-          {isEditing ? "Save service" : "Add service"}
+{isEditing ? ow("services.saveService") : ow("services.addService")}
         </Text>
       </TouchableOpacity>
 
@@ -3249,9 +3290,9 @@ function Step11Services() {
           onPress={resetForm}
           style={twStyle("items-center py-2")}
           accessibilityRole="button"
-          accessibilityLabel="Cancel editing"
+accessibilityLabel={ow("services.cancelEditingA11y")}
         >
-          <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Cancel edit</Text>
+<Text style={twStyle("text-[15px] font-medium text-slate-500")}>{ow("services.cancelEdit")}</Text>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -3283,6 +3324,7 @@ function minutesFromTime(time: string): number {
 }
 
 function Step12Hours() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const oh = formData.operating_hours || {};
   const isFreelancer = formData.business_type === "mobile" || formData.team_size === "freelancer";
@@ -3365,8 +3407,8 @@ function Step12Hours() {
       const newMins = minutesFromTime(timeStr);
       if (newMins >= closeMins) {
         Alert.alert(
-          "Opening time too late",
-          "Opening time must be earlier than closing time.",
+          ow("hours.openingTooLateTitle"),
+          ow("hours.openingTooLateBody"),
         );
         return;
       }
@@ -3376,8 +3418,8 @@ function Step12Hours() {
       const newMins = minutesFromTime(timeStr);
       if (newMins <= openMins) {
         Alert.alert(
-          "Closing time too early",
-          "Closing time must be later than opening time.",
+          ow("hours.closingTooEarlyTitle"),
+          ow("hours.closingTooEarlyBody"),
         );
         return;
       }
@@ -3412,8 +3454,8 @@ function Step12Hours() {
           )}
         >
           {isFreelancer
-            ? "We've started you on broad weekday hours (8 am–8 pm). Tap a day to toggle open/closed, then set times."
-            : "Clients can only book slots within these hours. Tap a day to toggle it, then set the times."}
+            ? ow("hours.freelancerHint")
+            : ow("hours.teamHint")}
         </Text>
       </View>
 
@@ -3427,7 +3469,7 @@ function Step12Hours() {
               key={day}
               onPress={() => toggleDay(day)}
               accessibilityRole="button"
-              accessibilityLabel={`Toggle ${day} ${open ? "closed" : "open"}`}
+              accessibilityLabel={ow("hours.toggleA11y", { day: ow(`hours.days.${day}`), state: open ? ow("hours.closed") : ow("hours.open") })}
               accessibilityState={{ selected: open }}
               activeOpacity={0.7}
               style={twStyle(
@@ -3439,7 +3481,7 @@ function Step12Hours() {
                   `text-[13px] font-semibold ${open ? "text-white" : "text-slate-500"}`,
                 )}
               >
-                {DAY_SHORT[i]}
+{ow(`hours.daysShort.${day}`)}
               </Text>
             </TouchableOpacity>
           );
@@ -3457,20 +3499,20 @@ function Step12Hours() {
               <TouchableOpacity
                 onPress={() => toggleDay(day)}
                 accessibilityRole="button"
-                accessibilityLabel={`Toggle ${day} ${h.closed ? "open" : "closed"}`}
+                accessibilityLabel={ow("hours.toggleA11y", { day: ow(`hours.days.${day}`), state: h.closed ? ow("hours.open") : ow("hours.closed") })}
                 accessibilityState={{ selected: !h.closed }}
                 activeOpacity={0.7}
-                style={twStyle("flex-1 pr-3")}
+                style={twStyle("flex-1 pe-3")}
               >
-                <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
-                  {day}
+<Text style={twStyle("text-[17px] font-semibold text-slate-900")}>
+                  {ow(`hours.days.${day}`)}
                 </Text>
                 <Text
                   style={twStyle(
                     `mt-1 text-[12px] font-medium ${h.closed ? "text-slate-400" : "text-emerald-600"}`,
                   )}
                 >
-                  Tap to {h.closed ? "open this day" : "mark closed"}
+{h.closed ? ow("hours.tapToOpen") : ow("hours.tapToClose")}
                 </Text>
               </TouchableOpacity>
               <View style={twStyle("flex-row items-center gap-3")}>
@@ -3479,10 +3521,10 @@ function Step12Hours() {
                     onPress={() => copyToAll(day)}
                     style={twStyle("px-2 py-1")}
                     accessibilityRole="button"
-                    accessibilityLabel={`Copy ${day} hours to all days`}
+                    accessibilityLabel={ow("hours.copyAllA11y", { day: ow(`hours.days.${day}`) })}
                   >
                     <Text style={twStyle("text-[13px] font-semibold text-slate-500")}>
-                      Copy all
+{ow("hours.copyAll")}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -3491,13 +3533,13 @@ function Step12Hours() {
                     `text-[14px] font-medium ${h.closed ? "text-slate-400" : "text-slate-700"}`
                   )}
                 >
-                  {h.closed ? "Closed" : "Open"}
+{h.closed ? ow("hours.closedLabel") : ow("hours.openLabel")}
                 </Text>
                 <Switch
                   value={!h.closed}
                   onValueChange={(v) => setDay(day, { closed: !v })}
                   trackColor={{ false: "#cbd5e1", true: Colors.primary }}
-                  accessibilityLabel={`${day} open switch`}
+                  accessibilityLabel={ow("hours.openSwitchA11y", { day: ow(`hours.days.${day}`) })}
                 />
               </View>
             </View>
@@ -3509,7 +3551,7 @@ function Step12Hours() {
                     "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel={`Set opening time for ${day}, currently ${h.open || "09:00"}`}
+                  accessibilityLabel={ow("hours.setOpenA11y", { day: ow(`hours.days.${day}`), time: h.open || "09:00" })}
                 >
                   <Ionicons name="time-outline" size={18} color="#64748b" />
                   <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
@@ -3517,7 +3559,7 @@ function Step12Hours() {
                   </Text>
                 </TouchableOpacity>
                 <View style={twStyle("items-center justify-center")}>
-                  <Text style={twStyle("text-[15px] font-medium text-slate-400")}>to</Text>
+<Text style={twStyle("text-[15px] font-medium text-slate-400")}>{ow("hours.to")}</Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => openPicker(day, "close")}
@@ -3525,7 +3567,7 @@ function Step12Hours() {
                     "flex-1 flex-row items-center justify-center gap-2 rounded-[1rem] border border-slate-200 bg-slate-50 py-3"
                   )}
                   accessibilityRole="button"
-                  accessibilityLabel={`Set closing time for ${day}, currently ${h.close || "18:00"}`}
+                  accessibilityLabel={ow("hours.setCloseA11y", { day: ow(`hours.days.${day}`), time: h.close || "18:00" })}
                 >
                   <Ionicons name="time-outline" size={18} color="#64748b" />
                   <Text style={twStyle("text-[16px] font-semibold text-slate-900")}>
@@ -3556,16 +3598,16 @@ function Step12Hours() {
           >
             <View style={twStyle("mb-1 flex-row items-center justify-between")}>
               <Text style={twStyle("text-[17px] font-semibold capitalize text-slate-900")}>
-                {picker?.field === "open" ? "Opening time" : "Closing time"}
-                {picker?.day ? ` — ${picker.day}` : ""}
+{picker?.field === "open" ? ow("hours.openingTime") : ow("hours.closingTime")}
+                {picker?.day ? ` — ${ow(`hours.days.${picker.day}`)}` : ""}
               </Text>
               <TouchableOpacity
                 onPress={() => setPicker(null)}
                 accessibilityRole="button"
-                accessibilityLabel="Done picking time"
+accessibilityLabel={ow("hours.donePickingA11y")}
                 style={twStyle("px-2 py-1")}
               >
-                <Text style={twStyle("text-[16px] font-semibold text-primary")}>Done</Text>
+<Text style={twStyle("text-[16px] font-semibold text-primary")}>{ow("hours.done")}</Text>
               </TouchableOpacity>
             </View>
             <DateTimePicker
@@ -3595,6 +3637,7 @@ type ReviewRowProps = {
 };
 
 function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: ReviewRowProps) {
+  const ow = useOw();
   const content = (
     <>
       <View
@@ -3624,7 +3667,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
           color={ok ? "#10b981" : "#f59e0b"}
         />
       ) : null}
-      {onPress ? <Ionicons name="chevron-forward" size={16} color="#94a3b8" /> : null}
+      {onPress ? <DirectionalIcon name="chevron-forward" size={16} color="#94a3b8" /> : null}
     </>
   );
 
@@ -3633,7 +3676,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
       <TouchableOpacity
         onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Edit ${label}`}
+        accessibilityLabel={ow("review.editA11y", { label })}
         style={twStyle("flex-row items-center gap-4 py-3.5 border-b border-slate-100 last:border-0")}
       >
         {content}
@@ -3651,6 +3694,7 @@ function ReviewRow({ icon, iconBg, iconColor, label, value, ok, onPress }: Revie
 }
 
 function Step13Review() {
+  const ow = useOw();
   const { formData, editFromReview } = useOnboardingWizard();
   const a = formData.address;
   const hasRequiredPhotos = !!(formData.thumbnail_url && formData.avatar_url);
@@ -3662,10 +3706,10 @@ function Step13Review() {
 
   const bizTypeLabel =
     formData.business_type === "salon"
-      ? "Salon / studio"
+      ? ow("review.bizSalon")
       : formData.business_type === "mobile"
-        ? "Mobile / at-home"
-        : "Salon + Mobile";
+        ? ow("review.bizMobile")
+        : ow("review.bizBoth");
 
   return (
     <View style={twStyle("gap-4")}>
@@ -3676,21 +3720,21 @@ function Step13Review() {
       >
         <Ionicons name="rocket-outline" size={18} color="#047857" />
         <Text style={twStyle("flex-1 text-sm font-semibold text-emerald-900")}>
-          You&apos;re almost there! Review your details — tap any row to edit it.
+{ow("review.almostThere")}
         </Text>
       </View>
 
       {/* Identity */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
         <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-          Your identity
+{ow("review.yourIdentity")}
         </Text>
         <ReviewRow
           icon="person-outline"
           iconBg="#f0f9ff"
           iconColor="#0284c7"
-          label="Name"
-          value={formData.owner_name || "—"}
+          label={ow("review.name")}
+          value={formData.owner_name || ow("review.emDash")}
           ok={!!formData.owner_name}
           onPress={() => editFromReview(2)}
         />
@@ -3698,8 +3742,8 @@ function Step13Review() {
           icon="mail-outline"
           iconBg={formData.email_verified ? "#f0fdf4" : "#fffbeb"}
           iconColor={formData.email_verified ? "#16a34a" : "#d97706"}
-          label="Email"
-          value={formData.owner_email || "—"}
+          label={ow("review.email")}
+          value={formData.owner_email || ow("review.emDash")}
           ok={formData.email_verified}
           onPress={() => editFromReview(2)}
         />
@@ -3707,8 +3751,8 @@ function Step13Review() {
           icon="phone-portrait-outline"
           iconBg={formData.phone_verified ? "#f0fdf4" : "#fffbeb"}
           iconColor={formData.phone_verified ? "#16a34a" : "#d97706"}
-          label="Mobile"
-          value={formData.owner_phone || "—"}
+          label={ow("review.mobile")}
+          value={formData.owner_phone || ow("review.emDash")}
           ok={formData.phone_verified}
           onPress={() => editFromReview(2)}
         />
@@ -3716,8 +3760,8 @@ function Step13Review() {
           icon="calendar-outline"
           iconBg={formData.date_of_birth ? "#f0fdf4" : "#fffbeb"}
           iconColor={formData.date_of_birth ? "#16a34a" : "#d97706"}
-          label="Date of birth"
-          value={formData.date_of_birth ? formatLegalDobDisplay(formData.date_of_birth) : "—"}
+          label={ow("review.dateOfBirth")}
+          value={formData.date_of_birth ? formatLegalDobDisplay(formData.date_of_birth) : ow("review.emDash")}
           ok={!!formData.date_of_birth}
           onPress={() => editFromReview(2)}
         />
@@ -3726,14 +3770,14 @@ function Step13Review() {
       {/* Business */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
         <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-          Business
+{ow("review.business")}
         </Text>
         <ReviewRow
           icon="briefcase-outline"
           iconBg="#fdf4ff"
           iconColor="#9333ea"
-          label="Name"
-          value={formData.business_name || "—"}
+          label={ow("review.name")}
+          value={formData.business_name || ow("review.emDash")}
           ok={!!formData.business_name}
           onPress={() => editFromReview(3)}
         />
@@ -3741,7 +3785,7 @@ function Step13Review() {
           icon="storefront-outline"
           iconBg="#fdf4ff"
           iconColor="#9333ea"
-          label="Type"
+          label={ow("review.type")}
           value={bizTypeLabel}
           onPress={() => editFromReview(3)}
         />
@@ -3750,7 +3794,7 @@ function Step13Review() {
             icon="document-text-outline"
             iconBg="#fdf4ff"
             iconColor="#9333ea"
-            label="Description"
+            label={ow("review.description")}
             value={
               formData.description.slice(0, 80) + (formData.description.length > 80 ? "…" : "")
             }
@@ -3762,8 +3806,8 @@ function Step13Review() {
             icon="document-text-outline"
             iconBg="#fdf4ff"
             iconColor="#9333ea"
-            label="Description"
-            value="Not added — recommended"
+            label={ow("review.description")}
+            value={ow("review.descriptionMissing")}
             ok={false}
             onPress={() => editFromReview(3)}
           />
@@ -3773,14 +3817,14 @@ function Step13Review() {
       {/* Location & hours */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
         <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-          Location & hours
+{ow("review.locationHours")}
         </Text>
         <ReviewRow
           icon="location-outline"
           iconBg="#f0fdf4"
           iconColor="#16a34a"
-          label="Address"
-          value={a?.line1 ? `${a.line1}, ${a.city}` : "Not set"}
+          label={ow("review.address")}
+          value={a?.line1 ? `${a.line1}, ${a.city}` : ow("review.notSet")}
           ok={!!(a?.line1 && a?.city)}
           onPress={() => editFromReview(7)}
         />
@@ -3788,8 +3832,8 @@ function Step13Review() {
           icon="time-outline"
           iconBg="#f0fdf4"
           iconColor="#16a34a"
-          label="Open days"
-          value={`${openDayCount} of 7 days`}
+          label={ow("review.openDays")}
+          value={ow("review.openDaysValue", { count: openDayCount })}
           ok={openDayCount > 0}
           onPress={() => editFromReview(13)}
         />
@@ -3798,13 +3842,13 @@ function Step13Review() {
       {(formData.business_type === "mobile" || formData.business_type === "both") && (
         <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
           <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-            Travel fees
+{ow("review.travelFees")}
           </Text>
           <ReviewRow
             icon="car-outline"
             iconBg="#eff6ff"
             iconColor="#2563eb"
-            label="At-home travel"
+            label={ow("review.atHomeTravel")}
             value={formatTravelFeesSummary(formData.travel_fees, getTenantDefaultCurrency())}
             ok={formData.travel_fees?.enabled !== false}
             onPress={() => editFromReview(10)}
@@ -3815,14 +3859,14 @@ function Step13Review() {
       {/* Categories & services */}
       <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
         <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-          Catalogue
+{ow("review.catalogue")}
         </Text>
         <ReviewRow
           icon="pricetag-outline"
           iconBg="#fffbeb"
           iconColor="#d97706"
-          label="Categories"
-          value={catCount > 0 ? `${catCount} selected` : "None selected"}
+          label={ow("review.categories")}
+          value={catCount > 0 ? ow("review.categoriesSelected", { count: catCount }) : ow("review.noneSelected")}
           ok={catCount > 0}
           onPress={() => editFromReview(11)}
         />
@@ -3830,8 +3874,8 @@ function Step13Review() {
           icon="cut-outline"
           iconBg="#fffbeb"
           iconColor="#d97706"
-          label="Services"
-          value={svcCount > 0 ? `${svcCount} added` : "Auto-generated from categories"}
+          label={ow("review.services")}
+          value={svcCount > 0 ? ow("review.servicesAdded", { count: svcCount }) : ow("review.servicesAuto")}
           ok={svcCount >= 0}
           onPress={() => editFromReview(12)}
         />
@@ -3839,8 +3883,8 @@ function Step13Review() {
           icon="images-outline"
           iconBg="#fffbeb"
           iconColor="#d97706"
-          label="Photos"
-          value={hasRequiredPhotos ? "Thumbnail + profile image uploaded" : "Thumbnail and profile image required"}
+          label={ow("review.photos")}
+          value={hasRequiredPhotos ? ow("review.photosOk") : ow("review.photosRequired")}
           ok={hasRequiredPhotos}
           onPress={() => editFromReview(8)}
         />
@@ -3850,16 +3894,16 @@ function Step13Review() {
       {formData.selected_plan_name ? (
         <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}>
           <Text style={twStyle("mb-1 text-xs font-bold uppercase tracking-wide text-gray-400")}>
-            Plan
+{ow("review.plan")}
           </Text>
           <ReviewRow
             icon="star-outline"
             iconBg="#fdf4ff"
             iconColor="#9333ea"
-            label="Selected plan"
+            label={ow("review.selectedPlan")}
             value={
               formData.selected_plan_is_free
-                ? `${formData.selected_plan_name} — activates instantly, no card required`
+                ? ow("review.planFreeSuffix", { name: formData.selected_plan_name })
                 : formData.selected_plan_name
             }
             ok
@@ -3905,6 +3949,7 @@ function PlanCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const ow = useOw();
   const [expanded, setExpanded] = useState(false);
   const features = plan.features ?? [];
   const visibleFeatures = expanded ? features : features.slice(0, FEATURE_PREVIEW_COUNT);
@@ -3931,7 +3976,7 @@ function PlanCard({
                 style={twStyle("flex-row items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5")}
               >
                 <Ionicons name="star" size={10} color="#fff" />
-                <Text style={twStyle("text-[10px] font-bold text-white")}>Popular</Text>
+<Text style={twStyle("text-[10px] font-bold text-white")}>{ow("plan.popular")}</Text>
               </View>
             ) : null}
             {plan.is_free ? (
@@ -3939,7 +3984,7 @@ function PlanCard({
                 <Text
                   style={twStyle("text-[10px] font-bold uppercase tracking-wider text-emerald-700")}
                 >
-                  Free
+{ow("plan.free")}
                 </Text>
               </View>
             ) : null}
@@ -3993,14 +4038,14 @@ function PlanCard({
               }}
               accessibilityRole="button"
               accessibilityLabel={
-                expanded ? "Show fewer features" : `Show ${extraCount} more features`
+                expanded ? ow("plan.showFewerA11y") : ow("plan.showMoreA11y", { count: extraCount })
               }
               style={twStyle("mt-2 flex-row items-center gap-1.5 self-start py-1.5")}
             >
               <Text style={twStyle("text-[13px] font-semibold text-slate-900")}>
-                {expanded
-                  ? "Show less"
-                  : `+ ${extraCount} more feature${extraCount === 1 ? "" : "s"}`}
+{expanded
+                  ? ow("plan.showLess")
+                  : ow("plan.moreFeatures", { count: extraCount })}
               </Text>
               <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color="#0f172a" />
             </TouchableOpacity>
@@ -4027,8 +4072,8 @@ function PlanCard({
           )}
         >
           {plan.is_free
-            ? "Activates instantly — no payment needed"
-            : "Secure card payment after submitting"}
+            ? ow("plan.freeFooter")
+            : ow("plan.paidFooter")}
         </Text>
       </View>
     </TouchableOpacity>
@@ -4036,6 +4081,7 @@ function PlanCard({
 }
 
 function Step14Plan() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4098,7 +4144,7 @@ function Step14Plan() {
     return (
       <View style={twStyle("py-12 items-center gap-3")}>
         <ActivityIndicator color="#0f172a" size="large" />
-        <Text style={twStyle("text-[15px] font-medium text-slate-500")}>Loading plans…</Text>
+<Text style={twStyle("text-[15px] font-medium text-slate-500")}>{ow("plan.loading")}</Text>
       </View>
     );
   }
@@ -4112,8 +4158,7 @@ function Step14Plan() {
         <Text
           style={twStyle("text-center text-[15px] leading-relaxed text-slate-500 max-w-[280px]")}
         >
-          No subscription plans available right now. Hit Submit to continue — we&apos;ll sort this
-          after.
+{ow("plan.noneAvailable")}
         </Text>
       </View>
     );
@@ -4131,8 +4176,7 @@ function Step14Plan() {
         )}
       >
         <Text style={twStyle("text-[15px] leading-relaxed text-indigo-900")}>
-          Pick the plan that fits today. Free activates instantly — paid plans take you to a secure
-          card payment after you submit. You can upgrade or downgrade any time from settings.
+{ow("plan.intro")}
         </Text>
       </View>
       {showBillingToggle ? (
@@ -4156,7 +4200,7 @@ function Step14Plan() {
                     `text-[14px] font-semibold ${active ? "text-slate-900" : "text-slate-500"}`,
                   )}
                 >
-                  {period === "yearly" ? "Yearly" : "Monthly"}
+{period === "yearly" ? ow("plan.yearly") : ow("plan.monthly")}
                 </Text>
               </TouchableOpacity>
             );
@@ -4181,6 +4225,7 @@ function Step14Plan() {
 // ─── Step: Travel fees (mobile / both) ──────────────────────────────────────
 
 function StepTravelFees() {
+  const ow = useOw();
   const { formData, updateFormData } = useOnboardingWizard();
   const onboardingScroll = useOnboardingScroll();
   const tf = formData.travel_fees ?? { enabled: true, use_platform_default: true };
@@ -4218,7 +4263,7 @@ function StepTravelFees() {
         onFieldFocus={(ref) => onboardingScroll?.scrollToFocusedInput(ref)}
       />
       <Text style={twStyle("text-center text-xs text-gray-500")}>
-        You can skip this step — we&apos;ll apply the platform standard and you can adjust it later.
+{ow("travelFees.skipHint")}
       </Text>
     </View>
   );

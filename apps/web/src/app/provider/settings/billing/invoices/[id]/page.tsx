@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -42,6 +43,7 @@ interface Invoice {
 }
 
 export default function InvoiceDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const locale = useTenantLocaleTag();
@@ -64,7 +66,7 @@ export default function InvoiceDetailPage() {
       setInvoice(response.data);
     } catch (error) {
       console.error("Error loading invoice:", error);
-      toast.error("Failed to load invoice");
+      toast.error(t("web.provider.settings.pages.billing/invoices/[id].failedToLoadInvoice"));
     } finally {
       setIsLoading(false);
     }
@@ -106,21 +108,21 @@ export default function InvoiceDetailPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Billing", href: "/provider/settings/billing" },
-    { label: "Invoice" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.billing/invoices/[id].billing"), href: "/provider/settings/billing" },
+    { label: t("web.provider.settings.pages.billing/invoices/[id].invoice") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Invoice Details"
-        subtitle="View invoice information"
+        title={t("web.provider.settings.pages.billing/invoices/[id].invoiceDetails")}
+        subtitle={t("web.provider.settings.pages.billing/invoices/[id].viewInvoiceInformation")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading invoice..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.billing/invoices/[id].loadingInvoice")} />
       </SettingsDetailLayout>
     );
   }
@@ -128,19 +130,19 @@ export default function InvoiceDetailPage() {
   if (!invoice) {
     return (
       <SettingsDetailLayout
-        title="Invoice Details"
-        subtitle="View invoice information"
+        title={t("web.provider.settings.pages.billing/invoices/[id].invoiceDetails")}
+        subtitle={t("web.provider.settings.pages.billing/invoices/[id].viewInvoiceInformation")}
         breadcrumbs={breadcrumbs}
       >
         <div className="text-center py-12">
-          <p className="text-gray-600">Invoice not found</p>
+          <p className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].notFound")}</p>
           <Button
             variant="outline"
             onClick={() => router.back()}
             className="mt-4"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Go Back
+            <ArrowLeft className="w-4 h-4 me-2" />
+            {t("web.provider.bookings.detail.goBack")}
           </Button>
         </div>
       </SettingsDetailLayout>
@@ -149,8 +151,8 @@ export default function InvoiceDetailPage() {
 
   return (
     <SettingsDetailLayout
-      title="Invoice Details"
-      subtitle={`Invoice ${invoice.invoice_number}`}
+      title={t("web.provider.settings.pages.billing/invoices/[id].invoiceDetails")}
+      subtitle={t("web.provider.settings.pages.billing/invoices/[id].invoiceNumber", { number: invoice.invoice_number })}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-6">
@@ -168,8 +170,8 @@ export default function InvoiceDetailPage() {
               variant="outline"
               onClick={() => window.open(`/api/provider/invoices/${invoiceId}/download`, "_blank")}
             >
-              <Download className="w-4 h-4 mr-2" />
-              Download
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.settings.pages.billing/invoices/[id].download")}
             </Button>
           </div>
         </div>
@@ -177,13 +179,13 @@ export default function InvoiceDetailPage() {
         {/* Invoice Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="p-4 border border-gray-200 rounded-lg">
-            <h3 className="font-semibold text-sm text-gray-600 mb-2">Billing Period</h3>
+            <h3 className="font-semibold text-sm text-gray-600 mb-2">{t("web.provider.settings.pages.billing/invoices/[id].billingPeriod")}</h3>
             <p className="text-sm">
               {formatDate(invoice.period_start)} - {formatDate(invoice.period_end)}
             </p>
           </div>
           <div className="p-4 border border-gray-200 rounded-lg">
-            <h3 className="font-semibold text-sm text-gray-600 mb-2">Due Date</h3>
+            <h3 className="font-semibold text-sm text-gray-600 mb-2">{t("web.provider.settings.pages.billing.dueDate")}</h3>
             <p className="text-sm">{formatDate(invoice.due_date)}</p>
           </div>
         </div>
@@ -193,19 +195,19 @@ export default function InvoiceDetailPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Quantity</TableHead>
-                <TableHead className="text-right">Unit Price</TableHead>
-                <TableHead className="text-right">Total</TableHead>
+                <TableHead>{t("web.provider.common.description")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.settings.pages.billing/invoices/[id].quantity")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.settings.pages.billing/invoices/[id].unitPrice")}</TableHead>
+                <TableHead className="text-end">{t("web.provider.bookings.groupFinancials.total")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {(invoice.line_items || []).map((item: any) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.description}</TableCell>
-                  <TableCell className="text-right">{item.quantity}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(item.unit_price)}</TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-end">{item.quantity}</TableCell>
+                  <TableCell className="text-end">{formatCurrency(item.unit_price)}</TableCell>
+                  <TableCell className="text-end font-medium">
                     {formatCurrency(item.total_price)}
                   </TableCell>
                 </TableRow>
@@ -218,25 +220,25 @@ export default function InvoiceDetailPage() {
         <div className="flex justify-end">
           <div className="w-full md:w-96 space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Subtotal:</span>
+              <span className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].subtotal")}</span>
               <span>{formatCurrency(invoice.subtotal)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Tax ({invoice.tax_rate}%):</span>
+              <span className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].taxRate", { rate: invoice.tax_rate })}</span>
               <span>{formatCurrency(invoice.tax_amount)}</span>
             </div>
             <div className="flex justify-between text-lg font-bold pt-2 border-t">
-              <span>Total:</span>
+              <span>{t("web.provider.settings.pages.billing/invoices/[id].total")}</span>
               <span>{formatCurrency(invoice.total_amount)}</span>
             </div>
             {invoice.amount_paid > 0 && (
               <>
                 <div className="flex justify-between text-sm pt-2 border-t">
-                  <span className="text-gray-600">Amount Paid:</span>
+                  <span className="text-gray-600">{t("web.provider.settings.pages.billing/invoices/[id].amountPaid")}</span>
                   <span className="text-green-600">{formatCurrency(invoice.amount_paid)}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                  <span>Amount Due:</span>
+                  <span>{t("web.provider.settings.pages.billing/invoices/[id].amountDue")}</span>
                   <span>{formatCurrency(invoice.amount_due)}</span>
                 </div>
               </>
@@ -247,15 +249,15 @@ export default function InvoiceDetailPage() {
         {/* Payments */}
         {invoice.payments && invoice.payments.length > 0 && (
           <div>
-            <h3 className="font-semibold mb-4">Payment History</h3>
+            <h3 className="font-semibold mb-4">{t("web.provider.settings.pages.billing/invoices/[id].paymentHistory")}</h3>
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t("web.provider.common.date")}</TableHead>
+                    <TableHead>{t("web.provider.common.amount")}</TableHead>
+                    <TableHead>{t("web.provider.settings.pages.billing/invoices/[id].reference")}</TableHead>
+                    <TableHead>{t("web.provider.common.statusLabel")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -265,7 +267,7 @@ export default function InvoiceDetailPage() {
                       <TableCell className="font-medium">
                         {formatCurrency(payment.amount)}
                       </TableCell>
-                      <TableCell>{payment.payment_reference || "-"}</TableCell>
+                      <TableCell>{payment.payment_reference || t("web.provider.common.hyphen")}</TableCell>
                       <TableCell>
                         <Badge variant={payment.status === "completed" ? "default" : "outline"}>
                           {payment.status}
@@ -282,7 +284,7 @@ export default function InvoiceDetailPage() {
         {/* Notes */}
         {invoice.notes && (
           <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-sm text-gray-600 mb-2">Notes</h3>
+            <h3 className="font-semibold text-sm text-gray-600 mb-2">{t("web.provider.common.notes")}</h3>
             <p className="text-sm">{invoice.notes}</p>
           </div>
         )}
@@ -290,8 +292,8 @@ export default function InvoiceDetailPage() {
         {/* Back Button */}
         <div className="flex justify-start">
           <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Billing
+            <ArrowLeft className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.billing/invoices/[id].backToBilling")}
           </Button>
         </div>
       </div>

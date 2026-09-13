@@ -23,7 +23,7 @@ export function TruncationBanner({
       }}
     >
       <Ionicons name="information-circle-outline" size={18} color="#b45309" style={{ marginTop: 1 }} />
-      <Text style={{ marginLeft: 8, flex: 1, fontSize: 13, lineHeight: 18, color: Colors.gray[700] }}>
+      <Text style={{ marginStart: 8, flex: 1, fontSize: 13, lineHeight: 18, color: Colors.gray[700] }}>
         {message}
       </Text>
     </View>

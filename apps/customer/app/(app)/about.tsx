@@ -1,12 +1,21 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { WebView } from "react-native-webview";
+import { useTranslation } from "@beautonomi/i18n";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { getBackendUrl, inAppWebViewUserAgentProps } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function AboutScreen() {
   useScreenTracking("About Us");
+  const { t } = useTranslation();
+  const ta = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.about.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const base = getBackendUrl().replace(/\/$/, "");
   const [webError, setWebError] = useState<string | null>(null);
 
@@ -17,7 +26,7 @@ export default function AboutScreen() {
           <View style={styles.errorWrap}>
             <Text style={styles.errorText}>{webError}</Text>
             <TouchableOpacity onPress={() => setWebError(null)} accessibilityRole="button">
-              <Text style={styles.retry}>Retry</Text>
+              <Text style={styles.retry}>{ta("retry")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -26,8 +35,8 @@ export default function AboutScreen() {
             {...inAppWebViewUserAgentProps()}
             style={styles.webview}
             startInLoadingState
-            onError={(e: any) => setWebError(e.nativeEvent.description || "Could not load page")}
-            onHttpError={(e: any) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
+            onError={(e: any) => setWebError(e.nativeEvent.description || ta("couldNotLoadPage"))}
+            onHttpError={(e: any) => setWebError(ta("httpError", { status: e.nativeEvent.statusCode }))}
             renderLoading={() => (
               <View style={styles.loading}>
                 <ActivityIndicator size="large" color={Colors.primary} />
@@ -37,7 +46,7 @@ export default function AboutScreen() {
         )
       ) : (
         <View style={styles.errorWrap}>
-          <Text style={styles.errorText}>App URL is not configured.</Text>
+          <Text style={styles.errorText}>{ta("appUrlNotConfigured")}</Text>
         </View>
       )}
     </View>

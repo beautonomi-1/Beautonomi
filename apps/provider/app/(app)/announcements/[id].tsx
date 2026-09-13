@@ -18,6 +18,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { tabScreenScrollBottomPadding } from "@/constants/layout";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Notif = {
   id: string;
@@ -35,6 +36,8 @@ function getDataPayload(n: Notif | null): Record<string, unknown> {
 }
 
 export default function ProviderAnnouncementDetailScreen() {
+  const { t } = useTranslation();
+  const ad = (key: string) => t(`provider.mobile.screens.announcementDetail.${key}`) as string;
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -51,12 +54,12 @@ export default function ProviderAnnouncementDetailScreen() {
     const res = await api.get<{ notification?: Notif }>(`/api/me/notifications/${id}`);
     setLoading(false);
     if (res.error || !res.data?.notification) {
-      setLoadErr(res.error?.message ?? "Announcement not found");
+      setLoadErr(res.error?.message ?? ad("notFound"));
       setRow(null);
       return;
     }
     setRow(res.data.notification);
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     markedReadRef.current = false;
@@ -117,16 +120,16 @@ export default function ProviderAnnouncementDetailScreen() {
   return (
     <ScreenContainer scrollable={false} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ScreenHeader title="Announcement" showBack onBack={handleBack} />
+      <ScreenHeader title={ad("title")} showBack onBack={handleBack} />
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : loadErr || !row ? (
         <View style={{ padding: 24 }}>
-          <Text style={{ fontSize: 16, color: Colors.gray[700] }}>{loadErr ?? "Not found"}</Text>
+          <Text style={{ fontSize: 16, color: Colors.gray[700] }}>{loadErr ?? ad("notFound")}</Text>
           <TouchableOpacity onPress={load} style={{ marginTop: 16 }}>
-            <Text style={{ color: Colors.primary, fontWeight: "700" }}>Retry</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "700" }}>{ad("retry")}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -140,7 +143,7 @@ export default function ProviderAnnouncementDetailScreen() {
             <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: Colors.gray[100] }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: Colors.gray[600] }}>{annType.toUpperCase()}</Text>
             </View>
-            <Text style={{ marginLeft: 12, fontSize: 12, color: Colors.gray[500] }}>
+            <Text style={{ marginStart: 12, fontSize: 12, color: Colors.gray[500] }}>
               {new Date(row.created_at).toLocaleString()}
             </Text>
           </View>
@@ -183,7 +186,7 @@ export default function ProviderAnnouncementDetailScreen() {
                 name={isExternalCta ? "open-outline" : "arrow-forward"}
                 size={18}
                 color="#fff"
-                style={{ marginLeft: 8 }}
+                style={{ marginStart: 8 }}
               />
             </TouchableOpacity>
           ) : null}

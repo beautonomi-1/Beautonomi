@@ -11,6 +11,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
@@ -36,6 +37,12 @@ export function VariantMatrixEditor({
   onChangeOptionTypes,
   onChangeRows,
 }: Props) {
+  const { t } = useTranslation();
+  const vm = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.variantMatrixEditor.${key}`, opts) as string,
+    [t],
+  );
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [barcodeScanRowIndex, setBarcodeScanRowIndex] = useState<number | null>(null);
   const { pickFromLibrary } = useImagePicker();
@@ -49,7 +56,7 @@ export function VariantMatrixEditor({
       formData.append("folder", "products");
       const res = await api.fetch<{ url?: string }>("/api/upload", { method: "POST", body: formData });
       if (res.error || !res.data?.url) {
-        Alert.alert("Upload failed", res.error?.message ?? "Could not upload image.");
+        Alert.alert(vm("uploadFailedTitle"), res.error?.message ?? vm("uploadFailedBody"));
         return;
       }
       const next = [...variantRows];
@@ -78,7 +85,7 @@ export function VariantMatrixEditor({
   const handleGenerate = () => {
     const rows = generateVariantMatrixRows(variantOptionTypes, variantRows, { measure: defaultMeasure });
     if (rows.length === 0) {
-      Alert.alert("Variants", "Add at least one option with a name and one value.");
+      Alert.alert(vm("variantsTitle"), vm("addOptionRequired"));
       return;
     }
     onChangeRows(rows);
@@ -87,21 +94,21 @@ export function VariantMatrixEditor({
 
   return (
     <View style={twStyle("mb-4 rounded-xl border border-violet-200 bg-violet-50 p-3")}>
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-800")}>Variant options</Text>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-800")}>{vm("variantOptions")}</Text>
       <Text style={twStyle("mb-3 text-xs text-gray-600")}>
-        Add option types and values, generate the matrix, then set SKU, pricing and stock per row.
+        {vm("hint")}
       </Text>
 
       {variantOptionTypes.map((opt, oi) => (
         <View key={oi} style={twStyle("mb-3 rounded-lg border border-violet-100 bg-white p-3")}>
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-xs font-medium text-gray-700")}>Option {oi + 1}</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-700")}>{vm("optionN", { n: oi + 1 })}</Text>
             {variantOptionTypes.length > 1 ? (
               <TouchableOpacity
                 onPress={() => onChangeOptionTypes(variantOptionTypes.filter((_, i) => i !== oi))}
                 accessibilityRole="button"
               >
-                <Text style={twStyle("text-xs font-medium text-red-600")}>Remove</Text>
+                <Text style={twStyle("text-xs font-medium text-red-600")}>{vm("remove")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -113,7 +120,7 @@ export function VariantMatrixEditor({
               next[oi] = { ...next[oi], name: t };
               onChangeOptionTypes(next);
             }}
-            placeholder="Size"
+            placeholder={vm("placeholderSize")}
           />
           <ChipCombobox
             value={opt.values}
@@ -129,8 +136,8 @@ export function VariantMatrixEditor({
               { value: "M", label: "M" },
               { value: "L", label: "L" },
             ]}
-            placeholder="Pick or type values"
-            accessibilityLabel={`Option ${oi + 1} values`}
+            placeholder={vm("pickOrType")}
+            accessibilityLabel={vm("optionValuesA11y", { n: oi + 1 })}
           />
         </View>
       ))}
@@ -140,20 +147,20 @@ export function VariantMatrixEditor({
         style={twStyle("mb-2 flex-row items-center justify-center rounded-xl border border-dashed border-violet-300 py-2")}
       >
         <Ionicons name="add-circle-outline" size={18} color="#7c3aed" />
-        <Text style={twStyle("ml-1 text-sm font-medium text-violet-700")}>Add option</Text>
+        <Text style={twStyle("ms-1 text-sm font-medium text-violet-700")}>{vm("addOption")}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         onPress={handleGenerate}
         style={twStyle("items-center rounded-xl border border-violet-300 bg-white py-3")}
       >
-        <Text style={twStyle("font-medium text-violet-700")}>Generate variant matrix</Text>
+        <Text style={twStyle("font-medium text-violet-700")}>{vm("generate")}</Text>
       </TouchableOpacity>
 
       {variantRows.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mt-3")}>
           {variantRows.map((row, idx) => (
-            <View key={idx} style={twStyle("mr-3 w-72 rounded-lg border border-violet-100 bg-white p-3")}>
+            <View key={idx} style={twStyle("me-3 w-72 rounded-lg border border-violet-100 bg-white p-3")}>
               <Text style={twStyle("mb-2 text-xs font-medium text-gray-800")}>
                 {Object.entries(row.option_values).map(([k, v]) => `${k}: ${v}`).join(" · ")}
               </Text>
@@ -168,28 +175,28 @@ export function VariantMatrixEditor({
                 <TouchableOpacity
                   onPress={() => pickVariantImage(idx)}
                   disabled={uploadingIndex === idx}
-                  style={twStyle("ml-2 rounded-lg border border-violet-200 px-2 py-1")}
+                  style={twStyle("ms-2 rounded-lg border border-violet-200 px-2 py-1")}
                 >
                   {uploadingIndex === idx ? (
                     <ActivityIndicator size="small" />
                   ) : (
-                    <Text style={twStyle("text-xs text-violet-700")}>{row.image_url ? "Replace" : "Photo"}</Text>
+                    <Text style={twStyle("text-xs text-violet-700")}>{row.image_url ? vm("replace") : vm("photo")}</Text>
                   )}
                 </TouchableOpacity>
               </View>
               {(["sku", "barcode", "measure"] as const).map((field) => (
                 <View key={field} style={twStyle("mb-1")}>
                   <View style={twStyle("flex-row items-center justify-between")}>
-                    <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{field}</Text>
+                    <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{vm(field === "sku" ? "fieldSku" : field === "barcode" ? "fieldBarcode" : "fieldMeasure")}</Text>
                     {field === "barcode" ? (
                       <TouchableOpacity
                         onPress={() => setBarcodeScanRowIndex(idx)}
                         style={twStyle("flex-row items-center py-0.5")}
-                        accessibilityLabel={`Scan barcode for variant ${idx + 1}`}
+                        accessibilityLabel={vm("scanBarcodeA11y", { n: idx + 1 })}
                         accessibilityRole="button"
                       >
                         <Ionicons name="barcode-outline" size={14} color="#7c3aed" />
-                        <Text style={twStyle("ml-0.5 text-[10px] font-medium text-violet-700")}>Scan</Text>
+                        <Text style={twStyle("ms-0.5 text-[10px] font-medium text-violet-700")}>{vm("scan")}</Text>
                       </TouchableOpacity>
                     ) : null}
                   </View>
@@ -209,7 +216,15 @@ export function VariantMatrixEditor({
               ))}
               {(["amount", "quantity", "low_stock_level", "reorder_quantity", "supply_price", "retail_price", "markup"] as const).map((field) => (
                 <View key={field} style={twStyle("mb-1")}>
-                  <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{field.replace(/_/g, " ")}</Text>
+                  <Text style={twStyle("text-[10px] uppercase text-gray-500")}>{({
+                    amount: vm("fieldAmount"),
+                    quantity: vm("fieldQuantity"),
+                    low_stock_level: vm("fieldLowStockLevel"),
+                    reorder_quantity: vm("fieldReorderQuantity"),
+                    supply_price: vm("fieldSupplyPrice"),
+                    retail_price: vm("fieldRetailPrice"),
+                    markup: vm("fieldMarkup"),
+                  } as Record<string, string>)[field]}</Text>
                   <TextInput
                     style={twStyle("rounded border border-gray-200 px-2 py-1 text-sm")}
                     keyboardType="decimal-pad"
@@ -237,7 +252,7 @@ export function VariantMatrixEditor({
       <BarcodeScannerModal
         visible={barcodeScanRowIndex !== null}
         onClose={() => setBarcodeScanRowIndex(null)}
-        title="Scan variant barcode"
+        title={vm("scanTitle")}
         onScanned={(code) => {
           if (barcodeScanRowIndex !== null) {
             updateRow(barcodeScanRowIndex, { barcode: code });

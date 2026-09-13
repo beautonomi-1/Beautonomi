@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useRef } from "react";
 import {
   Dialog,
@@ -43,6 +45,7 @@ export function PrintScheduleDialog({
   initialStaffId,
 }: PrintScheduleDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
   const [selectedStaffId, setSelectedStaffId] = useState<string>("all");
 
   // Set initial staff ID when dialog opens
@@ -115,7 +118,7 @@ export function PrintScheduleDialog({
 
   // Group appointments by date and staff (incl. Unassigned)
   const UNASSIGNED_ID = "__unassigned__";
-  const unassignedMember: TeamMember = { id: UNASSIGNED_ID, name: "Unassigned", role: "employee", email: "", mobile: "", is_active: true };
+  const unassignedMember: TeamMember = { id: UNASSIGNED_ID, name: t("web.provider.common.unassigned"), role: "employee", email: "", mobile: "", is_active: true };
   const staffList = selectedStaffId === "all"
     ? [unassignedMember, ...teamMembers]
     : teamMembers.filter((m) => m.id === selectedStaffId);
@@ -148,7 +151,7 @@ export function PrintScheduleDialog({
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
-      alert("Please allow popups to print");
+      alert(t("web.provider.printSchedule.allowPopups"));
       return;
     }
 
@@ -156,7 +159,7 @@ export function PrintScheduleDialog({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Schedule - ${format(selectedDate, "MMM d, yyyy")}</title>
+          <title>${t("web.provider.printSchedule.printTitle", { date: format(selectedDate, "MMM d, yyyy") })}</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
             body { 
@@ -277,7 +280,7 @@ export function PrintScheduleDialog({
         <body class="${options.compactView ? "compact" : ""}">
           ${printContent.innerHTML}
           <div class="footer">
-            Printed on ${format(new Date(), "PPp")} • Beautonomi
+            ${t("web.provider.printSchedule.printedOn", { date: format(new Date(), "PPp") })}
           </div>
         </body>
       </html>
@@ -299,7 +302,7 @@ export function PrintScheduleDialog({
               <div className="p-1.5 rounded-lg bg-primary/10">
                 <Printer className="w-4 h-4 text-primary" />
               </div>
-              Print Schedule
+{t("web.provider.printSchedule.title")}
             </DialogTitle>
           </DialogHeader>
 
@@ -307,13 +310,13 @@ export function PrintScheduleDialog({
           <div className="px-4 pb-3 flex-shrink-0 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
               <div className="flex-1 min-w-0">
-                <Label className="text-xs font-medium text-gray-500">Staff</Label>
+                <Label className="text-xs font-medium text-gray-500">{t("web.provider.printSchedule.staff")}</Label>
                 <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
                   <SelectTrigger className="mt-1 h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Staff</SelectItem>
+                    <SelectItem value="all">{t("web.provider.printSchedule.allStaff")}</SelectItem>
                     {teamMembers.map((member) => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.name}
@@ -324,12 +327,12 @@ export function PrintScheduleDialog({
               </div>
               <div className="flex flex-wrap gap-x-3 gap-y-1.5 items-center pt-1 sm:pt-0">
                   {[
-                  { key: "showClientPhone", label: "Phone" },
-                  { key: "showClientEmail", label: "Email" },
-                  { key: "showServicePrice", label: "Price" },
-                  { key: "showNotes", label: "Notes" },
-                  { key: "showCancelled", label: "Include Cancelled" },
-                  { key: "compactView", label: "Compact" },
+                  { key: "showClientPhone", label: t("web.provider.printSchedule.phone") },
+                  { key: "showClientEmail", label: t("web.provider.printSchedule.email") },
+                  { key: "showServicePrice", label: t("web.provider.printSchedule.price") },
+                  { key: "showNotes", label: t("web.provider.printSchedule.notes") },
+                  { key: "showCancelled", label: t("web.provider.printSchedule.includeCancelled") },
+                  { key: "compactView", label: t("web.provider.printSchedule.compact") },
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2 cursor-pointer group">
                     <Checkbox
@@ -372,19 +375,19 @@ export function PrintScheduleDialog({
             <div className="header border-b border-gray-200 pb-2 mb-3">
               <h1 className="text-sm font-semibold text-gray-900">
                 {view === "day"
-                  ? `Schedule for ${format(selectedDate, "EEEE, MMM d, yyyy")}`
+                  ? t("web.provider.printSchedule.scheduleFor", { date: format(selectedDate, "EEEE, MMM d, yyyy") })
                   : view === "3-days"
                     ? `${format(dates[0], "MMM d")} – ${format(dates[dates.length - 1], "MMM d, yyyy")}`
-                    : `Week: ${format(dates[0], "MMM d")} – ${format(dates[6], "MMM d, yyyy")}`}
+                    : t("web.provider.printSchedule.weekRange", { start: format(dates[0], "MMM d"), end: format(dates[6], "MMM d, yyyy") })}
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">
                 {selectedStaffId === "all"
-                  ? `All Staff Members (${teamMembers.length})`
+                  ? t("web.provider.printSchedule.allStaffMembers", { count: teamMembers.length })
                   : teamMembers.find((m) => m.id === selectedStaffId)?.name}
                 {" • "}
                 {(() => {
                   const count = new Set(filteredAppointments.map((a) => (a as { booking_id?: string }).booking_id || a.id)).size;
-                  return `${count} appointment${count !== 1 ? "s" : ""}`;
+                  return t("web.provider.printSchedule.appointmentCount", { count });
                 })()}
               </p>
             </div>
@@ -406,7 +409,7 @@ export function PrintScheduleDialog({
                     </div>
 
                     {staffAppointments.length === 0 ? (
-                      <div className="no-appointments text-xs text-gray-400 italic py-2">No appointments</div>
+                      <div className="no-appointments text-xs text-gray-400 italic py-2">{t("web.provider.printSchedule.noAppointments")}</div>
                     ) : (
                       staffAppointments.map((apt) => (
                         <div key={apt.id}>
@@ -419,7 +422,7 @@ export function PrintScheduleDialog({
                           >
                             <div className="time">
                               {apt.scheduled_time}
-                              <div className="duration">{apt.duration_minutes}min</div>
+                              <div className="duration">{t("web.provider.printSchedule.durationMin", { minutes: apt.duration_minutes })}</div>
                             </div>
                             <div className="details">
                               <div className="client-name">{apt.client_name}</div>
@@ -444,7 +447,7 @@ export function PrintScheduleDialog({
                             )}
                           </div>
                           {options.showNotes && apt.notes && (
-                            <div className="notes">Note: {apt.notes}</div>
+                            <div className="notes">{t("web.provider.printSchedule.notePrefix", { notes: apt.notes })}</div>
                           )}
                         </div>
                       ))
@@ -463,15 +466,15 @@ export function PrintScheduleDialog({
             size="sm"
             onClick={() => onOpenChange(false)}
           >
-            Cancel
+{t("common.cancel")}
           </Button>
           <Button
             size="sm"
             onClick={handlePrint}
             className="bg-primary hover:bg-primary-hover"
           >
-            <Printer className="w-3.5 h-3.5 mr-1.5" />
-            Print
+            <Printer className="w-3.5 h-3.5 me-1.5" />
+{t("web.provider.printSchedule.print")}
           </Button>
         </DialogFooter>
       </DialogContent>

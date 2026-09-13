@@ -9,6 +9,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useProvider } from "@/providers/ProviderContext";
 import { appendReportLocation } from "@/lib/reportLocationQuery";
@@ -24,6 +25,7 @@ import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 import { ActiveLocationChip } from "@/components/reports/ActiveLocationChip";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface BusinessReport {
   revenue: {
@@ -58,12 +60,13 @@ interface BusinessReport {
   };
 }
 
-const PERIOD_FILTERS = [
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "This Quarter", value: "quarter" },
-  { label: "This Year", value: "year" },
-];
+const PERIOD_VALUES = ["week", "month", "quarter", "year"] as const;
+const PERIOD_LABEL_KEYS: Record<(typeof PERIOD_VALUES)[number], string> = {
+  week: "periodWeek",
+  month: "periodMonth",
+  quarter: "periodQuarter",
+  year: "periodYear",
+};
 
 /** Overview API response shape (business/overview) */
 type OverviewResponse = {
@@ -150,9 +153,19 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
 }
 
 export default function BusinessReportScreen() {
+  const { t } = useTranslation();
+  const br = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.businessReport.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { selectedLocationId } = useProvider();
   const [period, setPeriod] = useState("month");
+  const PERIOD_FILTERS = PERIOD_VALUES.map((value) => ({
+    label: br(PERIOD_LABEL_KEYS[value]),
+    value,
+  }));
 
   const businessUrl = appendReportLocation(`/api/provider/reports/business/overview?period=${period}`, selectedLocationId);
   const { data: overview, loading, error: dataError, errorCode: dataErrorCode, timedOut, refresh } = useApi<OverviewResponse>(
@@ -173,35 +186,45 @@ export default function BusinessReportScreen() {
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (!report) return;
+    const periodLabel =
+      PERIOD_LABEL_KEYS[period as (typeof PERIOD_VALUES)[number]]
+        ? br(PERIOD_LABEL_KEYS[period as (typeof PERIOD_VALUES)[number]])
+        : period;
+    const growthValue = `${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}`;
     const lines = [
-      `Business overview — ${period}`,
-      overview?.fromYmd && overview?.toYmd ? `Window: ${overview.fromYmd} → ${overview.toYmd}` : "",
-      overview?.timezone ? `Timezone: ${overview.timezone}` : "",
+      br("exportOverview", { period: periodLabel }),
+      overview?.fromYmd && overview?.toYmd
+        ? br("exportWindow", { from: overview.fromYmd, to: overview.toYmd })
+        : "",
+      overview?.timezone ? br("exportTimezone", { timezone: overview.timezone }) : "",
       "",
-      `Recognized revenue (earnings + tips + travel + cancellation + walk-in): ${formatCurrency(report.revenue.total)}`,
-      `Service earnings (provider_earnings): ${formatCurrency(overview?.serviceEarnings ?? 0)}`,
-      overview?.netRevenue != null ? `Net after refunds: ${formatCurrency(overview.netRevenue)}` : "",
-      `Growth vs prior window: ${report.revenue.growth_percentage >= 0 ? "+" : ""}${report.revenue.growth_percentage.toFixed(1)}%`,
-      `Scheduled bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
-      `Distinct clients: ${report.clients.total}`,
-      `Avg ledger per booking (with earnings): ${formatCurrency(report.clients.avg_booking_value)}`,
+      br("exportRecognized", { amount: formatCurrency(report.revenue.total) }),
+      br("exportServiceEarnings", { amount: formatCurrency(overview?.serviceEarnings ?? 0) }),
+      overview?.netRevenue != null ? br("exportNet", { amount: formatCurrency(overview.netRevenue) }) : "",
+      br("exportGrowth", { value: growthValue }),
+      br("exportBookings", {
+        total: report.bookings.total,
+        rate: report.bookings.completion_rate.toFixed(0),
+      }),
+      br("exportClients", { count: report.clients.total }),
+      br("exportAvgLedger", { amount: formatCurrency(report.clients.avg_booking_value) }),
     ].filter(Boolean);
     try {
-      await Share.share({ message: lines.join("\n"), title: "Business Report" });
+      await Share.share({ message: lines.join("\n"), title: br("exportTitle") });
     } catch (err) {
       console.error("Failed to share business report:", err);
-      Alert.alert("Export Failed", "Could not share the report. Please try again.");
+      Alert.alert(br("exportFailedTitle"), br("exportFailedBody"));
     }
   }
 
   if (timedOut && !report) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Business Overview" showBack />
+        <ScreenHeader title={br("title")} showBack />
         <ErrorState
-          message="Request is taking longer than usual. Check your connection and try again."
+          message={br("timeoutMessage")}
           onRetry={refresh}
-          retryLabel="Retry"
+          retryLabel={br("retry")}
         />
       </ScreenContainer>
     );
@@ -210,7 +233,7 @@ export default function BusinessReportScreen() {
   if (dataError && !report) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Business Overview" showBack />
+        <ScreenHeader title={br("title")} showBack />
         <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -219,7 +242,7 @@ export default function BusinessReportScreen() {
   if (loading && !report) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Business Overview" showBack />
+        <ScreenHeader title={br("title")} showBack />
         <LoadingState />
       </ScreenContainer>
     );
@@ -230,9 +253,9 @@ export default function BusinessReportScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Business Overview"
+        title={br("title")}
         showBack
-        subtitle="Ledger + scheduled bookings · period to date"
+        subtitle={br("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -251,7 +274,7 @@ export default function BusinessReportScreen() {
 
       {overview?.reportBasis ? (
         <View style={twStyle("mb-4 rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>What this counts</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>{br("whatThisCounts")}</Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-sky-950")}>{overview.reportBasis}</Text>
           {overview.fromYmd && overview.toYmd ? (
             <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>
@@ -263,13 +286,13 @@ export default function BusinessReportScreen() {
       ) : null}
 
       {/* Revenue */}
-      <SectionHeader title="Revenue" />
+      <SectionHeader title={br("sectionRevenue")} />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Gross recognized"
+            title={br("grossRecognized")}
             value={formatCurrency(r?.revenue.total ?? 0)}
-            subtitle="Before refund clawbacks"
+            subtitle={br("beforeRefunds")}
             icon="cash-outline"
             iconColor="#22c55e"
             iconBg="bg-green-50"
@@ -277,9 +300,9 @@ export default function BusinessReportScreen() {
           />
           {overview?.netRevenue != null ? (
             <StatCard
-              title="Net of refunds"
+              title={br("netOfRefunds")}
               value={formatCurrency(overview.netRevenue)}
-              subtitle="After refund clawbacks"
+              subtitle={br("afterRefunds")}
               icon="shield-checkmark-outline"
               iconColor="#0d9488"
               iconBg="bg-teal-50"
@@ -287,10 +310,10 @@ export default function BusinessReportScreen() {
             />
           ) : null}
           <StatCard
-            title="Vs prior window"
+            title={br("vsPriorWindow")}
             value={
               overview?.revenueGrowthIsNew
-                ? "New"
+                ? br("growthNew")
                 : `${(r?.revenue.growth_percentage ?? 0) > 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`
             }
             icon="trending-up-outline"
@@ -319,45 +342,45 @@ export default function BusinessReportScreen() {
 
       {(overview?.totalRevenue ?? 0) > 0 && (
         <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
-          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>What makes up recognized revenue</Text>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>{br("revenueBreakdown")}</Text>
           {(overview?.serviceEarnings ?? 0) !== 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Service earnings</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("serviceEarnings")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.serviceEarnings!)}</Text>
             </View>
           )}
           {(overview?.tipsTotal ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Tips</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("tips")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.tipsTotal!)}</Text>
             </View>
           )}
           {(overview?.travelFeesTotal ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Travel fees</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("travelFees")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.travelFeesTotal!)}</Text>
             </View>
           )}
           {(overview?.cancellationFees ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Cancellation fees</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("cancellationFees")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.cancellationFees!)}</Text>
             </View>
           )}
           {(overview?.walkInAdditionalChargesTotal ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Walk-in add-ons</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("walkInAddons")}</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(overview!.walkInAdditionalChargesTotal!)}</Text>
             </View>
           )}
           {(overview?.totalRefunded ?? 0) > 0 && (
             <View style={twStyle("flex-row justify-between mb-2")}>
-              <Text style={twStyle("text-sm text-gray-500")}>Refunds</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>{br("refunds")}</Text>
               <Text style={twStyle("text-sm font-medium text-red-600")}>−{formatCurrency(overview!.totalRefunded!)}</Text>
             </View>
           )}
           <View style={twStyle("flex-row justify-between pt-2 border-t border-gray-50")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net after refunds</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>{br("netAfterRefunds")}</Text>
             <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(overview?.netRevenue ?? r?.revenue.total ?? 0)}</Text>
           </View>
         </View>
@@ -368,26 +391,26 @@ export default function BusinessReportScreen() {
           does not return those breakdowns. */}
 
       {/* Bookings */}
-      <SectionHeader title="Scheduled bookings" />
+      <SectionHeader title={br("sectionBookings")} />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
-          <StatCard title="Total" value={String(r?.bookings.total ?? 0)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
-          <StatCard title="Completed" value={String(r?.bookings.completed ?? 0)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
-          <StatCard title="Rate" value={`${(r?.bookings.completion_rate ?? 0).toFixed(0)}%`} icon="analytics-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+          <StatCard title={br("total")} value={String(r?.bookings.total ?? 0)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+          <StatCard title={br("completed")} value={String(r?.bookings.completed ?? 0)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+          <StatCard title={br("rate")} value={`${(r?.bookings.completion_rate ?? 0).toFixed(0)}%`} icon="analytics-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </ReportResponsiveStatRow>
       </View>
 
       <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("flex-row justify-between mb-2")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Cancelled</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>{br("cancelled")}</Text>
           <Text style={twStyle("text-sm font-medium text-red-600")}>{r?.bookings.cancelled ?? 0}</Text>
         </View>
         <View style={twStyle("flex-row justify-between mb-2")}>
-          <Text style={twStyle("text-sm text-gray-500")}>No-Shows</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>{br("noShows")}</Text>
           <Text style={twStyle("text-sm font-medium text-amber-600")}>{r?.bookings.no_show ?? 0}</Text>
         </View>
         <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Avg per calendar day</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>{br("avgPerDay")}</Text>
           <Text style={twStyle("text-sm font-medium text-gray-700")}>{(r?.bookings.avg_per_day ?? 0).toFixed(1)}</Text>
         </View>
       </View>
@@ -400,12 +423,12 @@ export default function BusinessReportScreen() {
         previous hard-coded zeros. Staff hours / per-product breakdowns still
         live on the dedicated report screens linked below.
       */}
-      <SectionHeader title="Clients" />
+      <SectionHeader title={br("sectionClients")} />
       <View style={twStyle("mb-4")}>
         <ReportResponsiveStatRow>
-          <StatCard title="Unique Clients" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
+          <StatCard title={br("uniqueClients")} value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
           <StatCard
-            title="New this period"
+            title={br("newThisPeriod")}
             value={String(r?.clients.new_this_period ?? 0)}
             icon="person-add-outline"
             iconColor="#10b981"
@@ -415,7 +438,7 @@ export default function BusinessReportScreen() {
         </ReportResponsiveStatRow>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Returning"
+            title={br("returning")}
             value={String(r?.clients.returning ?? 0)}
             icon="repeat-outline"
             iconColor="#f59e0b"
@@ -423,7 +446,7 @@ export default function BusinessReportScreen() {
             compact
           />
           <StatCard
-            title="Retention"
+            title={br("retention")}
             value={`${(r?.clients.retention_rate ?? 0).toFixed(1)}%`}
             icon="trending-up-outline"
             iconColor="#8b5cf6"
@@ -433,7 +456,7 @@ export default function BusinessReportScreen() {
         </ReportResponsiveStatRow>
         <ReportResponsiveStatRow>
           <StatCard
-            title="Avg ledger / booking"
+            title={br("avgLedger")}
             value={formatCurrency(r?.clients.avg_booking_value ?? 0)}
             icon="cash-outline"
             iconColor="#6366f1"
@@ -441,7 +464,7 @@ export default function BusinessReportScreen() {
             compact
           />
           <StatCard
-            title="Product revenue"
+            title={br("productRevenue")}
             value={formatCurrency(r?.products.product_revenue ?? 0)}
             icon="bag-handle-outline"
             iconColor="#0ea5e9"
@@ -454,34 +477,34 @@ export default function BusinessReportScreen() {
       <View style={twStyle("mb-4 flex-row")}>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/reports/detail/client-summary" as never)}
-          style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+          style={twStyle("flex-1 me-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Clients</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{br("linkClients")}</Text>
+          <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/reports/staff")}
-          style={twStyle("flex-1 ml-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+          style={twStyle("flex-1 ms-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Staff & hours</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{br("linkStaff")}</Text>
+          <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
       </View>
 
       <View style={twStyle("mb-4 flex-row")}>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/reports/products")}
-          style={twStyle("flex-1 mr-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+          style={twStyle("flex-1 me-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Products & inventory</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{br("linkProducts")}</Text>
+          <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/reports/services")}
-          style={twStyle("flex-1 ml-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
+          style={twStyle("flex-1 ms-2 rounded-xl border border-gray-200 bg-white px-4 py-3 flex-row items-center justify-between")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Services breakdown</Text>
-          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{br("linkServices")}</Text>
+          <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
         </TouchableOpacity>
       </View>
 

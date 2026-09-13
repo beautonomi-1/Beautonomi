@@ -11,6 +11,9 @@ import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { getTenantLocaleTag } from "@/lib/locale";
 import {
   groupPaymentBadge,
   groupPayerSummaryLine,
@@ -80,18 +83,18 @@ type GroupBookingDetail = {
   notes?: string | null;
 };
 
-function formatDate(value?: string | null) {
-  if (!value) return "Not scheduled";
+function formatDate(value: string | null | undefined, translate: (key: string) => string) {
+  if (!value) return translate("notScheduled");
   const d = new Date(value);
-  if (!Number.isFinite(d.getTime())) return "Invalid date";
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  if (!Number.isFinite(d.getTime())) return translate("invalidDate");
+  return d.toLocaleDateString(getTenantLocaleTag(), { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 }
 
 function formatTime(value?: string | null) {
   if (!value) return "";
   const d = new Date(value);
   if (!Number.isFinite(d.getTime())) return "";
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString(getTenantLocaleTag(), { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatGroupMoney(value: number, currency?: string | null) {
@@ -106,21 +109,29 @@ function statusColor(status: string) {
   return { bg: "#DCFCE7", fg: "#15803D" };
 }
 
-function humanStatus(status: string): string {
+function humanStatus(status: string, translate: (key: string) => string): string {
   switch (status) {
-    case "pending": return "Pending";
-    case "confirmed": return "Confirmed";
-    case "booked": return "Booked";
-    case "started": return "In progress";
-    case "in_progress": return "In progress";
-    case "completed": return "Completed";
-    case "cancelled": return "Cancelled";
+    case "pending": return translate("statusPending");
+    case "confirmed": return translate("statusConfirmed");
+    case "booked": return translate("statusBooked");
+    case "started": return translate("statusInProgress");
+    case "in_progress": return translate("statusInProgress");
+    case "completed": return translate("statusCompleted");
+    case "cancelled": return translate("statusCancelled");
     default: return status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, " ");
   }
 }
 
 export default function GroupBookingDetailScreen() {
   useScreenTracking("Group Booking Detail");
+  const { t } = useTranslation();
+  const gbd = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.groupBookingDetail.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const id = useMemo(() => {
     const raw = params.id;
@@ -138,7 +149,7 @@ export default function GroupBookingDetailScreen() {
 
   const load = useCallback(async (silent = false) => {
     if (!id) {
-      setError("Group booking not found");
+      setError(gbd("groupBookingNotFound"));
       setLoading(false);
       return;
     }
@@ -146,13 +157,13 @@ export default function GroupBookingDetailScreen() {
     setError(null);
     const res = await api.get<GroupBookingDetail>(`/api/me/group-bookings/${id}`);
     if (res.error) {
-      setError(getApiErrorMessage(res.error, "Could not load group booking"));
+      setError(getApiErrorMessage(res.error, gbd("loadFailed")));
       setData(null);
     } else {
       setData(res.data ?? null);
     }
     setLoading(false);
-  }, [id]);
+  }, [gbd, id]);
 
   useEffect(() => {
     void load();
@@ -182,7 +193,7 @@ export default function GroupBookingDetailScreen() {
     if (!id) return;
     const parsed = Date.parse(`${rescheduleDate}T${rescheduleTime}:00`);
     if (!Number.isFinite(parsed)) {
-      Alert.alert("Invalid date/time", "Use YYYY-MM-DD and HH:MM (24-hour).");
+      Alert.alert(gbd("invalidDateTimeTitle"), gbd("invalidDateTimeBody"));
       return;
     }
     setSavingReschedule(true);
@@ -191,7 +202,7 @@ export default function GroupBookingDetailScreen() {
         new_datetime: new Date(parsed).toISOString(),
       });
       if (res.error) {
-        Alert.alert("Could not reschedule", getApiErrorMessage(res.error, "Try another time."));
+        Alert.alert(gbd("couldNotReschedule"), getApiErrorMessage(res.error, gbd("rescheduleTryAnotherTime")));
         return;
       }
       haptic.success();
@@ -200,46 +211,46 @@ export default function GroupBookingDetailScreen() {
     } finally {
       setSavingReschedule(false);
     }
-  }, [id, load, rescheduleDate, rescheduleTime]);
+  }, [gbd, id, load, rescheduleDate, rescheduleTime]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
-      <Stack.Screen options={{ title: "Group booking" }} />
+      <Stack.Screen options={{ title: gbd("stackTitle") }} />
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
       <View style={[constrained, { paddingHorizontal: contentPadding, paddingVertical: 14, backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }]}>
         <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Ionicons name="chevron-back" size={20} color={Colors.gray[700]} />
-          <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Back</Text>
+          <DirectionalIcon name="chevron-back" size={20} color={Colors.gray[700]} />
+          <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{gbd("back")}</Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", gap: 10 }}>
           <ActivityIndicator color={Colors.primary} size="large" />
-          <Text style={{ color: Colors.gray[500], fontSize: 14 }}>Loading session…</Text>
+          <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{gbd("loadingSession")}</Text>
         </View>
       ) : error ? (
         <View style={[constrained, { flex: 1, padding: contentPadding, alignItems: "center", justifyContent: "center" }]}>
           <Ionicons name="calendar-outline" size={48} color={Colors.gray[300]} style={{ marginBottom: 12 }} />
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Group session not found</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{gbd("groupSessionNotFound")}</Text>
           <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>{error}</Text>
           {id ? (
             <TouchableOpacity onPress={() => void load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 12 }}>
-              <Text style={{ color: Colors.white, fontWeight: "700" }}>Retry</Text>
+              <Text style={{ color: Colors.white, fontWeight: "700" }}>{gbd("retry")}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-              <Text style={{ color: Colors.primary, fontWeight: "700" }}>Go back</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "700" }}>{gbd("goBack")}</Text>
             </TouchableOpacity>
           )}
         </View>
       ) : !data ? (
         <View style={[constrained, { flex: 1, padding: contentPadding, alignItems: "center", justifyContent: "center" }]}>
           <Ionicons name="calendar-outline" size={48} color={Colors.gray[300]} style={{ marginBottom: 12 }} />
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Session not found</Text>
-          <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>This group booking no longer exists or you may not have access to it.</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>{gbd("sessionNotFound")}</Text>
+          <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>{gbd("sessionGoneBody")}</Text>
           <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 18, paddingVertical: 12 }}>
-            <Text style={{ color: Colors.primary, fontWeight: "700" }}>Go back</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "700" }}>{gbd("goBack")}</Text>
           </TouchableOpacity>
         </View>
       ) : data ? (
@@ -252,7 +263,7 @@ export default function GroupBookingDetailScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={{ color: Colors.gray[500], fontSize: 12, fontWeight: "700", textTransform: "uppercase" }}>{data.ref_number}</Text>
                 <Text style={{ color: Colors.gray[900], fontSize: 24, fontWeight: "800", marginTop: 4 }}>{data.title}</Text>
-                <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{formatDate(data.scheduled_at)} · {formatTime(data.scheduled_at)}</Text>
+                <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{formatDate(data.scheduled_at, gbd)} · {formatTime(data.scheduled_at)}</Text>
                 {canRescheduleGroup ? (
                   <TouchableOpacity
                     onPress={() => {
@@ -265,23 +276,23 @@ export default function GroupBookingDetailScreen() {
                     }}
                     style={{ marginTop: 12, alignSelf: "flex-start", backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 }}
                   >
-                    <Text style={{ color: Colors.white, fontWeight: "700", fontSize: 13 }}>Reschedule session</Text>
+                    <Text style={{ color: Colors.white, fontWeight: "700", fontSize: 13 }}>{gbd("rescheduleSession")}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
               <View style={{ backgroundColor: colors.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
-                <Text style={{ color: colors.fg, fontWeight: "700", fontSize: 12 }}>{humanStatus(data.status)}</Text>
+                <Text style={{ color: colors.fg, fontWeight: "700", fontSize: 12 }}>{humanStatus(data.status, gbd)}</Text>
               </View>
             </View>
             <View style={{ marginTop: 16, flexDirection: "row", gap: 10 }}>
               <View style={{ flex: 1, backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12 }}>
-                <Text style={{ color: Colors.gray[500], fontSize: 12 }}>Participants</Text>
+                <Text style={{ color: Colors.gray[500], fontSize: 12 }}>{gbd("participants")}</Text>
                 <Text style={{ color: Colors.gray[900], fontSize: 18, fontWeight: "800" }}>
                   {data.participant_count}{data.max_participants ? ` / ${data.max_participants}` : ""}
                 </Text>
               </View>
               <View style={{ flex: 1, backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12 }}>
-                <Text style={{ color: Colors.gray[500], fontSize: 12 }}>Session total</Text>
+                <Text style={{ color: Colors.gray[500], fontSize: 12 }}>{gbd("sessionTotal")}</Text>
                 <Text style={{ color: Colors.gray[900], fontSize: 18, fontWeight: "800" }}>
                   {formatGroupMoney(data.total_price, data.currency)}
                 </Text>
@@ -292,7 +303,7 @@ export default function GroupBookingDetailScreen() {
           {(data.payment_status || data.amount_paid != null) && (
             <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
-                <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900] }}>Payment</Text>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900] }}>{gbd("payment")}</Text>
                 {groupPayment ? (
                   <View style={{ backgroundColor: groupPayment.bg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
                     <Text style={{ color: groupPayment.fg, fontWeight: "700", fontSize: 12 }}>{groupPayment.label}</Text>
@@ -300,16 +311,19 @@ export default function GroupBookingDetailScreen() {
                 ) : null}
               </View>
               <Text style={{ color: Colors.gray[700], fontSize: 15, fontWeight: "600" }}>
-                Paid {formatGroupMoney(data.amount_paid ?? 0, data.currency)} of {formatGroupMoney(data.total_price, data.currency)}
+                {gbd("paidOfTotal", {
+                  paid: formatGroupMoney(data.amount_paid ?? 0, data.currency),
+                  total: formatGroupMoney(data.total_price, data.currency),
+                })}
               </Text>
               {groupBalanceDue > 0 ? (
                 <Text style={{ color: "#92400E", fontSize: 14, fontWeight: "600", marginTop: 6 }}>
-                  Balance due {formatGroupMoney(groupBalanceDue, data.currency)}
+                  {gbd("balanceDue", { amount: formatGroupMoney(groupBalanceDue, data.currency) })}
                 </Text>
               ) : null}
               {(data.total_refunded ?? 0) > 0 ? (
                 <Text style={{ color: Colors.gray[600], fontSize: 13, marginTop: 6 }}>
-                  Refunded {formatGroupMoney(data.total_refunded ?? 0, data.currency)}
+                  {gbd("refunded", { amount: formatGroupMoney(data.total_refunded ?? 0, data.currency) })}
                 </Text>
               ) : null}
               {payerLine ? (
@@ -317,19 +331,19 @@ export default function GroupBookingDetailScreen() {
               ) : null}
               {data.is_invoiced === false ? (
                 <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 6 }}>
-                  Payment details will appear once the provider finalises the group invoice.
+                  {gbd("invoicePendingHint")}
                 </Text>
               ) : null}
             </View>
           )}
 
           <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
-            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>Provider</Text>
-            <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{data.provider?.business_name ?? "Provider"}</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>{gbd("provider")}</Text>
+            <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{data.provider?.business_name ?? gbd("provider")}</Text>
             <Text style={{ color: Colors.gray[600], marginTop: 6 }}>
               {data.location_type === "at_home"
-                ? [data.address?.line1, data.address?.city, data.address?.country].filter(Boolean).join(", ") || "At your location"
-                : [data.location?.name, data.location?.address_line1, data.location?.city].filter(Boolean).join(", ") || "At salon"}
+                ? [data.address?.line1, data.address?.city, data.address?.country].filter(Boolean).join(", ") || gbd("atYourLocation")
+                : [data.location?.name, data.location?.address_line1, data.location?.city].filter(Boolean).join(", ") || gbd("atSalon")}
             </Text>
           </View>
 
@@ -351,10 +365,10 @@ export default function GroupBookingDetailScreen() {
           )}
 
           <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
-            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Participants</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>{gbd("participants")}</Text>
             {data.participants.length === 0 && (
               <Text style={{ color: Colors.gray[400], fontSize: 14, fontStyle: "italic", textAlign: "center", paddingVertical: 12 }}>
-                No participants listed yet.
+                {gbd("noParticipantsYet")}
               </Text>
             )}
             {data.participants.map((p) => {
@@ -379,12 +393,12 @@ export default function GroupBookingDetailScreen() {
                         <Text style={{ fontWeight: "800", color: Colors.gray[900] }}>{p.name}</Text>
                         {p.is_current_user && (
                           <View style={{ backgroundColor: Colors.primary + "20", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
-                            <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: "700" }}>you</Text>
+                            <Text style={{ color: Colors.primary, fontSize: 10, fontWeight: "700" }}>{gbd("youBadge")}</Text>
                           </View>
                         )}
                         {p.is_primary_contact && (
                           <View style={{ backgroundColor: "#FDF2F8", borderRadius: 99, paddingHorizontal: 6, paddingVertical: 2 }}>
-                            <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>Organiser</Text>
+                            <Text style={{ color: "#9D174D", fontSize: 10, fontWeight: "700" }}>{gbd("organiserBadge")}</Text>
                           </View>
                         )}
                         {badge ? (
@@ -396,7 +410,7 @@ export default function GroupBookingDetailScreen() {
                       <Text style={{ color: Colors.gray[700], fontWeight: "600", marginTop: 4 }}>{p.service_name}</Text>
                       {Array.isArray(p.addons) && p.addons.length > 0 ? (
                         <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
-                          + {p.addons.map((ao) => ao.name ?? "Add-on").join(", ")}
+                          + {p.addons.map((ao) => ao.name ?? gbd("addonFallback")).join(", ")}
                         </Text>
                       ) : null}
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
@@ -404,19 +418,19 @@ export default function GroupBookingDetailScreen() {
                           {formatGroupMoney(p.price, data.currency)}
                         </Text>
                         {p.duration_minutes ? (
-                          <Text style={{ color: Colors.gray[400], fontSize: 12 }}>{p.duration_minutes} min</Text>
+                          <Text style={{ color: Colors.gray[400], fontSize: 12 }}>{gbd("durationMinutes", { minutes: p.duration_minutes })}</Text>
                         ) : null}
                       </View>
                       <Text style={{ color: Colors.gray[400], fontSize: 11, marginTop: 4 }}>
-                        {p.checked_in ? "✓ Checked in" : "Not checked in"}{p.checked_out ? " · ✓ Checked out" : ""}
+                        {p.checked_in ? gbd("checkedIn") : gbd("notCheckedIn")}{p.checked_out ? gbd("checkedOutSuffix") : ""}
                       </Text>
                       {!p.booking_id && (
                         <Text style={{ color: Colors.gray[400], fontSize: 11, marginTop: 2, fontStyle: "italic" }}>
-                          Booking details not available
+                          {gbd("bookingDetailsUnavailable")}
                         </Text>
                       )}
                     </View>
-                    {p.booking_id ? <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} style={{ marginTop: 2 }} /> : null}
+                    {p.booking_id ? <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} style={{ marginTop: 2 }} /> : null}
                   </View>
                 </TouchableOpacity>
               );
@@ -426,14 +440,17 @@ export default function GroupBookingDetailScreen() {
           {/* Products */}
           {Array.isArray(data.products) && data.products.length > 0 ? (
             <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18, marginBottom: 16 }, Shadows.cardSmall]}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Products</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>{gbd("products")}</Text>
               {data.products.map((product, idx) => (
                 <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: idx < data.products!.length - 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{product.name}</Text>
                     {product.quantity > 1 ? (
                       <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 2 }}>
-                        {formatGroupMoney(product.unit_price, data.currency)} × {product.quantity}
+                        {gbd("productQtyLine", {
+                          unitPrice: formatGroupMoney(product.unit_price, data.currency),
+                          quantity: product.quantity,
+                        })}
                       </Text>
                     ) : null}
                   </View>
@@ -445,29 +462,29 @@ export default function GroupBookingDetailScreen() {
 
           {/* Price breakdown */}
           <View style={[{ backgroundColor: Colors.white, borderRadius: 18, padding: 18 }, Shadows.cardSmall]}>
-            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>Price breakdown</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 12 }}>{gbd("priceBreakdown")}</Text>
             {data.participants.map((p) => (
               <View key={p.id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{p.name} — {p.service_name}</Text>
+                <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{gbd("participantServiceLine", { name: p.name, service: p.service_name })}</Text>
                 <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(p.price, data.currency)}</Text>
               </View>
             ))}
             {Array.isArray(data.products) && data.products.length > 0 ? (
               data.products.map((product, idx) => (
                 <View key={`prod-${idx}`} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                  <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{product.name} ×{product.quantity}</Text>
+                  <Text style={{ color: Colors.gray[600], flex: 1 }} numberOfLines={1}>{gbd("productQtyShort", { name: product.name, quantity: product.quantity })}</Text>
                   <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(product.total, data.currency)}</Text>
                 </View>
               ))
             ) : null}
             {(data.travel_fee ?? 0) > 0 ? (
               <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
-                <Text style={{ color: Colors.gray[600] }}>Travel fee</Text>
+                <Text style={{ color: Colors.gray[600] }}>{gbd("travelFee")}</Text>
                 <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{formatGroupMoney(data.travel_fee ?? 0, data.currency)}</Text>
               </View>
             ) : null}
             <View style={{ flexDirection: "row", justifyContent: "space-between", paddingTop: 12, marginTop: 4, borderTopWidth: 1, borderTopColor: Colors.gray[200] }}>
-              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>{gbd("total")}</Text>
               <Text style={{ fontSize: 16, fontWeight: "800", color: Colors.gray[900] }}>{formatGroupMoney(data.total_price, data.currency)}</Text>
             </View>
           </View>
@@ -476,23 +493,23 @@ export default function GroupBookingDetailScreen() {
       {showReschedule ? (
         <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 0, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" }}>
           <View style={{ backgroundColor: Colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>Reschedule group session</Text>
+            <Text style={{ fontSize: 18, fontWeight: "800", color: Colors.gray[900], marginBottom: 8 }}>{gbd("rescheduleModalTitle")}</Text>
             <Text style={{ color: Colors.gray[600], fontSize: 13, marginBottom: 12 }}>
-              This moves the entire group to a new date and time. Availability is verified when you save.
+              {gbd("rescheduleModalBody")}
             </Text>
-            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>Date (YYYY-MM-DD)</Text>
+            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>{gbd("dateLabel")}</Text>
             <TextInput
               value={rescheduleDate}
               onChangeText={setRescheduleDate}
-              placeholder="2026-06-10"
+              placeholder={gbd("datePlaceholder")}
               autoCapitalize="none"
               style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 }}
             />
-            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>Time (HH:MM)</Text>
+            <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 6 }}>{gbd("timeLabel")}</Text>
             <TextInput
               value={rescheduleTime}
               onChangeText={setRescheduleTime}
-              placeholder="14:30"
+              placeholder={gbd("timePlaceholder")}
               autoCapitalize="none"
               style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10 }}
             />
@@ -501,7 +518,7 @@ export default function GroupBookingDetailScreen() {
                 onPress={() => setShowReschedule(false)}
                 style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 14, alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "700", color: Colors.gray[700] }}>Cancel</Text>
+                <Text style={{ fontWeight: "700", color: Colors.gray[700] }}>{gbd("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => void submitReschedule()}
@@ -509,7 +526,7 @@ export default function GroupBookingDetailScreen() {
                 style={{ flex: 2, borderRadius: 12, backgroundColor: Colors.primary, paddingVertical: 14, alignItems: "center", opacity: savingReschedule ? 0.7 : 1 }}
               >
                 <Text style={{ fontWeight: "700", color: Colors.white }}>
-                  {savingReschedule ? "Saving…" : "Save new time"}
+                  {savingReschedule ? gbd("saving") : gbd("saveNewTime")}
                 </Text>
               </TouchableOpacity>
             </View>

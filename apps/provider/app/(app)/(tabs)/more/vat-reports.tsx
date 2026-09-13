@@ -3,6 +3,7 @@
  * Full parity with web: list by period, year picker, mark remitted, export/share.
  */
 import { useCallback, useState, type ReactNode } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -63,10 +64,11 @@ function formatDateSafe(
   value: unknown,
   locales: string | string[] = "en-ZA",
   options?: Intl.DateTimeFormatOptions,
+  empty = "—",
 ): string {
-  if (typeof value !== "string" || !value) return "—";
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString(locales, options);
 }
 
@@ -131,6 +133,12 @@ function VatReportsShell({
 }
 
 export function VATReportsContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const vr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.vatReports.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -163,27 +171,27 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
         { period_start: report.period_start, period_end: report.period_end }
       );
       if (err) {
-        Alert.alert("Error", err);
+        Alert.alert(vr("errorTitle"), err);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
     },
-    [patchRemitted, refresh]
+    [patchRemitted, refresh, vr]
   );
 
   const confirmMarkAsRemitted = useCallback(
     (report: VATReport) => {
       Alert.alert(
-        "Mark as remitted?",
-        `Confirm you submitted ${report.period_label} VAT to SARS. This updates your records only.`,
+        vr("markRemittedTitle"),
+        vr("markRemittedBody", { period: report.period_label }),
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Mark remitted", onPress: () => void markAsRemitted(report) },
+          { text: vr("cancel"), style: "cancel" },
+          { text: vr("markRemitted"), onPress: () => void markAsRemitted(report) },
         ]
       );
     },
-    [markAsRemitted]
+    [markAsRemitted, vr]
   );
 
   const exportReport = useCallback(
@@ -192,21 +200,22 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
         const s = String(v ?? "");
         return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
       };
+      const empty = vr("emptyValue");
       const rows = [
-        ["VAT Remittance Report", ""],
-        ["Period", report.period_label],
-        ["Period Start", report.period_start],
-        ["Period End", report.period_end],
-        ["Deadline", report.deadline_date],
-        ["VAT Collected", report.vat_collected_formatted],
-        ["Transaction Count", report.transaction_count.toString()],
+        [vr("csvTitle"), ""],
+        [vr("csvPeriod"), report.period_label],
+        [vr("csvPeriodStart"), report.period_start],
+        [vr("csvPeriodEnd"), report.period_end],
+        [vr("csvDeadline"), report.deadline_date],
+        [vr("csvVatCollected"), report.vat_collected_formatted],
+        [vr("csvTransactionCount"), report.transaction_count.toString()],
         [""],
-        ["Booking Number", "Date", "VAT Amount", "Description"],
-        ...report.transactions.map((t) => [
-          t.booking_number,
-          formatDateSafe(t.booking_date, getTenantLocaleTag()),
-          formatCurrency(t.amount),
-          t.description || "",
+        [vr("csvBookingNumber"), vr("csvDate"), vr("csvVatAmount"), vr("csvDescription")],
+        ...report.transactions.map((txn) => [
+          txn.booking_number,
+          formatDateSafe(txn.booking_date, getTenantLocaleTag(), undefined, empty),
+          formatCurrency(txn.amount),
+          txn.description || "",
         ]),
       ];
       const csv = rows.map((r) => r.map(quote).join(",")).join("\n");
@@ -217,13 +226,13 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
         ...(Platform.OS === "ios" && { url: undefined }),
       }).catch(() => {});
     },
-    []
+    [vr]
   );
 
   if (loading && !data) {
     return (
       <VatReportsShell embedded={embedded} screenPadding={screenPadding} centerContent>
-        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
+        {!embedded ? <ScreenHeader title={vr("title")} onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -234,7 +243,7 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
   if (error && !data) {
     return (
       <VatReportsShell embedded={embedded} screenPadding={screenPadding} centerContent>
-        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
+        {!embedded ? <ScreenHeader title={vr("title")} onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -246,21 +255,21 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
   if (!payload.provider?.is_vat_registered) {
     return (
       <VatReportsShell embedded={embedded} screenPadding={screenPadding} scrollable>
-        {!embedded ? <ScreenHeader title="VAT Reports" onBack={() => router.back()} /> : null}
+        {!embedded ? <ScreenHeader title={vr("title")} onBack={() => router.back()} /> : null}
         <View style={twStyle("flex-1 px-4 pt-4")}>
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-6 items-center")}>
             <Ionicons name="alert-circle-outline" size={48} color="#9ca3af" />
             <Text style={twStyle("mt-4 text-lg font-semibold text-gray-900 text-center")}>
-              VAT Reports Not Available
+              {vr("notAvailableTitle")}
             </Text>
             <Text style={twStyle("mt-2 text-sm text-gray-600 text-center")}>
-              You are not VAT registered. VAT reports are only available for VAT-registered providers.
+              {vr("notAvailableBody")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/settings/tax-configuration" as never)}
               style={twStyle("mt-6 rounded-xl bg-primary py-3 px-5")}
             >
-              <Text style={twStyle("font-medium text-white")}>Update VAT status in Settings</Text>
+              <Text style={twStyle("font-medium text-white")}>{vr("updateVatStatus")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -280,13 +289,13 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
     >
       {!embedded ? (
         <ScreenHeader
-          title="VAT Reports"
-          subtitle={payload.provider?.vat_number ? `VAT No. ${payload.provider.vat_number}` : "Bi-monthly SARS submission"}
+          title={vr("title")}
+          subtitle={payload.provider?.vat_number ? vr("vatNumber", { number: payload.provider.vat_number }) : vr("subtitle")}
           onBack={() => router.back()}
         />
       ) : null}
       <View style={twStyle("mb-4")}>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Year</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{vr("year")}</Text>
         <View style={twStyle("flex-row rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden")}>
           {YEAR_OPTIONS.map((y, i) => (
             <TouchableOpacity
@@ -309,10 +318,10 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
           <View style={twStyle("rounded-2xl border border-gray-200 bg-white p-8 items-center")}>
             <Ionicons name="document-text-outline" size={48} color="#9ca3af" />
             <Text style={twStyle("mt-4 text-base font-semibold text-gray-900 text-center")}>
-              No VAT Reports for {selectedYear}
+              {vr("noReportsTitle", { year: selectedYear })}
             </Text>
             <Text style={twStyle("mt-2 text-sm text-gray-500 text-center")}>
-              Reports will appear here once you have bookings with VAT collected.
+              {vr("noReportsBody")}
             </Text>
           </View>
         ) : (
@@ -346,23 +355,25 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                 style={[twStyle("rounded-2xl border p-4 mb-4"), twStyle(borderAccent)]}
               >
                 <View style={twStyle("mb-2 flex-row items-start justify-between")}>
-                  <View style={twStyle("min-w-0 flex-1 pr-3")}>
+                  <View style={twStyle("min-w-0 flex-1 pe-3")}>
                     <View style={twStyle("flex-row flex-wrap items-center")}>
                       <Text style={twStyle("text-lg font-semibold text-gray-900")}>{report.period_label}</Text>
-                      <View style={[twStyle("ml-2 rounded-full px-2.5 py-0.5"), twStyle(statusBg)]}>
+                      <View style={[twStyle("ms-2 rounded-full px-2.5 py-0.5"), twStyle(statusBg)]}>
                         <Text style={[twStyle("text-xs font-medium"), twStyle(statusColor)]}>
-                          {report.remitted_to_sars ? "Remitted" : report.is_overdue ? "Overdue" : report.status === "due_soon" ? "Due soon" : "Upcoming"}
+                          {report.remitted_to_sars ? vr("statusRemitted") : report.is_overdue ? vr("statusOverdue") : report.status === "due_soon" ? vr("statusDueSoon") : vr("statusUpcoming")}
                         </Text>
                       </View>
                     </View>
                     <Text style={twStyle("text-sm text-gray-500 mt-1")}>
-                      Deadline: {formatDateSafe(report.deadline_date, getTenantLocaleTag(), {
-                        day: "numeric",
-                        month: "long",
-                        year: "numeric",
+                      {vr("deadline", {
+                        date: formatDateSafe(report.deadline_date, getTenantLocaleTag(), {
+                          day: "numeric",
+                          month: "long",
+                          year: "numeric",
+                        }, vr("emptyValue")),
                       })}
                       {report.days_until_deadline > 0 && !report.remitted_to_sars && (
-                        <Text style={twStyle("text-gray-600")}> · {report.days_until_deadline} days left</Text>
+                        <Text style={twStyle("text-gray-600")}>{vr("daysLeft", { count: report.days_until_deadline })}</Text>
                       )}
                     </Text>
                   </View>
@@ -371,7 +382,7 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                       {report.vat_collected_formatted}
                     </Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      {report.transaction_count} transaction{report.transaction_count !== 1 ? "s" : ""}
+                      {vr("transactionCount", { count: report.transaction_count })}
                     </Text>
                   </View>
                 </View>
@@ -382,37 +393,37 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                       onPress={() => setExpandedIndex(isExpanded ? null : index)}
                       style={twStyle("flex-row items-center justify-between py-2 mt-2 border-t border-gray-100")}
                     >
-                      <Text style={twStyle("text-sm font-medium text-gray-700")}>Transaction details</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-700")}>{vr("transactionDetails")}</Text>
                       <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color="#6b7280" />
                     </TouchableOpacity>
                     {isExpanded && (
                       <View style={twStyle("mt-2 border-t border-gray-100 pt-2")}>
-                        {report.transactions.slice(0, 20).map((t) => (
+                        {report.transactions.slice(0, 20).map((txn) => (
                           <View
-                            key={t.id}
+                            key={txn.id}
                             style={twStyle("flex-row items-start justify-between border-b border-gray-100 py-2.5")}
                           >
-                            <View style={twStyle("min-w-0 flex-1 pr-3")}>
+                            <View style={twStyle("min-w-0 flex-1 pe-3")}>
                               <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
-                                {t.booking_number}
+                                {txn.booking_number}
                               </Text>
                               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                                {formatDateSafe(t.booking_date, getTenantLocaleTag())}
+                                {formatDateSafe(txn.booking_date, getTenantLocaleTag(), undefined, vr("emptyValue"))}
                               </Text>
-                              {t.description ? (
+                              {txn.description ? (
                                 <Text style={twStyle("mt-0.5 text-xs text-gray-400")} numberOfLines={2}>
-                                  {t.description}
+                                  {txn.description}
                                 </Text>
                               ) : null}
                             </View>
                             <Text style={twStyle("shrink-0 text-sm font-semibold text-gray-900")}>
-                              {formatCurrency(t.amount)}
+                              {formatCurrency(txn.amount)}
                             </Text>
                           </View>
                         ))}
                         {report.transactions.length > 20 && (
                           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                            +{report.transactions.length - 20} more
+                            {vr("moreCount", { count: report.transactions.length - 20 })}
                           </Text>
                         )}
                         <TouchableOpacity
@@ -420,7 +431,7 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                           style={twStyle("flex-row items-center mt-3 text-primary")}
                         >
                           <Ionicons name="share-outline" size={16} color="#6366f1" />
-                          <Text style={twStyle("text-sm font-medium text-primary ml-1")}>Export / Share CSV</Text>
+                          <Text style={twStyle("text-sm font-medium text-primary ms-1")}>{vr("exportShareCsv")}</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -431,11 +442,11 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                   {report.remitted_to_sars ? (
                     <View style={twStyle("flex-row items-center rounded-xl bg-green-50 border border-green-200 p-3")}>
                       <Ionicons name="checkmark-circle" size={22} color="#16a34a" />
-                      <Text style={twStyle("ml-2 text-sm text-green-800")}>
-                        Remitted to SARS
+                      <Text style={twStyle("ms-2 text-sm text-green-800")}>
+                        {vr("remittedToSars")}
                         {report.remitted_at && (
                           <Text style={twStyle("text-green-700")}>
-                            {" "}· {formatDateSafe(report.remitted_at, getTenantLocaleTag())}
+                            {vr("remittedOn", { date: formatDateSafe(report.remitted_at, getTenantLocaleTag(), undefined, vr("emptyValue")) })}
                           </Text>
                         )}
                       </Text>
@@ -443,10 +454,10 @@ export function VATReportsContent({ embedded = false }: { embedded?: boolean } =
                   ) : (
                     <View style={twStyle("rounded-xl bg-blue-50 border border-blue-200 p-3")}>
                       <Text style={twStyle("text-sm text-blue-800 mb-3")}>
-                        Remit {report.vat_collected_formatted} to SARS by the deadline. Submit via SARS eFiling.
+                        {vr("remitHint", { amount: report.vat_collected_formatted })}
                       </Text>
                       <ActionButton
-                        label={markingRemitted ? "Saving…" : "Mark as remitted to SARS"}
+                        label={markingRemitted ? vr("saving") : vr("markRemittedCta")}
                         onPress={() => confirmMarkAsRemitted(report)}
                         loading={markingRemitted}
                         fullWidth

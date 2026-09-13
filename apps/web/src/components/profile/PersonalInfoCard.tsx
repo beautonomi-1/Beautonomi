@@ -23,6 +23,7 @@ import type { ProfileUser } from "@/types/profile";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { isMailableEmail } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PersonalInfoCardProps {
   user: ProfileUser;
@@ -43,6 +44,7 @@ interface EditModalProps {
 }
 
 function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditModalProps) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<any>(initialData || {});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -57,11 +59,11 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (type === "phone" && formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid phone number in international format (e.g. +27…).");
+      toast.error(t("web.accountSettings.personalInfo.invalidPhone"));
       return;
     }
     if (type === "emergencyContact" && formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid emergency contact phone number.");
+      toast.error(t("web.accountSettings.personalInfo.invalidEmergencyPhone"));
       return;
     }
     setIsSaving(true);
@@ -69,7 +71,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
       await onSave(formData);
       onClose();
     } catch (error: any) {
-      toast.error(error.message || "Failed to save");
+      toast.error(error.message || t("web.accountSettings.personalInfo.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -85,18 +87,18 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
       >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold">
-            {type === "legalName" && "Legal Name"}
-            {type === "preferredName" && "Preferred Name"}
-            {type === "email" && "Email Address"}
-            {type === "phone" && "Phone Number"}
-            {type === "address" && "Address"}
-            {type === "emergencyContact" && "Emergency Contact"}
-            {type === "identity" && "Government ID"}
+            {type === "legalName" && t("web.accountSettings.personalInfo.legalName")}
+            {type === "preferredName" && t("web.accountSettings.personalInfo.preferredName")}
+            {type === "email" && t("web.accountSettings.personalInfo.emailAddress")}
+            {type === "phone" && t("web.accountSettings.personalInfo.phoneNumber")}
+            {type === "address" && t("web.accountSettings.personalInfo.address")}
+            {type === "emergencyContact" && t("web.accountSettings.personalInfo.emergencyContact")}
+            {type === "identity" && t("web.accountSettings.personalInfo.governmentId")}
           </h3>
           <button
             onClick={onClose}
             className="text-zinc-500 hover:text-zinc-700"
-            aria-label="Close"
+            aria-label={t("web.accountSettings.personalInfo.close")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -106,7 +108,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
           {type === "legalName" && (
             <>
               <div>
-                <Label htmlFor="first_name">First Name</Label>
+                <Label htmlFor="first_name">{t("web.accountSettings.personalInfo.firstName")}</Label>
                 <Input
                   id="first_name"
                   value={formData.first_name || ""}
@@ -115,7 +117,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 />
               </div>
               <div>
-                <Label htmlFor="last_name">Last Name</Label>
+                <Label htmlFor="last_name">{t("web.accountSettings.personalInfo.lastName")}</Label>
                 <Input
                   id="last_name"
                   value={formData.last_name || ""}
@@ -128,19 +130,19 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
 
           {type === "preferredName" && (
             <div>
-              <Label htmlFor="preferred_name">Preferred Name</Label>
+              <Label htmlFor="preferred_name">{t("web.accountSettings.personalInfo.preferredName")}</Label>
               <Input
                 id="preferred_name"
                 value={formData.preferred_name || ""}
                 onChange={(e) => setFormData({ ...formData, preferred_name: e.target.value })}
-                placeholder="How you'd like to be addressed"
+                placeholder={t("web.accountSettings.personalInfo.preferredNamePlaceholder")}
               />
             </div>
           )}
 
           {type === "email" && (
             <div>
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email">{t("web.accountSettings.personalInfo.emailAddress")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -149,7 +151,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 required
               />
               <p className="text-xs text-zinc-500 mt-1">
-                We may email your current and new address to confirm the change
+                {t("web.accountSettings.personalInfo.emailChangeHint")}
               </p>
             </div>
           )}
@@ -158,10 +160,10 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
             <div>
               <PhoneInput
                 inputId="profile-edit-phone"
-                label="Phone Number"
+                label={t("web.accountSettings.personalInfo.phoneNumber")}
                 value={formData.phone || ""}
                 onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-                placeholder="Phone number"
+                placeholder={t("web.accountSettings.personalInfo.phonePlaceholder")}
               />
             </div>
           )}
@@ -169,7 +171,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
           {type === "address" && (
             <>
               <div>
-                <Label htmlFor="line1">Street Address</Label>
+                <Label htmlFor="line1">{t("web.accountSettings.personalInfo.streetAddress")}</Label>
                 <Input
                   id="line1"
                   value={formData.line1 || ""}
@@ -177,7 +179,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 />
               </div>
               <div>
-                <Label htmlFor="line2">Apt, Suite (optional)</Label>
+                <Label htmlFor="line2">{t("web.accountSettings.personalInfo.aptOptional")}</Label>
                 <Input
                   id="line2"
                   value={formData.line2 || ""}
@@ -186,7 +188,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="city">City</Label>
+                  <Label htmlFor="city">{t("web.accountSettings.personalInfo.city")}</Label>
                   <Input
                     id="city"
                     value={formData.city || ""}
@@ -194,7 +196,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                   />
                 </div>
                 <div>
-                  <Label htmlFor="state">State/Province</Label>
+                  <Label htmlFor="state">{t("web.accountSettings.personalInfo.stateProvince")}</Label>
                   <Input
                     id="state"
                     value={formData.state || ""}
@@ -204,7 +206,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="postal_code">Postal Code</Label>
+                  <Label htmlFor="postal_code">{t("web.accountSettings.personalInfo.postalCode")}</Label>
                   <Input
                     id="postal_code"
                     value={formData.postal_code || ""}
@@ -212,7 +214,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                   />
                 </div>
                 <div>
-                  <Label htmlFor="country">Country</Label>
+                  <Label htmlFor="country">{t("web.accountSettings.personalInfo.country")}</Label>
                   <Input
                     id="country"
                     value={formData.country || ""}
@@ -226,7 +228,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
           {type === "emergencyContact" && (
             <>
               <div>
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">{t("web.accountSettings.personalInfo.name")}</Label>
                 <Input
                   id="name"
                   value={formData.name || ""}
@@ -235,26 +237,26 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 />
               </div>
               <div>
-                <Label htmlFor="relationship">Relationship</Label>
+                <Label htmlFor="relationship">{t("web.accountSettings.personalInfo.relationship")}</Label>
                 <Input
                   id="relationship"
                   value={formData.relationship || ""}
                   onChange={(e) => setFormData({ ...formData, relationship: e.target.value })}
-                  placeholder="e.g., Spouse, Parent, Friend"
+                  placeholder={t("web.accountSettings.personalInfo.relationshipPlaceholder")}
                 />
               </div>
               <div>
                 <PhoneInput
                   inputId="profile-edit-emergency-phone"
-                  label="Phone Number"
+                  label={t("web.accountSettings.personalInfo.phoneNumber")}
                   value={formData.phone || ""}
                   onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-                  placeholder="Phone number"
+                  placeholder={t("web.accountSettings.personalInfo.phonePlaceholder")}
                   required
                 />
               </div>
               <div>
-                <Label htmlFor="email">Email (optional)</Label>
+                <Label htmlFor="email">{t("web.accountSettings.personalInfo.emailOptional")}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -268,17 +270,17 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
           {type === "identity" && (
             <div className="space-y-4">
               <p className="text-sm text-zinc-600">
-                Upload a government-issued ID for identity verification. This helps keep our community safe.
+                {t("web.accountSettings.personalInfo.identityUploadHint")}
               </p>
               
               {/* Show existing document if available */}
               {user?.identity_verification_document_url && (
                 <div className="p-3 bg-zinc-50 rounded-lg border border-zinc-200">
-                  <p className="text-xs font-medium text-zinc-700 mb-2">Current document:</p>
+                  <p className="text-xs font-medium text-zinc-700 mb-2">{t("web.accountSettings.personalInfo.currentDocument")}</p>
                   <div className="flex items-center gap-2">
                     <Shield className="h-4 w-4 text-zinc-600" />
                     <span className="text-xs text-zinc-600 flex-1">
-                      {user.identity_verification_document_type || "Document"} uploaded
+                      {t("web.accountSettings.personalInfo.documentUploaded", { type: user.identity_verification_document_type || t("web.accountSettings.personalInfo.document") })}
                     </span>
                     <Button
                       type="button"
@@ -287,18 +289,18 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                       className="text-xs h-7"
                       onClick={() => window.open(user.identity_verification_document_url!, '_blank')}
                     >
-                      <Eye className="h-3 w-3 mr-1" />
-                      View
+                      <Eye className="h-3 w-3 me-1" />
+                      {t("web.accountSettings.personalInfo.view")}
                     </Button>
                   </div>
                   <p className="text-xs text-zinc-500 mt-2">
-                    You can upload a new document to replace this one.
+                    {t("web.accountSettings.personalInfo.replaceDocumentHint")}
                   </p>
                 </div>
               )}
 
               <div>
-                <Label htmlFor="document_type">Document Type</Label>
+                <Label htmlFor="document_type">{t("web.accountSettings.personalInfo.documentType")}</Label>
                 <select
                   id="document_type"
                   value={formData.document_type || user?.identity_verification_document_type || ""}
@@ -306,14 +308,14 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                   className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
                   required
                 >
-                  <option value="">Select document type</option>
-                  <option value="license">Driver's License</option>
-                  <option value="passport">Passport</option>
-                  <option value="identity">National ID</option>
+                  <option value="">{t("web.accountSettings.personalInfo.selectDocumentType")}</option>
+                  <option value="license">{t("web.accountSettings.personalInfo.driversLicense")}</option>
+                  <option value="passport">{t("web.accountSettings.personalInfo.passport")}</option>
+                  <option value="identity">{t("web.accountSettings.personalInfo.nationalId")}</option>
                 </select>
               </div>
               <div>
-                <Label htmlFor="file">Upload Document</Label>
+                <Label htmlFor="file">{t("web.accountSettings.personalInfo.uploadDocument")}</Label>
                 <Input
                   id="file"
                   type="file"
@@ -340,7 +342,7 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                   <div className="mt-2 relative w-full h-48">
                     <Image
                       src={formData.preview}
-                      alt="Preview"
+                      alt={t("web.accountSettings.personalInfo.preview")}
                       fill
                       className="object-contain border border-zinc-300 rounded-lg"
                       unoptimized
@@ -349,11 +351,11 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 )}
                 {formData.file && !formData.preview && (
                   <p className="text-xs text-zinc-600 mt-2">
-                    Selected: {formData.file.name} ({(formData.file.size / 1024 / 1024).toFixed(2)} MB)
+                    {t("web.accountSettings.personalInfo.selectedFile", { name: formData.file.name, size: (formData.file.size / 1024 / 1024).toFixed(2) })}
                   </p>
                 )}
                 <p className="text-xs text-zinc-500 mt-1">
-                  Accepted: JPEG, PNG, WebP, PDF (Max 10MB)
+                  {t("web.accountSettings.personalInfo.acceptedFormats")}
                 </p>
               </div>
             </div>
@@ -367,14 +369,14 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
               className="flex-1"
               disabled={isSaving}
             >
-              Cancel
+              {t("web.accountSettings.personalInfo.cancel")}
             </Button>
             <Button
               type="submit"
               className="flex-1 bg-[#FF0077] hover:bg-[#E6006A] text-white"
               disabled={isSaving}
             >
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? t("web.accountSettings.personalInfo.saving") : t("web.accountSettings.personalInfo.save")}
             </Button>
           </div>
         </form>
@@ -389,6 +391,7 @@ export default function PersonalInfoCard({
   completionFocus,
   onCompletionFocusConsumed,
 }: PersonalInfoCardProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [editModal, setEditModal] = useState<{ type: string; isOpen: boolean; initialData?: any }>({
     type: "",
@@ -397,7 +400,7 @@ export default function PersonalInfoCard({
   });
 
   const formatPhone = (phone: string | null) => {
-    if (!phone) return "Not provided";
+    if (!phone) return t("web.accountSettings.personalInfo.notProvided");
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length >= 4) {
       return `${cleaned.substring(0, 3)} *** ***${cleaned.substring(cleaned.length - 4)}`;
@@ -406,7 +409,7 @@ export default function PersonalInfoCard({
   };
 
   const formatEmail = (email: string) => {
-    if (!email || !isMailableEmail(email)) return "Not provided";
+    if (!email || !isMailableEmail(email)) return t("web.accountSettings.personalInfo.notProvided");
     const parts = email.split("@");
     if (parts[0].length > 0) {
       return `${parts[0].substring(0, 1)}****@${parts[1] || ""}`;
@@ -416,7 +419,7 @@ export default function PersonalInfoCard({
 
   const getVerificationStatus = () => {
     if (user.identity_verified) {
-      return { text: "Verified", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
+      return { text: t("web.accountSettings.personalInfo.verified"), color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
     }
     const status = user.identity_verification_status || "none";
     const hasSubmittedAt = !!user.identity_verification_submitted_at;
@@ -424,16 +427,16 @@ export default function PersonalInfoCard({
     // Only show "Under Review" if status is pending AND there's a submitted_at date
     // This means an actual verification was submitted
     if (status === "approved") {
-      return { text: "Verified", color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
+      return { text: t("web.accountSettings.personalInfo.verified"), color: "text-emerald-700 bg-emerald-50 border-emerald-200" };
     }
     if (status === "pending" && hasSubmittedAt) {
-      return { text: "Under Review", color: "text-amber-700 bg-amber-50 border-amber-200" };
+      return { text: t("web.accountSettings.personalInfo.underReview"), color: "text-amber-700 bg-amber-50 border-amber-200" };
     }
     if (status === "rejected") {
-      return { text: "Rejected", color: "text-red-700 bg-red-50 border-red-200" };
+      return { text: t("web.accountSettings.personalInfo.rejected"), color: "text-red-700 bg-red-50 border-red-200" };
     }
     // Default: Not verified (no submission or status is 'none')
-    return { text: "Not verified", color: "text-zinc-600 bg-zinc-50 border-zinc-200" };
+    return { text: t("web.accountSettings.personalInfo.notVerified"), color: "text-zinc-600 bg-zinc-50 border-zinc-200" };
   };
 
   const verificationStatus = getVerificationStatus();
@@ -445,22 +448,22 @@ export default function PersonalInfoCard({
           first_name: data.first_name,
           last_name: data.last_name,
         });
-        toast.success("Legal name updated");
+        toast.success(t("web.accountSettings.personalInfo.legalNameUpdated"));
       } else if (type === "preferredName") {
         await fetcher.patch("/api/me/profile", {
           preferred_name: data.preferred_name || null,
         });
-        toast.success("Preferred name updated");
+        toast.success(t("web.accountSettings.personalInfo.preferredNameUpdated"));
       } else if (type === "email") {
         await fetcher.patch("/api/me/profile", {
           email: data.email,
         });
-        toast.success("Email updated. Please check your inbox to verify.");
+        toast.success(t("web.accountSettings.personalInfo.emailUpdatedCheckInbox"));
       } else if (type === "phone") {
         await fetcher.patch("/api/me/profile", {
           phone: data.phone,
         });
-        toast.success("Phone number updated");
+        toast.success(t("web.accountSettings.personalInfo.phoneNumberUpdated"));
       } else if (type === "address") {
         await fetcher.patch("/api/me/profile", {
           address: {
@@ -472,7 +475,7 @@ export default function PersonalInfoCard({
             country: data.country,
           },
         });
-        toast.success("Address updated");
+        toast.success(t("web.accountSettings.personalInfo.addressUpdated"));
       } else if (type === "emergencyContact") {
         await fetcher.patch("/api/me/profile", {
           emergency_contact: {
@@ -482,7 +485,7 @@ export default function PersonalInfoCard({
             email: data.email,
           },
         });
-        toast.success("Emergency contact updated");
+        toast.success(t("web.accountSettings.personalInfo.emergencyContactUpdated"));
       } else if (type === "identity") {
         const formData = new FormData();
         formData.append("file", data.file);
@@ -496,10 +499,10 @@ export default function PersonalInfoCard({
 
         if (!response.ok) {
           const error = await response.json();
-          throw new Error(error.error?.message || "Failed to upload ID");
+          throw new Error(error.error?.message || t("web.accountSettings.personalInfo.uploadIdFailed"));
         }
 
-        toast.success("Government ID uploaded successfully! It will be reviewed by our team.");
+        toast.success(t("web.accountSettings.personalInfo.idUploaded"));
       }
 
       onUpdate?.();
@@ -592,7 +595,7 @@ export default function PersonalInfoCard({
           aria-expanded={isOpen}
         >
           <h3 className="text-lg font-semibold tracking-tight text-zinc-900">
-            Personal Information
+            {t("web.accountSettings.personalInfo.personalInformation")}
           </h3>
           {isOpen ? (
             <ChevronUp className="h-5 w-5 text-zinc-500" />
@@ -605,22 +608,22 @@ export default function PersonalInfoCard({
           <div className="px-6 pb-6 space-y-4 border-t border-zinc-100">
                 {/* Legal Name */}
                 <InfoRow
-                  label="Legal name"
-                  value={`${user.first_name || ""} ${user.last_name || ""}`.trim() || "Not provided"}
+                  label={t("web.accountSettings.personalInfo.legalName")}
+                  value={`${user.first_name || ""} ${user.last_name || ""}`.trim() || t("web.accountSettings.personalInfo.notProvided")}
                   onEdit={() => openEditModal("legalName")}
                 />
 
                 {/* Preferred Name */}
                 <InfoRow
-                  label="Preferred name"
-                  value={user.preferred_name || "Not provided"}
+                  label={t("web.accountSettings.personalInfo.preferredName")}
+                  value={user.preferred_name || t("web.accountSettings.personalInfo.notProvided")}
                   onEdit={user.preferred_name ? () => openEditModal("preferredName") : undefined}
                   onAdd={!user.preferred_name ? () => openEditModal("preferredName") : undefined}
                 />
 
                 {/* Email */}
                 <InfoRow
-                  label="Email address"
+                  label={t("web.accountSettings.personalInfo.emailAddress")}
                   value={formatEmail(user.email)}
                   verified={!isMailableEmail(user.email) || user.email_verified}
                   onEdit={() => openEditModal("email")}
@@ -628,7 +631,7 @@ export default function PersonalInfoCard({
 
                 {/* Phone */}
                 <InfoRow
-                  label="Phone number"
+                  label={t("web.accountSettings.personalInfo.phoneNumber")}
                   value={formatPhone(user.phone)}
                   verified={user.phone_verified}
                   onEdit={() => openEditModal("phone")}
@@ -637,7 +640,7 @@ export default function PersonalInfoCard({
                 {/* Government ID */}
                 <div className="pt-2">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-zinc-900">Government ID</label>
+                    <label className="text-sm font-medium text-zinc-900">{t("web.accountSettings.personalInfo.governmentId")}</label>
                   </div>
                   <div className={`
                     p-4 rounded-xl border-2 ${verificationStatus.color}
@@ -648,7 +651,7 @@ export default function PersonalInfoCard({
                       <p className="text-sm font-medium mb-1">{verificationStatus.text}</p>
                       {user.identity_verification_status === "pending" && user.identity_verification_submitted_at && (
                         <p className="text-xs opacity-70 mb-2">
-                          Verification Pending / Under Review
+                          {t("web.accountSettings.personalInfo.verificationPendingReview")}
                         </p>
                       )}
                       {user.identity_verification_status === "rejected" && user.identity_verification_rejection_reason && (
@@ -668,20 +671,20 @@ export default function PersonalInfoCard({
                                 if (viewResponse.data?.signed_url) {
                                   window.open(viewResponse.data.signed_url, '_blank');
                                 } else {
-                                  toast.error("Failed to load document");
+                                  toast.error(t("web.accountSettings.personalInfo.failedLoadDocument"));
                                 }
                               } catch (error: any) {
                                 console.error("Error viewing document:", error);
                                 if (error.message?.includes('Bucket not found') || error.message?.includes('not configured')) {
-                                  toast.error("Storage not configured. Please contact support.");
+                                  toast.error(t("web.accountSettings.personalInfo.storageNotConfigured"));
                                 } else {
-                                  toast.error(error.message || "Failed to view document");
+                                  toast.error(error.message || t("web.accountSettings.personalInfo.failedViewDocument"));
                                 }
                               }
                             }}
                           >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View uploaded document
+                            <Eye className="h-4 w-4 me-1" />
+                            {t("web.accountSettings.personalInfo.viewUploadedDocument")}
                           </Button>
                         )}
                         {(user.can_submit_verification ||
@@ -696,8 +699,8 @@ export default function PersonalInfoCard({
                             onClick={() => openEditModal("identity")}
                           >
                             {user.identity_verification_status === "rejected"
-                              ? "Upload new document"
-                              : "Start verification"}
+                              ? t("web.accountSettings.personalInfo.uploadNewDocument")
+                              : t("web.accountSettings.personalInfo.startVerification")}
                           </Button>
                         )}
                       </div>
@@ -707,11 +710,11 @@ export default function PersonalInfoCard({
 
                 {/* Address */}
                 <InfoRow
-                  label="Address"
+                  label={t("web.accountSettings.personalInfo.address")}
                   value={
                     user.address?.line1
                       ? `${user.address.line1}, ${user.address.city || ""}`
-                      : "Not provided"
+                      : t("web.accountSettings.personalInfo.notProvided")
                   }
                   isOptional
                   onEdit={user.address ? () => openEditModal("address") : undefined}
@@ -720,8 +723,8 @@ export default function PersonalInfoCard({
 
                 {/* Emergency Contact */}
                 <InfoRow
-                  label="Emergency contact"
-                  value={user.emergency_contact?.name || "Not provided"}
+                  label={t("web.accountSettings.personalInfo.emergencyContact")}
+                  value={user.emergency_contact?.name || t("web.accountSettings.personalInfo.notProvided")}
                   isPrivate
                   onEdit={user.emergency_contact?.name ? () => openEditModal("emergencyContact") : undefined}
                   onAdd={!user.emergency_contact?.name ? () => openEditModal("emergencyContact") : undefined}
@@ -761,6 +764,7 @@ function InfoRow({
   onEdit,
   onAdd,
 }: InfoRowProps) {
+  const { t } = useTranslation();
   return (
     <div className="py-3 border-b border-zinc-200/50 last:border-0">
       <div className="flex items-start justify-between gap-4">
@@ -770,17 +774,17 @@ function InfoRow({
             {verified && (
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
                 <Check className="h-3 w-3" />
-                Verified
+                {t("web.accountSettings.personalInfo.verified")}
               </span>
             )}
             {isPrivate && (
               <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-50 text-zinc-600 border border-zinc-200 flex items-center gap-1">
                 <Lock className="h-3 w-3" />
-                Private
+                {t("web.accountSettings.personalInfo.private")}
               </span>
             )}
             {isOptional && (
-              <span className="text-xs text-zinc-400">Optional</span>
+              <span className="text-xs text-zinc-400">{t("web.accountSettings.personalInfo.optional")}</span>
             )}
           </div>
           <p className="text-sm text-zinc-600">{value}</p>
@@ -792,8 +796,8 @@ function InfoRow({
             onClick={onEdit}
             className="text-zinc-600 hover:text-[#FF0077]"
           >
-            <Edit className="h-4 w-4 mr-1" />
-            Edit
+            <Edit className="h-4 w-4 me-1" />
+            {t("web.accountSettings.personalInfo.edit")}
           </Button>
         )}
         {onAdd && (
@@ -803,8 +807,8 @@ function InfoRow({
             onClick={onAdd}
             className="text-zinc-600 hover:text-[#FF0077]"
           >
-            <Plus className="h-4 w-4 mr-1" />
-            Add
+            <Plus className="h-4 w-4 me-1" />
+            {t("web.accountSettings.personalInfo.add")}
           </Button>
         )}
       </div>

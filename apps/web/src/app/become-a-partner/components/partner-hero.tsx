@@ -26,7 +26,7 @@ interface PartnerHeroProps {
 
 export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProps) {
   const router = useRouter();
-  const { user, role, isLoading } = useAuth();
+  const { user, role } = useAuth();
   const [showVideoModal, setShowVideoModal] = useState(false);
   const { content, getSectionContent } = usePageContent("become-a-partner");
 
@@ -70,8 +70,6 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
   };
 
   const handleSignUp = () => {
-    if (isLoading) return;
-
     if (user) {
       if (role === "provider_owner") {
         router.push("/provider/dashboard");

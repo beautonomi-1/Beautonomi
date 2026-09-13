@@ -40,7 +40,7 @@ function Card({ title, image }: { title: string; image: ImgSrc }) {
         </Button>
         </div>
         <div>
-          <Image src={image} alt={title}  className="mr-2 object-cover h-20 w-20" />
+          <Image src={image} alt={title}  className="me-2 object-cover h-20 w-20" />
         </div>
         </div>
        

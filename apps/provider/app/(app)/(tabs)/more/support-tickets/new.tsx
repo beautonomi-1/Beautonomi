@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { TrustScreenShell } from "@/components/safety/TrustScreenShell";
@@ -20,16 +21,29 @@ import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId } from "@beautonomi/utils";
 
 const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", label: "Booking" },
-  { value: "product_order", label: "Product order" },
-  { value: "payment", label: "Payment/refund" },
-  { value: "provider_onboarding", label: "Onboarding" },
-  { value: "account", label: "Account" },
-  { value: "technical", label: "Technical" },
-  { value: "other", label: "Other" },
+  { value: "booking", labelKey: "contextBooking" },
+  { value: "product_order", labelKey: "contextProductOrder" },
+  { value: "payment", labelKey: "contextPayment" },
+  { value: "provider_onboarding", labelKey: "contextProviderOnboarding" },
+  { value: "account", labelKey: "contextAccount" },
+  { value: "technical", labelKey: "contextTechnical" },
+  { value: "other", labelKey: "contextOther" },
 ] as const;
 
+const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
+  low: "priorityLow",
+  medium: "priorityMedium",
+  high: "priorityHigh",
+  urgent: "priorityUrgent",
+};
+
 export default function NewSupportTicketScreen() {
+  const { t } = useTranslation();
+  const st = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.supportTicketNew.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ category?: string; booking_id?: string; booking_number?: string }>();
   const [subject, setSubject] = useState("");
@@ -62,11 +76,11 @@ export default function NewSupportTicketScreen() {
         setSubject((current) =>
           current.trim()
             ? current
-            : `Help with booking ${prefill.supportContextLabel.split(" (")[0]}`,
+            : st("helpWithBooking", { label: prefill.supportContextLabel.split(" (")[0] }),
         );
       }
     }
-  }, [params.category, params.booking_id, params.booking_number]);
+  }, [params.category, params.booking_id, params.booking_number, st]);
 
   /**
    * §Provider-audit 2026-05: previously the Submit button silently stayed
@@ -83,25 +97,25 @@ export default function NewSupportTicketScreen() {
   const canSubmit = subjectOk && messageOk;
   const subjectHint =
     subjectTrimmed.length === 0
-      ? "Required — short summary of the issue"
+      ? st("subjectHintRequired")
       : subjectTrimmed.length < 4
-        ? "Tip: a few more words helps us route it faster"
+        ? st("subjectHintTip")
         : null;
   const messageHint =
     messageTrimmed.length === 0
-      ? "Required — describe what happened"
+      ? st("messageHintRequired")
       : messageTrimmed.length < 10
-        ? "Tip: include any error or steps so we can help fast"
+        ? st("messageHintTip")
         : null;
 
   const handleSubmit = async () => {
     if (!canSubmit) {
       const missing: string[] = [];
-      if (!subjectOk) missing.push("a short subject");
-      if (!messageOk) missing.push("a description of the issue");
+      if (!subjectOk) missing.push(st("missingSubject"));
+      if (!messageOk) missing.push(st("missingDescription"));
       Alert.alert(
-        "A little more info",
-        `Please add ${missing.join(" and ")} so we can help.`,
+        st("moreInfoTitle"),
+        st("moreInfoBody", { missing: missing.join(st("missingJoin")) }),
       );
       return;
     }
@@ -121,7 +135,7 @@ export default function NewSupportTicketScreen() {
         }
       );
       if (res.error) {
-        Alert.alert("Could not submit", res.error.message ?? "Please try again");
+        Alert.alert(st("submitFailedTitle"), res.error.message ?? st("submitFailedFallback"));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -132,13 +146,13 @@ export default function NewSupportTicketScreen() {
         router.replace(`/(app)/(tabs)/more/support-tickets/${ticketId}` as never);
       } else {
         Alert.alert(
-          "Ticket submitted",
-          "We'll get back to you as soon as possible. You can track replies in My support tickets.",
-          [{ text: "OK", onPress: () => router.back() }]
+          st("submittedTitle"),
+          st("submittedBody"),
+          [{ text: st("ok"), onPress: () => router.back() }]
         );
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Could not submit ticket");
+      Alert.alert(st("errorTitle"), e instanceof Error ? e.message : st("submitGenericError"));
     } finally {
       setSubmitting(false);
     }
@@ -147,8 +161,8 @@ export default function NewSupportTicketScreen() {
   return (
     <ScreenContainer keyboardAvoiding={false}>
       <TrustScreenShell
-        title="New support ticket"
-        breadcrumbSegment="Support"
+        title={st("screenTitle")}
+        breadcrumbSegment={st("breadcrumb")}
       />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -162,7 +176,7 @@ export default function NewSupportTicketScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ marginBottom: 16 }}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>What is this about?</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("aboutLabel")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
               {SUPPORT_CONTEXT_OPTIONS.map((option) => (
                 <TouchableOpacity
@@ -180,12 +194,12 @@ export default function NewSupportTicketScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: "600", color: supportContextType === option.value ? Colors.primary : Colors.gray[600] }}>
-                    {option.label}
+                    {st(option.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Related reference (optional)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("referenceLabel")}</Text>
             <TextInput
               style={{
                 marginBottom: 20,
@@ -198,7 +212,7 @@ export default function NewSupportTicketScreen() {
                 fontSize: 15,
                 color: "#111827",
               }}
-              placeholder="Booking/order/payment reference"
+              placeholder={st("referencePlaceholder")}
               placeholderTextColor="#9CA3AF"
               value={supportContextLabel}
               onChangeText={setSupportContextLabel}
@@ -207,7 +221,7 @@ export default function NewSupportTicketScreen() {
             <SupportTicketCategoryPicker value={category} onChange={setCategory} />
           </View>
 
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Priority</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("priorityLabel")}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
             {SUPPORT_TICKET_PRIORITIES.map((p) => (
               <TouchableOpacity
@@ -225,14 +239,14 @@ export default function NewSupportTicketScreen() {
                 }}
               >
                 <Text style={{ fontSize: 13, fontWeight: "600", color: priority === p.value ? Colors.primary : Colors.gray[600] }}>
-                  {p.label}
+                  {st(PRIORITY_LABEL_KEYS[p.value])}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           {/* Subject */}
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Subject</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("subjectLabel")}</Text>
           <TextInput
             style={{
               marginBottom: subjectHint ? 6 : 20,
@@ -245,7 +259,7 @@ export default function NewSupportTicketScreen() {
               fontSize: 15,
               color: "#111827",
             }}
-            placeholder="Brief description of the issue"
+            placeholder={st("subjectPlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={subject}
             onChangeText={setSubject}
@@ -257,7 +271,7 @@ export default function NewSupportTicketScreen() {
           ) : null}
 
           {/* Message */}
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Details</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{st("detailsLabel")}</Text>
           <TextInput
             style={{
               marginBottom: messageHint ? 6 : 24,
@@ -272,7 +286,7 @@ export default function NewSupportTicketScreen() {
               minHeight: 140,
               textAlignVertical: "top",
             }}
-            placeholder="Describe the issue in detail, including any error messages or steps to reproduce…"
+            placeholder={st("detailPlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={message}
             onChangeText={setMessage}
@@ -284,14 +298,14 @@ export default function NewSupportTicketScreen() {
           ) : null}
 
           <ActionButton
-            label={submitting ? "Submitting…" : "Submit ticket"}
+            label={submitting ? st("submitting") : st("submitTicket")}
             onPress={handleSubmit}
             variant="brand"
             fullWidth
             disabled={submitting}
           />
           <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[400] }}>
-            We typically respond within 1–2 business days
+            {st("responseHint")}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

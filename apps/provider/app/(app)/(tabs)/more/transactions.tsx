@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { Redirect, useRouter } from "expo-router";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { View, Text, TouchableOpacity, Alert, Share, ScrollView, RefreshControl } from "react-native";
@@ -39,15 +40,15 @@ interface Transaction {
 }
 
 
-const TYPE_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Earnings", value: "earning" },
-  { label: "Fees", value: "fee" },
-  { label: "Payouts", value: "payout" },
-  { label: "Refunds", value: "refund" },
-  { label: "Tips", value: "tip" },
-  { label: "Ledger", value: "adjustment" },
-];
+const TYPE_FILTER_KEYS = [
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "filterEarnings", value: "earning" },
+  { labelKey: "filterFees", value: "fee" },
+  { labelKey: "filterPayouts", value: "payout" },
+  { labelKey: "filterRefunds", value: "refund" },
+  { labelKey: "filterTips", value: "tip" },
+  { labelKey: "filterLedger", value: "adjustment" },
+] as const;
 
 function txnIcon(type: string): {
   name: keyof typeof Ionicons.glyphMap;
@@ -103,15 +104,25 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
   }
 }
 
-function paymentMethodLabel(method: string | null): string {
-  if (method === "paycloud") return "Card machine";
-  return method ?? "Other";
+function paymentMethodLabel(method: string | null, other: string, cardMachine: string): string {
+  if (method === "paycloud") return cardMachine;
+  return method ?? other;
 }
 
 export function TransactionsContent({
   embedded = false,
   locationId = null,
 }: { embedded?: boolean; locationId?: string | null } = {}) {
+  const { t } = useTranslation();
+  const tx = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.transactions.${key}`, opts) as string,
+    [t],
+  );
+  const typeFilters = useMemo(
+    () => TYPE_FILTER_KEYS.map((o) => ({ label: tx(o.labelKey), value: o.value })),
+    [tx],
+  );
   const router = useRouter();
   const handleBack = useProviderStackBack();
   const [refreshing, setRefreshing] = useState(false);
@@ -236,24 +247,25 @@ export function TransactionsContent({
       ...(locationId ? { location_id: locationId } : {}),
     });
     if (error) {
-      Alert.alert("Export Failed", error);
+      Alert.alert(tx("exportFailed"), error);
       return;
     }
+    const reportTitle = data?.filename ?? tx("reportTitle");
     if (data?.csv) {
       await Share.share({
-        title: data.filename ?? "Transaction report",
+        title: reportTitle,
         message: data.truncated
-          ? `${data.filename ?? "Transaction report"}\n\n${data.csv}\n\nNote: export is capped at 5,000 ledger rows.`
-          : `${data.filename ?? "Transaction report"}\n\n${data.csv}`,
+          ? `${reportTitle}\n\n${data.csv}\n\n${tx("exportCappedNote")}`
+          : `${reportTitle}\n\n${data.csv}`,
       });
     } else if (data?.url) {
       await Share.share({
-        message: `Transaction report for ${period}`,
+        message: tx("shareUrlMessage", { period }),
         url: data.url,
       });
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Exported", "Transaction report has been sent to your email.");
+      Alert.alert(tx("exportedTitle"), tx("exportedBody"));
     }
   }
 
@@ -272,12 +284,12 @@ export function TransactionsContent({
         <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${ic.bg}`)}>
           <Ionicons name={ic.name} size={18} color={ic.color} />
         </View>
-        <View style={twStyle("ml-3 flex-1")}>
+        <View style={twStyle("ms-3 flex-1")}>
           <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
             {item.description}
           </Text>
           <View style={twStyle("mt-0.5 flex-row items-center")}>
-            <Text style={[twStyle("text-xs text-gray-400"), { marginRight: 8 }]}>
+            <Text style={[twStyle("text-xs text-gray-400"), { marginEnd: 8 }]}>
               {formatTimeAgo(item.created_at)}
             </Text>
             {item.client_name && (
@@ -287,7 +299,7 @@ export function TransactionsContent({
             )}
           </View>
         </View>
-        <View style={twStyle("items-end ml-2")}>
+        <View style={twStyle("items-end ms-2")}>
           <Text
             style={twStyle(`text-sm font-bold ${
               item.type === "adjustment"
@@ -325,10 +337,10 @@ export function TransactionsContent({
       >
       {!embedded ? (
         <ScreenHeader
-          title="Transactions"
+          title={tx("title")}
           showBack
           onBack={handleBack}
-          subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
+          subtitle={tx("subtitle", { count: filtered.length })}
           rightAction={
             <TouchableOpacity
               style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -345,7 +357,7 @@ export function TransactionsContent({
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
             disabled={exporting}
-            accessibilityLabel="Export CSV"
+            accessibilityLabel={tx("exportCsvA11y")}
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
           </TouchableOpacity>
@@ -354,7 +366,7 @@ export function TransactionsContent({
 
       {showTruncationBanner ? (
         <View style={twStyle("px-4")}>
-          <TruncationBanner message="Totals may be incomplete — only the first batch of ledger rows was scanned. Narrow the date range or export for the full period." />
+          <TruncationBanner message={tx("truncationBanner")} />
         </View>
       ) : null}
 
@@ -367,7 +379,7 @@ export function TransactionsContent({
       {listTotal > 0 ? (
         <View style={twStyle("mb-2 px-4")}>
           <Text style={twStyle("text-xs text-gray-500")}>
-            Showing {Math.min(filtered.length, listLimit)} of {listTotal} transactions
+            {tx("showingOf", { shown: Math.min(filtered.length, listLimit), total: listTotal })}
           </Text>
         </View>
       ) : null}
@@ -378,21 +390,21 @@ export function TransactionsContent({
             style={twStyle("items-center rounded-xl border border-gray-200 bg-white py-3")}
             onPress={() => setListLimit((prev) => Math.min(prev + 50, MAX_LIST_LIMIT))}
           >
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Load more transactions</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{tx("loadMore")}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
       {/* Summary cards */}
       <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1 rounded-xl border border-green-100 bg-green-50 p-3"), { marginRight: 8 }]}>
-          <Text style={twStyle("text-[10px] font-medium text-green-600")}>Earnings & tips</Text>
+        <View style={[twStyle("flex-1 rounded-xl border border-green-100 bg-green-50 p-3"), { marginEnd: 8 }]}>
+          <Text style={twStyle("text-[10px] font-medium text-green-600")}>{tx("earningsAndTips")}</Text>
           <Text style={twStyle("text-base font-bold text-green-700")}>
             {formatCurrency(totalIn)}
           </Text>
         </View>
-        <View style={[twStyle("flex-1 rounded-xl border border-red-100 bg-red-50 p-3"), { marginRight: 8 }]}>
-          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Payouts & refunds</Text>
+        <View style={[twStyle("flex-1 rounded-xl border border-red-100 bg-red-50 p-3"), { marginEnd: 8 }]}>
+          <Text style={twStyle("text-[10px] font-medium text-red-600")}>{tx("payoutsAndRefunds")}</Text>
           <Text style={twStyle("text-base font-bold text-red-700")}>
             {formatCurrency(totalOut)}
           </Text>
@@ -407,7 +419,7 @@ export function TransactionsContent({
               netAmount >= 0 ? "text-blue-600" : "text-orange-600"
             }`)}
           >
-            Net
+            {tx("net")}
           </Text>
           <Text
             style={twStyle(`text-base font-bold ${
@@ -423,12 +435,12 @@ export function TransactionsContent({
       <SearchBar
         value={search}
         onChangeText={setSearch}
-        placeholder="Search transactions..."
+        placeholder={tx("searchPlaceholder")}
       />
 
       <MoneyRangeChips value={period} onChange={setPeriod} />
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
+        <FilterChipGroup options={typeFilters} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
       {loading && !txnPayload ? (
@@ -438,15 +450,15 @@ export function TransactionsContent({
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="swap-horizontal-outline"
-          title="No transactions"
+          title={tx("emptyTitle")}
           description={
             search || typeFilter !== "all"
-              ? "Try adjusting your search or filters"
+              ? tx("emptyFiltered")
               : period !== "all"
-                ? "No transactions in this period. Try All time or All branches above."
-                : "Financial transactions will appear here"
+                ? tx("emptyPeriod")
+                : tx("emptyAll")
           }
-          actionLabel={period !== "all" && !search && typeFilter === "all" ? "Show all time" : undefined}
+          actionLabel={period !== "all" && !search && typeFilter === "all" ? tx("showAllTime") : undefined}
           onAction={period !== "all" && !search && typeFilter === "all" ? () => setPeriod("all") : undefined}
         />
       ) : (
@@ -463,7 +475,7 @@ export function TransactionsContent({
       <BottomSheet
         visible={!!selectedTxn}
         onClose={() => setSelectedTxn(null)}
-        title="Transaction Details"
+        title={tx("detailsTitle")}
       >
         {selectedTxn && (
           <View>
@@ -500,21 +512,21 @@ export function TransactionsContent({
 
             <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-4")}>
               <View style={twStyle("mb-3 flex-row justify-between")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Type</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tx("type")}</Text>
                 <Text style={twStyle("text-sm font-medium text-gray-900")}>
                   {formatLedgerUiBucket(selectedTxn.type)}
                 </Text>
               </View>
               {selectedTxn.transaction_type ? (
                 <View style={twStyle("mb-3 flex-row justify-between")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Ledger</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{tx("ledger")}</Text>
                   <Text style={twStyle("text-xs font-mono text-gray-600")} selectable>
                     {selectedTxn.transaction_type}
                   </Text>
                 </View>
               ) : null}
               <View style={twStyle("mb-3 flex-row justify-between")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Status</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tx("status")}</Text>
                 <View style={twStyle(`rounded-full px-2 py-0.5 ${statusStyle(selectedTxn.status).bg}`)}>
                   <Text style={twStyle(`text-xs font-medium capitalize ${statusStyle(selectedTxn.status).text}`)}>
                     {selectedTxn.status}
@@ -522,28 +534,28 @@ export function TransactionsContent({
                 </View>
               </View>
               <View style={twStyle("mb-3 flex-row justify-between")}>
-                <Text style={twStyle("text-xs text-gray-500")}>Date</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{tx("date")}</Text>
                 <Text style={twStyle("text-sm text-gray-900")}>
                   {formatDate(selectedTxn.created_at)}
                 </Text>
               </View>
               {selectedTxn.client_name && (
                 <View style={twStyle("mb-3 flex-row justify-between")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Client</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{tx("client")}</Text>
                   <Text style={twStyle("text-sm text-gray-900")}>{selectedTxn.client_name}</Text>
                 </View>
               )}
               {selectedTxn.payment_method && (
                 <View style={twStyle("mb-3 flex-row items-center justify-between")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Payment Method</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{tx("paymentMethod")}</Text>
                   <View style={twStyle("flex-row items-center")}>
                     <Ionicons
                       name={paymentMethodIcon(selectedTxn.payment_method)}
                       size={14}
                       color="#6b7280"
                     />
-                    <Text style={twStyle("ml-1 text-sm capitalize text-gray-900")}>
-                      {paymentMethodLabel(selectedTxn.payment_method)}
+                    <Text style={twStyle("ms-1 text-sm capitalize text-gray-900")}>
+                      {paymentMethodLabel(selectedTxn.payment_method, tx("paymentOther"), tx("paymentCardMachine"))}
                     </Text>
                   </View>
                 </View>
@@ -557,13 +569,13 @@ export function TransactionsContent({
                   style={twStyle("mb-3 self-end")}
                 >
                   <Text style={twStyle("text-xs font-medium text-violet-700")}>
-                    Manage card machines →
+                    {tx("manageCardMachines")}
                   </Text>
                 </TouchableOpacity>
               )}
               {selectedTxn.reference && (
                 <View style={twStyle("flex-row justify-between")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Reference</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{tx("reference")}</Text>
                   <Text style={twStyle("text-sm font-mono text-gray-700")} selectable>
                     {selectedTxn.reference}
                   </Text>
@@ -573,7 +585,7 @@ export function TransactionsContent({
 
             {selectedTxn.notes && (
               <View style={twStyle("mb-4")}>
-                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Notes</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>{tx("notes")}</Text>
                 <Text style={twStyle("text-sm leading-5 text-gray-700")}>{selectedTxn.notes}</Text>
               </View>
             )}
@@ -582,12 +594,17 @@ export function TransactionsContent({
               style={twStyle("flex-row items-center justify-center rounded-xl bg-gray-100 py-3")}
               onPress={async () => {
                 await Share.share({
-                  message: `Transaction: ${selectedTxn.description}\nAmount: ${formatCurrency(selectedTxn.amount)}\nDate: ${formatDate(selectedTxn.created_at)}\nRef: ${selectedTxn.reference ?? "N/A"}`,
+                  message: tx("shareMessage", {
+                    description: selectedTxn.description,
+                    amount: formatCurrency(selectedTxn.amount),
+                    date: formatDate(selectedTxn.created_at),
+                    ref: selectedTxn.reference ?? tx("refNa"),
+                  }),
                 });
               }}
             >
               <Ionicons name="share-outline" size={16} color="#374151" />
-              <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-700")}>Share Receipt</Text>
+              <Text style={twStyle("ms-1.5 text-sm font-medium text-gray-700")}>{tx("shareReceipt")}</Text>
             </TouchableOpacity>
           </View>
         )}

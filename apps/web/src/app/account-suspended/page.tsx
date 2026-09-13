@@ -128,7 +128,7 @@ export default function AccountSuspendedPage() {
               onClick={() => router.push("/")}
               className="flex-1"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-4 h-4 me-2" />
               Back to Home
             </Button>
             <Button

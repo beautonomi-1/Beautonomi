@@ -252,12 +252,13 @@ export function handleApiError(
  */
 export async function requireAuthInApi(request?: NextRequest | Request) {
   const supabase = await getSupabaseServer(request);
-  const { data: { user }, error } = await supabase.auth.getUser();
-  
-  if (error || !user) {
+  const { getServerUserSafe } = await import("@/lib/supabase/auth-errors");
+  const user = await getServerUserSafe(supabase);
+
+  if (!user) {
     throw new Error('Authentication required');
   }
-  
+
   return { user };
 }
 
@@ -727,14 +728,9 @@ async function requireRoleInApiImpl(
     if (!result) {
       // Check if it's a network error that was caught
       const supabase = await getSupabaseServer();
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      // If we can't get the auth user, it might be a network/auth issue
-      if (authError || !authUser) {
-        if (authError?.message?.toLowerCase().includes('timeout') || 
-            authError?.message?.toLowerCase().includes('network') ||
-            authError?.message?.toLowerCase().includes('connect')) {
-          throw new Error(`Network error: ${authError.message}`);
-        }
+      const { getServerUserSafe } = await import("@/lib/supabase/auth-errors");
+      const authUser = await getServerUserSafe(supabase);
+      if (!authUser) {
         throw new Error('Authentication required');
       }
       
@@ -753,8 +749,9 @@ async function requireRoleInApiImpl(
     }
     
     const supabase = await getSupabaseServer();
-    const { data: { user } } = await supabase.auth.getUser();
-    
+    const { getServerUserSafe: getUserSafe } = await import("@/lib/supabase/auth-errors");
+    const user = await getUserSafe(supabase);
+
     if (!user) {
       throw new Error('Authentication required');
     }

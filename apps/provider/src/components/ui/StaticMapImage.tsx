@@ -3,6 +3,7 @@
  * Uses Mapbox Static Images API. Token and optional style from superadmin (same as customer app).
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { View, ActivityIndicator, Text } from "react-native";
 import { Image } from "expo-image";
 import { Colors } from "@/constants/colors";
@@ -34,6 +35,7 @@ export function StaticMapImage({
   borderRadius = 16,
   className = "",
 }: StaticMapImageProps) {
+  const { t } = useTranslation();
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -137,7 +139,7 @@ export function StaticMapImage({
           alignItems: "center",
         }]}
       >
-        <Text style={twStyle("text-xs text-gray-400")}>Map unavailable</Text>
+        <Text style={twStyle("text-xs text-gray-400")}>{t("provider.mobile.components.staticMap.mapUnavailable")}</Text>
       </View>
     );
   }

@@ -8,8 +8,11 @@ import { View, Text, ActivityIndicator, Platform } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function AuthCallbackScreen() {
+  const { t } = useTranslation();
+  const ac = (key: string) => t(`provider.mobile.screens.authCallback.${key}`) as string;
   const router = useRouter();
   const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string; token_hash?: string; type?: string }>();
   const [status, setStatus] = useState<"loading" | "error">("loading");
@@ -89,7 +92,7 @@ export default function AuthCallbackScreen() {
           });
           if (verifyError) throw verifyError;
         } else {
-          throw new Error("No authentication data received");
+          throw new Error(ac("noAuthData"));
         }
 
         // §Final-audit 2026-04: previously this unconditionally set
@@ -143,7 +146,7 @@ export default function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router, params.code, params.error, params.error_description, params.token_hash, params.type]);
+  }, [router, params.code, params.error, params.error_description, params.token_hash, params.type, t]);
 
   if (status === "error") {
     return (
@@ -155,7 +158,7 @@ export default function AuthCallbackScreen() {
           style={{ color: Colors.primary, textDecorationLine: "underline" }}
           onPress={() => router.replace("/(auth)/login" as never)}
         >
-          Back to login
+          {ac("backToLogin")}
         </Text>
       </View>
     );
@@ -164,7 +167,7 @@ export default function AuthCallbackScreen() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
       <ActivityIndicator size="large" color={Colors.primary} />
-      <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Completing sign in...</Text>
+      <Text style={{ marginTop: 16, color: Colors.gray[600] }}>{ac("completingSignIn")}</Text>
     </View>
   );
 }

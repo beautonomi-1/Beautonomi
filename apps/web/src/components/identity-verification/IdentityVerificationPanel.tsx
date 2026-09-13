@@ -1,5 +1,7 @@
 "use client";
 
+import { i18n, useTranslation } from "@beautonomi/i18n";
+
 /**
  * IdentityVerificationPanel
  *
@@ -41,6 +43,7 @@ export function IdentityVerificationPanel({
   businessVerificationPending = false,
   businessVerificationSummary,
 }: Props) {
+  const { t } = useTranslation();
   const {
     status, loading, launching, sessionToken, sessionUrl, isExisting,
     legalDetails, setLegalDetails, legalDetailsErrors,
@@ -76,7 +79,7 @@ export function IdentityVerificationPanel({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <span className="sr-only">Loading verification status</span>
+        <span className="sr-only">{t("web.accountSettings.identityVerification.statusCard.loadingStatus")}</span>
       </div>
     );
   }
@@ -159,7 +162,7 @@ async function launchDiditSdk(
   try {
     const mod = await import("@didit-protocol/sdk-web");
     const DiditSdk = mod.DiditSdk ?? (mod as { default?: typeof mod.DiditSdk }).default;
-    if (!DiditSdk?.shared) throw new Error("Didit web SDK unavailable");
+    if (!DiditSdk?.shared) throw new Error(i18n.t("web.providerExtras.sdkUnavailable"))
     const sdk = DiditSdk.shared;
     sdk.onComplete = (result) => {
       activeSdkUrl = null;
@@ -167,7 +170,7 @@ async function launchDiditSdk(
         // Re-check status; webhook confirms the authoritative decision.
         onComplete();
       } else {
-        onError(new Error(result.error?.message ?? "Verification failed"));
+        onError(new Error(result.error?.message ?? i18n.t("web.providerExtras.verificationFailed")));
       }
     };
     await sdk.startVerification({ url });

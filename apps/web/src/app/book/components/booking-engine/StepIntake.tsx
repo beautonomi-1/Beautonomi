@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -83,6 +84,7 @@ export function StepIntake({
   onCustomFieldValuesChange,
   onNext,
 }: StepIntakeProps) {
+  const { t } = useTranslation();
   const [validationError, setValidationError] = useState<string | null>(null);
   const c = data.client;
   const providerFormValues = data.provider_form_responses ?? {};
@@ -113,29 +115,29 @@ export function StepIntake({
   const handleNext = () => {
     setValidationError(null);
     if (!c.firstName.trim() || !c.lastName.trim()) {
-      setValidationError("Please enter your first and last name.");
+      setValidationError(t("web.book.engine.nameRequired"));
       return;
     }
     if (!validEmail) {
-      setValidationError("Please enter a valid email address.");
+      setValidationError(t("validation.emailInvalid"));
       return;
     }
     const trimmedPhone = c.phone.trim();
     if (!isCompleteE164(trimmedPhone)) {
-      setValidationError("Please enter a valid phone number with country code.");
+      setValidationError(t("web.book.engine.phoneWithCountryCode"));
       return;
     }
     if (!baseValid) {
-      setValidationError("Please fill in your name, email, and phone.");
+      setValidationError(t("web.book.engine.fillNameEmailPhone"));
       return;
     }
     onChange({ phone: trimmedPhone });
     if (!providerFormsValid) {
-      setValidationError("Please complete all required provider forms.");
+      setValidationError(t("web.book.engine.completeProviderForms"));
       return;
     }
     if (!customValid) {
-      setValidationError("Please fill in all required additional details (marked with *).");
+      setValidationError(t("web.book.engine.completeRequiredDetails"));
       return;
     }
     onNext();
@@ -153,30 +155,30 @@ export function StepIntake({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Your details
+          {t("web.book.engine.yourDetails")}
         </h2>
-        <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>We’ll use this to confirm your booking</p>
+        <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.detailsConfirmHint")}</p>
       </div>
 
       <div className="p-5 space-y-4 rounded-3xl" style={cardStyle}>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="first-name" className="text-sm font-medium text-gray-700">First name</Label>
+            <Label htmlFor="first-name" className="text-sm font-medium text-gray-700">{t("web.book.engine.firstName")}</Label>
             <Input
               id="first-name"
-              placeholder="First name"
+              placeholder={t("web.book.engine.firstName")}
               value={c.firstName}
               onChange={(e) => onChange({ firstName: e.target.value })}
               className="rounded-xl h-12 border-gray-200 bg-gray-50/50"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="last-name" className="text-sm font-medium text-gray-700">Last name</Label>
+            <Label htmlFor="last-name" className="text-sm font-medium text-gray-700">{t("web.book.engine.lastName")}</Label>
             <Input
               id="last-name"
-              placeholder="Last name"
+              placeholder={t("web.book.engine.lastName")}
               value={c.lastName}
               onChange={(e) => onChange({ lastName: e.target.value })}
               className="rounded-xl h-12 border-gray-200 bg-gray-50/50"
@@ -185,15 +187,15 @@ export function StepIntake({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm font-medium text-gray-700">Email</Label>
+          <Label htmlFor="email" className="text-sm font-medium text-gray-700">{t("auth.email")}</Label>
           <div className="relative">
             <Input
               id="email"
               type="email"
-              placeholder="you@example.com"
+              placeholder={t("web.book.engine.emailPlaceholder")}
               value={c.email}
               onChange={(e) => onChange({ email: e.target.value })}
-              className="rounded-xl h-12 border-gray-200 bg-gray-50/50 pr-10"
+              className="rounded-xl h-12 border-gray-200 bg-gray-50/50 pe-10"
               autoComplete="email"
             />
             {c.email.trim() !== "" && (
@@ -211,10 +213,10 @@ export function StepIntake({
         <div className="space-y-2">
           <PhoneInput
             inputId="booking-engine-intake-phone"
-            label="Phone"
+            label={t("auth.phone")}
             value={c.phone}
             onChange={(e164) => onChange({ phone: e164 })}
-            placeholder="Phone number"
+            placeholder={t("auth.phone")}
             required
             className="[&_label]:text-sm [&_label]:font-medium [&_label]:text-gray-700"
           />
@@ -225,18 +227,18 @@ export function StepIntake({
               ) : (
                 <X className="h-4 w-4" style={{ color: "#dc2626" }} aria-hidden />
               )}
-              {isCompleteE164(c.phone) ? "Looks good" : "Complete the number with country code"}
+              {isCompleteE164(c.phone) ? t("web.book.engine.phoneLooksGood") : t("web.book.engine.phoneCompleteCountryCode")}
             </p>
           )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="special-requests" className="text-sm font-medium text-gray-700">
-            Special requests <span className="text-gray-400 font-normal">(optional)</span>
+            {t("web.book.engine.specialRequestsOptional")}
           </Label>
           <textarea
             id="special-requests"
-            placeholder="Allergies, preferences, access notes..."
+            placeholder={t("web.book.engine.allergiesPlaceholder")}
             value={c.specialRequests}
             onChange={(e) => onChange({ specialRequests: e.target.value })}
             rows={Math.min(6, Math.max(3, (c.specialRequests.match(/\n/g)?.length ?? 0) + 3))}
@@ -253,13 +255,13 @@ export function StepIntake({
       {/* Platform booking custom fields */}
       {bookingCustomDefinitions.length > 0 && (
         <div className="p-5 space-y-3 rounded-3xl" style={cardStyle}>
-          <h3 className="text-lg font-medium text-left" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Additional details
+          <h3 className="text-lg font-medium text-start" style={{ color: BOOKING_TEXT_PRIMARY }}>
+            {t("web.book.engine.additionalDetails")}
           </h3>
           <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
             {bookingCustomDefinitions.some((d) => d.is_required)
-              ? "Please complete all required fields (marked with *)."
-              : "Optional information for this booking."}
+              ? t("web.book.engine.requiredFieldsHint")
+              : t("web.book.engine.optionalBookingInfo")}
           </p>
           <CustomFieldsForm
             entityType="booking"
@@ -274,11 +276,11 @@ export function StepIntake({
       {/* Provider intake / extra forms */}
       {providerForms.length > 0 && (
         <div className="p-5 space-y-4 rounded-3xl" style={cardStyle}>
-          <h3 className="text-lg font-medium text-left" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Forms from your provider
+          <h3 className="text-lg font-medium text-start" style={{ color: BOOKING_TEXT_PRIMARY }}>
+            {t("web.book.engine.providerFormsTitle")}
           </h3>
           <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-            Please complete the following as required by the provider.
+            {t("web.book.engine.providerFormsHint")}
           </p>
           {providerForms.map((form) => (
             <div
@@ -289,7 +291,7 @@ export function StepIntake({
               <div>
                 <h4 className="font-medium text-sm text-gray-800">
                   {form.title}
-                  {form.is_required && <span className="text-red-500 ml-1">*</span>}
+                  {form.is_required && <span className="text-red-500 ms-1">*</span>}
                 </h4>
                 {form.description && (
                   <p className="text-xs text-gray-500 mt-0.5">{form.description}</p>
@@ -300,13 +302,13 @@ export function StepIntake({
                   <div key={field.id} className="space-y-1">
                     <Label className="text-sm font-medium text-gray-700">
                       {field.name}
-                      {field.is_required && <span className="text-red-500 ml-1">*</span>}
+                      {field.is_required && <span className="text-red-500 ms-1">*</span>}
                     </Label>
                     {field.field_type === "text" || field.field_type === "signature" ? (
                       <Input
                         value={String(providerFormValues[form.id]?.[field.id] ?? "")}
                         onChange={(e) => updateProviderFormValue(form.id, field.id, e.target.value)}
-                        placeholder={field.field_type === "signature" ? "Type your name to sign" : undefined}
+                        placeholder={field.field_type === "signature" ? t("web.book.engine.typeNameToSign") : undefined}
                         className="rounded-xl mt-1 border-gray-200 bg-white"
                       />
                     ) : field.field_type === "checkbox" ? (
@@ -317,7 +319,7 @@ export function StepIntake({
                             updateProviderFormValue(form.id, field.id, checked === true)
                           }
                         />
-                        <span className="text-sm text-gray-600">Yes</span>
+                        <span className="text-sm text-gray-600">{t("common.yes")}</span>
                       </div>
                     ) : field.field_type === "date" ? (
                       <Input
@@ -360,7 +362,7 @@ export function StepIntake({
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

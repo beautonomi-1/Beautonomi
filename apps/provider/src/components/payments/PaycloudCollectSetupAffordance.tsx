@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import { twStyle } from "@/lib/twStyle";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/paycloud-collect-cta";
 import type { PayCloudReadinessBlocker } from "@/hooks/usePayCloud";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Props = {
   blocker?: PayCloudReadinessBlocker | null;
@@ -51,7 +52,7 @@ export function PaycloudCollectSetupAffordance({ blocker, onPress, compact, load
           {title}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+      <DirectionalIcon name="chevron-forward" size={16} color="#9CA3AF" />
     </Pressable>
   );
 }

@@ -9,6 +9,7 @@ import {
   type AtHomeSnapshotLine,
 } from "@beautonomi/utils";
 import { formatMoney } from "@beautonomi/utils";
+import { endTextAlign } from "@/lib/rtlText";
 /** Narrow callable surface for i18next `t` without importing incompatible overloads. */
 export type TranslateFn = (key: string, options?: Record<string, string | number>) => string;
 
@@ -29,7 +30,7 @@ export function HouseCallAtHomeBanner({ t, show = true }: { t: TranslateFn; show
   if (!show) return null;
   return (
     <View style={styles.banner}>
-      <Ionicons name="home-outline" size={18} color={emerald.muted} style={{ marginRight: 10 }} />
+      <Ionicons name="home-outline" size={18} color={emerald.muted} style={{ marginEnd: 10 }} />
       <Text style={styles.bannerText}>{t("booking.houseCallPricing.atHomePricesHint")}</Text>
     </View>
   );
@@ -78,7 +79,7 @@ export function HouseCallFeesSummaryCard({
     <View style={styles.summaryCard}>
       <View style={styles.summaryRow}>
         <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-          <Ionicons name="home-outline" size={16} color={emerald.muted} style={{ marginRight: 8 }} />
+          <Ionicons name="home-outline" size={16} color={emerald.muted} style={{ marginEnd: 8 }} />
           <Text style={styles.summaryLabel}>{label}</Text>
         </View>
         <Text style={styles.summaryAmount}>{formatMoney(total, currency)}</Text>
@@ -203,12 +204,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: "#6B7280",
     marginTop: 2,
-    textAlign: "right",
+    textAlign: endTextAlign(),
   },
   priceFootnote: {
     fontSize: 10,
     color: emerald.muted,
     marginTop: 2,
-    textAlign: "right",
+    textAlign: endTextAlign(),
   },
 });

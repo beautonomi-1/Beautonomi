@@ -3,11 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 /**
  * F18 — Client-side helper for FX conversions in reporting code paths.
  *
- * Priority:
- *   1. If `base === quote`, return 1.0 immediately.
- *   2. Otherwise call the `public.get_fx_rate` SQL function (migration 494).
- *   3. If no rate row exists, return `null` (caller decides: fall back to 1,
- *      error out, or surface "rate unknown" in the UI).
+ * Uses public.get_fx_rate (migration 890) which reads fx_reference_rates with
+ * manual preference, inverse, and ZAR pivot; falls back to legacy fx_rates.
  */
 export interface FxRateLookup {
   base: string;
@@ -22,6 +19,10 @@ function cacheKey({ base, quote, at }: FxRateLookup) {
   return `${base}>${quote}:${at ? at.toISOString().slice(0, 10) : "now"}`;
 }
 
+export function bustFxRateMemo(): void {
+  MEMO.clear();
+}
+
 export async function getFxRate({ base, quote, at }: FxRateLookup): Promise<number | null> {
   const normBase = base.toUpperCase();
   const normQuote = quote.toUpperCase();
@@ -32,7 +33,7 @@ export async function getFxRate({ base, quote, at }: FxRateLookup): Promise<numb
   if (cached && cached.expiresAt > Date.now()) return cached.rate;
 
   try {
-    const admin = await getSupabaseAdmin();
+    const admin = getSupabaseAdmin();
     const { data, error } = await admin.rpc("get_fx_rate", {
       p_base: normBase,
       p_quote: normQuote,
@@ -52,10 +53,6 @@ export async function getFxRate({ base, quote, at }: FxRateLookup): Promise<numb
   }
 }
 
-/**
- * Convert an amount `amount` from `base` to `quote` using the rate effective
- * at `at`. Returns `null` if the rate is unknown.
- */
 export async function convertFx(
   amount: number,
   lookup: FxRateLookup,

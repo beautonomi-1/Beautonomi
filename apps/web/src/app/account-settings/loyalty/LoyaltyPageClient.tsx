@@ -11,7 +11,9 @@ import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
 import { Gift, Award, History, Sparkles, TrendingUp, CreditCard } from "lucide-react";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@beautonomi/i18n";
 import type { LoyaltyPageData } from "./loyalty-page-types";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 type LoyaltyData = LoyaltyPageData;
 
@@ -20,6 +22,7 @@ export default function LoyaltyPage({
 }: {
   initialLoyalty: LoyaltyPageData | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { format } = usePlatformCurrency();
   const [loyaltyData, setLoyaltyData] = useState<LoyaltyData | null>(() => initialLoyalty);
@@ -32,7 +35,7 @@ export default function LoyaltyPage({
       const res = await fetcher.get<{ data: LoyaltyData }>("/api/me/loyalty", { staleTimeMs: 15_000 });
       setLoyaltyData(res.data);
     } catch (e) {
-      toast.error("Failed to load loyalty points");
+      toast.error(t("web.accountSettings.loyalty.loadFailed"));
       console.error("Error loading loyalty points:", e);
     } finally {
       setIsLoading(false);
@@ -48,14 +51,23 @@ export default function LoyaltyPage({
     void load();
   }, []);
 
+  const historyLabel = (transaction: LoyaltyData["history"][number]) => {
+    if (transaction.description) return transaction.description;
+    if (transaction.transaction_type === "bonus") return t("web.accountSettings.loyalty.bonusPoints");
+    if (transaction.transaction_type === "earned") return t("web.accountSettings.loyalty.pointsEarned");
+    if (transaction.transaction_type === "redeemed") return t("web.accountSettings.loyalty.pointsRedeemed");
+    if (transaction.transaction_type === "expired") return t("web.accountSettings.loyalty.pointsExpired");
+    return t("web.accountSettings.loyalty.pointsAdjustment");
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50/50 pb-20 md:pb-0">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
           <Breadcrumb 
             items={[
-              { label: "Home", href: "/" },
-              { label: "Account Settings", href: "/account-settings" },
-              { label: "Loyalty Points" }
+              { label: t("web.accountSettings.loyalty.breadcrumbHome"), href: "/" },
+              { label: t("web.accountSettings.loyalty.breadcrumbAccountSettings"), href: "/account-settings" },
+              { label: t("web.accountSettings.loyalty.title") }
             ]} 
           />
           <BackButton href="/account-settings" />
@@ -64,12 +76,12 @@ export default function LoyaltyPage({
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
-              Loyalty Points
+              {t("web.accountSettings.loyalty.title")}
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-gray-500">Loading…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.loyalty.loading")}</p>
               </div>
             ) : loyaltyData ? (
               <div className="space-y-6">
@@ -77,16 +89,24 @@ export default function LoyaltyPage({
                 <div
                   className="backdrop-blur-2xl bg-white/80 border border-[#FF0077]/20 shadow-xl rounded-2xl p-5 md:p-6"
                 >
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">How rewards work</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">{t("web.accountSettings.loyalty.howRewardsWork")}</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="flex gap-3">
                       <div className="flex-shrink-0 p-2.5 rounded-lg bg-[#FF0077]/10 h-fit">
                         <TrendingUp className="w-5 h-5 text-[#FF0077]" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900 mb-1">How you earn</p>
+                        <p className="font-medium text-gray-900 mb-1">{t("web.accountSettings.loyalty.howYouEarn")}</p>
                         <p className="text-sm text-gray-600">
-                          You earn <strong>{loyaltyData.points_per_currency_unit} point{loyaltyData.points_per_currency_unit !== 1 ? "s" : ""}</strong> for every {loyaltyData.redemption_currency} 1 you spend on <strong>completed bookings</strong>. Points are credited after your appointment is completed.
+                          {loyaltyData.points_per_currency_unit === 1
+                            ? t("web.accountSettings.loyalty.howYouEarnOne", {
+                                count: loyaltyData.points_per_currency_unit,
+                                currency: loyaltyData.redemption_currency,
+                              })
+                            : t("web.accountSettings.loyalty.howYouEarnMany", {
+                                count: loyaltyData.points_per_currency_unit,
+                                currency: loyaltyData.redemption_currency,
+                              })}
                         </p>
                       </div>
                     </div>
@@ -95,9 +115,12 @@ export default function LoyaltyPage({
                         <CreditCard className="w-5 h-5 text-[#FF0077]" />
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900 mb-1">How you redeem</p>
+                        <p className="font-medium text-gray-900 mb-1">{t("web.accountSettings.loyalty.howYouRedeem")}</p>
                         <p className="text-sm text-gray-600">
-                          <strong>{loyaltyData.redemption_rate} points = 1 {loyaltyData.redemption_currency}</strong>. Redeem on this page or at checkout — points become <strong>wallet credit</strong> for future bookings.
+                          {t("web.accountSettings.loyalty.howYouRedeemBody", {
+                            rate: loyaltyData.redemption_rate,
+                            currency: loyaltyData.redemption_currency,
+                          })}
                         </p>
                       </div>
                     </div>
@@ -114,34 +137,37 @@ export default function LoyaltyPage({
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
-                        Your Points Balance
+                        {t("web.accountSettings.loyalty.pointsBalance")}
                       </h2>
                       <p className="text-sm font-light text-gray-600 mt-1">
-                        Earn points with every booking and redeem them for rewards
+                        {t("web.accountSettings.loyalty.pointsBalanceHint")}
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-6">
-                      <p className="text-sm font-medium text-gray-600 mb-2">Total Points</p>
+                      <p className="text-sm font-medium text-gray-600 mb-2">{t("web.accountSettings.loyalty.totalPoints")}</p>
                       <p className="text-4xl font-bold text-gray-900">
                         {loyaltyData.points_balance.toLocaleString()}
                       </p>
                     </div>
                     <div className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-6">
-                      <p className="text-sm font-medium text-gray-600 mb-2">Redemption Value</p>
+                      <p className="text-sm font-medium text-gray-600 mb-2">{t("web.accountSettings.loyalty.redemptionValue")}</p>
                       <p className="text-4xl font-bold text-gray-900">
                         {format(loyaltyData.redemption_value)}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
-                        {loyaltyData.redemption_rate} points = 1 {loyaltyData.redemption_currency}
+                        {t("web.accountSettings.loyalty.redemptionRate", {
+                          rate: loyaltyData.redemption_rate,
+                          currency: loyaltyData.redemption_currency,
+                        })}
                       </p>
                     </div>
                   </div>
                   {loyaltyData.points_balance === 0 && (
                     <p className="mt-4 text-sm text-gray-600 bg-[#FF0077]/5 border border-[#FF0077]/20 rounded-xl p-4">
-                      Book and complete an appointment to start earning points — they’re added automatically.
+                      {t("web.accountSettings.loyalty.emptyBalanceHint")}
                     </p>
                   )}
                 </div>
@@ -154,7 +180,7 @@ export default function LoyaltyPage({
                     <div className="flex items-center gap-3 mb-4">
                       <Award className="w-6 h-6 text-[#FF0077]" />
                       <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
-                        Next Milestone
+                        {t("web.accountSettings.loyalty.nextMilestone")}
                       </h2>
                     </div>
                     <div className="space-y-3">
@@ -171,9 +197,12 @@ export default function LoyaltyPage({
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-600">Progress</span>
+                            <span className="text-gray-600">{t("web.accountSettings.loyalty.progress")}</span>
                             <span className="text-gray-900 font-medium">
-                              {loyaltyData.points_balance} / {loyaltyData.next_milestone.points_threshold} points
+                              {t("web.accountSettings.loyalty.progressPoints", {
+                                current: loyaltyData.points_balance,
+                                threshold: loyaltyData.next_milestone.points_threshold,
+                              })}
                             </span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -188,8 +217,8 @@ export default function LoyaltyPage({
                             />
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">Reward</p>
+                        <div className="text-end">
+                          <p className="text-sm font-medium text-gray-900">{t("web.accountSettings.loyalty.reward")}</p>
                           <p className="text-lg font-bold text-[#FF0077]">
                             {format(loyaltyData.next_milestone.reward_amount)}
                           </p>
@@ -205,7 +234,7 @@ export default function LoyaltyPage({
                     className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                   >
                     <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-6">
-                      Available Milestones
+                      {t("web.accountSettings.loyalty.availableMilestones")}
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {loyaltyData.available_milestones.map((milestone) => {
@@ -224,13 +253,17 @@ export default function LoyaltyPage({
                               <p className="font-semibold text-gray-900">{milestone.name}</p>
                             </div>
                             <p className="text-sm text-gray-600 mb-2">
-                              {milestone.points_threshold} points
+                              {t("web.accountSettings.loyalty.milestonePoints", {
+                                count: milestone.points_threshold,
+                              })}
                             </p>
                             <p className="text-sm font-medium text-[#FF0077]">
-                              Reward: {format(milestone.reward_amount)}
+                              {t("web.accountSettings.loyalty.rewardAmount", {
+                                amount: format(milestone.reward_amount),
+                              })}
                             </p>
                             {isReached && (
-                              <p className="text-xs text-green-600 mt-2 font-medium">✓ Reached</p>
+                              <p className="text-xs text-green-600 mt-2 font-medium">{t("web.accountSettings.loyalty.reached")}</p>
                             )}
                           </div>
                         );
@@ -247,18 +280,18 @@ export default function LoyaltyPage({
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-2">
-                          Ready to Redeem?
+                          {t("web.accountSettings.loyalty.readyToRedeem")}
                         </h2>
                         <p className="text-sm font-light text-gray-600">
-                          Convert your points into wallet credit for future bookings
+                          {t("web.accountSettings.loyalty.readyToRedeemHint")}
                         </p>
                       </div>
                       <Button
                         onClick={() => router.push("/account-settings/loyalty/redeem")}
                         className="bg-[#FF0077] hover:bg-[#D60565] text-white"
                       >
-                        <Gift className="w-4 h-4 mr-2" />
-                        Redeem Points
+                        <Gift className="w-4 h-4 me-2" />
+                        {t("web.accountSettings.loyalty.redeemPoints")}
                       </Button>
                     </div>
                   </div>
@@ -271,15 +304,15 @@ export default function LoyaltyPage({
                   <div className="flex items-center gap-3 mb-6">
                     <History className="w-6 h-6 text-[#FF0077]" />
                     <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
-                      Points History
+                      {t("web.accountSettings.loyalty.pointsHistory")}
                     </h2>
                   </div>
 
                   {loyaltyData.history.length === 0 ? (
                     <EmptyState
                       icon={History}
-                      title="No points history yet"
-                      description="Your points transactions will appear here once you start earning or redeeming points."
+                      title={t("web.accountSettings.noPointsHistory")}
+                      description={t("web.accountSettings.loyalty.noHistoryDesc")}
                     />
                   ) : (
                     <div className="space-y-3">
@@ -290,19 +323,10 @@ export default function LoyaltyPage({
                         >
                           <div className="flex-1">
                             <p className="text-sm font-medium text-gray-900">
-                              {transaction.description ||
-                                (transaction.transaction_type === "bonus"
-                                  ? "Bonus points"
-                                  : transaction.transaction_type === "earned"
-                                    ? "Points earned"
-                                    : transaction.transaction_type === "redeemed"
-                                      ? "Points redeemed"
-                                      : transaction.transaction_type === "expired"
-                                        ? "Points expired"
-                                        : "Points adjustment")}
+                              {historyLabel(transaction)}
                             </p>
                             <p className="text-xs text-gray-500 mt-1">
-                              {new Date(transaction.created_at).toLocaleDateString("en-US", {
+                              {new Date(transaction.created_at).toLocaleDateString(getDefaultMoneyLocale(), {
                                 year: "numeric",
                                 month: "short",
                                 day: "numeric",
@@ -317,7 +341,9 @@ export default function LoyaltyPage({
                             }`}
                           >
                             {transaction.points >= 0 ? "+" : "-"}
-                            {Math.abs(transaction.points).toLocaleString()} pts
+                            {t("web.accountSettings.loyalty.pointsAbbrev", {
+                              points: Math.abs(transaction.points).toLocaleString(),
+                            })}
                           </div>
                         </div>
                       ))}
@@ -328,10 +354,10 @@ export default function LoyaltyPage({
             ) : (
               <EmptyState
                 icon={Gift}
-                title="Unable to load loyalty points"
-                description="Please try refreshing the page."
+                title={t("web.accountSettings.unableLoadLoyalty")}
+                description={t("web.accountSettings.loyalty.unableLoadDesc")}
                 action={{
-                  label: "Retry",
+                  label: t("web.accountSettings.loyalty.retry"),
                   onClick: load,
                 }}
               />

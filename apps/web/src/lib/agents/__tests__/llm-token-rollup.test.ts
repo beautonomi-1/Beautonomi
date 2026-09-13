@@ -1,17 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockGetSupabaseAdmin = vi.fn();
-const mockCallGemini = vi.fn();
+const mockCallLlm = vi.fn();
 const mockEstimateCostUsd = vi.fn();
+const mockResolveAiRuntime = vi.fn();
 
 vi.mock("@/lib/supabase/admin", () => ({ getSupabaseAdmin: () => mockGetSupabaseAdmin() }));
-vi.mock("@/lib/ai/gemini", () => ({ callGemini: (...args: unknown[]) => mockCallGemini(...args) }));
+vi.mock("@/lib/ai/call-llm", () => ({ callLlm: (...args: unknown[]) => mockCallLlm(...args) }));
+vi.mock("@/lib/ai/resolve-runtime", () => ({
+  resolveAiRuntime: (...args: unknown[]) => mockResolveAiRuntime(...args),
+}));
 vi.mock("@/lib/ai/pricing", () => ({ estimateCostUsd: (...args: unknown[]) => mockEstimateCostUsd(...args) }));
 
 import { callAgentLlm } from "../llm";
 
 type Tables = {
-  geminiConfig: unknown;
   run: { total_tokens_in: number; total_tokens_out: number; total_cost_usd: number } | null;
   lastStepSeq: number | null;
 };
@@ -22,13 +25,6 @@ function buildSupabase(t: Tables) {
   const runUpdate = vi.fn(() => ({ eq: runUpdateEq }));
 
   const from = vi.fn((table: string) => {
-    if (table === "gemini_integration_config") {
-      return {
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        maybeSingle: vi.fn().mockResolvedValue({ data: t.geminiConfig, error: null }),
-      };
-    }
     if (table === "agent_steps") {
       return {
         insert: stepInsert,
@@ -56,16 +52,29 @@ describe("callAgentLlm token rollup", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEstimateCostUsd.mockResolvedValue(0.0012);
+    mockResolveAiRuntime.mockResolvedValue({
+      config: { enabled: true, defaultModelId: "gemini-2.5-flash", runtime: "direct_gemini" },
+      emergency: { stopAllCalls: false },
+      catalog: [],
+    });
   });
 
   it("writes an agent_steps model row and increments agent_runs totals when runId is provided", async () => {
     const sb = buildSupabase({
-      geminiConfig: { api_key_secret: "k", default_model: "gemini-2.5-flash" },
       run: { total_tokens_in: 100, total_tokens_out: 40, total_cost_usd: 0.001 },
       lastStepSeq: 2,
     });
     mockGetSupabaseAdmin.mockReturnValue(sb.client);
-    mockCallGemini.mockResolvedValue({ success: true, text: "{\"ok\":true}", tokensIn: 500, tokensOut: 200 });
+    mockCallLlm.mockResolvedValue({
+      success: true,
+      text: "{\"ok\":true}",
+      tokensIn: 500,
+      tokensOut: 200,
+      model: "gemini-2.5-flash",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
+    });
 
     const result = await callAgentLlm({
       system: "s",
@@ -103,34 +112,54 @@ describe("callAgentLlm token rollup", () => {
   });
 
   it("records failed calls as steps with an error and still returns success:false", async () => {
-    const sb = buildSupabase({
-      geminiConfig: { api_key_secret: "k", default_model: null },
-      run: null,
-      lastStepSeq: null,
-    });
+    const sb = buildSupabase({ run: null, lastStepSeq: null });
     mockGetSupabaseAdmin.mockReturnValue(sb.client);
     mockEstimateCostUsd.mockResolvedValue(0);
-    mockCallGemini.mockResolvedValue({ success: false, errorCode: "GEMINI_TIMEOUT", text: "", tokensIn: 0, tokensOut: 0 });
+    mockCallLlm.mockResolvedValue({
+      success: false,
+      errorCode: "LLM_TIMEOUT",
+      text: "",
+      tokensIn: 0,
+      tokensOut: 0,
+      model: "gemini-2.0-flash",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
+    });
 
     const result = await callAgentLlm({ system: "s", user: "u", runId: "run-2", schema: { type: "object" } });
-    expect(result).toEqual({ configured: true, success: false, errorCode: "GEMINI_TIMEOUT" });
-    expect(sb.stepInsert.mock.calls[0][0]).toMatchObject({ seq: 1, model_id: "gemini-2.0-flash", error: "GEMINI_TIMEOUT", schema_valid: false });
+    expect(result).toEqual({ configured: true, success: false, errorCode: "LLM_TIMEOUT" });
+    expect(sb.stepInsert.mock.calls[0][0]).toMatchObject({ seq: 1, model_id: "gemini-2.0-flash", error: "LLM_TIMEOUT", schema_valid: false });
   });
 
   it("does not touch agent_steps / agent_runs without a runId", async () => {
-    const sb = buildSupabase({ geminiConfig: { api_key_secret: "k" }, run: null, lastStepSeq: null });
+    const sb = buildSupabase({ run: null, lastStepSeq: null });
     mockGetSupabaseAdmin.mockReturnValue(sb.client);
-    mockCallGemini.mockResolvedValue({ success: true, text: "hi", tokensIn: 1, tokensOut: 1 });
+    mockCallLlm.mockResolvedValue({
+      success: true,
+      text: "hi",
+      tokensIn: 1,
+      tokensOut: 1,
+      model: "gemini-2.5-flash",
+      modelProvider: "gemini",
+      runtime: "direct_gemini",
+      gateway: false,
+    });
 
     await callAgentLlm({ system: "s", user: "u" });
     expect(sb.stepInsert).not.toHaveBeenCalled();
     expect(sb.runUpdate).not.toHaveBeenCalled();
   });
 
-  it("returns configured:false when Gemini is not configured", async () => {
-    const sb = buildSupabase({ geminiConfig: null, run: null, lastStepSeq: null });
+  it("returns configured:false when AI runtime is not enabled", async () => {
+    mockResolveAiRuntime.mockResolvedValueOnce({
+      config: { enabled: false },
+      emergency: {},
+      catalog: [],
+    });
+    const sb = buildSupabase({ run: null, lastStepSeq: null });
     mockGetSupabaseAdmin.mockReturnValue(sb.client);
     expect(await callAgentLlm({ system: "s", user: "u", runId: "r" })).toEqual({ configured: false });
-    expect(mockCallGemini).not.toHaveBeenCalled();
+    expect(mockCallLlm).not.toHaveBeenCalled();
   });
 });

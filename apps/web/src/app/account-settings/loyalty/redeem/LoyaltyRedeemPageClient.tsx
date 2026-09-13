@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   Card,
   CardContent,
@@ -29,6 +30,7 @@ export default function LoyaltyRedeemPageClient({
 }: {
   initialLoyalty: LoyaltyPageData | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -65,7 +67,7 @@ export default function LoyaltyRedeemPageClient({
       setCurrency(response.data.redemption_currency);
     } catch (error) {
       console.error("Failed to load loyalty data:", error);
-      toast.error("Failed to load loyalty points");
+      toast.error(t("web.accountSettings.loyalty.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -78,12 +80,12 @@ export default function LoyaltyRedeemPageClient({
   const handleRedeem = async () => {
     const points = parseInt(pointsToRedeem);
     if (!points || points < 1) {
-      toast.error("Please enter a valid number of points");
+      toast.error(t("web.accountSettings.loyalty.redeemPage.invalidPoints"));
       return;
     }
 
     if (points > pointsBalance) {
-      toast.error("You don't have enough points");
+      toast.error(t("web.accountSettings.loyalty.redeemPage.notEnoughPoints"));
       return;
     }
 
@@ -98,18 +100,21 @@ export default function LoyaltyRedeemPageClient({
         };
       }>("/api/me/loyalty/redeem", {
         points,
-        description: `Redeemed ${points} loyalty points`,
+        description: t("web.accountSettings.loyalty.redeemPage.apiDescription", { points }),
       });
 
       toast.success(
-        `Successfully redeemed ${points} points for ${format(response.data.redemption_value)}`
+        t("web.accountSettings.loyalty.redeemPage.success", {
+          points,
+          amount: format(response.data.redemption_value),
+        })
       );
       setPointsToRedeem("");
       loadLoyaltyData();
       router.push("/account-settings/loyalty");
     } catch (error: unknown) {
       console.error("Failed to redeem points:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to redeem points");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loyalty.redeemPage.redeemFailed"));
     } finally {
       setIsRedeeming(false);
     }
@@ -125,10 +130,10 @@ export default function LoyaltyRedeemPageClient({
           <BackButton href="/account-settings/loyalty" />
           <Breadcrumb
             items={[
-              { label: "Home", href: "/" },
-              { label: "Account Settings", href: "/account-settings" },
-              { label: "Loyalty Points", href: "/account-settings/loyalty" },
-              { label: "Redeem Points" },
+              { label: t("web.accountSettings.loyalty.breadcrumbHome"), href: "/" },
+              { label: t("web.accountSettings.loyalty.breadcrumbAccountSettings"), href: "/account-settings" },
+              { label: t("web.accountSettings.loyalty.title"), href: "/account-settings/loyalty" },
+              { label: t("web.accountSettings.loyalty.redeemPage.breadcrumbRedeem") },
             ]}
           />
 
@@ -136,47 +141,52 @@ export default function LoyaltyRedeemPageClient({
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
-              Redeem Loyalty Points
+              {t("web.accountSettings.loyalty.redeemPage.title")}
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-gray-500">Loading…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.loyalty.loading")}</p>
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Points Balance Card */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-primary" />
-                      Your Points Balance
+                      {t("web.accountSettings.loyalty.pointsBalance")}
                     </CardTitle>
                     <CardDescription>
-                      {redemptionRate} points = 1 {currency}
+                      {t("web.accountSettings.loyalty.redemptionRate", {
+                        rate: redemptionRate,
+                        currency,
+                      })}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <p className="text-4xl font-bold text-gray-900">
-                      {pointsBalance.toLocaleString()} points
+                      {t("web.accountSettings.loyalty.milestonePoints", {
+                        count: pointsBalance,
+                      })}
                     </p>
                     <p className="text-sm text-gray-600 mt-2">
-                      Worth approximately {format(pointsBalance / redemptionRate)}
+                      {t("web.accountSettings.loyalty.redeemPage.worthApproximately", {
+                        amount: format(pointsBalance / redemptionRate),
+                      })}
                     </p>
                   </CardContent>
                 </Card>
 
-                {/* Redemption Form */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Redeem Points</CardTitle>
+                    <CardTitle>{t("web.accountSettings.loyalty.redeemPoints")}</CardTitle>
                     <CardDescription>
-                      Convert your loyalty points into wallet credit
+                      {t("web.accountSettings.loyalty.redeemPage.formHint")}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label htmlFor="points">Points to Redeem</Label>
+                      <Label htmlFor="points">{t("web.accountSettings.loyalty.redeemPage.pointsToRedeem")}</Label>
                       <Input
                         id="points"
                         type="number"
@@ -184,10 +194,12 @@ export default function LoyaltyRedeemPageClient({
                         max={pointsBalance}
                         value={pointsToRedeem}
                         onChange={(e) => setPointsToRedeem(e.target.value)}
-                        placeholder="Enter points to redeem"
+                        placeholder={t("web.accountSettings.loyalty.redeemPage.pointsPlaceholder")}
                       />
                       <p className="text-xs text-gray-500 mt-1">
-                        Maximum: {pointsBalance.toLocaleString()} points
+                        {t("web.accountSettings.loyalty.redeemPage.maximumPoints", {
+                          count: pointsBalance,
+                        })}
                       </p>
                     </div>
 
@@ -195,15 +207,19 @@ export default function LoyaltyRedeemPageClient({
                       <div className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4">
                         <div className="flex justify-between items-center">
                           <span className="text-sm font-medium text-gray-600">
-                            You will receive:
+                            {t("web.accountSettings.loyalty.redeemPage.youWillReceive")}
                           </span>
                           <span className="text-2xl font-bold text-primary">
                             {format(redemptionValue)}
                           </span>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                          {parseInt(pointsToRedeem) || 0} points ÷ {redemptionRate} ={" "}
-                          {redemptionValue.toFixed(2)} {currency}
+                          {t("web.accountSettings.loyalty.redeemPage.formula", {
+                            points: parseInt(pointsToRedeem) || 0,
+                            rate: redemptionRate,
+                            value: redemptionValue.toFixed(2),
+                            currency,
+                          })}
                         </p>
                       </div>
                     )}
@@ -214,7 +230,7 @@ export default function LoyaltyRedeemPageClient({
                         onClick={() => router.back()}
                         className="flex-1"
                       >
-                        Cancel
+                        {t("web.accountSettings.loyalty.redeemPage.cancel")}
                       </Button>
                       <Button
                         onClick={handleRedeem}
@@ -227,11 +243,11 @@ export default function LoyaltyRedeemPageClient({
                         className="flex-1 bg-primary hover:bg-primary-hover"
                       >
                         {isRedeeming ? (
-                          "Redeeming…"
+                          t("web.accountSettings.loyalty.redeemPage.redeeming")
                         ) : (
                           <>
-                            <Gift className="w-4 h-4 mr-2" />
-                            Redeem Points
+                            <Gift className="w-4 h-4 me-2" />
+                            {t("web.accountSettings.loyalty.redeemPoints")}
                           </>
                         )}
                       </Button>

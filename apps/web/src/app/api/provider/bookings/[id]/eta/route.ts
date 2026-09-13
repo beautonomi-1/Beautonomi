@@ -10,7 +10,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
-import { notifyProviderEnRoute } from "@/lib/notifications/notification-service";
+import {
+  notifyProviderEnRoute,
+  notifyProviderRunningLate,
+} from "@/lib/notifications/notification-service";
 
 /**
  * PATCH /api/provider/bookings/[id]/eta
@@ -102,7 +105,12 @@ export async function PATCH(
 
     if (delta > 10) {
       try {
-        await notifyProviderEnRoute(id, etaDate.toISOString(), ["push"]);
+        const delayIncreased = etaMinutes > previousMinutes;
+        if (delayIncreased) {
+          await notifyProviderRunningLate(id, Math.round(etaMinutes), etaDate, ["push"]);
+        } else {
+          await notifyProviderEnRoute(id, etaDate.toISOString(), ["push"]);
+        }
       } catch (notifErr) {
         console.warn("[PATCH eta] customer notify failed:", notifErr);
       }

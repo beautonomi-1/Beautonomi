@@ -12,6 +12,7 @@ import {
 } from "@/components/custom-fields/CustomFieldsForm";
 import { getMissingRequiredProviderFormField } from "@beautonomi/utils";
 import type { BookingState } from "../booking-flow";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * B11: provider intake / consent / waiver forms + booking-level custom fields
@@ -69,6 +70,7 @@ export default function StepForms({
   onLoaded,
   onCompletionChange,
 }: StepFormsProps) {
+  const { t } = useTranslation();
   const providerId = bookingState.providerId;
   const [providerForms, setProviderForms] = useState<ProviderFormDefinition[]>(
     [],
@@ -176,8 +178,8 @@ export default function StepForms({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20 text-gray-500">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading forms…
+        <Loader2 className="w-5 h-5 animate-spin me-2" />
+        {t("web.booking.steps.forms.loading")}
       </div>
     );
   }
@@ -190,11 +192,11 @@ export default function StepForms({
     <div className="space-y-6 p-4 md:p-6">
       {customDefs.length > 0 && (
         <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Additional details</h2>
+          <h2 className="font-semibold text-gray-900">{t("web.booking.steps.forms.additionalDetails")}</h2>
           <p className="text-sm text-gray-500">
             {customDefs.some((d) => d.is_required)
-              ? "Please complete all required fields (marked with *)."
-              : "Optional information for this booking."}
+              ? t("web.booking.steps.forms.requiredHint")
+              : t("web.booking.steps.forms.optionalHint")}
           </p>
           <CustomFieldsForm
             entityType="booking"
@@ -209,10 +211,10 @@ export default function StepForms({
         <div className="rounded-2xl border border-gray-200 bg-white p-5 space-y-4">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-4 h-4 text-primary" />
-            Provider forms
+            {t("web.booking.steps.forms.providerForms")}
           </h2>
           <p className="text-sm text-gray-500">
-            Please complete the following forms as required by the provider.
+            {t("web.booking.steps.forms.providerFormsHint")}
           </p>
           {providerForms.map((form) => (
             <div
@@ -223,7 +225,7 @@ export default function StepForms({
                 <h3 className="font-medium text-sm text-gray-900">
                   {form.title}
                   {form.is_required && (
-                    <span className="text-red-600 ml-1">*</span>
+                    <span className="text-red-600 ms-1">*</span>
                   )}
                 </h3>
                 {form.description && (
@@ -243,7 +245,7 @@ export default function StepForms({
                       <Label className="text-sm text-gray-800">
                         {field.name}
                         {(field.is_required || form.is_required) && (
-                          <span className="text-red-600 ml-1">*</span>
+                          <span className="text-red-600 ms-1">*</span>
                         )}
                       </Label>
                       {isCheckbox ? (
@@ -258,7 +260,7 @@ export default function StepForms({
                               )
                             }
                           />
-                          <span className="text-sm text-gray-600">Yes</span>
+                          <span className="text-sm text-gray-600">{t("web.booking.steps.forms.yes")}</span>
                         </div>
                       ) : field.field_type === "date" ? (
                         <Input
@@ -275,7 +277,7 @@ export default function StepForms({
                       ) : field.field_type === "signature" ? (
                         <Input
                           value={strValue}
-                          placeholder="Type your name to sign"
+                          placeholder={t("web.booking.steps.typeNameToSign")}
                           onChange={(e) =>
                             updateProviderFormValue(
                               form.id,
@@ -307,8 +309,7 @@ export default function StepForms({
 
       {hasRequiredUnfilled && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-          Some required fields are not complete. You won&rsquo;t be able to
-          continue until every required field (marked with *) has a value.
+          {t("web.booking.steps.forms.incomplete")}
         </p>
       )}
     </div>

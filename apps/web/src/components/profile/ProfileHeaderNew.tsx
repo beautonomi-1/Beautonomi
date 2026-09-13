@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { ProfileUser, QuickActionBadge } from "@/types/profile";
 import { isMailableEmail } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProfileHeaderProps {
   user: ProfileUser;
@@ -23,6 +24,7 @@ export default function ProfileHeaderNew({
   onUpdate,
   prefetchedLoyaltyPoints,
 }: ProfileHeaderProps) {
+  const { t } = useTranslation();
   const [isUploading, setIsUploading] = useState(false);
   const [isEditingHandle, setIsEditingHandle] = useState(false);
   const [handleValue, setHandleValue] = useState(user.handle || "");
@@ -30,7 +32,7 @@ export default function ProfileHeaderNew({
     prefetchedLoyaltyPoints !== undefined ? prefetchedLoyaltyPoints : null
   );
 
-  const displayName = user.preferred_name || user.full_name || "User";
+  const displayName = user.preferred_name || user.full_name || t("web.accountSettings.profileHeader.userFallback");
   const initials = displayName
     .split(" ")
     .map((n) => n[0])
@@ -43,9 +45,9 @@ export default function ProfileHeaderNew({
     const months = (now.getFullYear() - date.getFullYear()) * 12 + (now.getMonth() - date.getMonth());
     const years = Math.floor(months / 12);
     if (years > 0) {
-      return `${years} ${years === 1 ? "year" : "years"} on Beautonomi`;
+      return t("web.accountSettings.profileHeader.yearsOn", { count: years });
     }
-    return `${months} ${months === 1 ? "month" : "months"} on Beautonomi`;
+    return t("web.accountSettings.profileHeader.monthsOn", { count: months });
   };
 
   const memberSince = new Date(user.created_at);
@@ -79,22 +81,22 @@ export default function ProfileHeaderNew({
   const quickActions: QuickActionBadge[] = [
     {
       type: "email",
-      label: "Email",
+      label: t("web.accountSettings.profileHeader.email"),
       verified: !isMailableEmail(user.email) || user.email_verified,
     },
     {
       type: "photo",
-      label: "Photo",
+      label: t("web.accountSettings.profileHeader.photo"),
       verified: !!user.avatar_url,
     },
     {
       type: "phone",
-      label: "Phone",
+      label: t("web.accountSettings.profileHeader.phone"),
       verified: user.phone_verified,
     },
     {
       type: "id",
-      label: "ID",
+      label: t("web.accountSettings.profileHeader.id"),
       verified: user.identity_verified,
       pending: user.identity_verification_status === "pending",
     },
@@ -105,11 +107,11 @@ export default function ProfileHeaderNew({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select an image file");
+      toast.error(t("web.accountSettings.profileHeader.selectImage"));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be less than 5MB");
+      toast.error(t("web.accountSettings.profileHeader.imageTooLarge"));
       return;
     }
 
@@ -125,7 +127,7 @@ export default function ProfileHeaderNew({
 
       if (!uploadResponse.ok) {
         const error = await uploadResponse.json();
-        throw new Error(error.error?.message || "Failed to upload photo");
+        throw new Error(error.error?.message || t("web.accountSettings.profileHeader.uploadFailed"));
       }
 
       const { data } = await uploadResponse.json();
@@ -134,10 +136,10 @@ export default function ProfileHeaderNew({
         avatar_url: data.url,
       });
 
-      toast.success("Profile photo updated");
+      toast.success(t("web.accountSettings.profileHeader.photoUpdated"));
       onUpdate?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to upload photo");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.profileHeader.uploadFailed"));
     } finally {
       setIsUploading(false);
     }
@@ -145,12 +147,12 @@ export default function ProfileHeaderNew({
 
   const handleSaveHandle = async () => {
     if (!handleValue.trim()) {
-      toast.error("Handle cannot be empty");
+      toast.error(t("web.accountSettings.profileHeader.handleEmpty"));
       return;
     }
 
     if (!/^[a-zA-Z0-9_]{3,50}$/.test(handleValue)) {
-      toast.error("Handle must be 3-50 characters and contain only letters, numbers, and underscores");
+      toast.error(t("web.accountSettings.profileHeader.handleInvalid"));
       return;
     }
 
@@ -159,11 +161,11 @@ export default function ProfileHeaderNew({
         handle: handleValue.trim(),
       });
 
-      toast.success("Handle updated");
+      toast.success(t("web.accountSettings.profileHeader.handleUpdated"));
       setIsEditingHandle(false);
       onUpdate?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to update handle");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.profileHeader.handleUpdateFailed"));
     }
   };
 
@@ -216,9 +218,9 @@ export default function ProfileHeaderNew({
             ) : (
               <button
                 onClick={() => setIsEditingHandle(true)}
-                className="text-sm text-zinc-400 hover:text-primary underline font-medium transition-colors text-left"
+                className="text-sm text-zinc-400 hover:text-primary underline font-medium transition-colors text-start"
               >
-                Add handle
+                {t("web.accountSettings.profileHeader.addHandle")}
               </button>
             )}
           </div>
@@ -233,7 +235,7 @@ export default function ProfileHeaderNew({
                   <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
                   <span className="text-sm font-semibold text-zinc-800">{user.rating_average.toFixed(1)}</span>
                   <span className="text-xs text-zinc-500">
-                    ({user.review_count ?? 0} {(user.review_count ?? 0) === 1 ? "review" : "reviews"})
+                    ({user.review_count ?? 0} {t("web.accountSettings.profileHeader.review", { count: user.review_count ?? 0 })})
                   </span>
                 </div>
               </>
@@ -246,7 +248,7 @@ export default function ProfileHeaderNew({
                   className="text-xs text-primary hover:text-primary-hover font-medium transition-colors flex items-center gap-1"
                 >
                   <Sparkles className="h-3 w-3" />
-                  {loyaltyPoints.toLocaleString()} points
+                  {t("web.accountSettings.profileHeader.points", { value: loyaltyPoints.toLocaleString() })}
                 </Link>
               </>
             )}
@@ -301,15 +303,15 @@ export default function ProfileHeaderNew({
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
           >
-            <h3 className="text-lg font-semibold mb-2">Add Handle</h3>
+            <h3 className="text-lg font-semibold mb-2">{t("web.accountSettings.profileHeader.addHandleTitle")}</h3>
             <p className="text-sm text-zinc-600 mb-4">
-              Choose a unique username. This will be visible to others.
+              {t("web.accountSettings.profileHeader.addHandleDescription")}
             </p>
             <input
               type="text"
               value={handleValue}
               onChange={(e) => setHandleValue(e.target.value)}
-              placeholder="username"
+              placeholder={t("web.accountSettings.profileHeader.handlePlaceholder")}
               maxLength={50}
               className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077] mb-4"
               onKeyDown={(e) => {
@@ -324,13 +326,13 @@ export default function ProfileHeaderNew({
                 onClick={() => setIsEditingHandle(false)}
                 className="flex-1"
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleSaveHandle}
                 className="flex-1 bg-primary hover:bg-primary-hover text-white"
               >
-                Save
+                {t("web.accountSettings.profileHeader.save")}
               </Button>
             </div>
           </motion.div>

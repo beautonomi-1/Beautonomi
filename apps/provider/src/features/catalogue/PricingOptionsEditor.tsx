@@ -1,5 +1,6 @@
 import { View, Text, TextInput, TouchableOpacity } from "react-native";
-import { useRef, useState, type RefObject } from "react";
+import { useCallback, useRef, useState, type RefObject } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { KeyboardDoneAccessory } from "@/features/provider-onboarding/KeyboardDoneAccessory";
@@ -13,6 +14,7 @@ import {
   resolveBookingTierName,
 } from "./types";
 import { BookingTierCustomerPreview } from "./BookingTierCustomerPreview";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface PricingOptionsEditorProps {
   options: PricingOption[];
@@ -85,6 +87,12 @@ export function PricingOptionsEditor({
   allowMultipleTiers = true,
   onFieldFocus,
 }: PricingOptionsEditorProps) {
+  const { t } = useTranslation();
+  const po = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.pricingOptions." + key, opts) as string,
+    [t],
+  );
   const [picker, setPicker] = useState<{
     rowId: string;
     field: "duration" | "priceType";
@@ -118,7 +126,7 @@ export function PricingOptionsEditor({
         : [];
 
   const durationLabel = (minutes: number) =>
-    durationOptions.find((d) => d.value === String(minutes))?.label ?? `${minutes} min`;
+    durationOptions.find((d) => d.value === String(minutes))?.label ?? po("minutesShort", { count: minutes });
 
   const priceTypeLabel = (value: string) =>
     priceTypeOptions.find((p) => p.value === value)?.label ?? value;
@@ -128,18 +136,18 @@ export function PricingOptionsEditor({
       {multiTier ? (
         <>
           <SectionHeader
-            title="Booking options"
-            subtitle="Each option has its own price and duration. Customers pick one when they book."
+            title={po("bookingOptions")}
+            subtitle={po("bookingOptionsHint")}
           />
           <BookingTierCustomerPreview tiers={customerPreview} serviceTitle={serviceTitle} />
         </>
       ) : (
         <SectionHeader
-          title="Price & duration"
+          title={po("priceDuration")}
           subtitle={
             allowMultipleTiers
-              ? "One fixed price for this service. Customers book it directly — no option picker."
-              : "Set the price and duration for this variant. It appears under the parent service at booking."
+              ? po("priceDurationSingleHint")
+              : po("priceDurationVariantHint")
           }
         />
       )}
@@ -167,11 +175,11 @@ export function PricingOptionsEditor({
                   }`,
                 )}
               >
-                <View style={twStyle("flex-1 pr-2")}>
+                <View style={twStyle("flex-1 pe-2")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {previewName}
                     {index === 0 ? (
-                      <Text style={twStyle("text-xs font-normal text-gray-500")}> · default in catalogue</Text>
+                      <Text style={twStyle("text-xs font-normal text-gray-500")}>{po("defaultInCatalogue")}</Text>
                     ) : null}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
@@ -181,7 +189,7 @@ export function PricingOptionsEditor({
                 <TouchableOpacity
                   onPress={() => removeRow(row.id)}
                   hitSlop={12}
-                  accessibilityLabel={`Remove ${previewName}`}
+                  accessibilityLabel={po("removeA11y", { name: previewName })}
                 >
                   <Ionicons name="trash-outline" size={18} color="#ef4444" />
                 </TouchableOpacity>
@@ -191,17 +199,17 @@ export function PricingOptionsEditor({
             <View style={twStyle("gap-3 p-4")}>
               <View style={twStyle("flex-row gap-3")}>
                 <View style={twStyle("flex-1")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration *</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("duration")}</Text>
                   <TouchableOpacity
                     style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-3")}
                     onPress={() => setPicker({ rowId: row.id, field: "duration" })}
-                    accessibilityLabel={`Duration for ${previewName}`}
+                    accessibilityLabel={po("durationA11y", { name: previewName })}
                   >
                     <Text style={twStyle("text-base text-gray-900")}>{durationLabel(row.duration)}</Text>
                   </TouchableOpacity>
                 </View>
                 <View style={twStyle("flex-1")}>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price *</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("price")}</Text>
                   <View style={twStyle("relative")}>
                     <Text
                       style={twStyle("absolute left-3 top-3 text-sm text-gray-400")}
@@ -214,13 +222,13 @@ export function PricingOptionsEditor({
                         priceInputRefs.current.set(row.id, r);
                       }}
                       style={twStyle(
-                        "rounded-xl border border-gray-200 bg-gray-50 py-3 pl-12 pr-3 text-base text-gray-900",
+                        "rounded-xl border border-gray-200 bg-gray-50 py-3 ps-12 pe-3 text-base text-gray-900",
                       )}
                       value={row.price > 0 ? String(row.price) : ""}
                       onChangeText={(t) => updateRow(row.id, { price: parseFloat(t) || 0 })}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
-                      accessibilityLabel={`Price for ${previewName}`}
+                      accessibilityLabel={po("priceA11y", { name: previewName })}
                       onFocus={() =>
                         onFieldFocus?.({
                           current: priceInputRefs.current.get(row.id) ?? null,
@@ -235,7 +243,7 @@ export function PricingOptionsEditor({
 
               {multiTier ? (
                 <View>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Customer-facing label</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("customerLabel")}</Text>
                   <TextInput
                     ref={(r) => {
                       labelInputRefs.current.set(row.id, r);
@@ -244,7 +252,7 @@ export function PricingOptionsEditor({
                     value={row.pricingName}
                     onChangeText={(t) => updateRow(row.id, { pricingName: t })}
                     placeholder={previewName}
-                    accessibilityLabel={`Label for booking option ${index + 1}`}
+                    accessibilityLabel={po("labelA11y", { number: index + 1 })}
                     onFocus={() =>
                       onFieldFocus?.({
                         current: labelInputRefs.current.get(row.id) ?? null,
@@ -253,7 +261,7 @@ export function PricingOptionsEditor({
                   />
                   {!row.pricingName.trim() ? (
                     <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>
-                      Leave blank to use “{previewName}”
+                      {po("leaveBlank", { name: previewName })}
                     </Text>
                   ) : null}
                 </View>
@@ -261,7 +269,7 @@ export function PricingOptionsEditor({
 
               {showPriceType ? (
                 <View>
-                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price type</Text>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{po("priceType")}</Text>
                   <TouchableOpacity
                     style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-3 py-3")}
                     onPress={() => setPicker({ rowId: row.id, field: "priceType" })}
@@ -274,10 +282,10 @@ export function PricingOptionsEditor({
                   onPress={() => setExpandedPriceType((prev) => ({ ...prev, [row.id]: true }))}
                   style={twStyle("flex-row items-center py-1")}
                   accessibilityRole="button"
-                  accessibilityLabel="Show price type options"
+                  accessibilityLabel={po("showPriceTypeA11y")}
                 >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Price type & advanced</Text>
-                  <Ionicons name="chevron-down" size={16} color="#4f46e5" style={{ marginLeft: 4 }} />
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{po("priceTypeAdvanced")}</Text>
+                  <Ionicons name="chevron-down" size={16} color="#4f46e5" style={{ marginStart: 4 }} />
                 </TouchableOpacity>
               )}
 
@@ -286,11 +294,11 @@ export function PricingOptionsEditor({
                   style={twStyle("flex-row items-center pt-1")}
                   onPress={onOpenAdvancedPricing}
                   accessibilityRole="button"
-                  accessibilityLabel="Open advanced pricing rules"
+                  accessibilityLabel={po("advancedPricingA11y")}
                 >
                   <Ionicons name="options-outline" size={16} color="#4f46e5" />
-                  <Text style={twStyle("ml-1.5 text-sm font-semibold text-indigo-600")}>
-                    Advanced pricing rules
+                  <Text style={twStyle("ms-1.5 text-sm font-semibold text-indigo-600")}>
+                    {po("advancedPricing")}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -306,17 +314,17 @@ export function PricingOptionsEditor({
           )}
           onPress={addRow}
           accessibilityRole="button"
-          accessibilityLabel="Add another booking option"
+          accessibilityLabel={po("addOptionA11y")}
         >
           <Ionicons name="add-circle-outline" size={20} color="#4f46e5" />
-          <Text style={twStyle("ml-2 text-sm font-semibold text-indigo-700")}>Add another option</Text>
+          <Text style={twStyle("ms-2 text-sm font-semibold text-indigo-700")}>{po("addAnotherOption")}</Text>
         </TouchableOpacity>
       ) : allowMultipleTiers ? (
         <TouchableOpacity
           style={twStyle("rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4")}
           onPress={addRow}
           accessibilityRole="button"
-          accessibilityLabel="Offer multiple prices or durations"
+          accessibilityLabel={po("offerMultipleA11y")}
         >
           <View style={twStyle("flex-row items-start gap-3")}>
             <View style={twStyle("rounded-full bg-white p-2 border border-gray-200")}>
@@ -324,21 +332,20 @@ export function PricingOptionsEditor({
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                Offer multiple prices or durations?
+                {po("offerMultipleTitle")}
               </Text>
               <Text style={twStyle("mt-1 text-xs leading-5 text-gray-500")}>
-                e.g. Short vs long hair, 30 min express vs 60 min full service. Each becomes a
-                customer-facing option at booking.
+                {po("offerMultipleBody")}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+            <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" />
           </View>
         </TouchableOpacity>
       ) : null}
 
       <OptionPickerSheet
         visible={!!picker}
-        title={picker?.field === "duration" ? "Duration" : "Price type"}
+        title={picker?.field === "duration" ? po("durationTitle") : po("priceTypeTitle")}
         options={pickerOptions}
         onClose={() => setPicker(null)}
         onSelect={(value) => {

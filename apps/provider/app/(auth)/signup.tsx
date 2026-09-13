@@ -148,6 +148,11 @@ export default function SignupScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const { t } = useTranslation();
+  const su = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.signup." + key, opts) as string,
+    [t],
+  );
   const [smsResendCooldown, setSmsResendCooldown] = useState(0);
   const [resendingSms, setResendingSms] = useState(false);
   const [socialAuth, setSocialAuth] = useState<{ google: boolean; apple: boolean }>({
@@ -229,17 +234,17 @@ export default function SignupScreen() {
 
   async function handleSendOtp() {
     if (!agreedToTerms) {
-      setFormError("Please agree to the Terms of Service and Privacy Policy to continue.");
+      setFormError(su("agreeRequired"));
       return;
     }
     if (!auth.phone_provider_enabled) {
-      setFormError("Phone sign-up is not enabled for this platform.");
+      setFormError(su("phoneSignupDisabled"));
       return;
     }
     setFormError(null);
     setFormSuccess(null);
     if (!phone.trim()) {
-      setFormError("Please enter your phone number");
+      setFormError(su("enterPhone"));
       return;
     }
     const err = validateNationalPhoneDigits(phone, countryCode);
@@ -261,12 +266,14 @@ export default function SignupScreen() {
       setOtpSent(true);
       setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
       setFormSuccess(
-        `We sent a ${smsOtpLen}-digit code. Check your phone (valid about ${smsOtpExpiryMin} ${
-          smsOtpExpiryMin === 1 ? "minute" : "minutes"
-        }).`,
+        su("smsCodeSent", {
+          digits: smsOtpLen,
+          minutes: smsOtpExpiryMin,
+          minuteWord: smsOtpExpiryMin === 1 ? su("minuteSingular") : su("minutePlural"),
+        }),
       );
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      setFormError(e instanceof Error ? e.message : su("genericError"));
     } finally {
       setLoading(false);
     }
@@ -285,9 +292,9 @@ export default function SignupScreen() {
       }
       setToken("");
       setSmsResendCooldown(SUPABASE_SMS_OTP_RESEND_COOLDOWN_SECONDS);
-      setFormSuccess("A new verification code has been sent.");
+      setFormSuccess(su("codeResent"));
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Failed to resend code.");
+      setFormError(e instanceof Error ? e.message : su("resendFailed"));
     } finally {
       setResendingSms(false);
     }
@@ -297,7 +304,7 @@ export default function SignupScreen() {
     setFormError(null);
     const otpToken = normalizeSupabaseSmsOtpToken(otpOverride ?? token);
     if (!isCompleteOtpForLength(otpToken, smsOtpLen)) {
-      setFormError(`Enter the ${smsOtpLen}-digit code from your SMS`);
+      setFormError(su("enterSmsOtp", { digits: smsOtpLen }));
       return;
     }
     const phoneToVerify = pendingPhone || fullPhone;
@@ -314,7 +321,7 @@ export default function SignupScreen() {
       await writeSignupPhoneHandoff(e164);
       await goToAppRoot(router, "phone_otp_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
+      setFormError(e instanceof Error ? e.message : su("verificationFailed"));
     } finally {
       setLoading(false);
     }
@@ -322,29 +329,29 @@ export default function SignupScreen() {
 
   async function handleEmailSignup() {
     if (!agreedToTerms) {
-      setFormError("Please agree to the Terms of Service and Privacy Policy to continue.");
+      setFormError(su("agreeRequired"));
       return;
     }
     setFormError(null);
     setFormSuccess(null);
     if (!fullName.trim()) {
-      setFormError("Please enter your full name");
+      setFormError(su("enterFullName"));
       return;
     }
     if (!email.trim()) {
-      setFormError("Please enter your email");
+      setFormError(su("enterEmail"));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setFormError("Please enter a valid email address");
+      setFormError(su("validEmail"));
       return;
     }
     if (!password || password.length < 8) {
-      setFormError("Password must be at least 8 characters");
+      setFormError(su("passwordMin8"));
       return;
     }
     if (password !== confirmPassword) {
-      setFormError("Passwords don't match");
+      setFormError(su("passwordsDontMatch"));
       return;
     }
     const raw = fullPhone.startsWith("+") ? fullPhone : phone.trim() ? `+${fullPhone}` : "";
@@ -371,7 +378,7 @@ export default function SignupScreen() {
       trackSignUp("email");
       await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Sign up failed. Please try again.");
+      setFormError(e instanceof Error ? e.message : su("signUpFailed"));
     } finally {
       setLoading(false);
     }
@@ -391,7 +398,7 @@ export default function SignupScreen() {
       trackSignUp("email");
       await goToAppRoot(router, "email_signup", postLoginPath, marketingConsent);
     } catch (e: unknown) {
-      setSignupOtpError(e instanceof Error ? e.message : "Verification failed.");
+      setSignupOtpError(e instanceof Error ? e.message : su("verificationFailedShort"));
     } finally {
       setVerifyingSignupOtp(false);
     }
@@ -406,7 +413,7 @@ export default function SignupScreen() {
       setSignupOtpCode("");
       setSignupOtpResendCooldown(SUPABASE_EMAIL_OTP_RESEND_COOLDOWN_SECONDS);
     } catch (e: unknown) {
-      setSignupOtpError(e instanceof Error ? e.message : "Failed to resend code.");
+      setSignupOtpError(e instanceof Error ? e.message : su("resendFailed"));
     } finally {
       setResendingSignupOtp(false);
     }
@@ -414,7 +421,7 @@ export default function SignupScreen() {
 
   async function handleSocialOAuth(provider: OAuthProvider) {
     if (!agreedToTerms) {
-      setFormError("Please agree to the Terms of Service and Privacy Policy to continue.");
+      setFormError(su("agreeRequired"));
       return;
     }
     setFormError(null);
@@ -426,7 +433,7 @@ export default function SignupScreen() {
         setFormError(
           error.message +
             (error.message.includes("not enabled")
-              ? " Enable this provider in Supabase Dashboard → Authentication → Providers."
+              ? su("oauthEnableHint")
               : ""),
         );
         return;
@@ -434,7 +441,7 @@ export default function SignupScreen() {
       trackSignUp(provider === "google" ? "email" : "email");
       await goToAppRoot(router, `oauth_${provider}`, postLoginPath, marketingConsent);
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "OAuth sign-up failed. Please try again.");
+      setFormError(e instanceof Error ? e.message : su("oauthSignupFailed"));
     } finally {
       setLoading(false);
     }
@@ -446,15 +453,15 @@ export default function SignupScreen() {
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#ffffff" }} behavior="padding">
           <ScrollView style={{ flex: 1 }} contentContainerStyle={scrollContentStyle} keyboardShouldPersistTaps="handled">
             <View style={formStyle}>
-              <TouchableOpacity onPress={goToLogin} style={{ marginBottom: 16 }} accessibilityRole="button" accessibilityLabel="Back to login">
-                <Text style={{ fontSize: 14, color: PRIMARY, fontWeight: "600" }}>← Back to log in</Text>
+              <TouchableOpacity onPress={goToLogin} style={{ marginBottom: 16 }} accessibilityRole="button" accessibilityLabel={su("backToLoginA11y")}>
+                <Text style={{ fontSize: 14, color: PRIMARY, fontWeight: "600" }}>{su("backToLogin")}</Text>
               </TouchableOpacity>
               <View style={{ borderWidth: 1, borderColor: "#A7F3D0", backgroundColor: "#ECFDF5", borderRadius: 16, padding: 20 }}>
                 <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
-                  Verify your email
+                  {su("verifyYourEmail")}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 4 }}>
-                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                  {su("signupOtpSentPrefix", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
                   {email.trim()}
@@ -470,7 +477,7 @@ export default function SignupScreen() {
                   }}
                   disabled={verifyingSignupOtp}
                   autoFocus
-                  accessibilityLabelPrefix="Signup verification code"
+                  accessibilityLabelPrefix={su("signupVerificationCodeA11y")}
                 />
                 {signupOtpError ? (
                   <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "#EF4444" }}>{signupOtpError}</Text>
@@ -490,7 +497,7 @@ export default function SignupScreen() {
                   {verifyingSignupOtp ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{su("verifyAndContinue")}</Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -500,10 +507,10 @@ export default function SignupScreen() {
                 >
                   <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
                     {resendingSignupOtp
-                      ? "Resending..."
+                      ? su("resending")
                       : signupOtpResendCooldown > 0
-                        ? `Resend code in ${signupOtpResendCooldown}s`
-                        : "Resend verification code"}
+                        ? su("resendCodeInSeconds", { seconds: signupOtpResendCooldown })
+                        : su("resendVerificationCode")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -542,7 +549,7 @@ export default function SignupScreen() {
               {t("auth.createYourAccount")}
             </Text>
             <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 24 }}>
-              Join Beautonomi for service pros — manage bookings, clients, and payments.
+              {su("subtitle")}
             </Text>
 
             <TouchableOpacity
@@ -569,16 +576,16 @@ export default function SignupScreen() {
               >
                 {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
               </View>
-              <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
-                I agree to the{" "}
+              <Text style={{ marginStart: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+                {su("agreeLead")}
                 <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPartnerEulaUrl()).catch(() => {})}>
-                  Partner EULA
-                </Text>{" "}
-                and{" "}
-                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}>
-                  Privacy Policy
+                  {su("partnerEula")}
                 </Text>
-                .
+                {su("agreeAnd")}
+                <Text style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }} onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}>
+                  {su("privacyPolicy")}
+                </Text>
+                {su("agreeTrail")}
               </Text>
             </TouchableOpacity>
 
@@ -603,20 +610,20 @@ export default function SignupScreen() {
               >
                 {marketingConsent ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
               </View>
-              <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+              <Text style={{ marginStart: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
                 {t("auth.marketingConsent")}
               </Text>
             </TouchableOpacity>
 
             {formError ? (
               <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 14, marginBottom: 16, flexDirection: "row", alignItems: "flex-start" }}>
-                <Ionicons name="alert-circle" size={20} color="#DC2626" style={{ marginTop: 1, marginRight: 10 }} />
+                <Ionicons name="alert-circle" size={20} color="#DC2626" style={{ marginTop: 1, marginEnd: 10 }} />
                 <Text style={{ flex: 1, fontSize: 14, color: "#991B1B", lineHeight: 20 }}>{formError}</Text>
               </View>
             ) : null}
             {formSuccess ? (
               <View style={{ backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", borderRadius: 12, padding: 14, marginBottom: 16, flexDirection: "row", alignItems: "flex-start" }}>
-                <Ionicons name="checkmark-circle" size={20} color="#16A34A" style={{ marginTop: 1, marginRight: 10 }} />
+                <Ionicons name="checkmark-circle" size={20} color="#16A34A" style={{ marginTop: 1, marginEnd: 10 }} />
                 <Text style={{ flex: 1, fontSize: 14, color: "#166534", lineHeight: 20 }}>{formSuccess}</Text>
               </View>
             ) : null}
@@ -646,7 +653,7 @@ export default function SignupScreen() {
                     accessibilityState={{ selected: mode === m }}
                   >
                     <Text style={{ textAlign: "center", fontSize: 14, fontWeight: mode === m ? "700" : "500", color: mode === m ? PRIMARY : "#6B7280" }}>
-                      {m === "phone" ? "Phone" : "Email"}
+                      {m === "phone" ? su("methodPhone") : su("methodEmail")}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -657,7 +664,7 @@ export default function SignupScreen() {
               <>
                 {otpSent ? (
                   <>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>Verification code</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}>{su("verificationCodeLabel")}</Text>
                     <OtpDigitRow
                       length={smsOtpLen}
                       value={token}
@@ -668,42 +675,42 @@ export default function SignupScreen() {
                       disabled={loading}
                       autoFocus
                       smsAutofill
-                      accessibilityLabelPrefix="Signup verification code"
+                      accessibilityLabelPrefix={su("signupVerificationCodeA11y")}
                     />
                     <TouchableOpacity onPress={() => void handleResendPhoneOtp()} disabled={smsResendCooldown > 0 || resendingSms || loading} style={{ alignSelf: "flex-end", marginTop: 8, marginBottom: 12 }}>
                       <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
-                        {resendingSms ? "Resending..." : smsResendCooldown > 0 ? `Resend in ${smsResendCooldown}s` : "Resend code"}
+                        {resendingSms ? su("resending") : smsResendCooldown > 0 ? su("resendCountdown", { seconds: smsResendCooldown }) : su("resendCode")}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => void handleVerifyOtp()} disabled={loading || !isCompleteOtpForLength(token, smsOtpLen)} style={{ backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 16, alignItems: "center", opacity: loading ? 0.7 : 1 }}>
-                      {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Verify</Text>}
+                      {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{su("verifyButton")}</Text>}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { setOtpSent(false); setToken(""); setPendingPhone(""); setFormSuccess(null); }} style={{ paddingVertical: 12 }}>
-                      <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>Use different number</Text>
+                      <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>{su("useDifferentNumber")}</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
                   <>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>Phone number</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{su("phoneNumberLabel")}</Text>
                     <View style={{ flexDirection: "row", borderWidth: 1.5, borderColor: phoneError ? "#EF4444" : "#E5E7EB", borderRadius: 12, overflow: "hidden", marginBottom: phoneError ? 4 : 16 }}>
                       <TouchableOpacity onPress={() => { setShowCountryPicker(true); setCountrySearch(""); }} style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", paddingHorizontal: 12, borderRightWidth: 1, borderRightColor: "#E5E7EB" }}>
-                        <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>{countryCode}</Text>
+                        <Text style={{ fontSize: 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>{countryCode}</Text>
                         <Ionicons name="chevron-down" size={14} color="#6B7280" />
                       </TouchableOpacity>
                       <TextInput
                         style={{ flex: 1, backgroundColor: "#FAFAFA", paddingHorizontal: 14, paddingVertical: 14, fontSize: 15, color: "#111827" }}
-                        placeholder="71 234 5678"
+                        placeholder={su("nationalPhonePlaceholder")}
                         placeholderTextColor="#9CA3AF"
                         value={phone}
                         onChangeText={handlePhoneChange}
                         keyboardType="phone-pad"
-                        accessibilityLabel="Phone number"
+                        accessibilityLabel={su("phoneA11y")}
                       />
                     </View>
                     {phoneError ? <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{phoneError}</Text> : null}
                     <TouchableOpacity onPress={handleSendOtp} disabled={loading} style={{ backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 16, alignItems: "center", opacity: loading ? 0.7 : 1, marginBottom: 16 }}>
-                      {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Send code</Text>}
+                      {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{su("sendCode")}</Text>}
                     </TouchableOpacity>
                   </>
                 )}
@@ -713,17 +720,17 @@ export default function SignupScreen() {
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.fullName")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 16 }}>
                   <Ionicons name="person-outline" size={18} color="#9CA3AF" />
-                  <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="Your full name" placeholderTextColor="#9CA3AF" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
+                  <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder={su("namePlaceholder")} placeholderTextColor="#9CA3AF" value={fullName} onChangeText={setFullName} autoCapitalize="words" />
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.email")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 16 }}>
                   <Ionicons name="mail-outline" size={18} color="#9CA3AF" />
-                  <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="you@example.com" placeholderTextColor="#9CA3AF" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} />
+                  <TextInput style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder={su("emailPlaceholder")} placeholderTextColor="#9CA3AF" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" returnKeyType="next" onSubmitEditing={() => passwordRef.current?.focus()} />
                 </View>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.password")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 8 }}>
                   <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" />
-                  <TextInput ref={passwordRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="At least 8 characters" placeholderTextColor="#9CA3AF" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} returnKeyType="next" onSubmitEditing={() => confirmRef.current?.focus()} />
+                  <TextInput ref={passwordRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder={su("passwordPlaceholder")} placeholderTextColor="#9CA3AF" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} returnKeyType="next" onSubmitEditing={() => confirmRef.current?.focus()} />
                   <TouchableOpacity onPress={() => setShowPassword((v) => !v)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                     <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color="#6B7280" />
                   </TouchableOpacity>
@@ -753,7 +760,7 @@ export default function SignupScreen() {
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>{t("auth.confirmPassword")}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, backgroundColor: "#FAFAFA", paddingHorizontal: 14, marginBottom: 20 }}>
                   <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" />
-                  <TextInput ref={confirmRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder="Repeat password" placeholderTextColor="#9CA3AF" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} returnKeyType="done" onSubmitEditing={handleEmailSignup} />
+                  <TextInput ref={confirmRef} style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }} placeholder={su("confirmPasswordPlaceholder")} placeholderTextColor="#9CA3AF" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry={!showPassword} returnKeyType="done" onSubmitEditing={handleEmailSignup} />
                 </View>
                 <TouchableOpacity onPress={handleEmailSignup} disabled={loading} style={{ backgroundColor: PRIMARY, borderRadius: 12, paddingVertical: 16, alignItems: "center", opacity: loading ? 0.7 : 1, marginBottom: 16 }}>
                   {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{t("auth.createAccount")}</Text>}
@@ -765,12 +772,12 @@ export default function SignupScreen() {
               <>
                 <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
                   <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-                  <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>or</Text>
+                  <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>{su("orDivider")}</Text>
                   <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
                 </View>
                 {socialAuth.google && (
                   <TouchableOpacity onPress={() => void handleSocialOAuth("google")} disabled={loading} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, marginBottom: 12, backgroundColor: "#fff" }}>
-                    <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                    <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginEnd: 10 }} />
                     <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithGoogle")}</Text>
                   </TouchableOpacity>
                 )}
@@ -778,7 +785,7 @@ export default function SignupScreen() {
                   <AppleAuthButton onPress={() => void handleSocialOAuth("apple")} disabled={loading} />
                 ) : socialAuth.apple ? (
                   <TouchableOpacity onPress={() => void handleSocialOAuth("apple")} disabled={loading} style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14, marginBottom: 12, backgroundColor: "#fff" }}>
-                    <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+                    <Ionicons name="logo-apple" size={20} color="#000" style={{ marginEnd: 10 }} />
                     <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithApple")}</Text>
                   </TouchableOpacity>
                 ) : null}
@@ -797,8 +804,8 @@ export default function SignupScreen() {
           <Pressable style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setShowCountryPicker(false)}>
             <Pressable style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }} onPress={(e) => e.stopPropagation()}>
               <View style={{ paddingHorizontal: screenPadding, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
-                <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>Select country</Text>
-                <TextInput style={{ backgroundColor: "#F3F4F6", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, fontSize: 15 }} placeholder="Search country..." placeholderTextColor="#9CA3AF" value={countrySearch} onChangeText={setCountrySearch} />
+                <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>{su("selectCountryTitle")}</Text>
+                <TextInput style={{ backgroundColor: "#F3F4F6", borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, fontSize: 15 }} placeholder={su("searchCountryPlaceholder")} placeholderTextColor="#9CA3AF" value={countrySearch} onChangeText={setCountrySearch} />
               </View>
               <FlatList
                 {...verticalFlatListPerf}
@@ -814,7 +821,7 @@ export default function SignupScreen() {
                     }}
                     style={{ flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: screenPadding, borderBottomWidth: 1, borderColor: "#F9FAFB" }}
                   >
-                    <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                    <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                     <Text style={{ flex: 1, fontSize: 15, color: countryCode === c.code ? PRIMARY : "#111827", fontWeight: countryCode === c.code ? "700" : "400" }}>{c.label}</Text>
                     {countryCode === c.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
                   </TouchableOpacity>

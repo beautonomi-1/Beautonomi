@@ -120,7 +120,7 @@ export default function HomeMainClient({
     <>
       {showRetentionKeptBanner && !retentionKeptBannerDismissed && (
         <div className="bg-emerald-50 border-b border-emerald-200 px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <p className="text-sm text-emerald-900 text-center sm:text-left flex-1">
+          <p className="text-sm text-emerald-900 text-center sm:text-start flex-1">
             You&apos;re all set — your account will stay active. Thanks for confirming.
           </p>
           <button

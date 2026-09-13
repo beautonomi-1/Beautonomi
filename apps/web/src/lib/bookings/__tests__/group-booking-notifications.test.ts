@@ -35,6 +35,13 @@ vi.mock("@/lib/integrations/resend", () => ({
   sendResendEmail: (...args: unknown[]) => mockSendResendEmail(...args),
 }));
 
+vi.mock("@/lib/regions/config", () => ({
+  getTenantRegionConfig: vi.fn().mockResolvedValue({
+    defaultLocale: "en",
+    defaultCurrency: "ZAR",
+  }),
+}));
+
 function buildSupabaseMock() {
   const bookingRow = {
     id: BOOKING_ID,

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -49,6 +50,12 @@ function getSourceIcon(name: string): { icon: keyof typeof Ionicons.glyphMap; co
 }
 
 export default function ReferralSourcesScreen() {
+  const { t } = useTranslation();
+  const rs = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.referralSources.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -111,7 +118,7 @@ export default function ReferralSourcesScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Name is required");
+      Alert.alert(rs("requiredTitle"), rs("nameRequired"));
       return;
     }
     const payload = {
@@ -125,10 +132,10 @@ export default function ReferralSourcesScreen() {
         `/api/provider/referral-sources/${editing.id}`,
         payload
       );
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     } else {
       const { error } = await createSource(payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(rs("errorTitle"), error); return; }
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -141,21 +148,21 @@ export default function ReferralSourcesScreen() {
       `/api/provider/referral-sources/${source.id}`,
       { is_active: !source.is_active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(rs("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(source: ReferralSource) {
-    Alert.alert("Delete", `Remove "${source.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(rs("deleteTitle"), rs("deleteBody", { name: source.name }), [
+      { text: rs("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: rs("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteSource(
             `/api/provider/referral-sources/${source.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(rs("errorTitle"), error);
           else refresh();
         },
       },
@@ -165,9 +172,9 @@ export default function ReferralSourcesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Referral Sources"
+        title={rs("title")}
         showBack
-        subtitle="Track how clients find you"
+        subtitle={rs("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -180,23 +187,24 @@ export default function ReferralSourcesScreen() {
 
       <View style={twStyle("mb-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3")}>
         <Text style={twStyle("text-xs text-blue-800")}>
-          <Text style={twStyle("font-semibold")}>Provider attribution only.</Text> These sources (e.g. Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the &quot;Referral received&quot; automation.
+          <Text style={twStyle("font-semibold")}>{rs("attributionLead")}</Text>
+          {rs("attributionBody")}
         </Text>
       </View>
 
       <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Total" value={String(stats.total)} icon="git-network-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+          <StatCard title={rs("statTotal")} value={String(stats.total)} icon="git-network-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Active" value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+          <StatCard title={rs("statActive")} value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
         <View style={twStyle("flex-1")}>
-          <StatCard title="Clients" value={String(stats.totalClients)} icon="people-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+          <StatCard title={rs("statClients")} value={String(stats.totalClients)} icon="people-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search sources..." />
+      <SearchBar value={search} onChangeText={setSearch} placeholder={rs("searchPlaceholder")} />
 
       <View style={twStyle("mt-3")} />
 
@@ -207,8 +215,8 @@ export default function ReferralSourcesScreen() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="git-network-outline"
-          title="No referral sources"
-          description={search ? "No results" : "Track how clients find your business"}
+          title={rs("emptyTitle")}
+          description={search ? rs("emptySearch") : rs("emptyHint")}
         />
       ) : (
         <FlatList
@@ -236,12 +244,12 @@ export default function ReferralSourcesScreen() {
                   >
                     <Ionicons name={si.icon} size={18} color={si.color} />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <View style={twStyle("flex-row items-center")}>
-                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>{source.name}</Text>
+                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>{source.name}</Text>
                       {!source.is_active && (
                         <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
-                          <Text style={twStyle("text-[10px] text-gray-500")}>Inactive</Text>
+                          <Text style={twStyle("text-[10px] text-gray-500")}>{rs("inactive")}</Text>
                         </View>
                       )}
                     </View>
@@ -252,7 +260,7 @@ export default function ReferralSourcesScreen() {
                     )}
                     {source.client_count != null && source.client_count > 0 && (
                       <Text style={twStyle("mt-0.5 text-xs text-indigo-600")}>
-                        {source.client_count} client{source.client_count !== 1 ? "s" : ""}
+                        {rs("clientsCount", { count: source.client_count })}
                       </Text>
                     )}
                   </View>
@@ -262,7 +270,7 @@ export default function ReferralSourcesScreen() {
                       onValueChange={() => handleToggleActive(source)}
                       trackColor={{ false: "#d1d5db", true: "#818cf8" }}
                       thumbColor={source.is_active ? "#6366f1" : "#f4f4f5"}
-                      style={{ marginRight: 8, transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                      style={{ marginEnd: 8, transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
                     />
                     <TouchableOpacity onPress={() => handleDelete(source)} hitSlop={8}>
                       <Ionicons name="trash-outline" size={16} color="#ef4444" />
@@ -275,33 +283,32 @@ export default function ReferralSourcesScreen() {
         />
       )}
 
-      {/* Create / Edit form */}
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Referral Source" : "New Referral Source"}
+        title={editing ? rs("editTitle") : rs("newTitle")}
       >
         <View>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{rs("nameLabel")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
-            onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Instagram, Google, Friend"
+            onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+            placeholder={rs("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{rs("description")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional details..."
+            onChangeText={(text) => setForm((p) => ({ ...p, description: text }))}
+            placeholder={rs("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{rs("active")}</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
@@ -311,7 +318,7 @@ export default function ReferralSourcesScreen() {
           </View>
 
           <ActionButton
-            label={editing ? "Update Source" : "Add Source"}
+            label={editing ? rs("updateSource") : rs("addSource")}
             onPress={handleSave}
             loading={creating || updating}
             fullWidth

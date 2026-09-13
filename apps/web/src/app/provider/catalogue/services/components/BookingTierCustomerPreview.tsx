@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { Eye } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { previewBookingTierName } from "@/app/api/provider/services/_helpers/sync-variants";
@@ -25,6 +26,7 @@ export function BookingTierCustomerPreview({
   serviceTitle,
   currencyCode,
 }: BookingTierCustomerPreviewProps) {
+  const { t } = useTranslation();
   if (options.length <= 1) return null;
 
   return (
@@ -39,7 +41,7 @@ export function BookingTierCustomerPreview({
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-            Customer booking view
+            {t("web.provider.catalogue.serviceDialog.customerBookingView")}
           </p>
           <p className="text-xs text-indigo-600/90">
             {options.length} option{options.length === 1 ? "" : "s"} to choose from

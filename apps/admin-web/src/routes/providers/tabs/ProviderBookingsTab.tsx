@@ -14,6 +14,7 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type Props = {
   providerCanonicalId: string;
@@ -50,11 +51,7 @@ const BOOKING_STATUS_COLORS: Record<string, string> = {
   pending_payment: "bg-yellow-100 text-yellow-800",
 };
 
-const cur = new Intl.NumberFormat(undefined, {
-  style: "currency",
-  currency: "ZAR",
-  maximumFractionDigits: 2,
-}).format;
+const cur = (n: number) => formatAdminCurrency(n, "ZAR");
 
 export function ProviderBookingsTab({ providerCanonicalId }: Props) {
   const [status, setStatus] = useState("all");

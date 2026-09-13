@@ -5,11 +5,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function HelpScreen() {
   useScreenTracking("Help");
   const router = useRouter();
   const { t } = useTranslation();
+  const h = (key: string) => t(`customer.mobile.screens.help.${key}`) as string;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -24,88 +26,83 @@ export default function HelpScreen() {
           <Text style={styles.safetyCardTitle}>{t("customer.mobile.screens.safetyHub.title")}</Text>
           <Text style={styles.safetyCardBody}>{t("customer.mobile.screens.safetyHub.helpCardBody")}</Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
       </TouchableOpacity>
       <View style={styles.quickLinks}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
           onPress={() => pushWebLearningCenter(router)}
-          accessibilityLabel="Open Learning Centre articles"
+          accessibilityLabel={h("learningCentreA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="school-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Learning Centre</Text>
+          <Text style={styles.quickLinkText}>{h("learningCentre")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
           onPress={() => router.push("/(app)/(tabs)/support-tickets" as never)}
-          accessibilityLabel="View my support tickets"
+          accessibilityLabel={h("myTicketsA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="ticket-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>My tickets</Text>
+          <Text style={styles.quickLinkText}>{h("myTickets")}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.quickLinksSecondRow}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
           onPress={() => router.push("/(app)/(tabs)/support-tickets/new" as never)}
-          accessibilityLabel="Submit a new support ticket"
+          accessibilityLabel={h("newTicketA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="create-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>New ticket</Text>
+          <Text style={styles.quickLinkText}>{h("newTicket")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
           onPress={() => pushWebPrivacyPolicy(router)}
-          accessibilityLabel="Open privacy policy"
+          accessibilityLabel={h("privacyA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="document-text-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Privacy</Text>
+          <Text style={styles.quickLinkText}>{h("privacy")}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.quickLinksThirdRow}>
         <TouchableOpacity
           style={[styles.quickLink, styles.quickLinkFirst]}
           onPress={() => pushWebTermsOfService(router)}
-          accessibilityLabel="Open terms of service"
+          accessibilityLabel={h("termsA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="reader-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Terms</Text>
+          <Text style={styles.quickLinkText}>{h("terms")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.quickLink}
           onPress={() => pushWebAgeSuitability(router)}
-          accessibilityLabel="Open age suitability information"
+          accessibilityLabel={h("ageSuitabilityA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="shield-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
-          <Text style={styles.quickLinkText}>Age suitability</Text>
+          <Text style={styles.quickLinkText}>{h("ageSuitability")}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Help center</Text>
-        <Text style={styles.sectionBody}>
-          Browse the Learning Centre for guides and common answers. For account or booking-specific help, open a
-          ticket with your details and screenshots where possible. Track replies in My tickets.
-        </Text>
+        <Text style={styles.sectionTitle}>{h("helpCenter")}</Text>
+        <Text style={styles.sectionBody}>{h("helpCenterBody")}</Text>
       </View>
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Common questions</Text>
-        <Text style={styles.faqTitle}>Where are guides and how-to articles?</Text>
-        <Text style={styles.faqBody}>
-          Tap Learning Centre above to browse articles on our website (opens in the app browser).
-        </Text>
-        <Text style={styles.faqTitle}>How long does support take?</Text>
-        <Text style={styles.faqBody}>Most requests are answered within 1-2 business days.</Text>
-        <Text style={styles.faqTitle}>How do I follow up on a ticket?</Text>
-        <Text style={styles.faqBody}>Open My tickets, choose your ticket, and send a reply in the thread.</Text>
-        <Text style={styles.faqTitle}>What should I include?</Text>
-        <Text style={styles.faqBody}>A clear description, affected booking/order id, and screenshots if relevant.</Text>
+        <Text style={styles.sectionTitle}>{h("commonQuestions")}</Text>
+        <Text style={styles.faqTitle}>{h("faqGuidesQ")}</Text>
+        <Text style={styles.faqBody}>{h("faqGuidesA")}</Text>
+        <Text style={styles.faqTitle}>{h("faqSupportTimeQ")}</Text>
+        <Text style={styles.faqBody}>{h("faqSupportTimeA")}</Text>
+        <Text style={styles.faqTitle}>{h("faqFollowUpQ")}</Text>
+        <Text style={styles.faqBody}>{h("faqFollowUpA")}</Text>
+        <Text style={styles.faqTitle}>{h("faqIncludeQ")}</Text>
+        <Text style={styles.faqBody}>{h("faqIncludeA")}</Text>
       </View>
     </ScrollView>
   );
@@ -149,7 +146,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray[200],
   },
   quickLinkFirst: {
-    marginRight: 12,
+    marginEnd: 12,
   },
   quickLinksSecondRow: {
     flexDirection: "row",
@@ -167,7 +164,7 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.gray[100],
     backgroundColor: Colors.gray[50],
   },
-  quickLinkIcon: { marginRight: 6 },
+  quickLinkIcon: { marginEnd: 6 },
   quickLinkText: { fontSize: 14, fontWeight: "500", color: Colors.gray[800] },
   sectionCard: {
     marginTop: 12,

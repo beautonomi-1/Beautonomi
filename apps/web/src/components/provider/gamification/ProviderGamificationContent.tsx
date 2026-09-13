@@ -25,14 +25,13 @@ import {
   type BadgeBenefits,
   type BadgeRequirements,
   type LadderBadge,
-  EARN_TIPS,
   badgeAccentColor,
   formatGamificationDate,
   formatMilestoneLabel,
   formatPointSource,
   formatRequirementHint,
-  ladderStatusLabel,
 } from "@/lib/provider/gamification-display";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface ProviderGamificationData {
   points: {
@@ -92,19 +91,20 @@ export interface ProviderGamificationData {
 }
 
 function BenefitChips({ benefits }: { benefits?: BadgeBenefits }) {
+  const { t } = useTranslation();
   if (!benefits?.featured && !benefits?.free_subscription) return null;
   return (
     <div className="flex flex-wrap gap-2 mt-3">
       {benefits.featured ? (
         <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
-          <Sparkles className="w-3 h-3 mr-1" />
-          Featured listing
+          <Sparkles className="w-3 h-3 me-1" />
+          {t("web.provider.gamification.featuredListing")}
         </Badge>
       ) : null}
       {benefits.free_subscription ? (
         <Badge variant="outline" className="bg-green-50 text-green-800 border-green-200">
-          <Gift className="w-3 h-3 mr-1" />
-          Subscription perk
+          <Gift className="w-3 h-3 me-1" />
+          {t("web.provider.gamification.subscriptionPerk")}
         </Badge>
       ) : null}
     </div>
@@ -118,11 +118,12 @@ function CurrentBadgeHero({
   badge: NonNullable<ProviderGamificationData["current_badge"]>;
   pointsTotal: number;
 }) {
+  const { t } = useTranslation();
   const accent = badgeAccentColor(badge.color);
   return (
     <Card className="overflow-hidden border-0 shadow-md md:col-span-2">
       <div className="p-6 sm:p-8" style={{ backgroundColor: `${accent}14` }}>
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-600">Your level</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-600">{t("web.provider.gamification.yourLevel")}</p>
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-5">
           <div
             className="w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center text-white shadow-lg shrink-0 mx-auto sm:mx-0"
@@ -141,7 +142,7 @@ function CurrentBadgeHero({
               <Trophy className="w-10 h-10 sm:w-12 sm:h-12" />
             )}
           </div>
-          <div className="flex-1 text-center sm:text-left">
+          <div className="flex-1 text-center sm:text-start">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900">{badge.name}</h2>
             {badge.description ? (
               <p className="mt-2 text-sm sm:text-base text-gray-600 leading-relaxed">{badge.description}</p>
@@ -151,18 +152,18 @@ function CurrentBadgeHero({
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
           <div className="rounded-xl bg-white/90 px-4 py-3 min-w-[120px] shadow-sm">
-            <p className="text-xs text-gray-500">Points</p>
+            <p className="text-xs text-gray-500">{t("web.provider.gamification.points")}</p>
             <p className="text-xl font-bold text-gray-900">{pointsTotal.toLocaleString()}</p>
           </div>
           {badge.earned_at ? (
             <div className="rounded-xl bg-white/90 px-4 py-3 shadow-sm">
-              <p className="text-xs text-gray-500">Earned</p>
+              <p className="text-xs text-gray-500">{t("web.provider.gamification.earned")}</p>
               <p className="text-sm font-semibold text-gray-800">{formatGamificationDate(badge.earned_at)}</p>
             </div>
           ) : null}
           {badge.expires_at ? (
             <div className="rounded-xl bg-white/90 px-4 py-3 shadow-sm">
-              <p className="text-xs text-gray-500">Active until</p>
+              <p className="text-xs text-gray-500">{t("web.provider.gamification.activeUntil")}</p>
               <p className="text-sm font-semibold text-gray-800">{formatGamificationDate(badge.expires_at)}</p>
             </div>
           ) : null}
@@ -179,21 +180,21 @@ function EmptyBadgeHero({
   progress: ProviderGamificationData["progress_to_next_badge"];
   pointsTotal: number;
 }) {
-  const nextName = progress?.badge.name ?? "your first badge";
+  const { t } = useTranslation();
+  const nextName = progress?.badge.name ?? t("web.provider.gamification.firstBadgeFallback");
   return (
     <Card className="md:col-span-2 border-primary/25 bg-gradient-to-br from-primary/5 to-primary/[0.02]">
       <CardContent className="py-10 text-center">
         <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-md">
           <Trophy className="h-10 w-10 text-primary" />
         </div>
-        <h2 className="text-2xl font-extrabold text-gray-900">Start your badge journey</h2>
+        <h2 className="text-2xl font-extrabold text-gray-900">{t("web.provider.gamification.emptyHeroTitle")}</h2>
         <p className="mt-3 max-w-md mx-auto text-sm text-gray-600 leading-relaxed">
-          Complete bookings and collect reviews to earn points. Your next milestone is{" "}
-          <span className="font-bold text-primary">{nextName}</span>.
+          {t("web.provider.gamification.emptyHeroBody", { name: nextName })}
         </p>
         {pointsTotal > 0 ? (
           <p className="mt-4 text-sm text-gray-700">
-            You already have <span className="font-bold">{pointsTotal.toLocaleString()}</span> points — keep going!
+            {t("web.provider.gamification.alreadyHavePoints", { amount: pointsTotal.toLocaleString() })}
           </p>
         ) : null}
       </CardContent>
@@ -202,6 +203,7 @@ function EmptyBadgeHero({
 }
 
 function ProgressCard({ progress }: { progress: NonNullable<ProviderGamificationData["progress_to_next_badge"]> }) {
+  const { t } = useTranslation();
   const accent = badgeAccentColor(progress.badge.color);
   const pct = Math.min(100, progress.progress_percentage);
   const almostThere = pct >= 75 && progress.points_needed > 0;
@@ -212,7 +214,7 @@ function ProgressCard({ progress }: { progress: NonNullable<ProviderGamification
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-lg">
             <TrendingUp className="w-5 h-5" />
-            Level up next
+            {t("web.provider.gamification.levelUpNext")}
           </CardTitle>
           <span className="text-sm font-bold rounded-full px-3 py-1" style={{ color: accent, backgroundColor: `${accent}18` }}>
             {pct}%
@@ -228,7 +230,7 @@ function ProgressCard({ progress }: { progress: NonNullable<ProviderGamification
         ) : null}
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-3xl font-extrabold text-gray-900">{progress.current_points.toLocaleString()}</span>
-          <span className="text-gray-500">/ {progress.required_points.toLocaleString()} pts</span>
+          <span className="text-gray-500">{t("web.provider.gamification.ptsRatio", { amount: progress.required_points.toLocaleString() })}</span>
         </div>
         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -238,14 +240,13 @@ function ProgressCard({ progress }: { progress: NonNullable<ProviderGamification
         </div>
         {progress.points_needed > 0 ? (
           <p className="text-sm text-gray-700">
-            <span className="font-bold" style={{ color: accent }}>
-              {progress.points_needed.toLocaleString()}
-            </span>{" "}
-            points to unlock — {almostThere ? "you're almost there!" : "keep the momentum going."}
+            {almostThere
+              ? t("web.provider.gamification.pointsToUnlockAlmost", { amount: progress.points_needed.toLocaleString() })
+              : t("web.provider.gamification.pointsToUnlockKeepGoing", { amount: progress.points_needed.toLocaleString() })}
           </p>
         ) : (
           <p className="text-sm font-semibold text-green-700">
-            You've hit the point threshold — badge updates after the next sync.
+            {t("web.provider.gamification.hitThreshold")}
           </p>
         )}
       </CardContent>
@@ -254,20 +255,28 @@ function ProgressCard({ progress }: { progress: NonNullable<ProviderGamification
 }
 
 function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
+  const { t } = useTranslation();
   if (ladder.length === 0) return null;
 
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle>Badge journey</CardTitle>
-        <CardDescription>Every level and what you&apos;re working toward</CardDescription>
+        <CardTitle>{t("web.provider.gamification.badgeJourney")}</CardTitle>
+        <CardDescription>{t("web.provider.gamification.badgeJourneyDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <ul className="divide-y divide-gray-100">
           {ladder.map((item) => {
             const accent = badgeAccentColor(item.color);
             const status = item.status;
-            const statusText = ladderStatusLabel(status);
+            const statusText =
+              status === "current"
+                ? t("web.provider.gamification.statusCurrent")
+                : status === "earned"
+                  ? t("web.provider.gamification.statusEarned")
+                  : status === "next"
+                    ? t("web.provider.gamification.statusNext")
+                    : t("web.provider.gamification.statusLocked");
             const hint = formatRequirementHint(item.requirements);
             const statusColor =
               status === "current"
@@ -335,15 +344,21 @@ function BadgeLadderSection({ ladder }: { ladder: LadderBadge[] }) {
 }
 
 function HowToEarnSection() {
+  const { t } = useTranslation();
+  const tips = [
+    { title: t("web.provider.gamification.earnTipBookingsTitle"), body: t("web.provider.gamification.earnTipBookingsBody") },
+    { title: t("web.provider.gamification.earnTipReviewsTitle"), body: t("web.provider.gamification.earnTipReviewsBody") },
+    { title: t("web.provider.gamification.earnTipConsistentTitle"), body: t("web.provider.gamification.earnTipConsistentBody") },
+  ];
   return (
     <Card className="mb-6">
       <CardHeader>
-        <CardTitle>How to level up</CardTitle>
-        <CardDescription>Simple actions that move you up the ladder</CardDescription>
+        <CardTitle>{t("web.provider.gamification.howToLevelUp")}</CardTitle>
+        <CardDescription>{t("web.provider.gamification.howToLevelUpDesc")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {EARN_TIPS.map((tip, i) => (
+          {tips.map((tip, i) => (
             <div key={tip.title} className="rounded-xl border border-gray-200 p-4 bg-white">
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
                 {i === 0 ? (
@@ -365,6 +380,7 @@ function HowToEarnSection() {
 }
 
 function ActivityStats({ stats }: { stats: ProviderGamificationData["provider_stats"] }) {
+  const { t } = useTranslation();
   const show =
     stats.total_bookings > 0 ||
     stats.review_count > 0 ||
@@ -376,19 +392,19 @@ function ActivityStats({ stats }: { stats: ProviderGamificationData["provider_st
       {stats.total_bookings > 0 ? (
         <div className="text-center rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-2xl font-extrabold text-gray-900">{stats.total_bookings}</p>
-          <p className="text-xs text-gray-500 mt-1">Bookings</p>
+          <p className="text-xs text-gray-500 mt-1">{t("web.provider.gamification.bookings")}</p>
         </div>
       ) : null}
       {stats.review_count > 0 ? (
         <div className="text-center rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-2xl font-extrabold text-gray-900">{stats.review_count}</p>
-          <p className="text-xs text-gray-500 mt-1">Reviews</p>
+          <p className="text-xs text-gray-500 mt-1">{t("web.provider.gamification.reviews")}</p>
         </div>
       ) : null}
       {stats.rating_average > 0 ? (
         <div className="text-center rounded-xl border border-gray-200 bg-white p-4">
           <p className="text-2xl font-extrabold text-gray-900">{stats.rating_average.toFixed(1)}</p>
-          <p className="text-xs text-gray-500 mt-1">Rating</p>
+          <p className="text-xs text-gray-500 mt-1">{t("web.provider.gamification.rating")}</p>
         </div>
       ) : null}
     </div>
@@ -406,6 +422,7 @@ export function ProviderGamificationContent({
   isRecalculating,
   onRecalculate,
 }: ProviderGamificationContentProps) {
+  const { t } = useTranslation();
   const ladder = data.badge_ladder ?? [];
 
   return (
@@ -421,20 +438,20 @@ export function ProviderGamificationContent({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
-              Points
+              {t("web.provider.gamification.points")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-gray-500">Current points</p>
+              <p className="text-sm text-gray-500">{t("web.provider.gamification.currentPoints")}</p>
               <p className="text-3xl font-extrabold text-gray-900">{data.points.total.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Lifetime</p>
+              <p className="text-sm text-gray-500">{t("web.provider.gamification.lifetime")}</p>
               <p className="text-xl font-semibold text-gray-700">{data.points.lifetime.toLocaleString()}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">This tier</p>
+              <p className="text-sm text-gray-500">{t("web.provider.gamification.thisTier")}</p>
               <p className="text-lg font-semibold text-primary">{data.points.current_tier.toLocaleString()}</p>
             </div>
             <Button
@@ -444,11 +461,11 @@ export function ProviderGamificationContent({
               size="sm"
               className="w-full"
             >
-              <RefreshCw className={cn("w-4 h-4 mr-2", isRecalculating && "animate-spin")} />
-              {isRecalculating ? "Syncing…" : "Sync badge progress"}
+              <RefreshCw className={cn("w-4 h-4 me-2", isRecalculating && "animate-spin")} />
+              {isRecalculating ? t("web.provider.gamification.syncing") : t("web.provider.gamification.syncBadgeProgress")}
             </Button>
             <p className="text-xs text-gray-400 text-center">
-              Refresh after recent bookings if points look out of date.
+              {t("web.provider.gamification.syncHint")}
             </p>
           </CardContent>
         </Card>
@@ -461,9 +478,9 @@ export function ProviderGamificationContent({
           <CardContent className="py-5 flex gap-3 items-start">
             <Star className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-gray-900">Top tier unlocked</p>
+              <p className="font-bold text-gray-900">{t("web.provider.gamification.topTierTitle")}</p>
               <p className="text-sm text-gray-600 mt-1 leading-relaxed">
-                You&apos;re at the highest badge level. Keep delivering great service to stay featured and retain your perks.
+                {t("web.provider.gamification.topTierBody")}
               </p>
             </div>
           </CardContent>
@@ -477,20 +494,20 @@ export function ProviderGamificationContent({
       <Tabs defaultValue="milestones" className="mb-6">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="milestones">
-            <Award className="w-4 h-4 mr-2" />
-            Milestones ({data.milestones.length})
+            <Award className="w-4 h-4 me-2" />
+            {t("web.provider.gamification.milestonesTab", { count: data.milestones.length })}
           </TabsTrigger>
           <TabsTrigger value="transactions">
-            <Clock className="w-4 h-4 mr-2" />
-            Point history ({data.transactions.length})
+            <Clock className="w-4 h-4 me-2" />
+            {t("web.provider.gamification.pointHistoryTab", { count: data.transactions.length })}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="milestones">
           <Card>
             <CardHeader>
-              <CardTitle>Achievements</CardTitle>
-              <CardDescription>Milestones you&apos;ve unlocked along the way</CardDescription>
+              <CardTitle>{t("web.provider.gamification.achievements")}</CardTitle>
+              <CardDescription>{t("web.provider.gamification.achievementsDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               {data.milestones.length > 0 ? (
@@ -511,7 +528,7 @@ export function ProviderGamificationContent({
               ) : (
                 <div className="text-center py-8">
                   <Award className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-600">No milestones yet — complete bookings to unlock achievements.</p>
+                  <p className="text-gray-600">{t("web.provider.gamification.noMilestones")}</p>
                 </div>
               )}
             </CardContent>
@@ -521,8 +538,8 @@ export function ProviderGamificationContent({
         <TabsContent value="transactions">
           <Card>
             <CardHeader>
-              <CardTitle>Point history</CardTitle>
-              <CardDescription>Recent points earned from bookings and reviews</CardDescription>
+              <CardTitle>{t("web.provider.gamification.pointHistory")}</CardTitle>
+              <CardDescription>{t("web.provider.gamification.pointHistoryDesc")}</CardDescription>
             </CardHeader>
             <CardContent>
               {data.transactions.length > 0 ? (
@@ -551,7 +568,7 @@ export function ProviderGamificationContent({
                       </div>
                       <span
                         className={cn(
-                          "text-lg font-bold shrink-0 ml-2",
+                          "text-lg font-bold shrink-0 ms-2",
                           transaction.points > 0 ? "text-green-600" : "text-red-600",
                         )}
                       >
@@ -564,7 +581,7 @@ export function ProviderGamificationContent({
               ) : (
                 <div className="text-center py-8">
                   <Clock className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-600">No transactions yet. Complete bookings and receive reviews to earn points.</p>
+                  <p className="text-gray-600">{t("web.provider.gamification.noTransactions")}</p>
                 </div>
               )}
             </CardContent>

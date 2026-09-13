@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -49,13 +51,14 @@ interface PackageItem {
   product_variant?: ProductVariant | null;
 }
 
-function formatVariantLabel(variant: ProductVariant): string {
+function formatVariantLabel(variant: ProductVariant, fallback: string): string {
   const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
-  return optionLabel || variant.sku || "Variant";
+  return optionLabel || variant.sku || fallback;
 }
 
 export default function CreatePackagePage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingItems, setIsLoadingItems] = useState(true);
   const [services, setServices] = useState<OfferingCard[]>([]);
@@ -88,7 +91,7 @@ export default function CreatePackagePage() {
       const productsData = unpackProductsListPayload(productsResponse) as Product[];
       setProducts(productsData.filter((p) => p.is_active !== false));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load items");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.packages/new.failedToLoadItems"));
       console.error("Error loading items:", err);
     } finally {
       setIsLoadingItems(false);
@@ -97,7 +100,7 @@ export default function CreatePackagePage() {
 
   const addItem = () => {
     if (services.length === 0 && products.length === 0) {
-      toast.error("No services or products available. Please create services or products first.");
+      toast.error(t("web.provider.pages.packages/new.noServicesOrProducts"));
       return;
     }
     setItems([...items, { type: "service", quantity: 1 }]);
@@ -153,38 +156,38 @@ export default function CreatePackagePage() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
-      newErrors.name = "Package name is required";
+      newErrors.name = t("web.provider.pages.packages/new.packageNameRequired");
     }
 
     if (!formData.price || parseFloat(formData.price) <= 0) {
-      newErrors.price = "Price must be a positive number";
+      newErrors.price = t("web.provider.pages.packages/new.pricePositive");
     }
 
     if (formData.discount_percentage) {
       const discount = parseFloat(formData.discount_percentage);
       if (isNaN(discount) || discount < 0 || discount > 100) {
-        newErrors.discount_percentage = "Discount must be between 0 and 100";
+        newErrors.discount_percentage = t("web.provider.pages.packages/new.discountRange");
       }
     }
 
     if (items.length === 0) {
-      newErrors.items = "At least one service or product is required";
+      newErrors.items = t("web.provider.pages.packages/new.atLeastOneItem");
     } else {
       items.forEach((item, index) => {
         if (item.type === "service" && !item.offering_id) {
-          newErrors[`item_${index}`] = "Please select a service";
+          newErrors[`item_${index}`] = t("web.provider.pages.packages/new.pleaseSelectService");
         } else if (item.type === "product" && !item.product_id) {
-          newErrors[`item_${index}`] = "Please select a product";
+          newErrors[`item_${index}`] = t("web.provider.pages.packages/new.pleaseSelectProduct");
         } else if (
           item.type === "product" &&
           item.product?.has_variants &&
           (item.product.variants?.length ?? 0) > 0 &&
           !item.product_variant_id
         ) {
-          newErrors[`item_${index}`] = "Please select a product variant";
+          newErrors[`item_${index}`] = t("web.provider.pages.packages/new.pleaseSelectVariant");
         }
         if (item.quantity < 1) {
-          newErrors[`quantity_${index}`] = "Quantity must be at least 1";
+          newErrors[`quantity_${index}`] = t("web.provider.pages.packages/new.quantityAtLeast1");
         }
       });
     }
@@ -197,7 +200,7 @@ export default function CreatePackagePage() {
     e.preventDefault();
 
     if (!validate()) {
-      toast.error("Please fix the errors in the form");
+      toast.error(t("web.provider.pages.packages/new.pleaseFixErrors"));
       return;
     }
 
@@ -222,10 +225,10 @@ export default function CreatePackagePage() {
       };
 
       await fetcher.post("/api/provider/packages", payload);
-      toast.success("Package created successfully");
+      toast.success(t("web.provider.pages.packages/new.createdSuccessfully"));
       router.push("/provider/packages");
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to create package");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.packages/new.failedToCreate"));
       console.error("Error creating package:", err);
     } finally {
       setIsLoading(false);
@@ -236,13 +239,13 @@ export default function CreatePackagePage() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Packages", href: "/provider/packages" },
-          { label: "Create Package" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.packages"), href: "/provider/packages" },
+          { label: t("web.provider.pages.packages/new.createPackage") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading services and products..." />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.packages/new.loadingServicesAndProducts")} />
       </SettingsDetailLayout>
     );
   }
@@ -250,28 +253,28 @@ export default function CreatePackagePage() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Packages", href: "/provider/packages" },
-        { label: "Create Package" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.packages"), href: "/provider/packages" },
+        { label: t("web.provider.pages.packages/new.createPackage") },
       ]}
       showCloseButton={true}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Create Package"
-          subtitle="Create a package by bundling services and products together"
+          title={t("web.provider.pages.packages/new.createPackage")}
+          subtitle={t("web.provider.pages.packages/new.subtitle")}
         />
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Package Details</CardTitle>
+              <CardTitle>{t("web.provider.pages.packages/new.packageDetails")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="name">
-                  Package Name <span className="text-red-500">*</span>
+                  {t("web.provider.pages.packages/new.packageName")} <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="name"
@@ -279,7 +282,7 @@ export default function CreatePackagePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  placeholder="e.g., Complete Beauty Package"
+                  placeholder={t("web.provider.pages.packages/new.eGCompleteBeauty")}
                   className={errors.name ? "border-red-500" : ""}
                 />
                 {errors.name && (
@@ -288,14 +291,14 @@ export default function CreatePackagePage() {
               </div>
 
               <div>
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("web.provider.pages.packages/new.description")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  placeholder="Describe what's included in this package..."
+                  placeholder={t("web.provider.pages.packages/new.describeWhatsIncluded")}
                   rows={4}
                 />
               </div>
@@ -303,7 +306,7 @@ export default function CreatePackagePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="price">
-                    Price <span className="text-red-500">*</span>
+                    {t("web.provider.pages.packages/new.price")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="price"
@@ -314,7 +317,7 @@ export default function CreatePackagePage() {
                     onChange={(e) =>
                       setFormData({ ...formData, price: e.target.value })
                     }
-                    placeholder="0.00"
+                    placeholder={t("web.provider.pages.packages/new.n000")}
                     className={errors.price ? "border-red-500" : ""}
                   />
                   {errors.price && (
@@ -323,7 +326,7 @@ export default function CreatePackagePage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="currency">Currency</Label>
+                  <Label htmlFor="currency">{t("web.provider.pages.packages/new.currency")}</Label>
                   <Input
                     id="currency"
                     value={formData.currency}
@@ -337,7 +340,7 @@ export default function CreatePackagePage() {
 
               <div>
                 <Label htmlFor="discount_percentage">
-                  Discount Percentage (optional)
+                  {t("web.provider.pages.packages/new.discountOptional")}
                 </Label>
                 <Input
                   id="discount_percentage"
@@ -352,7 +355,7 @@ export default function CreatePackagePage() {
                       discount_percentage: e.target.value,
                     })
                   }
-                  placeholder="0"
+                  placeholder={t("web.provider.pages.packages/new.n0")}
                   className={errors.discount_percentage ? "border-red-500" : ""}
                 />
                 {errors.discount_percentage && (
@@ -361,7 +364,7 @@ export default function CreatePackagePage() {
                   </p>
                 )}
                 <p className="text-sm text-gray-500 mt-1">
-                  Percentage discount applied to the total package price
+                  {t("web.provider.pages.packages/new.discountHint")}
                 </p>
               </div>
 
@@ -373,7 +376,7 @@ export default function CreatePackagePage() {
                     setFormData({ ...formData, is_active: checked })
                   }
                 />
-                <Label htmlFor="is_active">Package is active</Label>
+                <Label htmlFor="is_active">{t("web.provider.pages.packages/new.packageIsActive")}</Label>
               </div>
             </CardContent>
           </Card>
@@ -381,7 +384,7 @@ export default function CreatePackagePage() {
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Items Included</CardTitle>
+                <CardTitle>{t("web.provider.pages.packages/new.itemsIncluded")}</CardTitle>
                 <Button
                   type="button"
                   variant="outline"
@@ -389,8 +392,8 @@ export default function CreatePackagePage() {
                   onClick={addItem}
                   disabled={services.length === 0 && products.length === 0}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item
+                  <Plus className="w-4 h-4 me-2" />
+                  {t("web.provider.pages.packages/new.addItem")}
                 </Button>
               </div>
             </CardHeader>
@@ -399,7 +402,7 @@ export default function CreatePackagePage() {
                 <div className="text-center py-8">
                   <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p className="text-gray-600 mb-4">
-                    No services or products available. Please create services or products first.
+                    {t("web.provider.pages.packages/new.noServicesOrProducts")}
                   </p>
                   <div className="flex gap-2 justify-center">
                     <Button
@@ -407,21 +410,21 @@ export default function CreatePackagePage() {
                       variant="outline"
                       onClick={() => router.push("/provider/services")}
                     >
-                      Go to Services
+                      {t("web.provider.pages.packages/new.goToServices")}
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => router.push("/provider/products")}
                     >
-                      Go to Products
+                      {t("web.provider.pages.packages/new.goToProducts")}
                     </Button>
                   </div>
                 </div>
               ) : items.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-600 mb-4">
-                    No items added yet. Click "Add Item" to get started.
+                    {t("web.provider.pages.packages/new.noItemsYet")}
                   </p>
                 </div>
               ) : (
@@ -444,7 +447,7 @@ export default function CreatePackagePage() {
                         <div className="flex-1 space-y-4">
                           <div>
                             <Label>
-                              Type <span className="text-red-500">*</span>
+                              {t("web.provider.pages.packages/new.type")} <span className="text-red-500">*</span>
                             </Label>
                             <select
                               value={item.type}
@@ -453,14 +456,14 @@ export default function CreatePackagePage() {
                               }
                               className="w-full px-3 py-2 border rounded-md"
                             >
-                              <option value="service">Service</option>
-                              <option value="product">Product</option>
+                              <option value="service">{t("web.provider.common.service")}</option>
+                              <option value="product">{t("web.provider.pages.packages/new.product")}</option>
                             </select>
                           </div>
 
                           <div>
                             <Label>
-                              {item.type === "service" ? "Service" : "Product"}{" "}
+                              {item.type === "service" ? t("web.provider.common.service") : t("web.provider.pages.packages/new.product")}{" "}
                               <span className="text-red-500">*</span>
                             </Label>
                             {item.type === "service" ? (
@@ -474,7 +477,7 @@ export default function CreatePackagePage() {
                                     errors[`item_${index}`] ? "border-red-500" : ""
                                   }`}
                                 >
-                                  <option value="">Select a service</option>
+                                  <option value="">{t("web.provider.pages.packages/new.selectAService")}</option>
                                   {services.map((service) => (
                                     <option key={service.id} value={service.id}>
                                       {service.title} - {service.currency}{" "}
@@ -484,7 +487,7 @@ export default function CreatePackagePage() {
                                 </select>
                                 {selectedService && (
                                   <p className="text-sm text-gray-500 mt-1">
-                                    Duration: {selectedService.duration_minutes} minutes
+{t("web.provider.pages.packages/new.durationMinutes", { minutes: selectedService.duration_minutes })}
                                   </p>
                                 )}
                               </>
@@ -499,39 +502,39 @@ export default function CreatePackagePage() {
                                     errors[`item_${index}`] ? "border-red-500" : ""
                                   }`}
                                 >
-                                  <option value="">Select a product</option>
+                                  <option value="">{t("web.provider.pages.packages/new.selectAProduct")}</option>
                                   {products.map((product) => (
                                     <option key={product.id} value={product.id}>
                                       {product.name} - {product.currency || LAST_RESORT_CURRENCY}{" "}
                                       {product.retail_price}
-                                      {product.sku && ` (SKU: ${product.sku})`}
+{product.sku && t("web.provider.pages.packages/new.skuParen", { sku: product.sku })}
                                     </option>
                                   ))}
                                 </select>
                                 {selectedProduct && (
                                   <div className="mt-2 space-y-2">
                                     <p className="text-sm text-gray-500">
-                                      {selectedProduct.brand && `${selectedProduct.brand} • `}
-                                      {selectedProduct.sku && `SKU: ${selectedProduct.sku}`}
+{selectedProduct.brand && t("web.provider.pages.packages/new.brandSku", { brand: selectedProduct.brand })}
+{selectedProduct.sku && t("web.provider.pages.packages/new.skuLabel", { sku: selectedProduct.sku })}
                                     </p>
                                     {selectedProduct.has_variants && (selectedProduct.variants?.length ?? 0) > 0 && (
                                       <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                                        <Label className="text-xs text-purple-900">Variant</Label>
+                                        <Label className="text-xs text-purple-900">{t("web.provider.pages.packages/new.variant")}</Label>
                                         <select
                                           value={item.product_variant_id || ""}
                                           onChange={(e) => updateItem(index, "product_variant_id", e.target.value)}
                                           className="mt-1 w-full rounded-md border border-purple-200 bg-white px-3 py-2 text-sm"
                                         >
-                                          <option value="">Choose a variant</option>
+                                          <option value="">{t("web.provider.pages.packages/new.chooseAVariant")}</option>
                                           {selectedProduct.variants?.map((variant) => (
                                             <option key={variant.id} value={variant.id}>
-                                              {formatVariantLabel(variant)} - {selectedProduct.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
-                                              {variant.sku ? ` (SKU: ${variant.sku})` : ""}
+{formatVariantLabel(variant, t("web.provider.pages.packages/new.variant"))} - {selectedProduct.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
+{variant.sku ? t("web.provider.pages.packages/new.skuParen", { sku: variant.sku }) : ""}
                                             </option>
                                           ))}
                                         </select>
                                         <p className="mt-1 text-xs text-purple-700">
-                                          Select the exact size, colour, or option included in this package.
+                                          {t("web.provider.pages.packages/new.variantHint")}
                                         </p>
                                       </div>
                                     )}
@@ -548,7 +551,7 @@ export default function CreatePackagePage() {
 
                           <div>
                             <Label>
-                              Quantity <span className="text-red-500">*</span>
+                              {t("web.provider.pages.packages/new.quantity")} <span className="text-red-500">*</span>
                             </Label>
                             <Input
                               type="number"
@@ -597,10 +600,10 @@ export default function CreatePackagePage() {
               onClick={() => router.back()}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Creating..." : "Create Package"}
+              {isLoading ? t("web.provider.pages.packages/new.creating") : t("web.provider.pages.packages/new.createPackage")}
             </Button>
           </div>
         </form>

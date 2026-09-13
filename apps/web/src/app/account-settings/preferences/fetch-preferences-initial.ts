@@ -42,7 +42,10 @@ export async function fetchPreferencesInitial(): Promise<PreferencesPageInitial 
     parseOptions(cursRes),
     parseOptions(tzsRes),
   ]);
-  const languages = expandLanguagePreferenceOptions(languagesRaw);
+  const languages = expandLanguagePreferenceOptions(
+    languagesRaw,
+    tenantRegion?.supportedLanguages ?? [],
+  );
 
   if (!profileRes.ok) return null;
 

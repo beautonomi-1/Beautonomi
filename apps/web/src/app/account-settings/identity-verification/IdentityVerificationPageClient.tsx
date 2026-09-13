@@ -22,6 +22,7 @@ import {
   customerVerificationSubtitle,
   verificationRequiredForCustomers,
 } from "@/lib/verification/customer-verification-ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 type VerificationSubmission = {
   id: string;
@@ -82,6 +83,8 @@ function formatWhen(iso: string | null | undefined) {
 }
 
 export default function IdentityVerificationPageClient() {
+  const { t } = useTranslation();
+  const iv = "web.accountSettings.identityVerification";
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return_to");
@@ -106,7 +109,7 @@ export default function IdentityVerificationPageClient() {
       setData(res.data);
       setLastRefreshedAt(new Date());
     } catch {
-      if (!silent) toast.error("Could not load verification status");
+      if (!silent) toast.error(t(`${iv}.loadFailed`));
     } finally {
       if (silent) setRefreshing(false);
       else setLoading(false);
@@ -154,7 +157,7 @@ export default function IdentityVerificationPageClient() {
   const submitManual = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !country) {
-      toast.error("Select a document and country");
+      toast.error(t(`${iv}.selectDocumentAndCountry`));
       return;
     }
     setUploading(true);
@@ -164,12 +167,12 @@ export default function IdentityVerificationPageClient() {
       formData.append("document_type", documentType);
       formData.append("country", country);
       await fetcher.post("/api/me/verification", formData);
-      toast.success("Document submitted for review");
+      toast.success(t(`${iv}.documentSubmitted`));
       setFile(null);
       setCountry("");
       await load(true);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Upload failed";
+      const message = err instanceof Error ? err.message : t(`${iv}.uploadFailed`);
       toast.error(message);
     } finally {
       setUploading(false);
@@ -183,12 +186,12 @@ export default function IdentityVerificationPageClient() {
       );
       const url = res.data?.signed_url;
       if (!url) {
-        toast.error("Could not open document");
+        toast.error(t(`${iv}.couldNotOpenDocument`));
         return;
       }
       window.open(url, "_blank", "noopener");
     } catch {
-      toast.error("Could not open document");
+      toast.error(t(`${iv}.couldNotOpenDocument`));
     }
   };
 
@@ -197,14 +200,14 @@ export default function IdentityVerificationPageClient() {
       <BackButton href="/account-settings" />
       <Breadcrumb
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Identity verification" },
+          { label: t(`${iv}.breadcrumbAccount`), href: "/account-settings" },
+          { label: t(`${iv}.breadcrumbTitle`) },
         ]}
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Identity verification</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{t(`${iv}.title`)}</h1>
           <p className="text-sm text-gray-600 mt-1">
             {customerVerificationSubtitle(verificationRequired)}
           </p>
@@ -212,7 +215,7 @@ export default function IdentityVerificationPageClient() {
         <div className="flex flex-wrap gap-2">
           {fromCheckout && data?.verified ? (
             <Button type="button" className="shrink-0" onClick={continueAfterVerify}>
-              Continue booking
+              {t(`${iv}.continueBooking`)}
             </Button>
           ) : null}
           <Button
@@ -224,7 +227,7 @@ export default function IdentityVerificationPageClient() {
           className="gap-2"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          {refreshing ? "Refreshing…" : "Refresh status"}
+          {refreshing ? t(`${iv}.refreshing`) : t(`${iv}.refreshStatus`)}
         </Button>
         </div>
       </div>
@@ -235,20 +238,21 @@ export default function IdentityVerificationPageClient() {
           <AlertDescription className="text-sm">
             {fromCheckout
               ? customerVerificationCheckoutBanner(true)
-              : "Identity verification is required before your first booking on this marketplace."}
+              : t(`${iv}.requiredBanner`)}
           </AlertDescription>
         </Alert>
       ) : null}
 
       {lastRefreshedAt ? (
         <p className="text-xs text-gray-500 mb-4">
-          Last updated at{" "}
-          {lastRefreshedAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+          {t(`${iv}.lastUpdatedAt`, {
+            time: lastRefreshedAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+          })}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="text-gray-600">Loading verification status…</p>
+        <p className="text-gray-600">{t(`${iv}.loading`)}</p>
       ) : (
         <div className="space-y-6">
           <VerificationStatusCard
@@ -271,22 +275,22 @@ export default function IdentityVerificationPageClient() {
           {verificationOff ? (
             <Card className="border-gray-200 bg-gray-50">
               <CardContent className="p-5">
-                <p className="font-medium text-gray-700">Verification not available</p>
+                <p className="font-medium text-gray-700">{t(`${iv}.unavailableTitle`)}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Identity verification is currently unavailable. Please contact support if you need assistance.
+                  {t(`${iv}.unavailableBody`)}
                 </p>
               </CardContent>
             </Card>
           ) : canSubmit && manualAvailable ? (
             <Card id="verification-upload">
               <CardContent className="p-5">
-                <h2 className="font-semibold text-gray-900 mb-1">Upload ID manually</h2>
+                <h2 className="font-semibold text-gray-900 mb-1">{t(`${iv}.uploadTitle`)}</h2>
                 <p className="text-sm text-gray-600 mb-4">
-                  JPEG, PNG, WebP, or PDF up to 10MB. Our team will review your submission.
+                  {t(`${iv}.uploadHint`)}
                 </p>
                 <form onSubmit={submitManual} className="space-y-4">
                   <div>
-                    <Label htmlFor="document_type">Document type</Label>
+                    <Label htmlFor="document_type">{t(`${iv}.documentType`)}</Label>
                     <select
                       id="document_type"
                       value={documentType}
@@ -295,13 +299,17 @@ export default function IdentityVerificationPageClient() {
                     >
                       {DOCUMENT_TYPES.map((opt) => (
                         <option key={opt.value} value={opt.value}>
-                          {opt.label}
+                          {opt.value === "license"
+                            ? t(`${iv}.docTypeLicense`)
+                            : opt.value === "passport"
+                              ? t(`${iv}.docTypePassport`)
+                              : t(`${iv}.docTypeIdentity`)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <Label htmlFor="country-of-issue">Country of issue</Label>
+                    <Label htmlFor="country-of-issue">{t(`${iv}.countryOfIssue`)}</Label>
                     <CountryOfIssueSelect
                       id="country-of-issue"
                       value={country}
@@ -309,7 +317,7 @@ export default function IdentityVerificationPageClient() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="file">Document</Label>
+                    <Label htmlFor="file">{t(`${iv}.document`)}</Label>
                     <input
                       id="file"
                       type="file"
@@ -320,7 +328,7 @@ export default function IdentityVerificationPageClient() {
                     />
                   </div>
                   <Button type="submit" disabled={uploading} className="bg-primary hover:bg-primary-hover">
-                    {uploading ? "Uploading…" : "Submit for verification"}
+                    {uploading ? t(`${iv}.uploading`) : t(`${iv}.submitForVerification`)}
                   </Button>
                 </form>
               </CardContent>
@@ -330,17 +338,16 @@ export default function IdentityVerificationPageClient() {
               <CardContent className="p-4 flex gap-3">
                 <ShieldCheck className="h-5 w-5 text-amber-700 shrink-0 mt-0.5" />
                 <p className="text-sm text-amber-900">
-                  You cannot submit a new document while a submission is under review. Refresh status
-                  after an admin request, or contact support if you were asked to re-verify.
+                  {t(`${iv}.underReviewBody`)}
                 </p>
               </CardContent>
             </Card>
           ) : null}
 
           <div>
-            <h2 className="font-semibold text-gray-900 mb-2">Submission history</h2>
+            <h2 className="font-semibold text-gray-900 mb-2">{t(`${iv}.submissionHistory`)}</h2>
             {submissions.length === 0 ? (
-              <p className="text-sm text-gray-500 italic">No submissions yet.</p>
+              <p className="text-sm text-gray-500 italic">{t(`${iv}.noSubmissions`)}</p>
             ) : (
               <ul className="space-y-3">
                 {submissions.map((row) => (
@@ -352,7 +359,15 @@ export default function IdentityVerificationPageClient() {
                       {row.document_type} · {formatVerificationCountryDisplay(row.country)} ·{" "}
                       {formatWhen(row.submitted_at)}
                     </p>
-                    <p className="text-gray-500 mt-1 capitalize">{row.status.replace(/_/g, " ")}</p>
+                    <p className="text-gray-500 mt-1">{({
+                      pending: t(`${iv}.statusPending`),
+                      approved: t(`${iv}.statusApproved`),
+                      rejected: t(`${iv}.statusRejected`),
+                      in_progress: t(`${iv}.statusInProgress`),
+                      submitted: t(`${iv}.statusSubmitted`),
+                      under_review: t(`${iv}.statusUnderReview`),
+                      none: t(`${iv}.statusNone`),
+                    } as Record<string, string>)[row.status] ?? row.status.replace(/_/g, " ")}</p>
                     {row.rejection_reason ? (
                       <p className="text-amber-800 mt-2 text-xs">{row.rejection_reason}</p>
                     ) : null}
@@ -364,7 +379,7 @@ export default function IdentityVerificationPageClient() {
                         className="mt-3"
                         onClick={() => void viewDocument(row.id)}
                       >
-                        View document
+                        {t(`${iv}.viewDocument`)}
                       </Button>
                     ) : null}
                   </li>
@@ -374,9 +389,9 @@ export default function IdentityVerificationPageClient() {
           </div>
 
           <p className="text-sm text-gray-500">
-            You can also manage other details on{" "}
+            {t(`${iv}.manageOtherDetails`)}{" "}
             <Link href="/account-settings/personal-info" className="text-primary underline">
-              Personal info
+              {t(`${iv}.personalInfo`)}
             </Link>
             .
           </p>

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   isProductReturnBlockingStatus,
   isWithinProductReturnWindow,
@@ -38,14 +39,14 @@ interface OrderData {
 }
 
 const REASONS = [
-  { value: "damaged", label: "Damaged or defective" },
-  { value: "wrong_item", label: "Wrong item received" },
-  { value: "not_as_described", label: "Not as described" },
-  { value: "quality_issue", label: "Quality issue" },
-  { value: "changed_mind", label: "Changed my mind" },
-  { value: "arrived_late", label: "Arrived late" },
-  { value: "other", label: "Other" },
-];
+  { value: "damaged", labelKey: "reasonDamaged" },
+  { value: "wrong_item", labelKey: "reasonWrongItem" },
+  { value: "not_as_described", labelKey: "reasonNotAsDescribed" },
+  { value: "quality_issue", labelKey: "reasonQuality" },
+  { value: "changed_mind", labelKey: "reasonChangedMind" },
+  { value: "arrived_late", labelKey: "reasonArrivedLate" },
+  { value: "other", labelKey: "reasonOther" },
+] as const;
 
 function itemBlockedByReturns(returns: OrderReturnRow[] | null | undefined, itemId: string): boolean {
   const list = returns ?? [];
@@ -57,6 +58,7 @@ function itemBlockedByReturns(returns: OrderReturnRow[] | null | undefined, item
 }
 
 export default function RequestReturnPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const orderId = params.id as string;
@@ -108,7 +110,7 @@ export default function RequestReturnPage() {
 
     const item = order.items?.find((i) => i.id === selectedItem);
     if (!item || itemBlockedByReturns(order.returns, selectedItem)) {
-      setError("This item is not eligible for a new return.");
+      setError(t("web.accountSettings.orderReturn.itemNotEligible"));
       setSubmitting(false);
       return;
     }
@@ -125,13 +127,13 @@ export default function RequestReturnPage() {
       if (res?.data) {
         setSuccess(true);
       } else {
-        setError("Failed to submit return request");
+        setError(t("web.accountSettings.orderReturn.submitFailed"));
       }
     } catch (err: unknown) {
       if (err instanceof FetchError) {
-        setError(err.message || "Could not submit return request");
+        setError(err.message || t("web.accountSettings.orderReturn.submitFailedShort"));
       } else {
-        setError(err instanceof Error ? err.message : "Something went wrong");
+        setError(err instanceof Error ? err.message : t("web.accountSettings.orderReturn.somethingWentWrong"));
       }
     }
     setSubmitting(false);
@@ -140,7 +142,7 @@ export default function RequestReturnPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500">{t("web.accountSettings.orderReturn.loading")}</p>
       </div>
     );
   }
@@ -149,22 +151,22 @@ export default function RequestReturnPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <CheckCircle2 className="mx-auto mb-4 h-16 w-16 text-green-500" />
-        <h2 className="mb-2 text-2xl font-bold text-gray-900">Return Request Submitted</h2>
+        <h2 className="mb-2 text-2xl font-bold text-gray-900">{t("web.accountSettings.orderReturn.successTitle")}</h2>
         <p className="mb-6 text-gray-500">
-          We&apos;ve notified the provider. You&apos;ll receive an update on your return soon.
+          {t("web.accountSettings.orderReturn.successBody")}
         </p>
         <div className="flex items-center justify-center gap-4">
           <Link
             href="/account-settings/returns"
             className="rounded-xl bg-pink-600 px-6 py-3 font-semibold text-white hover:bg-pink-700"
           >
-            View My Returns
+            {t("web.accountSettings.orderReturn.viewMyReturns")}
           </Link>
           <Link
             href="/account-settings/orders"
             className="rounded-xl border border-gray-200 px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
           >
-            Back to Orders
+            {t("web.accountSettings.orderReturn.backToOrders")}
           </Link>
         </div>
       </div>
@@ -174,9 +176,9 @@ export default function RequestReturnPage() {
   if (!order) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center text-gray-400">
-        <p className="mb-4">Order not found</p>
+        <p className="mb-4">{t("web.accountSettings.orderReturn.orderNotFound")}</p>
         <button type="button" onClick={() => router.back()} className="text-pink-600 hover:underline">
-          Go back
+          {t("web.accountSettings.orderReturn.goBack")}
         </button>
       </div>
     );
@@ -186,9 +188,9 @@ export default function RequestReturnPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <AlertCircle className="mx-auto mb-4 h-12 w-12 text-amber-500" />
-        <p className="mb-4 text-gray-700">Returns can only be requested after your order is delivered or ready for collection.</p>
+        <p className="mb-4 text-gray-700">{t("web.accountSettings.orderReturn.onlyAfterDelivered")}</p>
         <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
-          Back to order
+          {t("web.accountSettings.orderReturn.backToOrder")}
         </Link>
       </div>
     );
@@ -199,10 +201,10 @@ export default function RequestReturnPage() {
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <AlertCircle className="mx-auto mb-4 h-12 w-12 text-amber-500" />
         <p className="mb-4 text-gray-700">
-          The {PRODUCT_RETURN_WINDOW_DAYS}-day return window from delivery has passed.
+          {t("web.accountSettings.orderReturn.windowPassed", { days: PRODUCT_RETURN_WINDOW_DAYS })}
         </p>
         <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
-          Back to order
+          {t("web.accountSettings.orderReturn.backToOrder")}
         </Link>
       </div>
     );
@@ -212,12 +214,12 @@ export default function RequestReturnPage() {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
         <AlertCircle className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-        <p className="mb-2 font-medium text-gray-900">No items left to return</p>
+        <p className="mb-2 font-medium text-gray-900">{t("web.accountSettings.orderReturn.noItemsTitle")}</p>
         <p className="mb-4 text-sm text-gray-600">
-          Every item in this order already has an active or completed return, or the full order is in a return.
+          {t("web.accountSettings.orderReturn.noItemsBody")}
         </p>
         <Link href={`/account-settings/orders/${orderId}`} className="text-pink-600 hover:underline">
-          Back to order
+          {t("web.accountSettings.orderReturn.backToOrder")}
         </Link>
       </div>
     );
@@ -231,19 +233,22 @@ export default function RequestReturnPage() {
           className="mb-6 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
         >
           <ChevronLeft className="h-4 w-4" />
-          Back to Order
+          {t("web.accountSettings.orderReturn.backToOrderTitle")}
         </Link>
 
-        <h1 className="mb-2 text-2xl font-bold text-gray-900">Request a Return</h1>
+        <h1 className="mb-2 text-2xl font-bold text-gray-900">{t("web.accountSettings.orderReturn.title")}</h1>
         <p className="mb-6 text-sm text-gray-500">
-          Order {order.order_number} · {order.provider?.business_name}
+          {t("web.accountSettings.orderReturn.orderLine", {
+            number: order.order_number,
+            provider: order.provider?.business_name,
+          })}
         </p>
 
         <div className="space-y-6">
           {/* Select item */}
           {order.items && order.items.length > 1 && (
             <div className="rounded-xl border bg-white p-6">
-              <h3 className="mb-4 font-semibold text-gray-900">Which item are you returning?</h3>
+              <h3 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderReturn.whichItem")}</h3>
               <div className="space-y-3">
                 {order.items.map((item) => {
                   const blocked = itemBlockedByReturns(order.returns, item.id);
@@ -269,14 +274,19 @@ export default function RequestReturnPage() {
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{item.product_name}</p>
                         <p className="text-xs text-gray-500">
-                          {item.quantity} × R{Number(item.unit_price).toFixed(2)}
+                          {t("web.accountSettings.orderReturn.qtyPrice", {
+                            quantity: item.quantity,
+                            price: Number(item.unit_price).toFixed(2),
+                          })}
                           {blocked && (
-                            <span className="ml-2 font-medium text-amber-700">Already in a return</span>
+                            <span className="ms-2 font-medium text-amber-700">{t("web.accountSettings.orderReturn.alreadyInReturn")}</span>
                           )}
                         </p>
                       </div>
                       <span className="font-semibold text-gray-900">
-                        R{Number(item.total_price).toFixed(2)}
+                        {t("web.accountSettings.orderReturn.itemTotal", {
+                          price: Number(item.total_price).toFixed(2),
+                        })}
                       </span>
                     </label>
                   );
@@ -287,7 +297,7 @@ export default function RequestReturnPage() {
 
           {/* Reason */}
           <div className="rounded-xl border bg-white p-6">
-            <h3 className="mb-4 font-semibold text-gray-900">Reason for return</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderReturn.reasonTitle")}</h3>
             <div className="space-y-2">
               {REASONS.map((r) => (
                 <label
@@ -303,7 +313,9 @@ export default function RequestReturnPage() {
                     onChange={() => setReason(r.value)}
                     className="accent-pink-600"
                   />
-                  <span className="text-sm font-medium text-gray-700">{r.label}</span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {t(`web.accountSettings.orderReturn.${r.labelKey}`)}
+                  </span>
                 </label>
               ))}
             </div>
@@ -311,11 +323,11 @@ export default function RequestReturnPage() {
 
           {/* Description */}
           <div className="rounded-xl border bg-white p-6">
-            <h3 className="mb-4 font-semibold text-gray-900">Additional details (optional)</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderReturn.detailsTitle")}</h3>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the issue in more detail..."
+              placeholder={t("web.accountSettings.orderReturn.detailsPlaceholder")}
               rows={4}
               className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500 resize-none"
             />
@@ -326,12 +338,12 @@ export default function RequestReturnPage() {
             <div className="flex gap-3">
               <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
               <div className="text-sm text-amber-800">
-                <p className="font-medium mb-1">Return Policy</p>
+                <p className="font-medium mb-1">{t("web.accountSettings.orderReturn.policyTitle")}</p>
                 <ul className="space-y-1 text-amber-700">
-                  <li>Returns must be requested within {PRODUCT_RETURN_WINDOW_DAYS} days of delivery</li>
-                  <li>Items must be unused and in their original packaging</li>
-                  <li>The provider will review your request and respond</li>
-                  <li>If rejected, you can escalate to Beautonomi support</li>
+                  <li>{t("web.accountSettings.orderReturn.policyWindow", { days: PRODUCT_RETURN_WINDOW_DAYS })}</li>
+                  <li>{t("web.accountSettings.orderReturn.policyUnused")}</li>
+                  <li>{t("web.accountSettings.orderReturn.policyReview")}</li>
+                  <li>{t("web.accountSettings.orderReturn.policyEscalate")}</li>
                 </ul>
               </div>
             </div>
@@ -348,7 +360,7 @@ export default function RequestReturnPage() {
             disabled={!reason || !selectedItem || submitting}
             className="w-full rounded-xl bg-pink-600 py-4 font-bold text-white transition-colors hover:bg-pink-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {submitting ? "Submitting…" : "Submit Return Request"}
+            {submitting ? t("web.accountSettings.orderReturn.submitting") : t("web.accountSettings.orderReturn.submit")}
           </button>
         </div>
       </div>

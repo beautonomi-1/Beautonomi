@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { User, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookingData, StaffOption } from "../../types/booking-engine";
@@ -34,23 +35,24 @@ interface StepStaffProps {
 }
 
 export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps) {
+  const { t } = useTranslation();
   const noPreference: StaffOption = {
     id: "any",
-    name: "Any Professional",
-    role: "Fastest availability",
+    name: t("web.book.engine.anyProfessional"),
+    role: t("booking.fastestAvailability"),
   };
   const selectedId = data.selectedStaff?.id ?? null;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Select Professional
+          {t("web.book.engine.selectProfessional")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
           {staff.length === 0
-            ? "No named specialist is listed for this location yet. Continue with anyone available."
-            : "Choose your preferred specialist or fastest availability"}
+            ? t("web.book.engine.noSpecialistListed")
+            : t("web.book.engine.chooseSpecialist")}
         </p>
       </div>
 
@@ -59,7 +61,7 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
           type="button"
           onClick={() => onSelectStaff(noPreference)}
           className={cn(
-            "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+            "w-full text-start rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
             MIN_TAP,
             BOOKING_ACTIVE_SCALE
           )}
@@ -90,7 +92,7 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
               type="button"
               onClick={() => onSelectStaff(s)}
               className={cn(
-                "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+                "w-full text-start rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
                 MIN_TAP,
                 BOOKING_ACTIVE_SCALE
               )}
@@ -119,7 +121,7 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
                 </p>
                 {s.rating != null && (
                   <p className="text-xs mt-0.5" style={{ color: BOOKING_ACCENT }}>
-                    ★ {Number(s.rating).toFixed(1)} rating
+                    {t("web.book.engine.ratingLabel", { rating: Number(s.rating).toFixed(1) })}
                   </p>
                 )}
               </div>
@@ -145,7 +147,7 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

@@ -14,6 +14,7 @@ import {
   terminalOrderPendingCopy,
   terminalOrderSuccessCopy,
 } from "@/lib/payments/providerPaystackReturn";
+import { useTranslation } from "@beautonomi/i18n";
 
 type ReturnStatus = "verifying" | "success" | "pending" | "failed" | "cancel";
 
@@ -24,6 +25,8 @@ function pickStr(value: unknown): string {
 }
 
 export default function TerminalPaymentReturnScreen() {
+  const { t } = useTranslation();
+  const tr = (key: string) => t(`provider.mobile.screens.terminalPaymentReturn.${key}`) as string;
   const router = useRouter();
   const params = useLocalSearchParams<{
     payment_success?: string;
@@ -104,14 +107,14 @@ export default function TerminalPaymentReturnScreen() {
 
   const copy =
     status === "cancel"
-      ? terminalOrderFailedCopy("Payment wasn't completed.")
+      ? terminalOrderFailedCopy(tr("paymentNotCompleted"))
       : status === "failed"
         ? terminalOrderFailedCopy(null)
         : status === "success"
           ? terminalOrderSuccessCopy()
           : status === "pending"
             ? terminalOrderPendingCopy()
-            : { title: "Confirming payment", body: "Please wait while we verify your terminal order payment." };
+            : { title: tr("confirmingTitle"), body: tr("confirmingBody") };
 
   return (
     <ScreenContainer scrollable={false}>
@@ -138,7 +141,7 @@ export default function TerminalPaymentReturnScreen() {
             onPress={() => navigateBack(status === "success" ? "payment_success" : "payment_pending")}
             style={twStyle("mt-6 rounded-xl bg-indigo-600 px-5 py-3")}
           >
-            <Text style={twStyle("text-sm font-semibold text-white")}>Back to Terminal shop</Text>
+            <Text style={twStyle("text-sm font-semibold text-white")}>{tr("backToShop")}</Text>
           </TouchableOpacity>
         ) : null}
       </View>

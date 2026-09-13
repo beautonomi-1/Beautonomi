@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -16,10 +18,11 @@ export function BookingConflictAlert({
   onRefresh,
   onDismiss
 }: BookingConflictAlertProps) {
+  const { t } = useTranslation();
   return (
     <Alert variant="destructive" className="mb-4">
       <AlertTriangle className="h-4 w-4" />
-      <AlertTitle>Conflict Detected</AlertTitle>
+      <AlertTitle>{t("web.conflictAlert.title")}</AlertTitle>
       <AlertDescription className="mt-2">
         <p className="mb-3">{conflictMessage}</p>
         <div className="flex gap-2">
@@ -30,8 +33,8 @@ export function BookingConflictAlert({
               onClick={onRefresh}
               className="bg-white"
             >
-              <RefreshCw className="w-3 h-3 mr-2" />
-              Refresh & Retry
+              <RefreshCw className="w-3 h-3 me-2" />
+              {t("web.conflictAlert.refreshRetry")}
             </Button>
           )}
           {onDismiss && (
@@ -40,7 +43,7 @@ export function BookingConflictAlert({
               size="sm"
               onClick={onDismiss}
             >
-              Dismiss
+              {t("common.dismiss")}
             </Button>
           )}
         </div>

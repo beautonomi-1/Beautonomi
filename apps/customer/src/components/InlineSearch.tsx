@@ -213,7 +213,7 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
                 elevation: 4,
               }}
             >
-              <Ionicons name="search-outline" size={18} color="#9CA3AF" style={{ marginRight: 8 }} />
+              <Ionicons name="search-outline" size={18} color="#9CA3AF" style={{ marginEnd: 8 }} />
               <TextInput
                 ref={inputRef}
                 style={{
@@ -231,9 +231,9 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
                 blurOnSubmit={false}
               />
               {loading ? (
-                <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 8 }} />
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginStart: 8 }} />
               ) : (
-                <TouchableOpacity onPress={collapse} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 4 }}>
+                <TouchableOpacity onPress={collapse} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginStart: 4 }}>
                   <Ionicons name="close-circle" size={22} color="#9CA3AF" />
                 </TouchableOpacity>
               )}
@@ -274,7 +274,7 @@ export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: Inli
                         name={ICON_MAP[item.type] ?? "search-outline"}
                         size={16}
                         color="#6B7280"
-                        style={{ marginRight: 10 }}
+                        style={{ marginEnd: 10 }}
                       />
                       <View style={{ flex: 1 }}>
                         <Text

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, FlatList } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -11,6 +12,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Colors } from "@/constants/colors";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface SearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -68,8 +70,12 @@ const DEBOUNCE_MS = 280;
 const MIN_QUERY_LEN = 1;
 
 export default function SearchScreen() {
+  const { t } = useTranslation();
+  const sc = (key: string) => t(`provider.mobile.screens.search.${key}`) as string;
   const router = useRouter();
   const { screenPadding } = useResponsive();
+  const typeLabel = (type: SearchSuggestion["type"]) =>
+    type === "client" ? sc("typeClient") : type === "appointment" ? sc("typeAppointment") : sc("typeService");
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -113,10 +119,10 @@ export default function SearchScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Search" showBack />
+      <ScreenHeader title={sc("title")} showBack />
       <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         <SearchBar
-          placeholder="Search clients, appointments, services..."
+          placeholder={sc("placeholder")}
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={handleSearch}
@@ -127,8 +133,8 @@ export default function SearchScreen() {
       {showEmpty && (
         <EmptyState
           icon="search-outline"
-          title="No results"
-          description="Try a different search term"
+          title={sc("emptyTitle")}
+          description={sc("emptyDescription")}
         />
       )}
 
@@ -142,7 +148,7 @@ export default function SearchScreen() {
             <TouchableOpacity
               style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingVertical: 12 }}
               onPress={() => handleSelect(item)}
-              accessibilityLabel={`${item.type}: ${item.title}`}
+              accessibilityLabel={`${typeLabel(item.type)}: ${item.title}`}
               accessibilityRole="button"
             >
               <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[100] }}>
@@ -152,7 +158,7 @@ export default function SearchScreen() {
                   color="#6366f1"
                 />
               </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ marginStart: 12, flex: 1 }}>
                 <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                   {item.title}
                 </Text>
@@ -164,12 +170,12 @@ export default function SearchScreen() {
                 <View style={{ marginTop: 4, flexDirection: "row" }}>
                   <View style={{ borderRadius: 9999, backgroundColor: Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2 }}>
                     <Text style={{ fontSize: 10, fontWeight: "500", color: Colors.primary, textTransform: "capitalize" }}>
-                      {item.type}
+                      {typeLabel(item.type)}
                     </Text>
                   </View>
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#d1d5db" />
             </TouchableOpacity>
           )}
         />
@@ -177,7 +183,7 @@ export default function SearchScreen() {
 
       {loading && debouncedQuery.length >= MIN_QUERY_LEN && (
         <View style={{ paddingVertical: 32, alignItems: "center" }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Searching...</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{sc("searching")}</Text>
         </View>
       )}
     </ScreenContainer>

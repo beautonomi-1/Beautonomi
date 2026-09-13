@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Share,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
@@ -29,12 +30,12 @@ import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 import { ReportBasisFootnote } from "@/components/reports/ReportBasisFootnote";
 
-const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "Last Month", value: "last_month" },
-  { label: "3 Months", value: "3months" },
+const DATE_RANGES: { labelKey: "rangeToday" | "rangeThisWeek" | "rangeThisMonth" | "rangeLastMonth" | "range3Months"; value: ReportDateRangeKey }[] = [
+  { labelKey: "rangeToday", value: "today" },
+  { labelKey: "rangeThisWeek", value: "week" },
+  { labelKey: "rangeThisMonth", value: "month" },
+  { labelKey: "rangeLastMonth", value: "last_month" },
+  { labelKey: "range3Months", value: "3months" },
 ];
 
 interface RevenueData {
@@ -88,7 +89,7 @@ function BarChart({
               key={i}
               style={{
                 width: barSlot,
-                marginRight: i < series.length - 1 ? gap : 0,
+                marginEnd: i < series.length - 1 ? gap : 0,
                 height: "100%",
                 justifyContent: "flex-end",
                 alignItems: "center",
@@ -127,6 +128,12 @@ function HorizontalBar({ label, value, maxValue, color }: { label: string; value
 }
 
 export default function RevenueReport() {
+  const { t } = useTranslation();
+  const rev = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.revenue.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
@@ -150,39 +157,43 @@ export default function RevenueReport() {
     if (!data) return;
     const bookingsWithLedger = data.bookings_with_ledger_earnings ?? data.transaction_count;
     const text = [
-      `Revenue overview (${from} → ${to}${data.timezone ? ` · ${data.timezone}` : ""})`,
-      `Total ledger net: ${formatCurrency(data.total_revenue)}`,
-      data.ledger_from_bookings != null ? `Booking-linked ledger: ${formatCurrency(data.ledger_from_bookings)}` : "",
-      data.ledger_from_product_orders != null ? `Product-order ledger: ${formatCurrency(data.ledger_from_product_orders)}` : "",
-      (data.cancellation_fees ?? 0) > 0 ? `Cancellation fees: ${formatCurrency(data.cancellation_fees ?? 0)}` : "",
-      `Total incl. cancellation fees: ${formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)}`,
-      bookingsWithLedger != null ? `Bookings with ledger earnings: ${bookingsWithLedger}` : "",
-      data.avg_per_booking ? `Avg booking-linked per earning booking: ${formatCurrency(data.avg_per_booking)}` : "",
-      data.time_basis_note ? `Timing: ${data.time_basis_note}` : "",
-      data.reportBasis ? `Full basis: ${data.reportBasis}` : "",
+      rev("exportHeading", {
+        from,
+        to,
+        tz: data.timezone ? rev("exportTz", { timezone: data.timezone }) : "",
+      }),
+      rev("exportTotalLedgerNet", { amount: formatCurrency(data.total_revenue) }),
+      data.ledger_from_bookings != null ? rev("exportBookingLinked", { amount: formatCurrency(data.ledger_from_bookings) }) : "",
+      data.ledger_from_product_orders != null ? rev("exportProductOrder", { amount: formatCurrency(data.ledger_from_product_orders) }) : "",
+      (data.cancellation_fees ?? 0) > 0 ? rev("exportCancellationFees", { amount: formatCurrency(data.cancellation_fees ?? 0) }) : "",
+      rev("exportTotalInclFees", { amount: formatCurrency(data.total_revenue_inclusive ?? data.total_revenue) }),
+      bookingsWithLedger != null ? rev("exportBookingsWithEarnings", { count: bookingsWithLedger }) : "",
+      data.avg_per_booking ? rev("exportAvgBookingLinked", { amount: formatCurrency(data.avg_per_booking) }) : "",
+      data.time_basis_note ? rev("exportTiming", { note: data.time_basis_note }) : "",
+      data.reportBasis ? rev("exportFullBasis", { basis: data.reportBasis }) : "",
       "",
-      "By service (booking-linked allocation only):",
+      rev("exportByService"),
       ...data.revenue_by_service.map((s) => `  ${s.service}: ${formatCurrency(s.revenue)}`),
       "",
-      "By staff (booking-linked allocation only):",
+      rev("exportByStaff"),
       ...data.revenue_by_staff.map((s) => `  ${s.staff}: ${formatCurrency(s.revenue)}`),
     ].filter(Boolean).join("\n");
-    await Share.share({ message: text, title: "Revenue overview" });
-  }, [data, from, to]);
+    await Share.share({ message: text, title: rev("exportTitle") });
+  }, [data, from, to, rev]);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Revenue" showBack subtitle="Ledger totals, splits, and booking-linked breakdowns" />
+      <ScreenHeader title={rev("title")} showBack subtitle={rev("subtitle")} />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
           {DATE_RANGES.map((r) => (
             <TouchableOpacity
               key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8 }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
             >
-              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{rev(r.labelKey)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -198,9 +209,9 @@ export default function RevenueReport() {
 
       {timedOut && !data && (
         <ErrorState
-          message="Request is taking longer than usual. Check your connection and try again."
+          message={rev("timeoutMessage")}
           onRetry={refresh}
-          retryLabel="Retry"
+          retryLabel={rev("retry")}
         />
       )}
 
@@ -211,7 +222,7 @@ export default function RevenueReport() {
       {loading && !data && !timedOut && !dataError && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
 
       {!loading && !data && !timedOut && !dataError && (
-        <EmptyState icon="cash-outline" title="No revenue data" description="Ledger activity will appear once you have recognized earnings in this window" />
+        <EmptyState icon="cash-outline" title={rev("emptyTitle")} description={rev("emptyDescription")} />
       )}
 
       {data && (
@@ -222,15 +233,16 @@ export default function RevenueReport() {
               { marginBottom: 16, shadowColor: "#14532d", shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
             ]}
           >
-            <Text style={twStyle("text-center text-xs font-semibold uppercase tracking-wide text-green-800")}>Total ledger net</Text>
+            <Text style={twStyle("text-center text-xs font-semibold uppercase tracking-wide text-green-800")}>{rev("totalLedgerNet")}</Text>
             <Text style={twStyle("mt-1 text-center text-[11px] leading-4 text-green-700")}>
-              Provider earnings (ledger), incl. product orders — recognition time in your timezone
+              {rev("totalLedgerNetHint")}
             </Text>
             <Text style={twStyle("mt-3 text-center text-3xl font-bold text-green-950")}>{formatCurrency(data.total_revenue)}</Text>
             {data.previous_revenue != null && data.previous_revenue > 0 && (
               <Text style={twStyle("mt-2 text-center text-xs text-green-700")}>
-                {data.total_revenue >= data.previous_revenue ? "+" : ""}
-                {(((data.total_revenue - data.previous_revenue) / data.previous_revenue) * 100).toFixed(1)}% vs prior equal-length window
+                {rev("vsPriorWindow", {
+                  value: `${data.total_revenue >= data.previous_revenue ? "+" : ""}${(((data.total_revenue - data.previous_revenue) / data.previous_revenue) * 100).toFixed(1)}`,
+                })}
               </Text>
             )}
             {data.time_basis_note ? (
@@ -240,20 +252,20 @@ export default function RevenueReport() {
 
           {data.basis && Object.keys(data.basis).length > 0 ? (
             <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>Definitions</Text>
+              <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>{rev("definitions")}</Text>
               {Object.entries(data.basis).map(([k, v]) => (
                 <Text key={k} style={twStyle("mb-2 text-xs leading-5 text-gray-700")}>
                   <Text style={twStyle("font-semibold text-gray-900")}>
                     {k === "headline"
-                      ? "Headline"
+                      ? rev("basisHeadline")
                       : k === "bookingsMix"
-                        ? "Retail / orders"
+                        ? rev("basisBookingsMix")
                         : k === "breakdown"
-                          ? "Service & staff tables"
+                          ? rev("basisBreakdown")
                           : k === "avgPerBooking"
-                            ? "Avg per booking"
+                            ? rev("basisAvgPerBooking")
                             : k === "dailyTrend"
-                              ? "Daily chart"
+                              ? rev("basisDailyTrend")
                               : k}
                     :{" "}
                   </Text>
@@ -267,13 +279,13 @@ export default function RevenueReport() {
             <View style={twStyle("mb-3 flex-row gap-2")}>
               {data.ledger_from_bookings != null ? (
                 <View style={twStyle("flex-1 rounded-xl border border-gray-100 bg-white px-3 py-3")}>
-                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>Booking-linked ledger</Text>
+                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>{rev("bookingLinkedLedger")}</Text>
                   <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")}>{formatCurrency(data.ledger_from_bookings)}</Text>
                 </View>
               ) : null}
               {data.ledger_from_product_orders != null ? (
                 <View style={twStyle("flex-1 rounded-xl border border-gray-100 bg-white px-3 py-3")}>
-                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>Product-order ledger</Text>
+                  <Text style={twStyle("text-[11px] font-medium text-gray-500")}>{rev("productOrderLedger")}</Text>
                   <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")}>{formatCurrency(data.ledger_from_product_orders)}</Text>
                 </View>
               ) : null}
@@ -283,8 +295,8 @@ export default function RevenueReport() {
           <ReportResponsiveStatRow>
             {(data.bookings_with_ledger_earnings ?? data.transaction_count) != null ? (
               <StatCard
-                title="Bookings w/ earnings"
-                subtitle="Distinct bookings with ledger allocation"
+                title={rev("bookingsWithEarnings")}
+                subtitle={rev("bookingsWithEarningsSubtitle")}
                 value={String(data.bookings_with_ledger_earnings ?? data.transaction_count)}
                 icon="calendar-outline"
                 iconColor="#3b82f6"
@@ -294,8 +306,8 @@ export default function RevenueReport() {
             ) : null}
             {data.avg_per_booking != null ? (
               <StatCard
-                title="Avg booking-linked"
-                subtitle="Among bookings above only"
+                title={rev("avgBookingLinked")}
+                subtitle={rev("avgBookingLinkedSubtitle")}
                 value={formatCurrency(data.avg_per_booking)}
                 icon="trending-up-outline"
                 iconColor="#22c55e"
@@ -308,15 +320,15 @@ export default function RevenueReport() {
           {((data.cancellation_fees ?? 0) > 0 || (data.total_revenue_inclusive ?? 0) > data.total_revenue) && (
             <View style={twStyle("mt-2")}>
               <ReportResponsiveStatRow>
-                <StatCard title="Cancellation fees" value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
-                <StatCard title="Total incl. fees" value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+                <StatCard title={rev("cancellationFees")} value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                <StatCard title={rev("totalInclFees")} value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
               </ReportResponsiveStatRow>
             </View>
           )}
 
           {data.daily_trend.length > 0 && (
             <View>
-              <SectionHeader title="Daily ledger (recognition date)" />
+              <SectionHeader title={rev("dailyLedger")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 <BarChart data={data.daily_trend} labelKey="date" valueKey="revenue" color="#22c55e" formatValue={formatCurrency} />
               </View>
@@ -325,7 +337,7 @@ export default function RevenueReport() {
 
           {data.revenue_by_service.length > 0 && (
             <View>
-              <SectionHeader title="By service (booking-linked)" subtitle="Retail-only ledger is not allocated here" />
+              <SectionHeader title={rev("byService")} subtitle={rev("byServiceSubtitle")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_service.map((s, i) => (
                   <HorizontalBar
@@ -342,7 +354,7 @@ export default function RevenueReport() {
 
           {data.revenue_by_staff.length > 0 && (
             <View>
-              <SectionHeader title="By staff (booking-linked)" subtitle="Same allocation rules as services" />
+              <SectionHeader title={rev("byStaff")} subtitle={rev("byStaffSubtitle")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.revenue_by_staff.map((s, i) => (
                   <HorizontalBar
@@ -359,7 +371,7 @@ export default function RevenueReport() {
 
           <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
+            <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>{rev("exportReport")}</Text>
           </TouchableOpacity>
         </View>
       )}

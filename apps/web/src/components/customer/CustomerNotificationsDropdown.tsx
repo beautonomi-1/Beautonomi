@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { deriveCustomerNotificationHref } from "@/lib/customer/derive-customer-notification-url";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Notification {
   id: string;
@@ -87,15 +88,21 @@ const getPriorityColor = (priority: string) => {
   }
 };
 
-const formatTimeAgo = (timestamp: string) => {
+const formatTimeAgo = (
+  timestamp: string,
+  tJustNow: string,
+  tMinutesAgo: (count: number) => string,
+  tHoursAgo: (count: number) => string,
+  tDaysAgo: (count: number) => string,
+) => {
   const now = new Date();
   const time = new Date(timestamp);
   const diffInSeconds = Math.floor((now.getTime() - time.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'Just now';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  if (diffInSeconds < 60) return tJustNow;
+  if (diffInSeconds < 3600) return tMinutesAgo(Math.floor(diffInSeconds / 60));
+  if (diffInSeconds < 86400) return tHoursAgo(Math.floor(diffInSeconds / 3600));
+  if (diffInSeconds < 604800) return tDaysAgo(Math.floor(diffInSeconds / 86400));
   return time.toLocaleDateString();
 };
 
@@ -105,6 +112,8 @@ const realtimeChannelKey = () =>
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function CustomerNotificationsDropdown() {
+  const { t } = useTranslation();
+  const prefix = "web.accountSettings.notifications.dropdown";
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
@@ -137,7 +146,7 @@ export function CustomerNotificationsDropdown() {
       }
       // Avoid noisy toasts on the very first load; show on refresh / later attempts.
       if (!silent && attempt > 1) {
-        toast.error('Failed to load notifications');
+        toast.error(t(`${prefix}.loadFailed`));
       }
       if (!silent) {
         setNotifications([]);
@@ -146,7 +155,7 @@ export function CustomerNotificationsDropdown() {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [session, user?.id]);
+  }, [session, user?.id, t]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -215,7 +224,7 @@ export function CustomerNotificationsDropdown() {
           ),
         );
         setTotalUnread(unreadBefore);
-        toast.error("Could not mark as read. Try again.");
+        toast.error(t(`${prefix}.markReadFailed`));
         return;
       }
     }
@@ -248,12 +257,12 @@ export function CustomerNotificationsDropdown() {
     try {
       await fetcher.post("/api/me/notifications/mark-all-read");
       deleteFetcherGetCacheEntriesMatching("/api/me/notifications");
-      toast.success("All notifications marked as read");
+      toast.success(t(`${prefix}.markAllReadSuccess`));
     } catch (error) {
       console.error("Failed to mark all as read:", error);
       setNotifications(prevNotifications);
       setTotalUnread(prevUnread);
-      toast.error("Failed to mark all as read");
+      toast.error(t(`${prefix}.markAllReadFailed`));
     }
   };
 
@@ -265,7 +274,7 @@ export function CustomerNotificationsDropdown() {
     e.stopPropagation();
     if (
       typeof window !== "undefined" &&
-      !window.confirm("Delete this notification? It will be removed from your list.")
+      !window.confirm(t(`${prefix}.deleteConfirm`))
     ) {
       return;
     }
@@ -283,7 +292,7 @@ export function CustomerNotificationsDropdown() {
       console.error("Failed to delete notification:", error);
       setNotifications(prevList);
       setTotalUnread(prevUnread);
-      toast.error("Could not delete notification");
+      toast.error(t(`${prefix}.deleteFailed`));
     }
   };
 
@@ -301,7 +310,7 @@ export function CustomerNotificationsDropdown() {
         <Button
           variant="ghost"
           size="icon"
-          aria-label={totalUnread > 0 ? `Notifications, ${totalUnread} unread` : "Notifications"}
+          aria-label={totalUnread > 0 ? t(`${prefix}.ariaUnread`, { count: totalUnread }) : t(`${prefix}.aria`)}
           className="relative min-h-[44px] min-w-[44px] touch-manipulation rounded-full hover:bg-gray-100/90"
         >
           <Bell className="w-5 h-5 text-gray-700" />
@@ -310,7 +319,7 @@ export function CustomerNotificationsDropdown() {
               variant="destructive"
               className="absolute -top-0.5 -right-0.5 h-5 min-w-5 px-1.5 flex items-center justify-center text-[10px] font-semibold rounded-full border-2 border-white shadow-sm"
             >
-              {totalUnread > 99 ? '99+' : totalUnread}
+              {totalUnread > 99 ? t(`${prefix}.overflowBadge`) : totalUnread}
             </Badge>
           )}
         </Button>
@@ -325,16 +334,16 @@ export function CustomerNotificationsDropdown() {
       >
         <div className="flex items-start justify-between gap-2 px-4 py-3.5 border-b border-gray-100 bg-gradient-to-b from-gray-50/95 to-white rounded-t-2xl">
           <div className="min-w-0">
-            <h3 className="font-semibold text-base text-gray-900 tracking-tight">Notifications</h3>
+            <h3 className="font-semibold text-base text-gray-900 tracking-tight">{t(`${prefix}.title`)}</h3>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              Tap to open · Trash removes from list
+              {t(`${prefix}.hint`)}
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {totalUnread > 0 && (
               <>
                 <Badge variant="secondary" className="text-[10px] font-medium rounded-full px-2.5 py-0.5 border-0 bg-primary/10 text-primary">
-                  {totalUnread} new
+                  {t(`${prefix}.newCount`, { count: totalUnread })}
                 </Badge>
                 <Button
                   type="button"
@@ -343,7 +352,7 @@ export function CustomerNotificationsDropdown() {
                   onClick={() => void handleMarkAllRead()}
                   className="h-8 rounded-full px-3 text-xs font-medium border-gray-200 bg-white hover:bg-gray-50 touch-manipulation"
                 >
-                  Mark all read
+                  {t(`${prefix}.markAllRead`)}
                 </Button>
               </>
             )}
@@ -351,7 +360,7 @@ export function CustomerNotificationsDropdown() {
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Close notifications"
+              aria-label={t(`${prefix}.closeAria`)}
               onClick={() => setOpen(false)}
               className="h-9 w-9 rounded-full touch-manipulation text-gray-500 hover:text-gray-900 hover:bg-gray-100"
             >
@@ -367,26 +376,26 @@ export function CustomerNotificationsDropdown() {
           {isLoading ? (
             <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/60 p-8 text-center text-gray-500">
               <Clock className="w-8 h-8 mx-auto mb-3 animate-spin text-primary/70" aria-hidden />
-              <p className="text-sm font-medium text-gray-700">Loading…</p>
-              <p className="text-xs text-gray-500 mt-1">Fetching your latest updates</p>
+              <p className="text-sm font-medium text-gray-700">{t(`${prefix}.loading`)}</p>
+              <p className="text-xs text-gray-500 mt-1">{t(`${prefix}.loadingHint`)}</p>
             </div>
           ) : notifications.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-200 bg-gradient-to-b from-gray-50/80 to-white p-6 text-center">
               <CheckCircle2 className="w-10 h-10 mx-auto mb-3 text-emerald-500/80" aria-hidden />
-              <p className="text-sm font-semibold text-gray-900">You&apos;re all caught up</p>
-              <p className="text-xs text-gray-500 mt-1 mb-4">No new notifications right now.</p>
+              <p className="text-sm font-semibold text-gray-900">{t(`${prefix}.emptyTitle`)}</p>
+              <p className="text-xs text-gray-500 mt-1 mb-4">{t(`${prefix}.emptyBody`)}</p>
               <div className="flex flex-col sm:flex-row items-stretch justify-center gap-2">
                 <Button
                   asChild
                   className="rounded-full bg-primary hover:bg-primary/90 text-white shadow-sm"
                 >
                   <Link href="/account-settings/notifications/inbox" onClick={() => setOpen(false)}>
-                    View inbox
+                    {t(`${prefix}.viewInbox`)}
                   </Link>
                 </Button>
                 <Button asChild variant="outline" className="rounded-full border-gray-200">
                   <Link href="/account-settings/notifications" onClick={() => setOpen(false)}>
-                    Preferences
+                    {t(`${prefix}.preferences`)}
                   </Link>
                 </Button>
               </div>
@@ -410,7 +419,7 @@ export function CustomerNotificationsDropdown() {
                         type="button"
                         onClick={() => void handleNotificationClick(notification)}
                         className={cn(
-                          "flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-3 text-left sm:px-3.5 sm:py-3.5 touch-manipulation",
+                          "flex min-w-0 flex-1 items-start gap-3 rounded-2xl px-3 py-3 text-start sm:px-3.5 sm:py-3.5 touch-manipulation",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-inset",
                         )}
                       >
@@ -440,7 +449,13 @@ export function CustomerNotificationsDropdown() {
                             {notification.message}
                           </p>
                           <span className="text-[11px] text-gray-400 mt-1.5 inline-block">
-                            {formatTimeAgo(notification.timestamp)}
+                            {formatTimeAgo(
+                              notification.timestamp,
+                              t(`${prefix}.justNow`),
+                              (count) => t(`${prefix}.minutesAgo`, { count }),
+                              (count) => t(`${prefix}.hoursAgo`, { count }),
+                              (count) => t(`${prefix}.daysAgo`, { count }),
+                            )}
                           </span>
                         </div>
                       </button>
@@ -452,7 +467,7 @@ export function CustomerNotificationsDropdown() {
                           "opacity-70 group-hover:opacity-100 transition-opacity touch-manipulation",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300",
                         )}
-                        aria-label="Delete notification"
+                        aria-label={t(`${prefix}.deleteAria`)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -467,12 +482,12 @@ export function CustomerNotificationsDropdown() {
         <div className="px-3 py-3 border-t border-gray-100 bg-gray-50/95 rounded-b-2xl flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button asChild variant="default" size="sm" className="w-full sm:w-auto rounded-full bg-primary hover:bg-primary/90 shadow-sm">
             <Link href="/account-settings/notifications/inbox" onClick={() => setOpen(false)}>
-              Open inbox
+              {t(`${prefix}.openInbox`)}
             </Link>
           </Button>
           <Button asChild variant="ghost" size="sm" className="w-full sm:w-auto rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-200/60">
             <Link href="/account-settings/notifications" onClick={() => setOpen(false)}>
-              Notification settings
+              {t(`${prefix}.notificationSettings`)}
             </Link>
           </Button>
         </div>

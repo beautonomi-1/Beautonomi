@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -75,23 +76,24 @@ function cartLineKey(productId: string, variantId?: string) {
   return variantId ? `${productId}::${variantId}` : productId;
 }
 
-function formatBarcodeVariantName(v: BarcodeVariant): string {
+function formatBarcodeVariantName(v: BarcodeVariant, fallback: string): string {
   const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
   if (vals.length) return vals.map(String).join(" / ");
   if (v.sku?.trim()) return v.sku.trim();
-  return "Variant";
+  return fallback;
 }
 
 function buildWalkInProductFromBarcodeHit(
   result: BarcodeLookupResult,
   existing: Product | undefined,
   taxRate: number,
+  fallbacks: { variant: string; product: string },
 ): Product {
   if (existing) return existing;
   const { product, variant, variants: apiVariants } = result;
   const mappedVariants: Variant[] = (apiVariants ?? []).map((v) => ({
     id: v.id,
-    variant_name: formatBarcodeVariantName(v),
+    variant_name: formatBarcodeVariantName(v, fallbacks.variant),
     retail_price: Number(v.retail_price ?? product.retail_price ?? 0),
     quantity: Number(v.quantity ?? 0),
     sku: v.sku ?? null,
@@ -104,7 +106,7 @@ function buildWalkInProductFromBarcodeHit(
   const untracked = product.track_stock_quantity === false;
   return {
     id: product.id,
-    name: product.name ?? "Product",
+    name: product.name ?? fallbacks.product,
     brand: null,
     retail_price: Number(variant?.retail_price ?? product.retail_price ?? 0),
     tax_rate: taxRate,
@@ -144,6 +146,7 @@ interface WalkInOrder {
 }
 
 export default function WalkInSalePage() {
+  const { t } = useTranslation();
   const { format: formatMoney, locale } = useProviderMoneyFormat();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
@@ -198,7 +201,7 @@ export default function WalkInSalePage() {
               track_stock_quantity: (p as { track_stock_quantity?: boolean }).track_stock_quantity ?? true,
               variants: (p.variants || []).map((v: any) => ({
                 id: v.id,
-                variant_name: v.variant_name || v.name || "Variant",
+                variant_name: v.variant_name || v.name || t("web.provider.ecommerceWalkIn.variant"),
                 retail_price: Number(v.retail_price ?? p.retail_price),
                 quantity: Number(v.quantity ?? 0),
                 sku: v.sku ?? null,
@@ -208,7 +211,7 @@ export default function WalkInSalePage() {
       }
     } catch (err: any) {
       console.error("Failed to load products:", err);
-      setLoadError(err?.message || "Failed to load products");
+      setLoadError(err?.message || t("web.provider.catalogueProducts.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -306,7 +309,11 @@ export default function WalkInSalePage() {
   const handleBarcodeSelect = useCallback(
     (result: BarcodeLookupResult) => {
       const full = products.find((p) => p.id === result.product.id);
-      const target = buildWalkInProductFromBarcodeHit(result, full, walkInTaxRate);
+      const fallbacks = {
+        variant: t("web.provider.ecommerceWalkIn.variant"),
+        product: t("web.provider.ecommerceWalkIn.product"),
+      };
+      const target = buildWalkInProductFromBarcodeHit(result, full, walkInTaxRate, fallbacks);
 
       if (result.needs_variant || (target.has_variants && !result.variant)) {
         setBarcodeScanError("");
@@ -320,13 +327,13 @@ export default function WalkInSalePage() {
       if (result.variant) {
         const v: Variant = {
           id: result.variant.id,
-          variant_name: formatBarcodeVariantName(result.variant),
+          variant_name: formatBarcodeVariantName(result.variant, fallbacks.variant),
           retail_price: Number(result.variant.retail_price ?? target.retail_price),
           quantity: Number(result.variant.quantity ?? 0),
           sku: result.variant.sku ?? null,
         };
         if (!untrackedStock && v.quantity <= 0) {
-          setBarcodeScanError(`${target.name} — ${v.variant_name} is out of stock`);
+          setBarcodeScanError(t("web.provider.ecommerceWalkIn.outOfStockNamedVariant", { name: target.name, variant: v.variant_name }));
           return;
         }
         setBarcodeScanError("");
@@ -336,13 +343,13 @@ export default function WalkInSalePage() {
 
       const stock = target.effective_quantity ?? target.quantity;
       if (!untrackedStock && stock <= 0) {
-        setBarcodeScanError(`${target.name} is out of stock`);
+        setBarcodeScanError(t("web.provider.ecommerceWalkIn.outOfStockNamed", { name: target.name }));
         return;
       }
       setBarcodeScanError("");
       addToCart(target);
     },
-    [products, addToCart, walkInTaxRate],
+    [products, addToCart, walkInTaxRate, t],
   );
 
   const updateQty = (key: string, delta: number) => {
@@ -407,14 +414,14 @@ export default function WalkInSalePage() {
       setCustomerPhone("");
       fetchProducts();
     } else {
-      setError(res?.error ?? "Failed to process sale");
+      setError(res?.error ?? t("web.provider.ecommerceWalkIn.failedToProcess"));
     }
   };
 
   const handleSale = async () => {
     if (cart.length === 0 || processing) return;
     if (customerPhone.trim() && !isCompleteE164(customerPhone)) {
-      setError("Enter a valid phone number or clear the phone field.");
+      setError(t("web.provider.ecommerceWalkIn.invalidPhone"));
       return;
     }
     if (paymentMethod === "yoco") {
@@ -432,7 +439,7 @@ export default function WalkInSalePage() {
         }>("/api/provider/product-sales", buildWalkInSalePayload({ payment_method: "paycloud" }));
         const order = res?.data?.order;
         if (!order?.id) {
-          setError(res?.error ?? "Failed to prepare card sale");
+          setError(res?.error ?? t("web.provider.ecommerceWalkIn.failedPrepareCard"));
           return;
         }
         const serverTotal = parseFloat(String(order.total_amount ?? ""));
@@ -440,7 +447,7 @@ export default function WalkInSalePage() {
         setPaycloudLinkedTotal(Number.isFinite(serverTotal) ? serverTotal : grandTotal);
         setShowPaycloudDialog(true);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to prepare card sale");
+        setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.failedPrepareCard"));
       } finally {
         setProcessing(false);
       }
@@ -451,7 +458,7 @@ export default function WalkInSalePage() {
     try {
       await submitWalkInOrder();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
     }
     setProcessing(false);
   };
@@ -463,7 +470,7 @@ export default function WalkInSalePage() {
     try {
       await submitWalkInOrder(payment.yoco_payment_id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.somethingWentWrong"));
     }
     setProcessing(false);
   };
@@ -478,7 +485,7 @@ export default function WalkInSalePage() {
       setPaycloudLinkedOrderId(null);
       setPaycloudLinkedTotal(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Payment succeeded but completing the sale failed.");
+      setError(err instanceof Error ? err.message : t("web.provider.ecommerceWalkIn.paycloudCompleteFailed"));
     }
     setProcessing(false);
   };
@@ -487,8 +494,8 @@ export default function WalkInSalePage() {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center">
         <CheckCircle2 className="mb-4 h-16 w-16 text-green-500" />
-        <h2 className="mb-2 text-2xl font-bold text-gray-900">Sale Complete!</h2>
-        <p className="mb-1 text-gray-600">Order: {success.orderNumber}</p>
+        <h2 className="mb-2 text-2xl font-bold text-gray-900">{t("web.provider.ecommerceWalkIn.saleComplete")}</h2>
+        <p className="mb-1 text-gray-600">{t("web.provider.ecommerceWalkIn.orderLabel", { number: success.orderNumber })}</p>
         <p className="mb-6 text-2xl font-bold text-pink-600">
           {formatMoney(success.total)}
         </p>
@@ -496,7 +503,7 @@ export default function WalkInSalePage() {
           onClick={() => setSuccess(null)}
           className="rounded-xl bg-pink-600 px-8 py-3 font-semibold text-white hover:bg-pink-700 transition-colors"
         >
-          New Sale
+          {t("web.provider.ecommerceWalkIn.newSale")}
         </button>
       </div>
     );
@@ -507,12 +514,16 @@ export default function WalkInSalePage() {
       <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Walk-in Sale</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t("web.provider.ecommerceWalkIn.title")}</h1>
             <p className="text-sm text-gray-500">
-              Process in-person product sales
-              {paycloudEnabled || yocoEnabled
-                ? ` (cash${paycloudEnabled ? ", card machine" : ""}${yocoEnabled ? ", Yoco" : ""})`
-                : " (cash)"}
+              {t("web.provider.ecommerceWalkIn.subtitle")}
+              {paycloudEnabled && yocoEnabled
+                ? t("web.provider.ecommerceWalkIn.methodsCashCardYoco")
+                : paycloudEnabled
+                  ? t("web.provider.ecommerceWalkIn.methodsCashCard")
+                  : yocoEnabled
+                    ? t("web.provider.ecommerceWalkIn.methodsCashYoco")
+                    : t("web.provider.ecommerceWalkIn.methodsCash")}
             </p>
           </div>
           <button
@@ -523,7 +534,7 @@ export default function WalkInSalePage() {
             className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <History className="h-4 w-4" />
-            {showHistory ? "Back to POS" : "Sales History"}
+            {showHistory ? t("web.provider.ecommerceWalkIn.backToPos") : t("web.provider.ecommerceWalkIn.salesHistory")}
           </button>
         </div>
 
@@ -532,7 +543,7 @@ export default function WalkInSalePage() {
             {recentSales.length === 0 ? (
               <div className="py-16 text-center text-gray-400">
                 <History className="mx-auto mb-4 h-12 w-12" />
-                <p>No walk-in sales yet</p>
+                <p>{t("web.provider.ecommerceWalkIn.emptyHistory")}</p>
               </div>
             ) : (
               recentSales.map((sale) => (
@@ -541,10 +552,10 @@ export default function WalkInSalePage() {
                     <div>
                       <span className="font-bold text-gray-900">{sale.order_number}</span>
                       {sale.customer_name && (
-                        <span className="ml-3 text-sm text-gray-500">{sale.customer_name}</span>
+                        <span className="ms-3 text-sm text-gray-500">{sale.customer_name}</span>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-bold text-pink-600">
                         {formatMoney(Number(sale.total_amount))}
                       </p>
@@ -561,7 +572,7 @@ export default function WalkInSalePage() {
                     )}
                     <span className="capitalize">{sale.payment_method}</span>
                     <span className="text-gray-300">·</span>
-                    <span>{sale.items?.length ?? 0} item(s)</span>
+                    <span>{t("web.provider.ecommerceWalkIn.itemCount", { count: sale.items?.length ?? 0 })}</span>
                   </div>
                 </div>
               ))
@@ -573,8 +584,8 @@ export default function WalkInSalePage() {
             <div className="lg:col-span-3">
               <div className="mb-4">
                 <BarcodeLookup
-                  label="Scan or enter barcode"
-                  placeholder="Barcode / SKU"
+                  label={t("web.provider.ecommerceWalkIn.scanBarcode")}
+                  placeholder={t("web.provider.ecommerceWalkIn.barcodePlaceholder")}
                   onSelect={handleBarcodeSelect}
                 />
                 {barcodeScanError ? (
@@ -587,8 +598,8 @@ export default function WalkInSalePage() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search products..."
-                  className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                  placeholder={t("web.provider.ecommerceWalkIn.searchPlaceholder")}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-3 ps-10 pe-4 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                 />
               </div>
 
@@ -603,11 +614,11 @@ export default function WalkInSalePage() {
                     onClick={fetchProducts}
                     className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-medium text-white hover:bg-pink-600 min-h-[44px] touch-manipulation"
                   >
-                    Retry
+                    {t("web.provider.common.retry")}
                   </button>
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="py-16 text-center text-gray-400">No products in stock</div>
+                <div className="py-16 text-center text-gray-400">{t("web.provider.ecommerceWalkIn.noProducts")}</div>
               ) : (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {filtered.map((product) => {
@@ -619,14 +630,14 @@ export default function WalkInSalePage() {
                       <button
                         key={product.id}
                         onClick={() => handleProductClick(product)}
-                        className="group relative overflow-hidden rounded-xl border bg-white p-3 text-left transition hover:border-pink-300 hover:shadow-sm"
+                        className="group relative overflow-hidden rounded-xl border bg-white p-3 text-start transition hover:border-pink-300 hover:shadow-sm"
                       >
                         {inCartQty > 0 && (
                           <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-pink-600 text-xs font-bold text-white">
                             {inCartQty}
                           </span>
                         )}
-                        <p className="text-sm font-semibold text-gray-900 line-clamp-2 pr-7">
+                        <p className="text-sm font-semibold text-gray-900 line-clamp-2 pe-7">
                           {product.name}
                         </p>
                         {product.brand && (
@@ -635,17 +646,17 @@ export default function WalkInSalePage() {
                         <div className="mt-2 flex items-center justify-between">
                           <span className="font-bold text-pink-600">
                             {product.has_variants && product.variants.length > 0
-                              ? `From ${formatMoney(Math.min(...product.variants.map((v) => v.retail_price)))}`
+                              ? t("web.provider.ecommerceWalkIn.fromPrice", { price: formatMoney(Math.min(...product.variants.map((v) => v.retail_price))) })
                               : formatMoney(product.retail_price)}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {stock} in stock
+                            {t("web.provider.ecommerceWalkIn.inStock", { count: stock })}
                           </span>
                         </div>
                         {product.has_variants && product.variants.length > 0 && (
                           <div className="mt-1.5 flex items-center gap-1 text-[10px] text-pink-500 font-medium">
                             <ChevronRight className="h-3 w-3" />
-                            {product.variants.length} option{product.variants.length !== 1 ? "s" : ""}
+                            {t("web.provider.ecommerceWalkIn.options", { count: product.variants.length })}
                           </div>
                         )}
                       </button>
@@ -661,13 +672,13 @@ export default function WalkInSalePage() {
                 <div className="border-b px-5 py-4">
                   <h2 className="flex items-center gap-2 font-bold text-gray-900">
                     <ShoppingCart className="h-5 w-5" />
-                    Sale ({cart.reduce((s, c) => s + c.qty, 0)})
+                    {t("web.provider.ecommerceWalkIn.saleCount", { count: cart.reduce((s, c) => s + c.qty, 0) })}
                   </h2>
                 </div>
 
                 {cart.length === 0 ? (
                   <div className="px-5 py-10 text-center text-gray-400 text-sm">
-                    Tap products to add them
+                    {t("web.provider.ecommerceWalkIn.tapToAdd")}
                   </div>
                 ) : (
                   <div className="max-h-[320px] divide-y overflow-y-auto px-5">
@@ -679,11 +690,11 @@ export default function WalkInSalePage() {
                             <p className="text-sm font-medium text-gray-900 truncate">
                               {item.product.name}
                               {item.variantName && (
-                                <span className="ml-1 text-xs text-gray-400">· {item.variantName}</span>
+                                <span className="ms-1 text-xs text-gray-400">· {item.variantName}</span>
                               )}
                             </p>
                             <p className="text-xs text-gray-400">
-                              {formatMoney(item.unitPrice)} each
+                              {t("web.provider.ecommerceWalkIn.each", { price: formatMoney(item.unitPrice) })}
                             </p>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -701,7 +712,7 @@ export default function WalkInSalePage() {
                               <Plus className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <span className="w-20 text-right text-sm font-semibold text-gray-900">
+                          <span className="w-20 text-end text-sm font-semibold text-gray-900">
                             {formatMoney(item.unitPrice * item.qty)}
                           </span>
                           <button
@@ -724,8 +735,8 @@ export default function WalkInSalePage() {
                       type="text"
                       value={customerName}
                       onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Customer name (optional)"
-                      className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-pink-500 focus:outline-none"
+                      placeholder={t("web.provider.ecommerceWalkIn.customerNamePlaceholder")}
+                      className="w-full rounded-lg border border-gray-200 py-2 ps-9 pe-3 text-sm focus:border-pink-500 focus:outline-none"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -733,7 +744,7 @@ export default function WalkInSalePage() {
                       htmlFor="walk-in-sale-customer-phone"
                       className="text-xs font-medium text-gray-600"
                     >
-                      Phone (optional)
+                      {t("web.provider.ecommerceWalkIn.phoneOptional")}
                     </Label>
                     <PhoneInput
                       label=""
@@ -755,7 +766,7 @@ export default function WalkInSalePage() {
                       }`}
                     >
                       <Banknote className="h-4 w-4" />
-                      Cash
+                      {t("web.provider.ecommerceWalkIn.cash")}
                     </button>
                     {paycloudEnabled && paycloudCollectVisible ? (
                       <button
@@ -767,7 +778,7 @@ export default function WalkInSalePage() {
                         }`}
                       >
                         <CreditCard className="h-4 w-4" />
-                        {paycloudInFlight ? "Resume card machine" : "Card machine"}
+                        {paycloudInFlight ? t("web.provider.ecommerceWalkIn.resumeCardMachine") : t("web.provider.ecommerceWalkIn.cardMachine")}
                       </button>
                     ) : paycloudEnabled ? (
                       <Link
@@ -788,7 +799,7 @@ export default function WalkInSalePage() {
                         }`}
                       >
                         <CreditCard className="h-4 w-4" />
-                        Yoco Card
+                        {t("web.provider.ecommerceWalkIn.yocoCard")}
                       </button>
                     )}
                   </div>
@@ -798,18 +809,18 @@ export default function WalkInSalePage() {
                 <div className="border-t px-5 py-4">
                   <div className="mb-3 space-y-1 text-sm text-gray-600">
                     <div className="flex justify-between">
-                      <span>{walkInTaxRate > 0 ? "Subtotal (excl. VAT)" : "Subtotal"}</span>
+                      <span>{walkInTaxRate > 0 ? t("web.provider.ecommerceWalkIn.subtotalExclVat") : t("web.provider.common.subtotal")}</span>
                       <span className="font-medium text-gray-900">{formatMoney(subtotal)}</span>
                     </div>
                     {taxAmount > 0 && (
                       <div className="flex justify-between">
-                        <span>VAT ({walkInTaxRate}%)</span>
+                        <span>{t("web.provider.ecommerceWalkIn.vat", { rate: walkInTaxRate })}</span>
                         <span className="font-medium text-gray-900">{formatMoney(taxAmount)}</span>
                       </div>
                     )}
                   </div>
                   <div className="mb-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                    <span className="text-lg font-semibold text-gray-900">Total due</span>
+                    <span className="text-lg font-semibold text-gray-900">{t("web.provider.ecommerceWalkIn.totalDue")}</span>
                     <span className="text-2xl font-extrabold text-pink-600">
                       {formatMoney(grandTotal)}
                     </span>
@@ -829,10 +840,10 @@ export default function WalkInSalePage() {
                     {processing ? (
                       <>
                         <Loader2 className="h-5 w-5 animate-spin" />
-                        Processing...
+                        {t("web.provider.common.processing")}
                       </>
                     ) : (
-                      `Complete Sale — ${formatMoney(grandTotal)}`
+                      t("web.provider.ecommerceWalkIn.completeSale", { amount: formatMoney(grandTotal) })
                     )}
                   </button>
                 </div>
@@ -866,7 +877,7 @@ export default function WalkInSalePage() {
                 <X className="h-5 w-5 text-gray-500" />
               </button>
             </div>
-            <p className="mb-3 text-xs text-gray-500">Choose a variant to add to the sale:</p>
+            <p className="mb-3 text-xs text-gray-500">{t("web.provider.ecommerceWalkIn.chooseVariant")}</p>
             <div className="space-y-2">
               {variantPickerProduct.variants.map((v) => {
                 const isInCart = cart.some(
@@ -883,7 +894,7 @@ export default function WalkInSalePage() {
                       addToCart(variantPickerProduct, v);
                       setVariantPickerProduct(null);
                     }}
-                    className={`w-full flex items-center justify-between rounded-xl border-2 p-3 text-left transition-colors ${
+                    className={`w-full flex items-center justify-between rounded-xl border-2 p-3 text-start transition-colors ${
                       v.quantity <= 0
                         ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
                         : isInCart
@@ -893,13 +904,13 @@ export default function WalkInSalePage() {
                   >
                     <div>
                       <p className="text-sm font-semibold text-gray-900">{v.variant_name}</p>
-                      {v.sku && <p className="text-xs text-gray-400">SKU: {v.sku}</p>}
+                      {v.sku && <p className="text-xs text-gray-400">{t("web.provider.catalogueProducts.sku", { sku: v.sku })}</p>}
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-bold text-pink-600">{formatMoney(v.retail_price)}</p>
                       <p className="text-xs text-gray-400">
-                        {v.quantity <= 0 ? "Out of stock" : `${v.quantity} in stock`}
-                        {isInCart && cartItem ? ` · ${cartItem.qty} in cart` : ""}
+                        {v.quantity <= 0 ? t("web.provider.ecommerceWalkIn.outOfStock") : t("web.provider.ecommerceWalkIn.inStock", { count: v.quantity })}
+                        {isInCart && cartItem ? ` · ${t("web.provider.ecommerceWalkIn.inCart", { count: cartItem.qty })}` : ""}
                       </p>
                     </div>
                   </button>

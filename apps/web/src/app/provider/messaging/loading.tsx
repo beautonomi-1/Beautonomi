@@ -3,7 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function MessagingLoading() {
   return (
     <div className="flex h-full" aria-busy="true">
-      <div className="w-full md:w-80 border-r p-4 space-y-3">
+      <div className="w-full md:w-80 border-e p-4 space-y-3">
         <Skeleton className="h-9 w-full rounded-lg" />
         <div className="space-y-2">
           {Array.from({ length: 8 }).map((_, i) => (

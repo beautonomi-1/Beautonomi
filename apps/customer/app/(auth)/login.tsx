@@ -42,8 +42,6 @@ import {
   isAppReviewDemoPhone,
 } from "@/lib/auth/app-review-demo";
 
-const APP_REVIEW_DEMO_HINT = "App Review demo account — enter the review OTP code.";
-
 const PRIMARY = Colors.primary;
 const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -101,14 +99,14 @@ function stripLeadingZero(digits: string): string {
   return digits.replace(/^0+/, "");
 }
 
-function validatePhoneDigits(digits: string, countryCode: string): string | null {
+function getPhoneLengthIssue(digits: string, countryCode: string): { expectedLen: number; country: string } | null {
   const raw = digits.replace(/\D/g, "");
   if (!raw) return null;
   const clean = stripLeadingZero(raw);
   const country = COUNTRY_CODES.find((c) => c.code === countryCode);
   const expectedLen = country?.phoneLen ?? 9;
   if (clean.length < expectedLen - 1 || clean.length > expectedLen) {
-    return `Phone should be ${expectedLen} digits for ${country?.flag ?? ""} ${countryCode} (leading 0 is optional)`;
+    return { expectedLen, country: `${country?.flag ?? ""} ${countryCode}`.trim() };
   }
   return null;
 }
@@ -141,16 +139,27 @@ export default function LoginScreen() {
     return_to?: string;
     ref?: string;
   }>();
-  const statusMessage =
-    params.suspended === "1"
-      ? "Your account has been suspended. Contact support if you believe this is an error."
-      : params.deletion_scheduled === "1"
-        ? "Your account is scheduled for permanent deletion. Check your email for a link to cancel, or contact support."
-        : params.deactivated === "1"
-          ? "You deactivated your account. Log in again to reactivate."
-          : null;
   const { t } = useTranslation();
   const al = useCallback((key: string) => t(`customer.mobile.screens.authLogin.${key}`), [t]);
+  const statusMessage =
+    params.suspended === "1"
+      ? al("accountSuspended")
+      : params.deletion_scheduled === "1"
+        ? al("accountDeletionScheduled")
+        : params.deactivated === "1"
+          ? al("accountDeactivated")
+          : null;
+  const phoneLengthError = useCallback(
+    (digits: string, cc: string) => {
+      const issue = getPhoneLengthIssue(digits, cc);
+      if (!issue) return null;
+      return t("customer.mobile.screens.authLogin.phoneLengthHint", {
+        digits: issue.expectedLen,
+        country: issue.country,
+      });
+    },
+    [t],
+  );
   const {
     signInWithOtp,
     verifyOtp,
@@ -312,7 +321,7 @@ export default function LoginScreen() {
     const digits = text.replace(/[^\d\s]/g, "");
     setPhoneNumber(digits);
     if (digits.replace(/\s/g, "").length > 0) {
-      setPhoneError(validatePhoneDigits(digits, countryCode));
+      setPhoneError(phoneLengthError(digits, countryCode));
     } else {
       setPhoneError(null);
     }
@@ -327,7 +336,7 @@ export default function LoginScreen() {
       Alert.alert(al("errorTitle"), al("enterPhone"));
       return;
     }
-    const err = validatePhoneDigits(phoneNumber, countryCode);
+    const err = phoneLengthError(phoneNumber, countryCode);
     if (err) {
       Alert.alert(al("invalidPhoneTitle"), err);
       return;
@@ -738,10 +747,10 @@ export default function LoginScreen() {
                   <Ionicons name="checkmark-circle" size={28} color="#059669" />
                 </View>
                 <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
-                  Verify your email
+                  {al("verifyYourEmail")}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 4 }}>
-                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                  {t("customer.mobile.screens.authLogin.signupOtpSentPrefix", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
                   {email.trim()}
@@ -760,7 +769,7 @@ export default function LoginScreen() {
                   }}
                   disabled={verifyingSignupOtp}
                   autoFocus
-                  accessibilityLabelPrefix="Signup verification code"
+                  accessibilityLabelPrefix={al("signupVerificationCodeA11y")}
                 />
 
                 {signupOtpError ? (
@@ -781,12 +790,12 @@ export default function LoginScreen() {
                     opacity: verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode) ? 0.6 : 1,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Verify and continue"
+                  accessibilityLabel={al("verifyAndContinueA11y")}
                 >
                   {verifyingSignupOtp ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{al("verifyAndContinue")}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -804,17 +813,17 @@ export default function LoginScreen() {
                     opacity: resendingSignupOtp || signupOtpResendCooldown > 0 ? 0.6 : 1,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Resend verification code"
+                  accessibilityLabel={al("resendVerificationCodeA11y")}
                 >
                   {resendingSignupOtp ? (
                     <ActivityIndicator color={PRIMARY} />
                   ) : signupOtpResendCooldown > 0 ? (
                     <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
-                      Resend code in {signupOtpResendCooldown}s
+                      {t("customer.mobile.screens.authLogin.resendCodeInSeconds", { seconds: signupOtpResendCooldown })}
                     </Text>
                   ) : (
                     <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
-                      Resend verification code
+                      {al("resendVerificationCode")}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -827,9 +836,9 @@ export default function LoginScreen() {
                   }}
                   style={{ marginTop: 14, alignItems: "center" }}
                   accessibilityRole="button"
-                  accessibilityLabel="Go back to edit signup details"
+                  accessibilityLabel={al("goBackEditSignupA11y")}
                 >
-                  <Text style={{ color: "#6B7280", fontSize: 13 }}>Wrong email? Go back and edit</Text>
+                  <Text style={{ color: "#6B7280", fontSize: 13 }}>{al("wrongEmailGoBack")}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -880,14 +889,14 @@ export default function LoginScreen() {
           style={{ textAlign: "center", fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 6, letterSpacing: -0.3 }}
           accessibilityRole="header"
         >
-          Welcome back
+          {al("welcomeBack")}
         </Text>
         <Text style={{ textAlign: "center", fontSize: 15, color: "#6B7280", lineHeight: 22, marginBottom: 28 }}>
-          {t("auth.login")} to book beauty and wellness, manage appointments, and shop with Beautonomi.
+          {al("loginSubtitle")}
         </Text>
 
         <Text style={{ textAlign: "center", fontSize: 12, color: "#6B7280", marginBottom: 18 }}>
-          Continue with phone, email, Google, or Apple.
+          {al("continueWithPhoneEmailSocial")}
         </Text>
 
         {statusMessage ? (
@@ -907,7 +916,7 @@ export default function LoginScreen() {
               name="information-circle"
               size={20}
               color={params.suspended === "1" ? "#DC2626" : "#D97706"}
-              style={{ marginTop: 1, marginRight: 10 }}
+              style={{ marginTop: 1, marginEnd: 10 }}
             />
             <Text
               style={{
@@ -932,11 +941,11 @@ export default function LoginScreen() {
               marginBottom: 24,
             }}
             accessibilityRole="tablist"
-            accessibilityLabel="Login method selection"
+            accessibilityLabel={al("loginMethodSelectionA11y")}
           >
             {([
-              { key: "phone", label: "Phone" },
-              { key: "email", label: "Email" },
+              { key: "phone", label: al("methodPhone") },
+              { key: "email", label: al("methodEmail") },
             ] as const).map((item) => {
               const selected = item.key === "email" ? showEmailForm : !showEmailForm;
               return (
@@ -994,7 +1003,7 @@ export default function LoginScreen() {
               {t("auth.verifyCode")}
             </Text>
             <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-              Enter the {smsOtpLen}-digit code sent to{" "}
+              {t("customer.mobile.screens.authLogin.smsOtpSentTo", { digits: smsOtpLen })}{" "}
               <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{pendingPhone}</Text>
             </Text>
             {/* §UX-audit 2026-04: inline success banner — replaces the Alert.alert. */}
@@ -1012,13 +1021,13 @@ export default function LoginScreen() {
                 marginBottom: 12,
               }}
               accessibilityRole="alert"
-              accessibilityLabel={`We sent a ${smsOtpLen}-digit code to ${pendingPhone}`}
+              accessibilityLabel={t("customer.mobile.screens.authLogin.smsCodeSentA11y", { digits: smsOtpLen, phone: pendingPhone })}
             >
               <Ionicons name="checkmark-circle" size={18} color="#059669" />
               <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
                 {isAppReviewDemoPhone(pendingPhone)
-                  ? APP_REVIEW_DEMO_HINT
-                  : `Code sent. Valid for about ${smsOtpExpiryMin} min.`}
+                  ? al("appReviewDemoHint")
+                  : t("customer.mobile.screens.authLogin.codeSentValidMinutes", { minutes: smsOtpExpiryMin })}
               </Text>
             </View>
             <OtpDigitRow
@@ -1031,7 +1040,7 @@ export default function LoginScreen() {
               disabled={loading}
               autoFocus
               smsAutofill
-              accessibilityLabelPrefix="Login verification code"
+              accessibilityLabelPrefix={al("loginVerificationCodeA11y")}
             />
 
             <TouchableOpacity
@@ -1235,8 +1244,8 @@ export default function LoginScreen() {
                   <Ionicons name="checkmark-circle" size={18} color="#059669" />
                   <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>
                     {isAppReviewDemoEmail(pendingEmailOtp || email)
-                      ? APP_REVIEW_DEMO_HINT
-                      : "Code sent. Check your inbox."}
+                      ? al("appReviewDemoHint")
+                      : al("codeSentCheckInbox")}
                   </Text>
                 </View>
                 <OtpDigitRow
@@ -1248,7 +1257,7 @@ export default function LoginScreen() {
                   }}
                   disabled={loading}
                   autoFocus
-                  accessibilityLabelPrefix="Email verification code"
+                  accessibilityLabelPrefix={al("emailVerificationCodeA11y")}
                 />
                 <TouchableOpacity
                   onPress={() => void handleVerifyEmailOtp()}
@@ -1486,10 +1495,10 @@ export default function LoginScreen() {
                   borderRightColor: "#E5E7EB",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Country code: ${selectedCountry?.label ?? countryCode}`}
+                accessibilityLabel={t("customer.mobile.screens.authLogin.countryCodeA11y", { country: selectedCountry?.label ?? countryCode })}
               >
-                <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-                <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>{countryCode}</Text>
+                <Text style={{ fontSize: 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>{countryCode}</Text>
                 <Ionicons name="chevron-down" size={14} color="#6B7280" />
               </TouchableOpacity>
               <TextInput
@@ -1603,7 +1612,7 @@ export default function LoginScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={al("continueGoogleA11y")}
                       >
-                        <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
+                        <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginEnd: 10 }} />
                         <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{al("continueGoogle")}</Text>
                       </TouchableOpacity>
                     )}
@@ -1631,7 +1640,7 @@ export default function LoginScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={al("continueAppleA11y")}
                       >
-                        <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+                        <Ionicons name="logo-apple" size={20} color="#000" style={{ marginEnd: 10 }} />
                         <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{al("continueApple")}</Text>
                       </TouchableOpacity>
                     ) : null}
@@ -1656,7 +1665,7 @@ export default function LoginScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={al("continueEmailA11y")}
                   >
-                    <Ionicons name="mail-outline" size={20} color="#6B7280" style={{ marginRight: 10 }} />
+                    <Ionicons name="mail-outline" size={20} color="#6B7280" style={{ marginEnd: 10 }} />
                     <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{al("continueEmail")}</Text>
                   </TouchableOpacity>
                 )}
@@ -1755,7 +1764,7 @@ export default function LoginScreen() {
                   onPress={() => {
                     setCountryCode(c.code);
                     setShowCountryPicker(false);
-                    setPhoneError(phoneNumber.trim() ? validatePhoneDigits(phoneNumber, c.code) : null);
+                    setPhoneError(phoneNumber.trim() ? phoneLengthError(phoneNumber, c.code) : null);
                   }}
                   style={{
                     flexDirection: "row",
@@ -1766,7 +1775,7 @@ export default function LoginScreen() {
                     borderColor: "#F9FAFB",
                   }}
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,

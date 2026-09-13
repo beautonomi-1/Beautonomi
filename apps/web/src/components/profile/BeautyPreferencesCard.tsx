@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { fetcher } from "@/lib/http/fetcher";
 import type { BeautyPreferences } from "@/types/profile";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
@@ -66,6 +67,7 @@ export default function BeautyPreferencesCard({
   preferences = {},
   onUpdate,
 }: BeautyPreferencesCardProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<BeautyPreferences>(preferences);
@@ -77,10 +79,10 @@ export default function BeautyPreferencesCard({
     setIsSaving(true);
     try {
       await fetcher.patch("/api/me/beauty-preferences", formData);
-      toast.success("Beauty preferences saved");
+      toast.success(t("web.accountSettings.beautyPreferences.saved"));
       onUpdate?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to save preferences");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.beautyPreferences.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -125,7 +127,7 @@ export default function BeautyPreferencesCard({
         aria-expanded={isOpen}
       >
         <h3 className="text-lg font-semibold tracking-tight text-zinc-900">
-          Beauty Preferences
+          {t("web.accountSettings.beautyPreferences.title")}
         </h3>
         {isOpen ? (
           <ChevronUp className="h-5 w-5 text-zinc-500" />
@@ -140,14 +142,14 @@ export default function BeautyPreferencesCard({
               <div className="flex items-start gap-3 p-4 bg-blue-50/80 border border-blue-200/50 rounded-xl">
                 <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-blue-800">
-                  Provides data when you book. Helps them prepare for your appointment.
+                  {t("web.accountSettings.beautyPreferences.infoBannerCard")}
                 </p>
               </div>
 
               {/* Hair Type */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Hair Type/Texture
+                  {t("web.accountSettings.beautyPreferences.hairType")}
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {HAIR_TYPES.map((type) => (
@@ -165,7 +167,7 @@ export default function BeautyPreferencesCard({
                       `}
                     >
                       <div className="text-2xl mb-1">{type.icon}</div>
-                      <div className="text-xs font-medium">{type.label}</div>
+                      <div className="text-xs font-medium">{t(`web.accountSettings.beautyPreferences.hair.${type.value}`)}</div>
                     </button>
                   ))}
                 </div>
@@ -174,7 +176,7 @@ export default function BeautyPreferencesCard({
               {/* Skin Type */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Skin Type
+                  {t("web.accountSettings.beautyPreferences.skinType")}
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {SKIN_TYPES.map((type) => (
@@ -192,7 +194,7 @@ export default function BeautyPreferencesCard({
                       `}
                     >
                       <div className="text-2xl mb-1">{type.icon}</div>
-                      <div className="text-xs font-medium">{type.label}</div>
+                      <div className="text-xs font-medium">{t(`web.accountSettings.beautyPreferences.skin.${type.value}`)}</div>
                     </button>
                   ))}
                 </div>
@@ -201,23 +203,23 @@ export default function BeautyPreferencesCard({
               {/* Allergies */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Allergies & Sensitivities
+                  {t("web.accountSettings.beautyPreferences.allergies")}
                 </label>
                 <ChipCombobox
                   singleSelect={false}
                   value={formData.allergies || []}
                   onChange={(allergies) => setFormData({ ...formData, allergies })}
-                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: a }))}
+                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: t(`web.accountSettings.beautyPreferences.allergy.${a.toLowerCase()}`) }))}
                   allowFreeForm
-                  placeholder="Add allergy or sensitivity..."
-                  aria-label="Allergies and sensitivities"
+                  placeholder={t("web.accountSettings.beautyPreferences.allergiesPlaceholder")}
+                  aria-label={t("web.accountSettings.beautyPreferences.allergiesA11y")}
                 />
               </div>
 
               {/* Things to Avoid */}
               <div>
                 <label htmlFor="things-to-avoid" className="text-sm font-medium text-zinc-900 mb-2 block">
-                  Things to Avoid
+                  {t("web.accountSettings.beautyPreferences.thingsToAvoid")}
                 </label>
                 <Textarea
                   id="things-to-avoid"
@@ -225,7 +227,7 @@ export default function BeautyPreferencesCard({
                   onChange={(e) =>
                     setFormData({ ...formData, things_to_avoid: e.target.value })
                   }
-                  placeholder="List any products, ingredients, or techniques to avoid"
+                  placeholder={t("web.accountSettings.beautyPreferences.thingsToAvoidPlaceholder")}
                   rows={3}
                   maxLength={200}
                   className="border-zinc-300 focus:ring-[#FF0077]"
@@ -235,7 +237,7 @@ export default function BeautyPreferencesCard({
               {/* Appointment Style */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Appointment Style
+                  {t("web.accountSettings.beautyPreferences.appointmentStyle")}
                 </label>
                 <AppointmentStyleToggle
                   value={formData.appointment_style || ""}
@@ -248,7 +250,7 @@ export default function BeautyPreferencesCard({
               {/* Preferred Times */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Preferred Times
+                  {t("web.accountSettings.beautyPreferences.preferredTimes")}
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {PREFERRED_TIMES.map((time) => {
@@ -267,7 +269,7 @@ export default function BeautyPreferencesCard({
                           }
                         `}
                       >
-                        {time.label}
+                        {t(`web.accountSettings.beautyPreferences.time.${time.value}`)}
                       </button>
                     );
                   })}
@@ -277,7 +279,7 @@ export default function BeautyPreferencesCard({
               {/* Preferred Days */}
               <div>
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
-                  Preferred Days
+                  {t("web.accountSettings.beautyPreferences.preferredDays")}
                 </label>
                 <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
                   {DAYS_OF_WEEK.map((day) => {
@@ -296,7 +298,7 @@ export default function BeautyPreferencesCard({
                           }
                         `}
                       >
-                        {day.label}
+                        {t(`web.accountSettings.beautyPreferences.dayShort.${day.value}`)}
                       </button>
                     );
                   })}
@@ -311,7 +313,7 @@ export default function BeautyPreferencesCard({
                     disabled={isSaving}
                     className="w-full bg-[#FF0077] hover:bg-[#E6006A] text-white"
                   >
-                    {isSaving ? "Saving..." : "Save Preferences"}
+                    {isSaving ? t("web.accountSettings.beautyPreferences.saving") : t("web.accountSettings.beautyPreferences.save")}
                   </Button>
                 </div>
               )}
@@ -335,6 +337,7 @@ function AppointmentStyleToggle({
   otherValue,
   onOtherChange,
 }: AppointmentStyleToggleProps) {
+  const { t } = useTranslation();
   const [showOther, setShowOther] = useState(value === "other" || !!otherValue);
 
   return (
@@ -372,7 +375,7 @@ function AppointmentStyleToggle({
                 }
               `}
             >
-              {option === "quiet" ? "Quiet" : option === "chatty" ? "Chatty" : "Other"}
+              {t(`web.accountSettings.beautyPreferences.style.${option}`)}
             </button>
           ))}
         </div>
@@ -386,7 +389,7 @@ function AppointmentStyleToggle({
               onOtherChange(e.target.value);
               if (e.target.value) onChange("other");
             }}
-            placeholder="Describe your preference"
+            placeholder={t("web.accountSettings.beautyPreferences.otherPlaceholder")}
             className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077] text-sm"
           />
         </div>

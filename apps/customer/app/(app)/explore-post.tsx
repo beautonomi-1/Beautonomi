@@ -16,11 +16,12 @@ import * as Clipboard from "expo-clipboard";
 import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import { pushCustomerLogin } from "@/lib/guest-browse-policy";
 import { useSocialCapability } from "@/hooks/useSafetySettings";
 import { useUserBlocks } from "@/hooks/useUserBlocks";
 import { ContentReportSheet, type ContentReportTargetType } from "@/components/safety/ContentReportSheet";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   copyExplorePostLink,
   isExploreVideoUrl,
@@ -30,17 +31,17 @@ import {
   type ExploreShareAction,
 } from "@/lib/share-explore-post";
 
-function formatTime(iso: string) {
+function formatTime(iso: string, t: TFunction, locale: string) {
   const date = new Date(iso);
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("customer.explorePost.justNow");
+  if (mins < 60) return t("customer.explorePost.minutesAgo", { count: mins });
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 24) return t("customer.explorePost.hoursAgo", { count: hrs });
   const days = Math.floor(hrs / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (days < 7) return t("customer.explorePost.daysAgo", { count: days });
+  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 export default function ExplorePostScreen() {
@@ -51,7 +52,8 @@ export default function ExplorePostScreen() {
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const dateLocale = i18n.language || "en";
   const socialInteractions = useSocialCapability("comment");
   const canInteract = socialInteractions.allowed;
   const { confirmBlockUser } = useUserBlocks();
@@ -388,7 +390,8 @@ export default function ExplorePostScreen() {
   }
 
   const mediaItems = post.media_urls?.length ? post.media_urls : [];
-  const providerInitial = (post.provider?.business_name || "B").charAt(0).toUpperCase();
+  const providerName = post.provider?.business_name || t("customer.explorePost.providerFallback");
+  const providerInitial = providerName.charAt(0).toUpperCase();
 
   return (
     <>
@@ -476,7 +479,7 @@ export default function ExplorePostScreen() {
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="arrow-back" size={20} color="#fff" />
+                <DirectionalIcon name="arrow-back" size={20} color="#fff" />
               </TouchableOpacity>
 
               {/* Share button */}
@@ -536,7 +539,7 @@ export default function ExplorePostScreen() {
                 onPress={goToProvider}
                 style={{ flexDirection: "row", alignItems: "center" }}
                 accessibilityRole="button"
-                accessibilityLabel={`Open ${post.provider?.business_name || "provider"} profile`}
+                accessibilityLabel={t("customer.explorePost.openProviderProfile", { name: providerName })}
               >
                 <View
                   style={{
@@ -546,7 +549,7 @@ export default function ExplorePostScreen() {
                     backgroundColor: Colors.primary,
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 12,
+                    marginEnd: 12,
                   }}
                 >
                   <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>{providerInitial}</Text>
@@ -556,10 +559,10 @@ export default function ExplorePostScreen() {
                     style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}
                     numberOfLines={1}
                   >
-                    {post.provider?.business_name || "Provider"}
+                    {providerName}
                   </Text>
                   {post.published_at ? (
-                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{formatTime(post.published_at)}</Text>
+                    <Text style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{formatTime(post.published_at, t, dateLocale)}</Text>
                   ) : null}
                 </View>
               </Pressable>
@@ -617,7 +620,7 @@ export default function ExplorePostScreen() {
             </View>
 
             {/* §UI-audit 2026-05: action bar previously used fixed
-                marginRight: 20 spacers, which left the Share icon orphaned
+                marginEnd: 20 spacers, which left the Share icon orphaned
                 far left on phones >=400dp wide and crowded the right edge
                 on iPhone SE-class widths. Switch to space-between with
                 equal-width hit targets so Like / Comment / Save / Share
@@ -645,7 +648,7 @@ export default function ExplorePostScreen() {
                   name={post.is_liked ? "heart" : "heart-outline"}
                   size={24}
                   color={post.is_liked ? Colors.primary : "#374151"}
-                  style={{ marginRight: 6 }}
+                  style={{ marginEnd: 6 }}
                 />
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: post.is_liked ? Colors.primary : "#374151" }}
@@ -663,7 +666,7 @@ export default function ExplorePostScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t("customer.explorePost.comment")}
               >
-                <Ionicons name="chatbubble-outline" size={22} color="#374151" style={{ marginRight: 6 }} />
+                <Ionicons name="chatbubble-outline" size={22} color="#374151" style={{ marginEnd: 6 }} />
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}
                   numberOfLines={1}
@@ -685,7 +688,7 @@ export default function ExplorePostScreen() {
                   name={post.is_saved ? "bookmark" : "bookmark-outline"}
                   size={22}
                   color={post.is_saved ? Colors.primary : "#374151"}
-                  style={{ marginRight: 6 }}
+                  style={{ marginEnd: 6 }}
                 />
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: post.is_saved ? Colors.primary : "#374151" }}
@@ -702,7 +705,7 @@ export default function ExplorePostScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t("customer.explorePost.share")}
               >
-                <Ionicons name="paper-plane-outline" size={22} color="#374151" style={{ marginRight: 6 }} />
+                <Ionicons name="paper-plane-outline" size={22} color="#374151" style={{ marginEnd: 6 }} />
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }} numberOfLines={1}>
                   {t("customer.explorePost.share")}
                 </Text>
@@ -758,7 +761,8 @@ export default function ExplorePostScreen() {
               </View>
             ) : (
               comments.map((c) => {
-                const initial = (c.author?.full_name || "U").charAt(0).toUpperCase();
+                const authorName = c.author?.full_name || t("customer.explorePost.userFallback");
+                const initial = authorName.charAt(0).toUpperCase();
                 return (
                   <Pressable
                     key={c.id}
@@ -769,7 +773,7 @@ export default function ExplorePostScreen() {
                     {c.author?.avatar_url ? (
                       <Image
                         source={{ uri: c.author.avatar_url }}
-                        style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10 }}
+                        style={{ width: 32, height: 32, borderRadius: 16, marginEnd: 10 }}
                         contentFit="cover"
                       />
                     ) : (
@@ -781,7 +785,7 @@ export default function ExplorePostScreen() {
                           backgroundColor: "#F3F4F6",
                           alignItems: "center",
                           justifyContent: "center",
-                          marginRight: 10,
+                          marginEnd: 10,
                         }}
                       >
                         <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 13 }}>{initial}</Text>
@@ -789,17 +793,17 @@ export default function ExplorePostScreen() {
                     )}
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginRight: 6 }}>
-                          {c.author?.full_name || "User"}
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginEnd: 6 }}>
+                          {authorName}
                         </Text>
-                        <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at)}</Text>
+                        <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at, t, dateLocale)}</Text>
                       </View>
                       <Text style={{ fontSize: 14, color: "#374151", marginTop: 2, lineHeight: 20 }}>{c.body}</Text>
                     </View>
                     {user ? (
                       <TouchableOpacity
                         onPress={() => openContentReport("explore_comment", c.id, t("customer.contentReport.reportComment"))}
-                        style={{ paddingLeft: 8, paddingVertical: 4 }}
+                        style={{ paddingStart: 8, paddingVertical: 4 }}
                         accessibilityRole="button"
                         accessibilityLabel={t("customer.contentReport.reportComment")}
                       >
@@ -832,7 +836,9 @@ export default function ExplorePostScreen() {
                           marginHorizontal: 6,
                           marginBottom: 12,
                         }}
-                        accessibilityLabel={`Post by ${p.provider?.business_name || "Provider"}`}
+                        accessibilityLabel={t("customer.explorePost.postByProvider", {
+                          name: p.provider?.business_name || t("customer.explorePost.providerFallback"),
+                        })}
                         accessibilityRole="button"
                       >
                         <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: "#F3F4F6" }}>
@@ -890,7 +896,7 @@ export default function ExplorePostScreen() {
                 backgroundColor: Colors.primaryLight,
                 alignItems: "center",
                 justifyContent: "center",
-                marginRight: 10,
+                marginEnd: 10,
               }}
             >
               <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 13 }}>

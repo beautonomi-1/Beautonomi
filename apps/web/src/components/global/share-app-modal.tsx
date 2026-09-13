@@ -10,6 +10,7 @@ import { FaSquareXTwitter } from "react-icons/fa6";
 import { MdEmail } from "react-icons/md";
 import { toast } from "sonner";
 import Image from "next/image";
+import { useTranslation } from "@beautonomi/i18n";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
 import { getDefaultPublicAppsResponse, NATIVE_STORE } from "@/lib/store/native-app-store";
@@ -25,6 +26,8 @@ type StoreDownloadInfo =
   | { name: string; url: string; iconKind: "huawei" };
 
 export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
+  const { t } = useTranslation();
+  const prefix = "web.global.shareAppModal";
   const [currentUrl, setCurrentUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [platform, setPlatform] = useState<"ios" | "android" | "huawei" | null>(null);
@@ -45,21 +48,21 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
   const getStoreInfo = (): StoreDownloadInfo | null => {
     if (platform === "ios") {
       return {
-        name: "App Store",
+        name: t(`${prefix}.appStore`),
         iconSrc: Apple,
         url: NATIVE_STORE.customer.defaultAppStoreUrl,
       };
     }
     if (platform === "huawei") {
       return {
-        name: "Huawei AppGallery",
+        name: t(`${prefix}.huaweiAppGallery`),
         iconKind: "huawei",
         url: getDefaultPublicAppsResponse().customer.huawei.app_gallery_url,
       };
     }
     if (platform === "android") {
       return {
-        name: "Google Play Store",
+        name: t(`${prefix}.googlePlay`),
         iconSrc: GooglePlayStore,
         url: NATIVE_STORE.customer.defaultPlayStoreUrl,
       };
@@ -73,21 +76,25 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
     try {
       await navigator.clipboard.writeText(currentUrl);
       setCopied(true);
-      toast.success("Link copied to clipboard!");
+      toast.success(t(`${prefix}.copySuccess`));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Failed to copy link");
+      toast.error(t(`${prefix}.copyFailed`));
     }
   };
 
   const handleEmailShare = () => {
-    const subject = encodeURIComponent("Check out Beautonomi - Beauty Services Marketplace");
-    const body = encodeURIComponent(`I found this amazing app for booking beauty services:\n\n${currentUrl}\n\n${storeInfo ? `Download on ${storeInfo.name}: ${storeInfo.url}` : ''}`);
+    const store = storeInfo
+      ? t(`${prefix}.emailStoreLine`, { name: storeInfo.name, url: storeInfo.url })
+      : "";
+    const subject = encodeURIComponent(t(`${prefix}.emailSubject`));
+    const body = encodeURIComponent(t(`${prefix}.emailBody`, { url: currentUrl, store }));
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   };
 
   const handleWhatsAppShare = () => {
-    const text = encodeURIComponent(`Check out Beautonomi - the best way to book beauty services! ${currentUrl} ${storeInfo ? `Download: ${storeInfo.url}` : ''}`);
+    const store = storeInfo ? t(`${prefix}.whatsappStoreLine`, { url: storeInfo.url }) : "";
+    const text = encodeURIComponent(t(`${prefix}.whatsappText`, { url: currentUrl, store }));
     window.open(`https://wa.me/?text=${text}`, "_blank");
   };
 
@@ -97,7 +104,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
   };
 
   const handleXShare = () => {
-    const text = encodeURIComponent("Check out Beautonomi - Beauty Services Marketplace");
+    const text = encodeURIComponent(t(`${prefix}.xText`));
     const url = encodeURIComponent(currentUrl);
     window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, "_blank", "width=600,height=400");
   };
@@ -106,16 +113,16 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-[95vw] sm:max-w-lg p-4 sm:p-6 z-[9999] rounded-none sm:rounded-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl sm:text-2xl font-normal">Share Beautonomi</DialogTitle>
+          <DialogTitle className="text-xl sm:text-2xl font-normal">{t(`${prefix}.title`)}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 sm:space-y-4">
           <p className="text-gray-600">
-            Help your friends discover the best beauty services in their area!
+            {t(`${prefix}.subtitle`)}
           </p>
           
           {storeInfo && (
             <div className="bg-gray-50 p-4 rounded-lg border">
-              <p className="text-sm font-medium mb-2">Download the App</p>
+              <p className="text-sm font-medium mb-2">{t(`${prefix}.downloadTheApp`)}</p>
               <Button
                 onClick={() => window.open(storeInfo.url, '_blank')}
                 className="w-full bg-[#FF0077] hover:bg-[#E6006A] text-white"
@@ -125,12 +132,12 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
                   <Image
                     src={storeInfo.iconSrc}
                     alt={storeInfo.name}
-                    className="h-5 w-5 mr-2"
+                    className="h-5 w-5 me-2"
                   />
                 ) : (
-                  <Smartphone className="h-5 w-5 mr-2 shrink-0" aria-hidden />
+                  <Smartphone className="h-5 w-5 me-2 shrink-0" aria-hidden />
                 )}
-                Download from {storeInfo.name}
+                {t(`${prefix}.downloadFrom`, { name: storeInfo.name })}
               </Button>
             </div>
           )}
@@ -142,7 +149,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
               onClick={handleCopyLink}
             >
               <span className="text-lg"><IoCopy/></span>
-              {copied ? "Copied!" : "Copy Link"}
+              {copied ? t(`${prefix}.copied`) : t(`${prefix}.copyLink`)}
             </Button>
             <Button
               variant="outline"
@@ -150,7 +157,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
               onClick={handleEmailShare}
             >
               <span className="text-lg"><MdEmail/></span>
-              Email
+              {t(`${prefix}.email`)}
             </Button>
             <Button
               variant="outline"
@@ -158,7 +165,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
               onClick={handleWhatsAppShare}
             >
               <span className="text-lg"><FaWhatsappSquare/></span>
-              WhatsApp
+              {t(`${prefix}.whatsapp`)}
             </Button>
             <Button
               variant="outline"
@@ -166,7 +173,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
               onClick={handleFacebookShare}
             >
               <span className="text-lg"><FaFacebookSquare/></span>
-              Facebook
+              {t(`${prefix}.facebook`)}
             </Button>
             <Button
               variant="outline"
@@ -174,7 +181,7 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
               onClick={handleXShare}
             >
               <span className="text-lg"><FaSquareXTwitter/></span>
-              X
+              {t(`${prefix}.x`)}
             </Button>
           </div>
         </div>

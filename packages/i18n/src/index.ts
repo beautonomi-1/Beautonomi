@@ -1,91 +1,59 @@
-import i18n from "i18next";
-import { initReactI18next, useTranslation } from "react-i18next";
-import en from "./locales/en.json";
-import enGBOverrides from "./locales/en-GB.json";
-import zu from "./locales/zu.json";
-import af from "./locales/af.json";
-import st from "./locales/st.json";
-import xh from "./locales/xh.json";
-import nso from "./locales/nso.json";
-import tn from "./locales/tn.json";
-import ts from "./locales/ts.json";
-import ve from "./locales/ve.json";
-import ss from "./locales/ss.json";
+import i18n, { createInstance, type i18n as I18nInstance, type InitOptions } from "i18next";
+import { FALLBACK_LNG_MAP, getLanguageMeta, LANGUAGE_STORAGE_KEY, LANGUAGE_COOKIE } from "./language-registry";
+import { defaultNS, resources } from "./resources-core";
+import {
+  DEFAULT_LANGUAGE,
+  DEFAULT_SUPPORTED_LANGUAGE_CODES,
+  supportedLanguages,
+  languagesForMarket,
+  type SupportedLanguage,
+  normalizeLanguageCode,
+  isSupportedLanguageCode,
+  resolveLanguage,
+  buildFormatLocale,
+  getLanguageDirection,
+  mergeLanguagePickerOptions,
+  isRegistryLanguage,
+  preferredLanguageFromDevice,
+} from "./language-registry";
 
-export const defaultNS = "translation";
+export { defaultNS };
 
-function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Record<string, unknown>): T {
-  const out = { ...base } as Record<string, unknown>;
-  for (const [key, value] of Object.entries(overrides)) {
-    if (value && typeof value === "object" && !Array.isArray(value) && typeof out[key] === "object") {
-      out[key] = deepMerge(out[key] as Record<string, unknown>, value as Record<string, unknown>);
-    } else {
-      out[key] = value;
-    }
-  }
-  return out as T;
-}
-
-/** Bundled locales; `xh`–`ss` currently ship English copy — translate in-place (fallbackLng fills any gaps). */
-export const resources = {
-  en: { translation: en },
-  "en-GB": { translation: deepMerge(en as Record<string, unknown>, enGBOverrides as Record<string, unknown>) },
-  zu: { translation: zu },
-  af: { translation: af },
-  st: { translation: st },
-  xh: { translation: xh },
-  nso: { translation: nso },
-  tn: { translation: tn },
-  ts: { translation: ts },
-  ve: { translation: ve },
-  ss: { translation: ss },
-} as const;
-
-export const supportedLanguages = [
-  { code: "en", name: "English", nativeName: "English" },
-  { code: "en-GB", name: "English (UK)", nativeName: "English (UK)" },
-  { code: "zu", name: "Zulu", nativeName: "isiZulu" },
-  { code: "xh", name: "Xhosa", nativeName: "isiXhosa" },
-  { code: "af", name: "Afrikaans", nativeName: "Afrikaans" },
-  { code: "st", name: "Southern Sotho", nativeName: "Sesotho" },
-  { code: "nso", name: "Northern Sotho (Sepedi)", nativeName: "Sesotho sa Leboa" },
-  { code: "tn", name: "Tswana", nativeName: "Setswana" },
-  { code: "ts", name: "Tsonga", nativeName: "Xitsonga" },
-  { code: "ve", name: "Venda", nativeName: "Tshivenda" },
-  { code: "ss", name: "Swati", nativeName: "siSwati" },
-] as const;
-
-export type SupportedLanguage = (typeof supportedLanguages)[number]["code"];
-
-/**
- * Merges CMS `preference_options` language rows with every locale that ships in `@beautonomi/i18n`.
- * When the API only lists English (or a subset), bundled languages (e.g. Afrikaans, Zulu) still appear.
- * API order is preserved for rows that exist; missing bundled codes are appended in `supportedLanguages` order.
- */
-export function mergeLanguagePickerOptions(apiRows: { code: string; name: string }[]): { code: string; name: string }[] {
-  const allowed = new Set(supportedLanguages.map((l) => l.code)) as Set<string>;
-  const seen = new Set<string>();
-  const out: { code: string; name: string }[] = [];
-
-  for (const row of apiRows) {
-    const raw = row.code?.trim();
-    if (!raw) continue;
-    const code = raw.split(/[-_]/)[0].toLowerCase();
-    if (!allowed.has(code) || seen.has(code)) continue;
-    seen.add(code);
-    const meta = supportedLanguages.find((l) => l.code === code);
-    const label = meta ? `${meta.nativeName} (${meta.name})` : (row.name?.trim() || code);
-    out.push({ code, name: label });
-  }
-
-  for (const { code, nativeName, name } of supportedLanguages) {
-    if (seen.has(code)) continue;
-    seen.add(code);
-    out.push({ code, name: `${nativeName} (${name})` });
-  }
-
-  return out;
-}
+export {
+  DEFAULT_LANGUAGE,
+  DEFAULT_SUPPORTED_LANGUAGE_CODES,
+  supportedLanguages,
+  languagesForMarket,
+  LANGUAGE_STORAGE_KEY,
+  LANGUAGE_COOKIE,
+  FALLBACK_LNG_MAP,
+  getLanguageMeta,
+  normalizeLanguageCode,
+  isSupportedLanguageCode,
+  resolveLanguage,
+  buildFormatLocale,
+  getLanguageDirection,
+  mergeLanguagePickerOptions,
+  isRegistryLanguage,
+  preferredLanguageFromDevice,
+};
+export type { SupportedLanguage, LanguageMeta, TextDirection, LanguageWave } from "./language-registry";
+export {
+  PUBLIC_CATEGORY_SLUGS,
+  normalizeCategoryKey,
+  resolvePublicCategorySlug,
+  translatePublicCategoryLabel,
+  pickCategoryNameI18n,
+} from "./public-category";
+export type {
+  PublicCategorySlug,
+  CategoryNameI18n,
+  TranslatePublicCategoryOptions,
+} from "./public-category";
+export type { LocaleContextValue } from "./locale-context";
+export { buildLocaleContext } from "./locale-context";
+export { resources, deepMerge } from "./resources-core";
+export { ensureLocaleResources, setExtraLocaleLoader, loadLocaleMessages } from "./load-locale";
 
 /** Values stored in users.signup_source. Must match backend allowed list in apps/web profile PATCH. */
 export const SIGNUP_SOURCE_OPTIONS = [
@@ -103,17 +71,16 @@ export type SignupSourceValue = (typeof SIGNUP_SOURCE_OPTIONS)[number]["value"];
 
 let initialized = false;
 
-export function initI18n(lng: string = "en") {
-  if (initialized) {
-    i18n.changeLanguage(lng);
-    return i18n;
-  }
-
-  i18n.use(initReactI18next).init({
+/** Shared init options. Resources are bundled, so `init` completes synchronously. */
+export function buildInitOptions(lng: string): InitOptions {
+  return {
     resources,
-    lng,
-    fallbackLng: "en",
+    lng: normalizeLanguageCode(lng),
+    fallbackLng: FALLBACK_LNG_MAP,
     defaultNS,
+    // Keep plural/namespace resolution strict; missing keys fall back to English via fallbackLng.
+    returnNull: false,
+    returnEmptyString: false,
     interpolation: {
       escapeValue: false,
     },
@@ -122,13 +89,46 @@ export function initI18n(lng: string = "en") {
       bindI18n: "languageChanged loaded",
       bindI18nStore: "added",
     },
-  });
+  };
+}
+
+/**
+ * Initialise (or re-target) the process-wide singleton. Safe to call during render on the
+ * client: with bundled resources i18next initialises synchronously, so `t()` works on the
+ * very first paint (no key flash). Do NOT use the singleton for server rendering of
+ * per-request languages — use `createI18nInstance` instead.
+ */
+export function initI18n(lng: string = "en") {
+  const resolved = normalizeLanguageCode(lng);
+  if (initialized) {
+    // Do not clobber a live client language when LocaleProvider remounts
+    // with a stale server default (cookie not visible yet / RSC refresh).
+    return i18n;
+  }
+
+  // Lazy-load react-i18next so RSC/server importers of registry-only symbols never pull createContext.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { initReactI18next } = require("react-i18next") as typeof import("react-i18next");
+  i18n.use(initReactI18next).init(buildInitOptions(resolved));
 
   initialized = true;
   return i18n;
 }
 
-export { i18n, useTranslation };
+/**
+ * Isolated instance for server rendering (Next.js RSC/SSR). Each request gets its own
+ * language without touching the shared singleton, so concurrent requests in different
+ * languages never leak into each other. Pair with `<I18nextProvider i18n={instance}>`.
+ */
+export function createI18nInstance(lng: string = "en"): I18nInstance {
+  const instance = createInstance();
+  instance.init(buildInitOptions(lng));
+  return instance;
+}
+
+export { i18n };
+export { useTranslation, I18nextProvider } from "./client";
+export type { I18nInstance };
 export type { TFunction } from "i18next";
 
 export type {

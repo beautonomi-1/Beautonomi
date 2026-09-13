@@ -12,6 +12,7 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import {
@@ -53,6 +54,8 @@ interface AppointmentViewSheetProps {
 }
 
 export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
+  const { t } = useTranslation();
+  const prefix = "web.provider.portal.appointmentViewSheet";
   const {
     isOpen,
     mode,
@@ -227,7 +230,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
     <div className="flex items-center gap-2">
       <div className="flex-1 min-w-0">
         <h2 className="text-lg font-semibold text-gray-900 truncate">
-          {appt?.client_name ?? "Booking"}
+          {appt?.client_name ?? t(`${prefix}.bookingFallback`)}
         </h2>
         {appt?.status ? (
           <div className="mt-1">
@@ -238,8 +241,8 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
       <button
         type="button"
         onClick={closeSidebar}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t(`${prefix}.closeAria`)}
       >
         <X className="h-5 w-5" />
       </button>
@@ -249,12 +252,12 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
   const footer = canEditAppointments ? (
     <div className="flex flex-col gap-2 sm:flex-row">
       <BookingActionButton variant="outline" onClick={() => setRescheduleOpen(true)}>
-        <CalendarClock className="mr-2 h-4 w-4" />
-        Reschedule
+        <CalendarClock className="me-2 h-4 w-4" />
+        {t(`${prefix}.reschedule`)}
       </BookingActionButton>
       <BookingActionButton onClick={switchToEditMode}>
-        <Edit className="mr-2 h-4 w-4" />
-        Edit
+        <Edit className="me-2 h-4 w-4" />
+        {t("common.edit")}
       </BookingActionButton>
     </div>
   ) : undefined;
@@ -309,12 +312,16 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                   qrCodeVerified={raw?.qr_code_verified as boolean | undefined}
                   arrivalOtpPending={raw?.arrival_otp_pending as boolean | undefined}
                   qrArrivalPending={raw?.qr_arrival_pending as boolean | undefined}
+                  clientPhone={appt.client_phone}
+                  contactAttemptCount={
+                    Array.isArray(raw?.contact_attempts) ? raw.contact_attempts.length : 0
+                  }
                   onUpdated={refreshAfterPayment}
                 />
                 <BookingSectionCard>
                   <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                     <ShieldAlert className="h-4 w-4" />
-                    Safety
+                    {t(`${prefix}.safety`)}
                   </BookingSectionLabel>
                   <SafetyPanicButton bookingId={appt.id} variant="outline" size="sm" />
                 </BookingSectionCard>
@@ -346,34 +353,33 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             <BookingPaymentSummarySection appointment={appt} outstanding={outstanding} />
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-3">Schedule</BookingSectionLabel>
-              <BookingSummaryRow label="Date" value={dateLabel} />
-              <BookingSummaryRow label="Time" value={appt.scheduled_time ?? "—"} />
-              <BookingSummaryRow label="Staff" value={appt.team_member_name ?? "—"} />
+              <BookingSectionLabel className="mb-3">{t(`${prefix}.schedule`)}</BookingSectionLabel>
+              <BookingSummaryRow label={t(`${prefix}.date`)} value={dateLabel} />
+              <BookingSummaryRow label={t(`${prefix}.time`)} value={appt.scheduled_time ?? "—"} />
+              <BookingSummaryRow label={t(`${prefix}.staff`)} value={appt.team_member_name ?? "—"} />
               {appt.location_type === "at_home" ? (
-                <BookingSummaryRow label="Type" value="At home" />
+                <BookingSummaryRow label={t(`${prefix}.type`)} value={t(`${prefix}.atHome`)} />
               ) : null}
             </BookingSectionCard>
 
             {overpaidAmount > 0 && canProcessPayments ? (
               <BookingSectionCard className="border-amber-200 bg-amber-50">
                 <p className="text-sm text-amber-950">
-                  This booking is overpaid by{" "}
-                  <span className="font-semibold">{formatMoney(overpaidAmount)}</span>.
+                  {t(`${prefix}.overpaid`, { amount: formatMoney(overpaidAmount) })}
                 </p>
                 <BookingActionButton
                   className="mt-3"
                   variant="outline"
                   onClick={() => setRefundOpen(true)}
                 >
-                  Issue refund
+                  {t(`${prefix}.issueRefund`)}
                 </BookingActionButton>
               </BookingSectionCard>
             ) : null}
 
             {appt.notes ? (
               <BookingSectionCard>
-                <BookingSectionLabel className="mb-2">Notes</BookingSectionLabel>
+                <BookingSectionLabel className="mb-2">{t(`${prefix}.notes`)}</BookingSectionLabel>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{appt.notes}</p>
               </BookingSectionCard>
             ) : null}
@@ -393,7 +399,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             />
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-3">Payment</BookingSectionLabel>
+              <BookingSectionLabel className="mb-3">{t(`${prefix}.payment`)}</BookingSectionLabel>
               <BookingPaymentTimeline bookingId={appt.id} />
               <div className="flex flex-col gap-2 sm:flex-row mt-3">
                 {canProcessPayments ? (
@@ -403,7 +409,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                     variant="outline"
                     onClick={() => setRefundOpen(true)}
                   >
-                    Issue refund
+                    {t(`${prefix}.issueRefund`)}
                   </BookingActionButton>
                 ) : null}
                 {canEditAppointments ? (
@@ -413,7 +419,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                     variant="outline"
                     onClick={() => setProductPickerOpen(true)}
                   >
-                    Add product
+                    {t(`${prefix}.addProduct`)}
                   </BookingActionButton>
                 ) : null}
                 {canEditAppointments ? (
@@ -423,7 +429,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                     variant="outline"
                     onClick={() => setResourceSheetOpen(true)}
                   >
-                    Resources
+                    {t(`${prefix}.resources`)}
                   </BookingActionButton>
                 ) : null}
                 <BookingActionButton
@@ -432,7 +438,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
                   variant="outline"
                   onClick={() => setAuditOpen(true)}
                 >
-                  Audit log
+                  {t(`${prefix}.auditLog`)}
                 </BookingActionButton>
               </div>
             </BookingSectionCard>
@@ -461,11 +467,11 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
             {(appt.status === "completed" || appt.status === "no_show") && appt.id && canViewClientRatings ? (
               <div id="booking-client-rating">
               <BookingSectionCard>
-                <BookingSectionLabel className="mb-2">Client rating</BookingSectionLabel>
+                <BookingSectionLabel className="mb-2">{t(`${prefix}.clientRating`)}</BookingSectionLabel>
                 <CustomerRatingButton
                   bookingId={String(appt.id)}
                   customerId={String(raw?.customer_id ?? appt.client_id ?? "")}
-                  customerName={appt.client_name ?? "Guest"}
+                  customerName={appt.client_name ?? t(`${prefix}.guestFallback`)}
                   bookingStatus={appt.status}
                   onRatingSubmitted={refreshAfterPayment}
                 />
@@ -477,7 +483,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               <BookingSectionCard>
                 <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                   <ShieldAlert className="h-4 w-4" />
-                  Safety
+                  {t(`${prefix}.safety`)}
                 </BookingSectionLabel>
                 <SafetyPanicButton bookingId={appt.id} variant="outline" size="sm" />
               </BookingSectionCard>
@@ -522,8 +528,8 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               const nextLine = {
                 productId,
                 product_id: productId,
-                productName: catalog?.name ?? "Product",
-                product_name: catalog?.name ?? "Product",
+                productName: catalog?.name ?? t(`${prefix}.productFallback`),
+                product_name: catalog?.name ?? t(`${prefix}.productFallback`),
                 quantity,
                 unitPrice,
                 unit_price: unitPrice,
@@ -532,7 +538,7 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
               };
               const mappedExisting = existing.map((p) => ({
                 productId: String(p.productId ?? p.product_id ?? ""),
-                productName: String(p.productName ?? p.product_name ?? "Product"),
+                productName: String(p.productName ?? p.product_name ?? t(`${prefix}.productFallback`)),
                 quantity: Number(p.quantity ?? 1),
                 unitPrice: Number(p.unitPrice ?? p.unit_price ?? 0),
                 totalPrice: Number(p.totalPrice ?? p.total_price ?? 0),
@@ -556,9 +562,9 @@ export function AppointmentViewSheet({ onRefresh }: AppointmentViewSheetProps) {
           <PostCompletionSheet
             open={completionModalOpen}
             bookingId={appt.id}
-            primaryServiceName={appt.service_name || "Appointment"}
+            primaryServiceName={appt.service_name || t(`${prefix}.appointmentFallback`)}
             primaryOfferingId={appt.service_id}
-            customerName={appt.client_name ?? "Client"}
+            customerName={appt.client_name ?? t(`${prefix}.clientFallback`)}
             onDismiss={() => setCompletionModalOpen(false)}
           />
         </>

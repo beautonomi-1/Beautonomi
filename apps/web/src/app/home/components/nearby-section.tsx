@@ -9,8 +9,10 @@ import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { providerAvatarImage, providerHeroImage } from "@/lib/provider-images";
+import { useTranslation } from "@beautonomi/i18n";
 
 const NearbySection = () => {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ const NearbySection = () => {
     return (
       <div className="mb-8 md:mb-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading nearby providers..." />
+          <LoadingTimeout loadingMessage={t("web.home.loadingNearby")} />
         </div>
       </div>
     );
@@ -65,7 +67,7 @@ const NearbySection = () => {
       <div className="mb-8 md:mb-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           <EmptyState
-            title="Failed to load providers"
+            title={t("web.home.unableToLoadProviders")}
             description={error}
           />
         </div>
@@ -78,8 +80,8 @@ const NearbySection = () => {
       <div className="mb-8 md:mb-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           <EmptyState
-            title="No nearby providers"
-            description="Check back later for providers near you"
+            title={t("web.home.noNearby")}
+            description={t("web.home.noNearbyHint")}
           />
         </div>
       </div>
@@ -92,11 +94,11 @@ const NearbySection = () => {
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 md:h-6 md:w-6 text-gray-600" />
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Nearby</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{t("web.home.nearby")}</h2>
           </div>
           <Link href="/more-nearest-providers-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            View all
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            {t("web.home.viewAll")}
+            <ArrowRight className="ms-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
@@ -107,10 +109,10 @@ const NearbySection = () => {
               providerImage={providerAvatarImage(provider) ?? undefined}
               providerName={provider.business_name}
               rating={provider.rating || 0}
-              reviewCount={`${provider.review_count || 0} ${provider.review_count === 1 ? "review" : "reviews"}`}
+              reviewCount={t("web.home.reviewCount", { count: provider.review_count || 0 })}
               description={`${provider.city}, ${provider.country}`}
               price=""
-              distance={provider.distance_km ? `${provider.distance_km.toFixed(1)} km` : ""}
+              distance={provider.distance_km ? t("web.home.distanceKm", { km: provider.distance_km.toFixed(1) }) : ""}
               providerSlug={provider.slug}
             />
           ))}

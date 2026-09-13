@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { renderWithI18n as render, screen } from "@/test-utils/render-with-i18n";
 import React from "react";
 import RecentlyAdd from "../recently-add";
 

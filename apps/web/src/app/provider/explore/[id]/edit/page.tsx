@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -10,6 +11,7 @@ import { Loader2, ChevronLeft } from "lucide-react";
 import type { ExplorePost } from "@/types/explore";
 
 export default function ProviderExploreEditPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
@@ -52,12 +54,12 @@ export default function ProviderExploreEditPage() {
         showLoading={false}
       >
         <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
-          <p className="text-gray-600 mb-4">Post not found</p>
+<p className="text-gray-600 mb-4">{t("web.provider.pages.explore/[id].postNotFound")}</p>
           <button
             onClick={() => router.push("/provider/explore")}
             className="text-primary hover:underline"
           >
-            Back to Explore
+{t("web.provider.pages.explore/[id].backToExplore")}
           </button>
         </div>
       </RoleGuard>
@@ -83,13 +85,13 @@ export default function ProviderExploreEditPage() {
         <header className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
           <Link
             href="/provider/explore"
-            className="flex items-center gap-1 text-gray-700 hover:text-gray-900 -ml-1"
+            className="flex items-center gap-1 text-gray-700 hover:text-gray-900 -ms-1"
           >
             <ChevronLeft className="w-6 h-6" />
-            <span className="text-base font-medium">Back</span>
+<span className="text-base font-medium">{t("web.provider.pages.explore/[id].back")}</span>
           </Link>
           <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-semibold text-gray-900">
-            Edit post
+{t("web.provider.pages.explore/[id].editPost")}
           </h1>
           <div className="w-14" />
         </header>

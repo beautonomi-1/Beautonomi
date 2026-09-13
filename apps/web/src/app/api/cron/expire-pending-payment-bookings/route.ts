@@ -25,6 +25,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { releaseBookingSlotAfterPaymentFailure } from "@/app/api/public/bookings/_helpers/release-booking-slot-after-payment-failure";
+import { notifyCustomerCheckoutNotCompleted } from "@/lib/notifications/notification-service";
 
 import { runLockedCronRoute } from "@/lib/cron/locked-cron-route";
 
@@ -93,6 +94,14 @@ async function runJob(request: NextRequest) {
     try {
       await releaseBookingSlotAfterPaymentFailure(admin, booking.id, booking.customer_id);
       expired += 1;
+      // Lifecycle §A: tell the customer their checkout did not complete and the
+      // time is free again. No provider notification — they never saw it as real.
+      // Push + email (the customer may have closed the app mid-checkout).
+      try {
+        await notifyCustomerCheckoutNotCompleted(booking.id, ["push", "email"]);
+      } catch (notifyErr) {
+        console.warn("[expire-pending-payment-bookings] customer notify failed", booking.id, notifyErr);
+      }
     } catch (err) {
       // Best-effort: one bad row must not halt the sweep.
       console.warn("[expire-pending-payment-bookings] release failed", booking.id, err);

@@ -32,16 +32,19 @@ export async function fetchProviderContactDisclosure(
 }
 
 /** Salon location subtitle when street address may be redacted. */
-export function formatPublicLocationSubtitle(loc: {
-  address_line1?: string | null;
-  address_line2?: string | null;
-  city?: string | null;
-  state?: string | null;
-  country?: string | null;
-}): string {
+export function formatPublicLocationSubtitle(
+  loc: {
+    address_line1?: string | null;
+    address_line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    country?: string | null;
+  },
+  emptyFallback = "Service area",
+): string {
   if (loc.address_line1?.trim()) {
     return [loc.address_line1, loc.address_line2, loc.city, loc.state, loc.country].filter(Boolean).join(", ");
   }
   const area = [loc.city, loc.state, loc.country].filter(Boolean).join(", ");
-  return area || "Service area";
+  return area || emptyFallback;
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -22,6 +24,7 @@ interface SetupStatus {
 }
 
 export function QuickStartBanner() {
+  const { t } = useTranslation();
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -129,18 +132,18 @@ export function QuickStartBanner() {
           <Sparkles className="w-5 h-5 text-primary mt-0.5" />
           <div className="flex-1">
             <AlertTitle className="text-lg font-semibold text-gray-900 mb-2">
-              Complete Your Setup to Start Accepting Bookings
+              {t("web.providerExtras.completeSetupTitle")}
             </AlertTitle>
             <AlertDescription className="text-gray-700 mb-3">
               {remainingRequiredSteps > 0
-                ? `You have ${remainingRequiredSteps} required step${remainingRequiredSteps > 1 ? "s" : ""} remaining. Complete them to start making money!`
-                : "You're almost there! Complete your setup to start accepting bookings."}
+                ? t("web.providerExtras.stepsRemaining", { count: remainingRequiredSteps })
+                : t("web.providerExtras.almostThere")}
             </AlertDescription>
             <div className="flex items-center gap-4 mb-3">
               <div className="flex-1 max-w-xs">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs text-gray-600">
-                    {setupStatus.completionPercentage}% Complete
+                    {t("web.providerExtras.percentComplete", { percent: setupStatus.completionPercentage })}
                   </span>
                 </div>
                 <Progress
@@ -150,8 +153,8 @@ export function QuickStartBanner() {
               </div>
               <Link href="/provider/get-started">
                 <Button className="bg-primary hover:bg-primary-hover text-white">
-                  Complete Setup
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  {t("web.providerExtras.completeSetup")}
+                  <ArrowRight className="w-4 h-4 ms-2" />
                 </Button>
               </Link>
             </div>

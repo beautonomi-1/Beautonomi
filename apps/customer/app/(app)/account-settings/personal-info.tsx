@@ -25,6 +25,7 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { useEmailChangeOtp } from "@/lib/auth/useEmailChangeOtp";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -405,7 +406,7 @@ export default function PersonalInfoScreen() {
               </Text>
               <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{pi("emergencyContactManageHint")}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -451,7 +452,7 @@ export default function PersonalInfoScreen() {
                   autoCapitalize="none"
                 />
                 <View style={{ flexDirection: "row", marginTop: 4 }}>
-                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginEnd: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                     <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => void emailChange.sendCode()} disabled={emailChange.sending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
@@ -475,7 +476,7 @@ export default function PersonalInfoScreen() {
                   accessibilityLabelPrefix="Email change verification code"
                 />
                 <View style={{ flexDirection: "row", marginTop: 16 }}>
-                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                  <TouchableOpacity onPress={() => { setShowEmailModal(false); emailChange.reset(); }} style={{ flex: 1, marginEnd: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                     <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => void emailChange.verifyCode()} disabled={emailChange.verifying} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
@@ -517,7 +518,7 @@ export default function PersonalInfoScreen() {
                     accessibilityLabel={pi("newPhonePlaceholder")}
                   />
                   <View style={{ flexDirection: "row", marginTop: 16 }}>
-                    <TouchableOpacity onPress={() => setShowPhoneModal(false)} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                    <TouchableOpacity onPress={() => setShowPhoneModal(false)} style={{ flex: 1, marginEnd: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                       <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={handleSendPhoneOtp} disabled={phoneSending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
@@ -587,7 +588,7 @@ export default function PersonalInfoScreen() {
                     </TouchableOpacity>
                   </View>
                   <View style={{ flexDirection: "row" }}>
-                    <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); setPhoneResendCooldown(0); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                    <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); setPhoneResendCooldown(0); }} style={{ flex: 1, marginEnd: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                       <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{t("common.back")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => void handleVerifyPhoneOtp()} disabled={phoneVerifying || !isCompleteSupabaseSmsOtp(phoneOtpCode)} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>

@@ -11,6 +11,8 @@ import {
   type ProviderPaymentSummaryRow,
 } from "@/components/payment/ProviderPaymentSuccessCard";
 import { downloadPdf } from "@/lib/pdf-file";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 /** Auto-return delay so the user lands back in the app like the booking success flow. */
 const AUTO_RETURN_MS = 3200;
@@ -23,13 +25,15 @@ function pickStr(value: unknown): string {
 
 function formatMoney(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+    return new Intl.NumberFormat(getDefaultMoneyLocale(), { style: "currency", currency }).format(amount);
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }
 }
 
 export default function AdsPaymentSuccessScreen() {
+  const { t } = useTranslation();
+  const ads = (key: string) => t(`provider.mobile.screens.adsPaymentSuccess.${key}`) as string;
   const router = useRouter();
   const params = useLocalSearchParams<{
     campaign_id?: string;
@@ -47,10 +51,8 @@ export default function AdsPaymentSuccessScreen() {
   const amountRaw = pickStr(params.amount);
   const currency = pickStr(params.currency) || "ZAR";
   const productLabel = pickStr(params.product_label);
-  const title = pickStr(params.title) || "Your ad is live";
-  const body =
-    pickStr(params.body) ||
-    "Payment successful. Your sponsored placement is now active and ready to reach customers.";
+  const title = pickStr(params.title) || ads("defaultTitle");
+  const body = pickStr(params.body) || ads("defaultBody");
 
   const amount = amountRaw ? Number(amountRaw) : NaN;
   const hasAmount = Number.isFinite(amount);
@@ -58,15 +60,15 @@ export default function AdsPaymentSuccessScreen() {
   const summaryRows = useMemo((): ProviderPaymentSummaryRow[] => {
     const rows: ProviderPaymentSummaryRow[] = [];
     if (productLabel) {
-      rows.push({ icon: "megaphone-outline", label: "Product", value: productLabel });
+      rows.push({ icon: "megaphone-outline", label: ads("product"), value: productLabel });
     }
     if (hasAmount) {
-      rows.push({ icon: "cash-outline", label: "Amount paid", value: formatMoney(amount, currency) });
+      rows.push({ icon: "cash-outline", label: ads("amountPaid"), value: formatMoney(amount, currency) });
     }
     if (reference) {
       rows.push({
         icon: "document-text-outline",
-        label: "Payment reference",
+        label: ads("paymentReference"),
         value: reference,
         valueSelectable: true,
       });
@@ -74,13 +76,13 @@ export default function AdsPaymentSuccessScreen() {
     if (orderId) {
       rows.push({
         icon: "receipt-outline",
-        label: "Order",
+        label: ads("order"),
         value: orderId.slice(0, 8) + "…",
         valueSelectable: true,
       });
     }
     return rows;
-  }, [productLabel, hasAmount, amount, currency, reference, orderId]);
+  }, [productLabel, hasAmount, amount, currency, reference, orderId, t]);
 
   const adsParams = useMemo(() => {
     const query: Record<string, string> = { payment_success: "1" };
@@ -108,7 +110,7 @@ export default function AdsPaymentSuccessScreen() {
 
   const downloadReceipt = useCallback(async () => {
     if (!orderId) {
-      Alert.alert("Receipt unavailable", "No order found for this payment.");
+      Alert.alert(ads("receiptUnavailableTitle"), ads("receiptUnavailableBody"));
       return;
     }
     setDownloadingReceipt(true);
@@ -119,12 +121,12 @@ export default function AdsPaymentSuccessScreen() {
         pdfPath: `/api/provider/ads/orders/${orderId}/receipt/pdf`,
         signedUrlPath: `/api/provider/ads/orders/${orderId}/receipt/signed-url`,
         filename: `ad-receipt-${orderId}.pdf`,
-        title: "Receipt",
+        title: ads("receipt"),
       });
     } finally {
       setDownloadingReceipt(false);
     }
-  }, [orderId, router]);
+  }, [orderId, router, t]);
 
   useEffect(() => {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -142,16 +144,16 @@ export default function AdsPaymentSuccessScreen() {
           title={title}
           body={body}
           summaryRows={summaryRows.length > 0 ? summaryRows : undefined}
-          footerHint="Returning to your ads dashboard in a few seconds…"
+          footerHint={ads("footerHint")}
         />
         <View style={twStyle("mt-4 w-full max-w-sm gap-3")}>
           <TouchableOpacity
             onPress={goToAds}
             style={twStyle("w-full items-center rounded-2xl bg-emerald-600 px-5 py-4")}
             accessibilityRole="button"
-            accessibilityLabel="View ads dashboard"
+            accessibilityLabel={ads("viewAdsDashboard")}
           >
-            <Text style={twStyle("text-sm font-bold text-white")}>View ads dashboard</Text>
+            <Text style={twStyle("text-sm font-bold text-white")}>{ads("viewAdsDashboard")}</Text>
           </TouchableOpacity>
           {orderId ? (
             <TouchableOpacity
@@ -159,11 +161,11 @@ export default function AdsPaymentSuccessScreen() {
               disabled={downloadingReceipt}
               style={twStyle("w-full flex-row items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-5 py-3.5")}
               accessibilityRole="button"
-              accessibilityLabel="Download receipt"
+              accessibilityLabel={ads("downloadReceipt")}
             >
               <Ionicons name="download-outline" size={16} color="#047857" />
               <Text style={twStyle("text-sm font-semibold text-emerald-700")}>
-                {downloadingReceipt ? "Opening receipt…" : "Download receipt"}
+                {downloadingReceipt ? ads("openingReceipt") : ads("downloadReceipt")}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -171,9 +173,9 @@ export default function AdsPaymentSuccessScreen() {
             onPress={goToDashboard}
             style={twStyle("w-full items-center rounded-2xl px-5 py-3")}
             accessibilityRole="button"
-            accessibilityLabel="Go to dashboard"
+            accessibilityLabel={ads("goToDashboard")}
           >
-            <Text style={twStyle("text-sm font-semibold text-gray-500")}>Go to dashboard</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-500")}>{ads("goToDashboard")}</Text>
           </TouchableOpacity>
         </View>
       </LinearGradient>

@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Privacy Policy",
-  description: "Read Beautonomi's Privacy Policy and how we handle your data.",
-  alternates: {
-    canonical: "/privacy-policy",
-    languages: getHreflangAlternateUrls("/privacy-policy"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/privacy-policy",
+    titleKey: "web.seo.privacyTitle",
+    descriptionKey: "web.seo.privacyDescription",
+  });
+}
 
 export default function PrivacyPolicyLayout({ children }: { children: React.ReactNode }) {
   return children;

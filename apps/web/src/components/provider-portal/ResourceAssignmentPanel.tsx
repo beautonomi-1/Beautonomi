@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Resource {
   id: string;
@@ -45,6 +46,7 @@ export default function ResourceAssignmentPanel({
   bookingTime: _bookingTime,
   onUpdate,
 }: ResourceAssignmentPanelProps) {
+  const { t } = useTranslation();
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
   const [assignedResources, setAssignedResources] = useState<BookingResource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +61,7 @@ export default function ResourceAssignmentPanel({
       const list = response.data ?? response.resources ?? [];
       setAvailableResources(Array.isArray(list) ? list : []);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to load resources");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.resourceAssignment.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -91,13 +93,13 @@ export default function ResourceAssignmentPanel({
         resource_id: selectedResourceId,
       });
 
-      toast.success("Resource assigned successfully");
+      toast.success(t("web.provider.portal.resourceAssignment.assigned"));
       setSelectedResourceId("");
       loadAssignedResources();
       onUpdate?.();
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Failed to assign resource";
-      toast.error(msg.includes("not available") ? "This resource is not available at this time" : msg);
+      const msg = error instanceof Error ? error.message : t("web.provider.portal.resourceAssignment.assignFailed");
+      toast.error(msg.includes("not available") ? t("web.provider.portal.resourceAssignment.notAvailable") : msg);
     } finally {
       setIsLoading(false);
     }
@@ -109,11 +111,11 @@ export default function ResourceAssignmentPanel({
       await fetcher.delete(
         `/api/provider/bookings/${bookingId}/resources/${resourceId}`
       );
-      toast.success("Resource removed successfully");
+      toast.success(t("web.provider.portal.resourceAssignment.removed"));
       loadAssignedResources();
       onUpdate?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to remove resource");
+      toast.error(error instanceof Error ? error.message : t("web.provider.portal.resourceAssignment.removeFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -126,16 +128,16 @@ export default function ResourceAssignmentPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Resource Assignment</CardTitle>
+        <CardTitle>{t("web.provider.portal.resourceAssignment.title")}</CardTitle>
         <CardDescription>
-          Assign resources (rooms, equipment) to this booking
+          {t("web.provider.portal.resourceAssignment.description")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Assigned Resources */}
         {assignedResources.length > 0 && (
           <div className="space-y-2">
-            <Label>Assigned Resources</Label>
+            <Label>{t("web.provider.portal.resourceAssignment.assignedLabel")}</Label>
             <div className="space-y-2">
               {assignedResources.map((resource) => (
                 <div
@@ -163,18 +165,18 @@ export default function ResourceAssignmentPanel({
         {/* Assign New Resource */}
         {unassignedResources.length > 0 && (
           <div className="space-y-2">
-            <Label>Assign Resource</Label>
+            <Label>{t("web.provider.portal.resourceAssignment.assignLabel")}</Label>
             <div className="flex gap-2">
               <Select value={selectedResourceId} onValueChange={setSelectedResourceId}>
                 <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Select a resource" />
+                  <SelectValue placeholder={t("web.provider.portal.resourceAssignment.selectPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {unassignedResources.map((resource) => (
                     <SelectItem key={resource.id} value={resource.id}>
                       {resource.name}
                       {resource.group_name && (
-                        <span className="text-gray-500 ml-2">
+                        <span className="text-gray-500 ms-2">
                           ({resource.group_name})
                         </span>
                       )}
@@ -187,8 +189,8 @@ export default function ResourceAssignmentPanel({
                 disabled={!selectedResourceId || isLoading}
                 className="bg-primary hover:bg-primary-hover"
               >
-                <Plus className="w-4 h-4 mr-1" />
-                Assign
+                <Plus className="w-4 h-4 me-1" />
+                {t("web.provider.portal.resourceAssignment.assign")}
               </Button>
             </div>
           </div>
@@ -197,7 +199,7 @@ export default function ResourceAssignmentPanel({
         {availableResources.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-            <p className="text-sm">No resources available</p>
+            <p className="text-sm">{t("web.provider.portal.resourceAssignment.empty")}</p>
           </div>
         )}
       </CardContent>

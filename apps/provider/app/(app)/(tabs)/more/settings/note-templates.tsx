@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -35,13 +36,19 @@ interface NoteTemplate {
 }
 
 const TYPE_OPTIONS = [
-  { label: "Internal", value: "internal" },
-  { label: "Client Visible", value: "client_visible" },
+  { labelKey: "typeInternal", value: "internal" },
+  { labelKey: "typeClientVisible", value: "client_visible" },
 ];
 
 type FilterType = "all" | "internal" | "client_visible";
 
 export default function NoteTemplatesScreen() {
+  const { t } = useTranslation();
+  const nt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.noteTemplates." + key, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -135,7 +142,7 @@ export default function NoteTemplatesScreen() {
 
   async function handleSave() {
     if (!form.name.trim() || !form.content.trim()) {
-      Alert.alert("Required", "Name and content are required");
+      Alert.alert(nt("requiredTitle"), nt("requiredBody"));
       return;
     }
     const payload = {
@@ -150,13 +157,13 @@ export default function NoteTemplatesScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(nt("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createTemplate(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(nt("errorTitle"), error);
         return;
       }
     }
@@ -167,13 +174,13 @@ export default function NoteTemplatesScreen() {
 
   async function handleDuplicate(tmpl: NoteTemplate) {
     const { error } = await createTemplate({
-      name: `${tmpl.name} (Copy)`,
+      name: nt("copyName", { name: tmpl.name }),
       content: tmpl.content,
       type: tmpl.type,
       category: tmpl.category,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(nt("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -183,20 +190,20 @@ export default function NoteTemplatesScreen() {
   async function handleCopyContent(tmpl: NoteTemplate) {
     await Clipboard.setStringAsync(tmpl.content);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Copied", "Template content copied to clipboard");
+    Alert.alert(nt("copiedTitle"), nt("copiedBody"));
   }
 
   function handleDelete(tmpl: NoteTemplate) {
-    Alert.alert("Delete Template", `Delete "${tmpl.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(nt("deleteTitle"), nt("deleteBody", { name: tmpl.name }), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: t("common.delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteTemplate(
             `/api/provider/note-templates/${tmpl.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(nt("errorTitle"), error);
           else refresh();
         },
       },
@@ -206,9 +213,9 @@ export default function NoteTemplatesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Note Templates"
+        title={nt("title")}
         showBack
-        subtitle={`${templates?.length ?? 0} templates`}
+        subtitle={nt("subtitle", { count: templates?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -221,9 +228,9 @@ export default function NoteTemplatesScreen() {
 
       {templates && templates.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Internal"
+              title={nt("statInternal")}
               value={String(internalCount)}
               icon="lock-closed-outline"
               iconColor="#6366f1"
@@ -233,7 +240,7 @@ export default function NoteTemplatesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Client Visible"
+              title={nt("statClientVisible")}
               value={String(clientVisibleCount)}
               icon="eye-outline"
               iconColor="#22c55e"
@@ -249,14 +256,14 @@ export default function NoteTemplatesScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search templates..."
+            placeholder={nt("searchPlaceholder")}
           />
           <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
-                { label: "All", value: "all" },
-                { label: "Internal", value: "internal" },
-                { label: "Client Visible", value: "client_visible" },
+                { label: nt("filterAll"), value: "all" },
+                { label: nt("typeInternal"), value: "internal" },
+                { label: nt("typeClientVisible"), value: "client_visible" },
               ]}
               selected={filterType}
               onSelect={(v) => setFilterType(v as FilterType)}
@@ -276,7 +283,7 @@ export default function NoteTemplatesScreen() {
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat}
-                style={[twStyle("rounded-full bg-indigo-50 px-3 py-1.5"), { marginRight: 8 }]}
+                style={[twStyle("rounded-full bg-indigo-50 px-3 py-1.5"), { marginEnd: 8 }]}
                 onPress={() => setSearch(cat)}
               >
                 <Text style={twStyle("text-xs font-medium text-indigo-600")}>
@@ -293,11 +300,11 @@ export default function NoteTemplatesScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="document-text-outline"
-          title={search || filterType !== "all" ? "No matches" : "No templates"}
+          title={search || filterType !== "all" ? nt("emptyFilteredTitle") : nt("emptyTitle")}
           description={
             search || filterType !== "all"
-              ? "Try different filters"
-              : "Create reusable note templates for bookings"
+              ? nt("emptyFilteredBody")
+              : nt("emptyBody")
           }
         />
       ) : (
@@ -329,9 +336,9 @@ export default function NoteTemplatesScreen() {
                     {tmpl.content}
                   </Text>
                 </View>
-                <View style={twStyle("ml-2 flex-row items-center")}>
+                <View style={twStyle("ms-2 flex-row items-center")}>
                   <TouchableOpacity
-                    style={[twStyle("p-1"), { marginRight: 4 }]}
+                    style={[twStyle("p-1"), { marginEnd: 4 }]}
                     onPress={() => handleCopyContent(tmpl)}
                   >
                     <Ionicons
@@ -341,7 +348,7 @@ export default function NoteTemplatesScreen() {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[twStyle("p-1"), { marginRight: 4 }]}
+                    style={[twStyle("p-1"), { marginEnd: 4 }]}
                     onPress={() => handleDuplicate(tmpl)}
                   >
                     <Ionicons
@@ -366,7 +373,7 @@ export default function NoteTemplatesScreen() {
                 <View
                   style={[twStyle(`rounded-full px-2 py-0.5 ${
                     tmpl.type === "internal" ? "bg-indigo-50" : "bg-green-50"
-                  }`), { marginRight: 8 }]}
+                  }`), { marginEnd: 8 }]}
                 >
                   <Text
                     style={twStyle(`text-[10px] font-medium ${
@@ -375,7 +382,7 @@ export default function NoteTemplatesScreen() {
                         : "text-green-600"
                     }`)}
                   >
-                    {tmpl.type === "internal" ? "Internal" : "Client Visible"}
+                    {tmpl.type === "internal" ? nt("typeInternal") : nt("typeClientVisible")}
                   </Text>
                 </View>
                 {tmpl.category && (
@@ -395,39 +402,39 @@ export default function NoteTemplatesScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Template" : "New Template"}
+        title={editing ? nt("editTitle") : nt("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Name *
+            {nt("nameLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Post-Treatment Care"
+            placeholder={nt("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Content *
+            {nt("contentLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.content}
             onChangeText={(t) => setForm((p) => ({ ...p, content: t }))}
-            placeholder="Template content..."
+            placeholder={nt("contentPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
             textAlignVertical="top"
           />
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Type</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{nt("typeLabel")}</Text>
           <View style={twStyle("mb-3 flex-row")}>
             {TYPE_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
                 style={[twStyle(`rounded-full px-4 py-2 ${
                   form.type === opt.value ? "bg-indigo-600" : "bg-gray-100"
-                }`), { marginRight: 8 }]}
+                }`), { marginEnd: 8 }]}
                 onPress={() => setForm((p) => ({ ...p, type: opt.value }))}
               >
                 <Text
@@ -437,25 +444,25 @@ export default function NoteTemplatesScreen() {
                       : "text-gray-700"
                   }`)}
                 >
-                  {opt.label}
+                  {nt(opt.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Category
+            {nt("categoryLabel")}
           </Text>
           <ChipCombobox
             singleSelect
             value={form.category || null}
             onChange={(v) => setForm((p) => ({ ...p, category: v ?? "" }))}
             staticSuggestions={categories.map((c) => ({ value: c, label: c }))}
-            placeholder="e.g. Aftercare, Booking notes"
-            accessibilityLabel="Category"
+            placeholder={nt("categoryPlaceholder")}
+            accessibilityLabel={nt("categoryA11y")}
           />
           <View style={twStyle("mt-2")}>
             <ActionButton
-              label={editing ? "Update" : "Create"}
+              label={editing ? nt("update") : nt("create")}
               onPress={handleSave}
               loading={creating || updating}
               fullWidth
@@ -468,7 +475,7 @@ export default function NoteTemplatesScreen() {
       <BottomSheet
         visible={showPreview}
         onClose={() => setShowPreview(false)}
-        title="Template Preview"
+        title={nt("previewTitle")}
       >
         {previewing && (
           <View>
@@ -481,9 +488,9 @@ export default function NoteTemplatesScreen() {
               </Text>
             </View>
             <View style={twStyle("mt-3 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+              <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
                 <ActionButton
-                  label="Copy Content"
+                  label={nt("copyContent")}
                   onPress={() => handleCopyContent(previewing)}
                   variant="outline"
                   fullWidth
@@ -491,7 +498,7 @@ export default function NoteTemplatesScreen() {
               </View>
               <View style={twStyle("flex-1")}>
                 <ActionButton
-                  label="Edit"
+                  label={t("common.edit")}
                   onPress={() => {
                     setShowPreview(false);
                     openEdit(previewing);

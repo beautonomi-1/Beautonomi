@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -57,6 +58,12 @@ const ICON_OPTIONS = [
 ];
 
 export default function ServiceCategoriesScreen() {
+  const { t } = useTranslation();
+  const sc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.serviceCategories." + key, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
@@ -136,7 +143,7 @@ export default function ServiceCategoriesScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Name is required");
+      Alert.alert(sc("requiredTitle"), sc("requiredBody"));
       return;
     }
     const payload = {
@@ -151,13 +158,13 @@ export default function ServiceCategoriesScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sc("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createCat(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(sc("errorTitle"), error);
         return;
       }
     }
@@ -170,21 +177,21 @@ export default function ServiceCategoriesScreen() {
     const { error } = await updateCat(`/api/provider/categories/${cat.id}`, {
       is_active: !cat.is_active,
     });
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(sc("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(cat: Category) {
-    Alert.alert("Delete", `Remove "${cat.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(sc("deleteTitle"), sc("deleteBody", { name: cat.name }), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: t("common.delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteCat(
             `/api/provider/categories/${cat.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(sc("errorTitle"), error);
           else refresh();
         },
       },
@@ -195,26 +202,26 @@ export default function ServiceCategoriesScreen() {
     const items: (| { type: "header"; title: string; id: string }
       | (Category & { type: "own" | "global" }))[] = [];
     if (filteredOwn.length) {
-      items.push({ type: "header", title: "Your Categories", id: "h-own" });
+      items.push({ type: "header", title: sc("yourCategories"), id: "h-own" });
       filteredOwn.forEach((c) => items.push({ ...c, type: "own" }));
     }
     if (filteredGlobal.length) {
       items.push({
         type: "header",
-        title: "Platform Categories",
+        title: sc("platformCategories"),
         id: "h-global",
       });
       filteredGlobal.forEach((c) => items.push({ ...c, type: "global" }));
     }
     return items;
-  }, [filteredOwn, filteredGlobal]);
+  }, [filteredOwn, filteredGlobal, sc]);
 
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Service Categories"
+        title={sc("title")}
         showBack
-        subtitle={`${allCats.length} categories`}
+        subtitle={sc("subtitle", { count: allCats.length })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -227,9 +234,9 @@ export default function ServiceCategoriesScreen() {
 
       {allCats.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Categories"
+              title={sc("statCategories")}
               value={String(allCats.length)}
               icon="grid-outline"
               iconColor="#6366f1"
@@ -239,7 +246,7 @@ export default function ServiceCategoriesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Services"
+              title={sc("statServices")}
               value={String(totalServices)}
               icon="briefcase-outline"
               iconColor="#22c55e"
@@ -255,7 +262,7 @@ export default function ServiceCategoriesScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search categories..."
+            placeholder={sc("searchPlaceholder")}
           />
         </View>
       )}
@@ -310,22 +317,22 @@ export default function ServiceCategoriesScreen() {
                       />
                     )}
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <View style={twStyle("flex-row items-center")}>
-                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
+                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>
                         {cat.name}
                       </Text>
                       {!cat.is_active && (
-                        <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginEnd: 8 }]}>
                           <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
-                            Inactive
+                            {sc("inactive")}
                           </Text>
                         </View>
                       )}
                       {cat.type === "global" && (
                         <View style={twStyle("rounded-full bg-blue-50 px-2 py-0.5")}>
                           <Text style={twStyle("text-[10px] font-medium text-blue-600")}>
-                            Platform
+                            {sc("platform")}
                           </Text>
                         </View>
                       )}
@@ -340,15 +347,14 @@ export default function ServiceCategoriesScreen() {
                     )}
                     {cat.service_count !== undefined && (
                       <Text style={twStyle("mt-0.5 text-xs text-indigo-500")}>
-                        {cat.service_count} service
-                        {cat.service_count !== 1 ? "s" : ""}
+                        {sc("serviceCount", { count: cat.service_count })}
                       </Text>
                     )}
                   </View>
                   {cat.type === "own" && (
                     <View style={twStyle("flex-row items-center")}>
                       <TouchableOpacity
-                        style={{ marginRight: 8 }}
+                        style={{ marginEnd: 8 }}
                         onPress={() => handleToggleActive(cat)}
                       >
                         <Ionicons
@@ -377,11 +383,11 @@ export default function ServiceCategoriesScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="grid-outline"
-              title={search ? "No matches" : "No categories"}
+              title={search ? sc("emptyFilteredTitle") : sc("emptyTitle")}
               description={
                 search
-                  ? "Try a different search"
-                  : "Add categories to organize your services"
+                  ? sc("emptyFilteredBody")
+                  : sc("emptyBody")
               }
             />
           }
@@ -391,31 +397,31 @@ export default function ServiceCategoriesScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Category" : "New Category"}
+        title={editing ? sc("editTitle") : sc("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Name *
+            {sc("nameLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Hair, Nails, Skin"
+            placeholder={sc("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {sc("description")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional..."
+            placeholder={sc("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Icon</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{sc("icon")}</Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {ICON_OPTIONS.map((icon) => (
               <TouchableOpacity
@@ -424,7 +430,7 @@ export default function ServiceCategoriesScreen() {
                   form.icon === icon
                     ? "bg-indigo-100 border-2 border-indigo-500"
                     : "bg-gray-100"
-                }`), { marginRight: 8, marginBottom: 8 }]}
+                }`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() => setForm((p) => ({ ...p, icon }))}
               >
                 <Ionicons
@@ -436,7 +442,7 @@ export default function ServiceCategoriesScreen() {
             ))}
           </View>
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{sc("active")}</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -445,7 +451,7 @@ export default function ServiceCategoriesScreen() {
             />
           </View>
           <ActionButton
-            label={editing ? "Update Category" : "Create Category"}
+            label={editing ? sc("updateCategory") : sc("createCategory")}
             onPress={handleSave}
             loading={creating || updatingCat}
             fullWidth

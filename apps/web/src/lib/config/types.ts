@@ -20,6 +20,8 @@ export interface TenantRegionMeta {
   phone_country_code: string;
   /** `public.regions.id` when migration 377 is applied and region_code matches. */
   region_id?: string;
+  /** Market language allowlist from `regions.supported_languages` (BCP-47-ish codes). */
+  supported_languages?: string[];
   /** Primary online payment gateway for the region (e.g. "paystack", "stripe"). */
   payment_gateway?: string;
   /**

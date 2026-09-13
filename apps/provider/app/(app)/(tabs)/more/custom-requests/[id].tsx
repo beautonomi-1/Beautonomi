@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import * as Haptics from "expo-haptics";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -128,6 +129,12 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function CustomRequestDetailScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const cr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.customRequestDetail.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId, provider: providerFromContext } = useProvider();
   const providerTz = providerFromContext?.timezone ?? null;
   const tenantCurrency = getTenantDefaultCurrency();
@@ -373,16 +380,16 @@ export default function CustomRequestDetailScreen() {
         ? await api.patch(`/api/provider/custom-offers/${editingOfferId}`, payload)
         : await api.post(`/api/provider/custom-requests/${requestId}/offers`, payload);
       if ((res as { error?: { message?: string } }).error) {
-        const msg = (res as { error: { message?: string } }).error.message ?? (editingOfferId ? "Failed to update offer" : "Failed to send offer");
-        Alert.alert("Error", msg);
+        const msg = (res as { error: { message?: string } }).error.message ?? (editingOfferId ? cr("updateOfferFailed") : cr("sendOfferFailed"));
+        Alert.alert(cr("errorTitle"), msg);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(editingOfferId ? "Offer updated" : "Offer sent", editingOfferId ? "The customer will be notified of your revised offer." : "The customer will be notified and can accept the offer.", [
-        { text: "OK", onPress: () => { setEditingOfferId(null); router.back(); } },
+      Alert.alert(editingOfferId ? cr("offerUpdatedTitle") : cr("offerSentTitle"), editingOfferId ? cr("offerUpdatedBody") : cr("offerSentBody"), [
+        { text: cr("ok"), onPress: () => { setEditingOfferId(null); router.back(); } },
       ]);
     } catch (e: unknown) {
-      Alert.alert("Error", e instanceof Error ? e.message : (editingOfferId ? "Failed to update offer" : "Failed to send offer"));
+      Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : (editingOfferId ? cr("updateOfferFailed") : cr("sendOfferFailed")));
     } finally {
       setSubmitting(false);
     }
@@ -406,17 +413,18 @@ export default function CustomRequestDetailScreen() {
     requestCurrency,
     router,
     editingOfferId,
+    cr,
   ]);
 
   const declineRequest = useCallback(() => {
     if (!requestId) return;
     Alert.prompt?.(
-      "Decline request",
-      "Optionally tell the customer why you cannot fulfil this request.",
+      cr("declineRequest"),
+      cr("declineRequestPrompt"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cr("cancel"), style: "cancel" },
         {
-          text: "Decline",
+          text: cr("decline"),
           style: "destructive",
           onPress: async (reason?: string) => {
             try {
@@ -424,39 +432,39 @@ export default function CustomRequestDetailScreen() {
                 reason: reason?.trim() || null,
               });
               if (res.error) {
-                Alert.alert("Error", (res.error as { message?: string }).message ?? "Failed to decline request");
+                Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               router.back();
             } catch (e) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Failed to decline request");
+              Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
             }
           },
         },
       ],
       "plain-text",
-    ) ?? Alert.alert("Decline request", "Are you sure you want to decline this custom request?", [
-      { text: "Cancel", style: "cancel" },
+    ) ?? Alert.alert(cr("declineRequest"), cr("declineConfirmBody"), [
+      { text: cr("cancel"), style: "cancel" },
       {
-        text: "Decline",
+        text: cr("decline"),
         style: "destructive",
         onPress: async () => {
           try {
             const res = await api.post(`/api/provider/custom-requests/${requestId}/decline`, {});
             if (res.error) {
-              Alert.alert("Error", (res.error as { message?: string }).message ?? "Failed to decline request");
+              Alert.alert(cr("errorTitle"), (res.error as { message?: string }).message ?? cr("declineFailed"));
               return;
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             router.back();
           } catch (e) {
-            Alert.alert("Error", e instanceof Error ? e.message : "Failed to decline request");
+            Alert.alert(cr("errorTitle"), e instanceof Error ? e.message : cr("declineFailed"));
           }
         },
       },
     ]);
-  }, [requestId, router]);
+  }, [requestId, router, cr]);
 
   const openOfferDetail = useCallback(async (offerId: string) => {
     setOfferDetailData(null);
@@ -475,9 +483,9 @@ export default function CustomRequestDetailScreen() {
   if (!requestId) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Request" onBack={() => router.back()} />
+        <ScreenHeader title={cr("requestTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message="Request not found" />
+          <ErrorState message={cr("requestNotFound")} />
         </View>
       </ScreenContainer>
     );
@@ -486,7 +494,7 @@ export default function CustomRequestDetailScreen() {
   if (detailLoading && !request) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Request" onBack={() => router.back()} />
+        <ScreenHeader title={cr("requestTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center")}>
           <ActivityIndicator size="large" />
         </View>
@@ -497,12 +505,12 @@ export default function CustomRequestDetailScreen() {
   if (detailError || !request) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Request" onBack={() => router.back()} />
+        <ScreenHeader title={cr("requestTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState
-            message={detailError ?? "Request not found"}
+            message={detailError ?? cr("requestNotFound")}
             onRetry={refresh}
-            retryLabel="Retry"
+            retryLabel={cr("retry")}
           />
         </View>
       </ScreenContainer>
@@ -512,8 +520,8 @@ export default function CustomRequestDetailScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Custom request"
-        subtitle={request.customer?.full_name ?? request.customer?.email ?? "Customer"}
+        title={cr("customRequestTitle")}
+        subtitle={request.customer?.full_name ?? request.customer?.email ?? cr("customerFallback")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -523,7 +531,7 @@ export default function CustomRequestDetailScreen() {
       >
         <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4")}>
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>Request</Text>
+            <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>{cr("requestSection")}</Text>
             {request.status ? (
               <View style={twStyle("rounded-full bg-white px-2 py-0.5")}>
                 <Text style={twStyle("text-xs font-semibold capitalize text-gray-800")}>{request.status}</Text>
@@ -535,73 +543,75 @@ export default function CustomRequestDetailScreen() {
               onPress={declineRequest}
               style={twStyle("mb-3 self-start rounded-lg border border-red-200 bg-red-50 px-3 py-2")}
             >
-              <Text style={twStyle("text-sm font-semibold text-red-700")}>Decline request</Text>
+              <Text style={twStyle("text-sm font-semibold text-red-700")}>{cr("declineRequest")}</Text>
             </TouchableOpacity>
           ) : null}
-          <Text style={twStyle("mt-1 text-base text-gray-900")}>{request.description ?? "—"}</Text>
+          <Text style={twStyle("mt-1 text-base text-gray-900")}>{request.description ?? cr("emDash")}</Text>
           {request.status === "declined" && request.declined_reason ? (
             <View style={twStyle("mt-3 rounded-lg border border-red-200 bg-red-50 p-3")}>
-              <Text style={twStyle("text-sm text-red-800")}>Declined: {request.declined_reason}</Text>
+              <Text style={twStyle("text-sm text-red-800")}>{cr("declinedReason", { reason: request.declined_reason })}</Text>
             </View>
           ) : null}
           {(request.service_name || request.service_category?.name) ? (
             <View style={twStyle("mt-2 flex-row flex-wrap")}>
               {request.service_category?.name ? (
-                <View style={twStyle("mr-2 mb-2 rounded-full bg-white px-2 py-1")}>
+                <View style={twStyle("me-2 mb-2 rounded-full bg-white px-2 py-1")}>
                   <Text style={twStyle("text-xs font-medium text-gray-800")}>
-                    Category: {request.service_category.name}
+                    {cr("categoryLabel", { name: request.service_category.name })}
                   </Text>
                 </View>
               ) : null}
               {request.service_name ? (
                 <View style={twStyle("mb-2 rounded-full bg-white px-2 py-1")}>
                   <Text style={twStyle("text-xs font-medium text-gray-800")}>
-                    Service: {request.service_name}
+                    {cr("serviceLabel", { name: request.service_name })}
                   </Text>
                 </View>
               ) : null}
             </View>
           ) : null}
           {request.customer?.phone ? (
-            <Text style={twStyle("mt-2 text-sm text-gray-600")}>Customer phone: {request.customer.phone}</Text>
+            <Text style={twStyle("mt-2 text-sm text-gray-600")}>{cr("customerPhone", { phone: request.customer.phone })}</Text>
           ) : null}
           <View style={twStyle("mt-2 flex-row flex-wrap")}>
-            <Text style={[twStyle("text-sm text-gray-600"), { marginRight: 8, marginBottom: 8 }]}>
-              {request.location_type === "at_home" ? "At home" : "At salon"}
+            <Text style={[twStyle("text-sm text-gray-600"), { marginEnd: 8, marginBottom: 8 }]}>
+              {request.location_type === "at_home" ? cr("atHome") : cr("atSalon")}
             </Text>
             {request.duration_minutes != null && (
-              <Text style={[twStyle("text-sm text-gray-600"), { marginRight: 8, marginBottom: 8 }]}>· {request.duration_minutes} min</Text>
+              <Text style={[twStyle("text-sm text-gray-600"), { marginEnd: 8, marginBottom: 8 }]}>{cr("durationMinDot", { count: request.duration_minutes })}</Text>
             )}
             {(request.budget_min != null || request.budget_max != null) && (
               <Text style={twStyle("text-sm text-gray-600")}>
-                · Budget: {formatCurrency(Number(request.budget_min ?? 0), requestCurrency)} –{" "}
-                {formatCurrency(Number(request.budget_max ?? 0), requestCurrency)}
+                {cr("budgetRange", {
+                  min: formatCurrency(Number(request.budget_min ?? 0), requestCurrency),
+                  max: formatCurrency(Number(request.budget_max ?? 0), requestCurrency),
+                })}
               </Text>
             )}
           </View>
             {request.preferred_start_at && (
               <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-                Preferred: {formatDateTimeSafe(request.preferred_start_at)}
+                {cr("preferred", { datetime: formatDateTimeSafe(request.preferred_start_at) })}
               </Text>
             )}
             {request.location_type === "at_home" && (request.address_line1 || request.address_city) && (
               <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-                Address: {[request.address_line1, request.address_line2, request.address_city, request.address_state, request.address_postal_code, request.address_country].filter(Boolean).join(", ")}
+                {cr("addressLabel", { address: [request.address_line1, request.address_line2, request.address_city, request.address_state, request.address_postal_code, request.address_country].filter(Boolean).join(", ") })}
               </Text>
             )}
           </View>
 
         {request.attachments && request.attachments.length > 0 ? (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Attachments</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{cr("attachments")}</Text>
             <View style={twStyle("flex-row flex-wrap gap-2")}>
               {request.attachments.map((a) => (
                 <TouchableOpacity
                   key={a.id}
-                  onPress={() => pushInAppBrowser(router, a.url, "Attachment")}
+                  onPress={() => pushInAppBrowser(router, a.url, cr("attachmentTitle"))}
                   style={twStyle("overflow-hidden rounded-lg")}
                   accessibilityRole="button"
-                  accessibilityLabel="View attachment image"
+                  accessibilityLabel={cr("viewAttachmentA11y")}
                 >
                   <Image
                     source={{ uri: a.url }}
@@ -625,11 +635,11 @@ export default function CustomRequestDetailScreen() {
           const noneActive = allInactive && !request.offers!.some((o) => o.status === "paid");
           return (
           <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white p-4")}>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Offers</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{cr("offers")}</Text>
             {noneActive && canSendOffer ? (
               <View style={twStyle("mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2")}>
                 <Text style={twStyle("text-xs text-blue-800")}>
-                  {hasWithdrawnOrExpired ? "Your previous offer was withdrawn or expired." : "No active offer."} You can send a new one below.
+                  {hasWithdrawnOrExpired ? cr("previousOfferInactive") : cr("noActiveOffer")}
                 </Text>
               </View>
             ) : null}
@@ -649,30 +659,30 @@ export default function CustomRequestDetailScreen() {
                   <Text style={twStyle("text-sm font-medium text-gray-900")}>
                     {formatCurrency(Number(o.price ?? 0), o.currency ?? requestCurrency)}
                     {typeof o.travel_fee === "number" && o.travel_fee > 0
-                      ? `  + ${formatCurrency(o.travel_fee, o.currency ?? requestCurrency)} travel`
+                      ? cr("travelFeeAmount", { amount: formatCurrency(o.travel_fee, o.currency ?? requestCurrency) })
                       : ""}
                   </Text>
                   <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: statusBg }}>
                     <Text style={{ fontSize: 11, fontWeight: "600", color: statusColour, textTransform: "capitalize" }}>
-                      {o.status ?? "pending"}
+                      {o.status ?? cr("statusPending")}
                     </Text>
                   </View>
                 </View>
                 <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
-                  {o.duration_minutes != null ? `${o.duration_minutes} min` : ""}
+                  {o.duration_minutes != null ? cr("durationMin", { count: o.duration_minutes }) : ""}
                   {o.staff?.name ? ` · ${o.staff.name}` : ""}
                   {o.location?.name ? ` · ${o.location.name}` : ""}
                 </Text>
                 {o.expiration_at ? (
                   <Text style={[twStyle("text-xs mt-0.5"), { color: isInactive ? "#B45309" : "#6b7280" }]}>
-                    {isInactive && o.status !== "paid" && o.status !== "withdrawn" ? "Expired: " : "Expires: "}
+                    {isInactive && o.status !== "paid" && o.status !== "withdrawn" ? cr("expiredPrefix") : cr("expiresPrefix")}
                     {formatDateTimeSafe(o.expiration_at)}
                   </Text>
                 ) : null}
                 {o.notes ? (
                   <Text style={twStyle("text-xs text-gray-500 mt-1 italic")}>{o.notes}</Text>
                 ) : null}
-                <Text style={twStyle("text-[10px] text-gray-400 mt-1 text-right")}>Tap for full details</Text>
+                <Text style={twStyle("text-[10px] text-gray-400 mt-1 text-end")}>{cr("tapForDetails")}</Text>
               </TouchableOpacity>
               );
             })}
@@ -683,15 +693,15 @@ export default function CustomRequestDetailScreen() {
         {!canSendOffer ? (
           <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4")}>
             <Text style={twStyle("text-sm text-amber-900")}>
-              This request is {request.status ?? "closed"}. New offers cannot be sent from the app.
+              {cr("cannotSendOffers", { status: request.status ?? cr("statusClosed") })}
             </Text>
           </View>
         ) : (
           <>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>
-              {editingOfferId ? "Edit offer" : "Send offer"}
+              {editingOfferId ? cr("editOffer") : cr("sendOffer")}
             </Text>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price ({requestCurrency}) *</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("priceLabel", { currency: requestCurrency })}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={price}
@@ -701,7 +711,7 @@ export default function CustomRequestDetailScreen() {
               placeholderTextColor="#9ca3af"
             />
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (minutes) *</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("durationLabel")}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={durationMinutes}
@@ -711,7 +721,7 @@ export default function CustomRequestDetailScreen() {
               placeholderTextColor="#9ca3af"
             />
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Offer expires in (days)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("expiresInDays")}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={expirationDays}
@@ -723,7 +733,7 @@ export default function CustomRequestDetailScreen() {
 
             {request.location_type === "at_salon" && locations.length > 0 && (
               <>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue (optional)</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("venueOptional")}</Text>
                 <View style={twStyle("mb-3 flex-row flex-wrap")}>
                   {locations.map((loc) => (
                     <TouchableOpacity
@@ -731,7 +741,7 @@ export default function CustomRequestDetailScreen() {
                       onPress={() => setLocationId(locationId === loc.id ? null : loc.id)}
                       style={[twStyle(`rounded-xl border px-3 py-2 ${
                         locationId === loc.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                      }`), { marginRight: 8, marginBottom: 8 }]}
+                      }`), { marginEnd: 8, marginBottom: 8 }]}
                     >
                       <Text
                         style={twStyle(`text-sm ${locationId === loc.id ? "font-medium text-primary" : "text-gray-600"}`)}
@@ -746,7 +756,7 @@ export default function CustomRequestDetailScreen() {
 
             {staffList.length > 0 && (
               <>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Assigned staff (optional)</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("assignedStaffOptional")}</Text>
                 <View style={twStyle("mb-3 flex-row flex-wrap")}>
                   {staffList.map((s) => (
                     <TouchableOpacity
@@ -754,7 +764,7 @@ export default function CustomRequestDetailScreen() {
                       onPress={() => setStaffId(staffId === s.id ? null : s.id)}
                       style={[twStyle(`rounded-xl border px-3 py-2 ${
                         staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                      }`), { marginRight: 8, marginBottom: 8 }]}
+                      }`), { marginEnd: 8, marginBottom: 8 }]}
                     >
                       <Text
                         style={twStyle(`text-sm ${staffId === s.id ? "font-medium text-primary" : "text-gray-600"}`)}
@@ -767,9 +777,9 @@ export default function CustomRequestDetailScreen() {
               </>
             )}
 
-            <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>Proposed date and time</Text>
+            <Text style={twStyle("mb-1 text-sm font-semibold text-gray-700")}>{cr("proposedDateTime")}</Text>
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-              Choose a real availability-engine slot so the customer can pay for a time you can honour.
+              {cr("proposedDateTimeHint")}
             </Text>
             {/* Date strip — 14-day window matches the offer flow */}
             <View style={twStyle("mb-3")}>
@@ -805,24 +815,24 @@ export default function CustomRequestDetailScreen() {
               <>
                 {(request.address_line1?.trim() || request.address_city?.trim()) ? (
                   <Text style={twStyle("mb-2 text-xs text-gray-600")}>
-                    Customer address on file:{" "}
-                    {[request.address_line1, request.address_city, request.address_postal_code]
-                      .filter(Boolean)
-                      .join(", ")}
+                    {cr("customerAddressOnFile", {
+                      address: [request.address_line1, request.address_city, request.address_postal_code]
+                        .filter(Boolean)
+                        .join(", "),
+                    })}
                   </Text>
                 ) : (
                   <Text style={twStyle("mb-2 text-xs text-amber-800")}>
-                    No street address on this request — enter a travel fee manually or ask the customer to update their
-                    request with a full address.
+                    {cr("noStreetAddress")}
                   </Text>
                 )}
                 <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                  Travel fee ({requestCurrency}) — calculated when address is on file (override optional)
+                  {cr("travelFeeLabel", { currency: requestCurrency })}
                 </Text>
                 {travelFeePreviewLoading ? (
                   <View style={twStyle("mb-2 flex-row items-center")}>
                     <ActivityIndicator size="small" color="#6366f1" />
-                    <Text style={twStyle("ml-2 text-xs text-gray-600")}>Calculating travel fee…</Text>
+                    <Text style={twStyle("ms-2 text-xs text-gray-600")}>{cr("calculatingTravelFee")}</Text>
                   </View>
                 ) : null}
                 <TextInput
@@ -839,12 +849,12 @@ export default function CustomRequestDetailScreen() {
               </>
             )}
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{cr("notesOptional")}</Text>
             <TextInput
               style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Additional details for the customer..."
+              placeholder={cr("notesPlaceholder")}
               placeholderTextColor="#9ca3af"
               multiline
               textAlignVertical="top"
@@ -852,12 +862,11 @@ export default function CustomRequestDetailScreen() {
 
             {!isValid ? (
               <Text style={twStyle("mb-2 text-xs text-amber-800")}>
-                Enter a price (0 or more), duration between 15 and 480 minutes, and offer expiry of at least 1 day
-                to send an offer.
+                {cr("invalidOfferHint")}
               </Text>
             ) : null}
             <ActionButton
-              label="Send offer"
+              label={cr("sendOffer")}
               onPress={sendOffer}
               loading={submitting}
               fullWidth
@@ -884,7 +893,7 @@ export default function CustomRequestDetailScreen() {
           >
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: 14 }} />
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
-              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>Offer details</Text>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>{cr("offerDetails")}</Text>
               <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
                 <Text style={{ fontSize: 22, color: "#9ca3af" }}>×</Text>
               </TouchableOpacity>
@@ -895,7 +904,7 @@ export default function CustomRequestDetailScreen() {
               </View>
             ) : !offerDetailData ? (
               <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
-                <Text style={{ color: "#6b7280", textAlign: "center" }}>Could not load offer details.</Text>
+                <Text style={{ color: "#6b7280", textAlign: "center" }}>{cr("offerDetailsLoadFailed")}</Text>
               </View>
             ) : (() => {
               const d = offerDetailData;
@@ -912,18 +921,18 @@ export default function CustomRequestDetailScreen() {
               };
 
               const statusBadge = isWithdrawn
-                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                ? { label: cr("statusWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
                 : isExpired
-                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                ? { label: cr("statusExpired"), bg: "#F3F4F6", text: "#6B7280" }
                 : isPaid
-                ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
+                ? { label: cr("statusPaidBooked"), bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"
-                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
+                ? { label: cr("statusPaymentInProgress"), bg: "#DBEAFE", text: "#1D4ED8" }
                 : isChangesRequested
-                ? { label: "Changes requested", bg: "#E0E7FF", text: "#3730A3" }
-                : { label: "Pending acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+                ? { label: cr("statusChangesRequested"), bg: "#E0E7FF", text: "#3730A3" }
+                : { label: cr("statusPendingAcceptance"), bg: "#EFF6FF", text: "#1E40AF" };
 
-              const locLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const locLabel = req?.location_type === "at_home" ? cr("atHome") : req?.location_type === "at_salon" ? cr("atSalon") : req?.location_type ?? cr("emDash");
               const addrParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
 
               return (
@@ -937,7 +946,7 @@ export default function CustomRequestDetailScreen() {
                   <Text style={{ fontSize: 28, fontWeight: "800", color: "#0f3460", marginBottom: 4 }}>
                     {formatCurrency(d.price ?? 0, d.currency ?? "")}
                     {typeof d.travel_fee === "number" && d.travel_fee > 0
-                      ? `  + ${formatCurrency(d.travel_fee, d.currency ?? "")} travel`
+                      ? cr("travelFeeAmount", { amount: formatCurrency(d.travel_fee, d.currency ?? "") })
                       : ""}
                   </Text>
                   {req?.description ? (
@@ -945,19 +954,19 @@ export default function CustomRequestDetailScreen() {
                   ) : null}
                   <View style={{ gap: 10 }}>
                     {d.duration_minutes ? (
-                      <Text style={{ color: "#374151", fontSize: 14 }}>⏱ {d.duration_minutes} min</Text>
+                      <Text style={{ color: "#374151", fontSize: 14 }}>⏱ {cr("durationMin", { count: d.duration_minutes })}</Text>
                     ) : null}
                     {req?.preferred_start_at ? (
                       <Text style={{ color: "#374151", fontSize: 14 }}>📅 {fmtDate(req.preferred_start_at)}</Text>
                     ) : null}
                     {d.expiration_at ? (
-                      <Text style={{ color: isExpired ? "#B45309" : "#374151", fontSize: 14 }}>⏳ Offer expires: {fmtDate(d.expiration_at)}</Text>
+                      <Text style={{ color: isExpired ? "#B45309" : "#374151", fontSize: 14 }}>{cr("offerExpires", { datetime: fmtDate(d.expiration_at) })}</Text>
                     ) : null}
                     {req?.location_type ? (
                       <View>
                         <Text style={{ color: "#374151", fontSize: 14 }}>📍 {locLabel}</Text>
                         {addrParts.length > 0 ? (
-                          <Text style={{ color: "#6b7280", fontSize: 12, marginTop: 2, marginLeft: 20 }}>{addrParts.join(", ")}</Text>
+                          <Text style={{ color: "#6b7280", fontSize: 12, marginTop: 2, marginStart: 20 }}>{addrParts.join(", ")}</Text>
                         ) : null}
                       </View>
                     ) : null}
@@ -970,17 +979,17 @@ export default function CustomRequestDetailScreen() {
                       onPress={() => {
                         setOfferDetailVisible(false);
                         setTimeout(() => {
-                          Alert.alert("Withdraw offer", "Are you sure you want to withdraw this offer?", [
-                            { text: "Cancel", style: "cancel" },
+                          Alert.alert(cr("withdrawOfferTitle"), cr("withdrawOfferBody"), [
+                            { text: cr("cancel"), style: "cancel" },
                             {
-                              text: "Withdraw",
+                              text: cr("withdraw"),
                               style: "destructive",
                               onPress: async () => {
                                 try {
                                   await api.post(`/api/provider/custom-offers/${d.id}/retract`, {});
                                   refresh();
                                 } catch {
-                                  Alert.alert("Error", "Could not withdraw the offer.");
+                                  Alert.alert(cr("errorTitle"), cr("withdrawFailed"));
                                 }
                               },
                             },
@@ -989,7 +998,7 @@ export default function CustomRequestDetailScreen() {
                       }}
                       style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#F59E0B", alignItems: "center", paddingVertical: 14 }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Withdraw offer</Text>
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{cr("withdrawOffer")}</Text>
                     </TouchableOpacity>
                   ) : null}
                   {(isPending || isChangesRequested) && d.id ? (
@@ -1007,7 +1016,7 @@ export default function CustomRequestDetailScreen() {
                       }}
                       style={{ marginTop: 12, borderRadius: 12, backgroundColor: "#1D4ED8", alignItems: "center", paddingVertical: 14 }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Edit offer</Text>
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{cr("editOffer")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </ScrollView>

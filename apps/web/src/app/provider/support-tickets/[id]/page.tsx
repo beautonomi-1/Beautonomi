@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -26,6 +27,7 @@ type TicketDetail = {
 };
 
 export default function ProviderSupportTicketDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
@@ -44,7 +46,7 @@ export default function ProviderSupportTicketDetailPage() {
       setTicket(res.data.ticket);
       setMessages(res.data.messages ?? []);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load ticket");
+toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/[id].loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -64,22 +66,22 @@ export default function ProviderSupportTicketDetailPage() {
       setReply("");
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to send reply");
+toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/[id].sendFailed"));
     } finally {
       setSending(false);
     }
   };
 
   if (loading) {
-    return <LoadingTimeout loadingMessage="Loading ticket…" />;
+return <LoadingTimeout loadingMessage={t("web.provider.pages.support-tickets/[id].loading")} />;
   }
 
   if (!ticket) {
     return (
       <div className="p-6 text-center text-gray-600">
-        Ticket not found.{" "}
+{t("web.provider.pages.support-tickets/[id].notFound")}{" "}
         <Link href="/provider/support-tickets" className="text-primary underline">
-          Back to tickets
+{t("web.provider.pages.support-tickets/[id].backToTickets")}
         </Link>
       </div>
     );
@@ -91,8 +93,8 @@ export default function ProviderSupportTicketDetailPage() {
         title={ticket.subject}
         subtitle={`#${ticket.ticket_number} · ${ticket.status.replace(/_/g, " ")}`}
         breadcrumbs={[
-          { label: "More", href: "/provider/more" },
-          { label: "Support tickets", href: "/provider/support-tickets" },
+{ label: t("web.provider.moreHub.title"), href: "/provider/more" },
+{ label: t("web.provider.pages.support-tickets.title"), href: "/provider/support-tickets" },
           { label: ticket.ticket_number },
         ]}
       />
@@ -102,11 +104,11 @@ export default function ProviderSupportTicketDetailPage() {
           <div
             key={m.id}
             className={`rounded-xl border p-3 text-sm ${
-              m.is_mine ? "border-indigo-100 bg-indigo-50 ml-8" : "border-gray-100 bg-white mr-8"
+              m.is_mine ? "border-indigo-100 bg-indigo-50 ms-8" : "border-gray-100 bg-white me-8"
             }`}
           >
             <p className="text-xs text-gray-500 mb-1">
-              {m.author_name ?? "Support"} · {new Date(m.created_at).toLocaleString()}
+{m.author_name ?? t("web.provider.pages.support-tickets/[id].support")} · {new Date(m.created_at).toLocaleString()}
             </p>
             <p className="text-gray-800 whitespace-pre-wrap">{m.message}</p>
           </div>
@@ -117,11 +119,11 @@ export default function ProviderSupportTicketDetailPage() {
         <Textarea
           value={reply}
           onChange={(e) => setReply(e.target.value)}
-          placeholder="Write a reply…"
+placeholder={t("web.provider.pages.support-tickets/[id].replyPlaceholder")}
           rows={4}
         />
         <Button onClick={() => void sendReply()} disabled={sending || !reply.trim()}>
-          {sending ? "Sending…" : "Send reply"}
+{sending ? t("web.provider.pages.support-tickets/[id].sending") : t("web.provider.pages.support-tickets/[id].sendReply")}
         </Button>
       </div>
     </div>

@@ -148,6 +148,8 @@ interface ConversationDetail {
 export default function ChatScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const mt = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.messagingThread.${key}`, opts) as string;
   const { confirmBlockUser } = useUserBlocks();
   const { screenPadding } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -258,13 +260,13 @@ export default function ChatScreen() {
     if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
     const att = msg.attachments?.[0] as { type?: string; name?: string } | undefined;
     if (!att) return "";
-    if (att.type === "custom_offer") return "Custom offer";
-    if (att.type === "custom_request") return "Custom request";
-    if (att.type === "custom_offer_paid") return "Payment received";
-    if (att.type?.startsWith("image/")) return "Photo";
-    if (att.type?.startsWith("video/")) return "Video";
-    return att.name || "Attachment";
-  }, []);
+    if (att.type === "custom_offer") return mt("previewCustomOffer");
+    if (att.type === "custom_request") return mt("previewCustomRequest");
+    if (att.type === "custom_offer_paid") return mt("previewPaymentReceived");
+    if (att.type?.startsWith("image/")) return mt("previewPhoto");
+    if (att.type?.startsWith("video/")) return mt("previewVideo");
+    return att.name || mt("previewAttachment");
+  }, [t]);
 
   const resolveReplyTo = useCallback(
     (msg: Message): MessageReplyTo | null => {
@@ -278,8 +280,8 @@ export default function ChatScreen() {
         sender_id: parent.sender_type === "provider" ? "provider" : "customer",
         sender_name:
           parent.sender_type === "provider"
-            ? "You"
-            : conversation?.customer_name || "Customer",
+            ? mt("you")
+            : conversation?.customer_name || mt("customerFallback"),
         content_preview: getMessagePreviewText(parent),
       };
     },
@@ -521,8 +523,8 @@ export default function ChatScreen() {
             sender_id: "provider",
             sender_name:
               replyTarget.sender_type === "provider"
-                ? "You"
-                : conversation?.customer_name || "Customer",
+                ? mt("you")
+                : conversation?.customer_name || mt("customerFallback"),
             content_preview: getMessagePreviewText(replyTarget),
           }
           : null,
@@ -540,11 +542,11 @@ export default function ChatScreen() {
       setOptimisticMessage(null);
       setMessage(text);
       if (replyTarget) setReplyingTo(replyTarget);
-      const msg = typeof error === "string" ? error : "Message could not be sent. Please try again.";
+      const msg = typeof error === "string" ? error : mt("sendFailedFallback");
       if (isPlanGateErrorCode(errorCode)) {
         showPlanGateAlert({ message: msg, errorCode, router });
       } else {
-        Alert.alert("Send failed", msg);
+        Alert.alert(mt("sendFailedTitle"), msg);
       }
     }
   }, [message, conversationId, sending, sendMessage, refresh, replyingTo, conversation?.customer_name, getMessagePreviewText, router]);
@@ -566,13 +568,13 @@ export default function ChatScreen() {
           body: formData,
         });
         if (res.error) {
-          Alert.alert("Upload failed", res.error.message || "Could not upload file");
+          Alert.alert(mt("uploadFailedTitle"), res.error.message || mt("uploadFailedFallback"));
           return;
         }
         const payload = res.data as { attachments?: FileLikeAttachment[] } | null;
         const atts = payload?.attachments ?? [];
         if (!atts.length) {
-          Alert.alert("Upload failed", "No file was uploaded.");
+          Alert.alert(mt("uploadFailedTitle"), mt("uploadEmpty"));
           return;
         }
         const replyTarget = replyingTo;
@@ -584,7 +586,7 @@ export default function ChatScreen() {
           if (isPlanGateErrorCode(errorCode)) {
             showPlanGateAlert({ message: error, errorCode, router });
           } else {
-            Alert.alert("Error", error);
+            Alert.alert(mt("errorTitle"), error);
           }
         } else {
           setReplyingTo(null);
@@ -701,9 +703,9 @@ export default function ChatScreen() {
     };
 
     if (Platform.OS === "web") {
-      Alert.alert("Attach", "Choose a source", [
-        { text: "Photo library", onPress: () => void choosePhotoLibrary() },
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(mt("attachTitle"), mt("chooseSource"), [
+        { text: mt("photoLibrary"), onPress: () => void choosePhotoLibrary() },
+        { text: mt("cancel"), style: "cancel" },
       ]);
       return;
     }
@@ -712,12 +714,12 @@ export default function ChatScreen() {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: [
-            "Photo library",
-            "Take photo",
-            "Video library",
-            "Record video",
-            "Document (PDF, Word)",
-            "Cancel",
+            mt("photoLibrary"),
+            mt("takePhoto"),
+            mt("videoLibrary"),
+            mt("recordVideo"),
+            mt("documentPdfWord"),
+            mt("cancel"),
           ],
           cancelButtonIndex: 5,
         },
@@ -732,13 +734,13 @@ export default function ChatScreen() {
       return;
     }
 
-    Alert.alert("Attach file", "Choose a source", [
-      { text: "Photo library", onPress: () => void choosePhotoLibrary() },
-      { text: "Take photo", onPress: () => void chooseCameraPhoto() },
-      { text: "Video library", onPress: () => void chooseVideoLibrary() },
-      { text: "Record video", onPress: () => void chooseCameraVideo() },
-      { text: "Document", onPress: () => void chooseDocument() },
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(mt("attachFileTitle"), mt("chooseSource"), [
+      { text: mt("photoLibrary"), onPress: () => void choosePhotoLibrary() },
+      { text: mt("takePhoto"), onPress: () => void chooseCameraPhoto() },
+      { text: mt("videoLibrary"), onPress: () => void chooseVideoLibrary() },
+      { text: mt("recordVideo"), onPress: () => void chooseCameraVideo() },
+      { text: mt("document"), onPress: () => void chooseDocument() },
+      { text: mt("cancel"), style: "cancel" },
     ]);
   }, [conversationId, sending, uploading, uploadNativeFile]);
 
@@ -761,7 +763,7 @@ export default function ChatScreen() {
       if (!offerId) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const { error } = await retractOffer(`/api/provider/custom-offers/${offerId}/retract`, {});
-      if (error) Alert.alert("Error", error);
+      if (error) Alert.alert(mt("errorTitle"), error);
       else refresh();
     },
     [retractOffer, refresh]
@@ -778,35 +780,35 @@ export default function ChatScreen() {
       `/api/provider/conversations/${conversationId}/pin`,
       { pinned: next },
     );
-    if (res.error) Alert.alert("Error", res.error.message || "Could not update pin");
+    if (res.error) Alert.alert(mt("errorTitle"), res.error.message || mt("couldNotUpdatePin"));
     else void refresh();
   }, [conversation?.is_pinned, conversationId, refresh]);
 
   const showClientMenu = useCallback(() => {
     const options: string[] = [];
-    if (customerId) options.push("View booking history");
-    if (customerPhone) options.push("Call client");
-    if (customerPhone) options.push("Copy phone");
-    if (customerEmail) options.push("Copy email");
-    options.push(conversation?.is_pinned ? "Unpin chat" : "Pin chat");
-    if (customerId) options.push("Block client");
-    options.push("Delete conversation");
-    options.push("Cancel");
+    if (customerId) options.push(mt("viewBookingHistory"));
+    if (customerPhone) options.push(mt("callClient"));
+    if (customerPhone) options.push(mt("copyPhone"));
+    if (customerEmail) options.push(mt("copyEmail"));
+    options.push(conversation?.is_pinned ? mt("unpinChat") : mt("pinChat"));
+    if (customerId) options.push(mt("blockClient"));
+    options.push(mt("deleteConversation"));
+    options.push(mt("cancel"));
     const blockIndex = customerId ? options.length - 4 : -1;
     const pinIndex = options.length - 3;
     const deleteIndex = options.length - 2;
     const cancelIndex = options.length - 1;
     const runDelete = () => {
-      Alert.alert("Delete conversation", "Remove this conversation? You can start a new chat with this client later.", [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(mt("deleteConversationTitle"), mt("deleteConversationBody"), [
+        { text: mt("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: mt("delete"),
           style: "destructive",
           onPress: async () => {
             if (!conversationId) return;
             const { error } = await deleteConv(`/api/provider/conversations/${conversationId}`);
             if (!error) router.back();
-            else Alert.alert("Error", error);
+            else Alert.alert(mt("errorTitle"), error);
           },
         },
       ]);
@@ -842,21 +844,21 @@ export default function ChatScreen() {
 
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options, cancelButtonIndex: cancelIndex, destructiveButtonIndex: deleteIndex, title: "Client details" },
+        { options, cancelButtonIndex: cancelIndex, destructiveButtonIndex: deleteIndex, title: mt("clientDetails") },
         handler
       );
     } else {
       Alert.alert(
-        "Client details",
+        mt("clientDetails"),
         undefined,
         [
-          { text: "Cancel", style: "cancel" },
-          ...(customerId ? [{ text: "View booking history", onPress: () => router.push(`/(app)/(tabs)/clients/${customerId}` as never) }] : []),
-          ...(customerPhone ? [{ text: "Call", onPress: () => Linking.openURL(`tel:${customerPhone}`) }] : []),
-          ...(customerPhone ? [{ text: "Copy phone", onPress: () => Clipboard.setStringAsync(customerPhone) }] : []),
-          ...(customerEmail ? [{ text: "Copy email", onPress: () => Clipboard.setStringAsync(customerEmail) }] : []),
+          { text: mt("cancel"), style: "cancel" },
+          ...(customerId ? [{ text: mt("viewBookingHistory"), onPress: () => router.push(`/(app)/(tabs)/clients/${customerId}` as never) }] : []),
+          ...(customerPhone ? [{ text: mt("call"), onPress: () => Linking.openURL(`tel:${customerPhone}`) }] : []),
+          ...(customerPhone ? [{ text: mt("copyPhone"), onPress: () => Clipboard.setStringAsync(customerPhone) }] : []),
+          ...(customerEmail ? [{ text: mt("copyEmail"), onPress: () => Clipboard.setStringAsync(customerEmail) }] : []),
           {
-            text: conversation?.is_pinned ? "Unpin chat" : "Pin chat",
+            text: conversation?.is_pinned ? mt("unpinChat") : mt("pinChat"),
             onPress: () => void togglePin(),
           },
           ...(customerId
@@ -871,7 +873,7 @@ export default function ChatScreen() {
                   }),
               }]
             : []),
-          { text: "Delete conversation", style: "destructive", onPress: runDelete },
+          { text: mt("deleteConversation"), style: "destructive", onPress: runDelete },
         ].filter(Boolean) as { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[]
       );
     }
@@ -881,9 +883,9 @@ export default function ChatScreen() {
   if (!conversationId) {
     return (
       <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
-        <ScreenHeader title="Chat" showBack />
+        <ScreenHeader title={mt("title")} showBack />
         <ErrorState
-          message="No conversation selected"
+          message={mt("noConversationSelected")}
           onRetry={() => router.back()}
         />
       </SafeAreaView>
@@ -894,7 +896,7 @@ export default function ChatScreen() {
   if (conversationError && !conversation) {
     return (
       <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
-        <ScreenHeader title="Chat" showBack />
+        <ScreenHeader title={mt("title")} showBack />
         <ErrorState message={conversationError} onRetry={refresh} />
       </SafeAreaView>
     );
@@ -907,7 +909,7 @@ export default function ChatScreen() {
           the thread clearly identifies the other party. */}
       <View style={twStyle("border-b border-gray-100 px-4")}>
         <ScreenHeader
-          title={conversation?.customer_name ?? "Chat"}
+          title={conversation?.customer_name ?? mt("title")}
           showBack
           titleAccessory={
             conversation?.customer_identity_verified ? <VerifiedBadge verified /> : null
@@ -916,7 +918,7 @@ export default function ChatScreen() {
             conversation?.customer_avatar_url ? (
               <Image
                 source={{ uri: conversation.customer_avatar_url }}
-                style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
+                style={{ width: 36, height: 36, borderRadius: 18, marginEnd: 10 }}
                 contentFit="cover"
                 transition={120}
               />
@@ -926,7 +928,7 @@ export default function ChatScreen() {
                   width: 36,
                   height: 36,
                   borderRadius: 18,
-                  marginRight: 10,
+                  marginEnd: 10,
                   backgroundColor: Colors.gray[100],
                   alignItems: "center",
                   justifyContent: "center",
@@ -948,8 +950,8 @@ export default function ChatScreen() {
             <View style={twStyle("flex-row items-center")}>
               <TouchableOpacity
                 onPress={showClientMenu}
-                style={[twStyle("p-2 rounded-full bg-gray-100"), { marginRight: 4 }]}
-                accessibilityLabel="Client details and options"
+                style={[twStyle("p-2 rounded-full bg-gray-100"), { marginEnd: 4 }]}
+                accessibilityLabel={mt("clientDetailsA11y")}
               >
                 <Ionicons name="ellipsis-horizontal" size={20} color="#374151" />
               </TouchableOpacity>
@@ -957,7 +959,7 @@ export default function ChatScreen() {
                 <TouchableOpacity
                   onPress={() => setShowCustomOfferSheet(true)}
                   style={twStyle("p-2 rounded-full bg-primary/10")}
-                  accessibilityLabel="Send custom offer"
+                  accessibilityLabel={mt("sendCustomOfferA11y")}
                 >
                   <Ionicons name="pricetag-outline" size={20} color={Colors.primary} />
                 </TouchableOpacity>
@@ -965,12 +967,12 @@ export default function ChatScreen() {
                 <TouchableOpacity
                   onPress={() =>
                     Alert.alert(
-                      "Custom offers unavailable",
-                      "This conversation is not linked to a customer profile yet. Custom offers can only be sent when chatting with a registered customer.",
+                      mt("customOffersUnavailableTitle"),
+                      mt("customOffersUnavailableBody"),
                     )
                   }
                   style={twStyle("p-2 rounded-full bg-gray-100 opacity-60")}
-                  accessibilityLabel="Send custom offer unavailable"
+                  accessibilityLabel={mt("sendCustomOfferUnavailableA11y")}
                 >
                   <Ionicons name="pricetag-outline" size={20} color={Colors.gray[400]} />
                 </TouchableOpacity>
@@ -1029,7 +1031,7 @@ export default function ChatScreen() {
                     color={Colors.primary}
                   />
                   <Text style={twStyle("text-gray-500 mt-3 text-center")}>
-                    No messages yet. Say hello!
+                    {mt("emptyThread")}
                   </Text>
                 </View>
               }
@@ -1067,7 +1069,7 @@ export default function ChatScreen() {
                         )}
                       >
                         <Text style={twStyle(`text-sm ${isMe ? "text-primary" : "text-gray-600"}`)}>
-                          {(att.name || "Attachment") + " — no longer available (retention policy)."}
+                          {mt("attachmentExpired", { name: att.name || mt("previewAttachment") })}
                         </Text>
                       </View>
                     );
@@ -1077,7 +1079,7 @@ export default function ChatScreen() {
                       <TouchableOpacity
                         key={key}
                         activeOpacity={0.9}
-                        onPress={() => pushInAppBrowser(router, att.url!, att.name || "Image")}
+                        onPress={() => pushInAppBrowser(router, att.url!, att.name || mt("imageTitle"))}
                       >
                         <Image
                           source={{ uri: att.url }}
@@ -1092,14 +1094,14 @@ export default function ChatScreen() {
                     return (
                       <TouchableOpacity
                         key={key}
-                        onPress={() => pushInAppBrowser(router, att.url!, att.name || "Video")}
+                        onPress={() => pushInAppBrowser(router, att.url!, att.name || mt("videoTitle"))}
                         style={twStyle(
                           `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
                         )}
                       >
-                        <Ionicons name="videocam-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 10 }} />
+                        <Ionicons name="videocam-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginEnd: 10 }} />
                         <Text style={twStyle("text-sm text-gray-800 flex-1")} numberOfLines={2}>
-                          {att.name || "Video — tap to open"}
+                          {att.name || mt("videoTapToOpen")}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1107,14 +1109,14 @@ export default function ChatScreen() {
                   return (
                     <TouchableOpacity
                       key={key}
-                      onPress={() => pushInAppBrowser(router, att.url!, att.name || "Document")}
+                      onPress={() => pushInAppBrowser(router, att.url!, att.name || mt("documentTitle"))}
                       style={twStyle(
                         `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
                       )}
                     >
-                      <Ionicons name="document-text-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 10 }} />
+                      <Ionicons name="document-text-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginEnd: 10 }} />
                       <Text style={twStyle("text-sm text-gray-800 flex-1")} numberOfLines={2}>
-                        {att.name || "Document — tap to open"}
+                        {att.name || mt("documentTapToOpen")}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -1125,14 +1127,14 @@ export default function ChatScreen() {
                     onLongPress={() => openMessageActions(msg)}
                     delayLongPress={280}
                     style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}
-                    accessibilityLabel="Reply to message"
+                    accessibilityLabel={mt("replyToMessageA11y")}
                   >
                     {quotedReply ? (
                       <View
                         style={{
                           maxWidth: "85%",
                           marginBottom: 4,
-                          paddingLeft: 8,
+                          paddingStart: 8,
                           paddingVertical: 6,
                           borderLeftWidth: 3,
                           borderLeftColor: Colors.primary,
@@ -1196,15 +1198,15 @@ export default function ChatScreen() {
                           gap: 8,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="View booking details"
+                        accessibilityLabel={mt("viewBookingDetailsA11y")}
                       >
                         <Text style={{ fontSize: 16, color: "#059669" }}>✓</Text>
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 12, fontWeight: "700", color: "#065F46" }}>
-                            Booking confirmed{paidAtt.booking_number ? ` #${paidAtt.booking_number}` : ""}
+                            {paidAtt.booking_number ? mt("bookingConfirmedNumber", { number: paidAtt.booking_number }) : mt("bookingConfirmed")}
                           </Text>
                           <Text style={{ fontSize: 11, color: "#047857", marginTop: 2 }}>
-                            Tap to view booking →
+                            {mt("tapToViewBooking")}
                           </Text>
                         </View>
                       </TouchableOpacity>
@@ -1225,11 +1227,11 @@ export default function ChatScreen() {
                           `max-w-[85%] rounded-xl px-3 py-2 mb-1 border border-blue-100 ${isMe ? "bg-blue-50 self-end" : "bg-blue-50 self-start"}`
                         )}
                         accessibilityRole="button"
-                        accessibilityLabel="Open custom request details"
+                        accessibilityLabel={mt("openCustomRequestA11y")}
                       >
-                        <Text style={twStyle("text-xs font-semibold text-blue-900")}>Custom request</Text>
+                        <Text style={twStyle("text-xs font-semibold text-blue-900")}>{mt("customRequest")}</Text>
                         <Text style={twStyle("text-xs text-blue-800 mt-0.5")}>
-                          Tap to open the full request in the app{customRequestNavId ? "" : " (inbox)"}.
+                          {customRequestNavId ? mt("openRequestInApp") : mt("openRequestInbox")}
                         </Text>
                         {customRequestImages.length > 0 ? (
                           <View style={twStyle("mt-2 flex-row flex-wrap gap-1.5")}>
@@ -1239,7 +1241,7 @@ export default function ChatScreen() {
                                 activeOpacity={0.9}
                                 onPress={(e) => {
                                   e.stopPropagation?.();
-                                  pushInAppBrowser(router, url, "Attachment");
+                                  pushInAppBrowser(router, url, mt("attachmentTitle"));
                                 }}
                               >
                                 <Image
@@ -1260,7 +1262,7 @@ export default function ChatScreen() {
                         {files.map((att, idx) => renderFileRow(att, idx))}
                         {files.length > 0 && !hasText ? (
                           <View style={twStyle("flex-row items-center justify-end mt-0.5")}>
-                            <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 4 }]}>{formatTime(msg.created_at)}</Text>
+                            <Text style={[twStyle("text-[11px] text-gray-400"), { marginEnd: 4 }]}>{formatTime(msg.created_at)}</Text>
                             {isMe ? (
                               <Ionicons
                                 name={msg.read_at ? "checkmark-done" : "checkmark"}
@@ -1281,7 +1283,7 @@ export default function ChatScreen() {
                       >
                         <Text style={twStyle(`text-[15px] leading-5 ${isMe ? "text-white" : "text-gray-900"}`)}>{msg.content.trim()}</Text>
                         <View style={twStyle("flex-row items-center justify-end mt-1")}>
-                          <Text style={[twStyle(`text-[11px] ${isMe ? "text-white/80" : "text-gray-400"}`), { marginRight: 4 }]}>
+                          <Text style={[twStyle(`text-[11px] ${isMe ? "text-white/80" : "text-gray-400"}`), { marginEnd: 4 }]}>
                             {formatTime(msg.created_at)}
                           </Text>
                           {isMe ? (
@@ -1321,7 +1323,7 @@ export default function ChatScreen() {
                   zIndex: 10,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Scroll to bottom"
+                accessibilityLabel={mt("scrollToBottomA11y")}
               >
                 <Ionicons name="chevron-down" size={24} color={Colors.gray[600]} />
               </TouchableOpacity>
@@ -1344,18 +1346,18 @@ export default function ChatScreen() {
                   paddingVertical: 8,
                 }}
               >
-                <View style={{ width: 3, alignSelf: "stretch", backgroundColor: Colors.primary, borderRadius: 2, marginRight: 10 }} />
+                <View style={{ width: 3, alignSelf: "stretch", backgroundColor: Colors.primary, borderRadius: 2, marginEnd: 10 }} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }} numberOfLines={1}>
                     {replyingTo.sender_type === "provider"
-                      ? "You"
-                      : conversation?.customer_name || "Customer"}
+                      ? mt("you")
+                      : conversation?.customer_name || mt("customerFallback")}
                   </Text>
                   <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={2}>
                     {getMessagePreviewText(replyingTo)}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ padding: 6 }} accessibilityLabel="Cancel reply">
+                <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ padding: 6 }} accessibilityLabel={mt("cancelReplyA11y")}>
                   <Ionicons name="close" size={20} color="#6b7280" />
                 </TouchableOpacity>
               </View>
@@ -1372,8 +1374,8 @@ export default function ChatScreen() {
               <TouchableOpacity
                 onPress={openAttachmentMenu}
                 disabled={sending || uploading}
-                style={twStyle("w-11 h-11 rounded-full bg-gray-100 items-center justify-center mr-2")}
-                accessibilityLabel="Attach photo, video, or document"
+                style={twStyle("w-11 h-11 rounded-full bg-gray-100 items-center justify-center me-2")}
+                accessibilityLabel={mt("attachA11y")}
               >
                 {uploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -1382,8 +1384,8 @@ export default function ChatScreen() {
                 )}
               </TouchableOpacity>
               <TextInput
-                style={[twStyle("flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] text-gray-900 max-h-24 bg-gray-50"), { marginRight: 8 }]}
-                placeholder="Message..."
+                style={[twStyle("flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] text-gray-900 max-h-24 bg-gray-50"), { marginEnd: 8 }]}
+                placeholder={mt("messagePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={message}
                 onChangeText={setMessage}
@@ -1461,7 +1463,7 @@ export default function ChatScreen() {
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#e5e7eb", alignSelf: "center", marginBottom: 14 }} />
             {/* header */}
             <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, marginBottom: 18 }}>
-              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>Custom offer detail</Text>
+              <Text style={{ flex: 1, fontSize: 17, fontWeight: "700", color: "#111827" }}>{mt("offerDetailTitle")}</Text>
               <TouchableOpacity onPress={() => setOfferDetailVisible(false)} hitSlop={12}>
                 <Ionicons name="close" size={22} color="#6b7280" />
               </TouchableOpacity>
@@ -1473,7 +1475,7 @@ export default function ChatScreen() {
               </View>
             ) : !offerDetailData ? (
               <View style={{ alignItems: "center", paddingVertical: 40, paddingHorizontal: 20 }}>
-                <Text style={{ color: "#6b7280", textAlign: "center" }}>Could not load offer details.</Text>
+                <Text style={{ color: "#6b7280", textAlign: "center" }}>{mt("offerLoadFailed")}</Text>
               </View>
             ) : (() => {
               const d = offerDetailData;
@@ -1486,7 +1488,7 @@ export default function ChatScreen() {
                 (d.status === "pending" || d.status === "payment_pending") && !isFinalizeFailed;
 
               const formatDate = (iso: string | null | undefined) => {
-                if (!iso) return "—";
+                if (!iso) return mt("emptyValue");
                 return new Date(iso).toLocaleString("en-ZA", {
                   weekday: "short",
                   day: "numeric",
@@ -1498,18 +1500,18 @@ export default function ChatScreen() {
               };
 
               const statusBadge = isWithdrawn
-                ? { label: "Withdrawn", bg: "#FEF3C7", text: "#92400E" }
+                ? { label: mt("statusWithdrawn"), bg: "#FEF3C7", text: "#92400E" }
                 : isExpired
-                ? { label: "Expired", bg: "#F3F4F6", text: "#6B7280" }
+                ? { label: mt("statusExpired"), bg: "#F3F4F6", text: "#6B7280" }
                 : isFinalizeFailed
-                ? { label: "Finalize failed — contact support", bg: "#FEE2E2", text: "#991B1B" }
+                ? { label: mt("statusFinalizeFailed"), bg: "#FEE2E2", text: "#991B1B" }
                 : isPaid
-                ? { label: "Paid / Booked", bg: "#DCFCE7", text: "#166534" }
+                ? { label: mt("statusPaidBooked"), bg: "#DCFCE7", text: "#166534" }
                 : d.status === "payment_pending"
-                ? { label: "Payment in progress", bg: "#DBEAFE", text: "#1D4ED8" }
-                : { label: "Pending customer acceptance", bg: "#EFF6FF", text: "#1E40AF" };
+                ? { label: mt("statusPaymentInProgress"), bg: "#DBEAFE", text: "#1D4ED8" }
+                : { label: mt("statusPendingAcceptance"), bg: "#EFF6FF", text: "#1E40AF" };
 
-              const locationLabel = req?.location_type === "at_home" ? "At home" : req?.location_type === "at_salon" ? "At salon" : req?.location_type ?? "—";
+              const locationLabel = req?.location_type === "at_home" ? mt("atHome") : req?.location_type === "at_salon" ? mt("atSalon") : req?.location_type ?? mt("emptyValue");
               const addressParts = [req?.address_line1, req?.address_line2, req?.address_city, req?.address_state, req?.address_postal_code].filter(Boolean);
 
               return (
@@ -1528,7 +1530,7 @@ export default function ChatScreen() {
                   <Text style={{ fontSize: 28, fontWeight: "800", color: Colors.primary, marginBottom: 4 }}>
                     {formatCurrency(d.price ?? 0, d.currency ?? "")}
                     {typeof d.travel_fee === "number" && d.travel_fee > 0
-                      ? `  + ${formatCurrency(d.travel_fee, d.currency ?? "")} travel`
+                      ? mt("travelFee", { amount: formatCurrency(d.travel_fee, d.currency ?? "") })
                       : ""}
                   </Text>
 
@@ -1542,7 +1544,7 @@ export default function ChatScreen() {
                     {d.duration_minutes ? (
                       <View style={{ flexDirection: "row", gap: 10 }}>
                         <Ionicons name="time-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
-                        <Text style={{ color: "#374151", fontSize: 14 }}>{d.duration_minutes} min</Text>
+                        <Text style={{ color: "#374151", fontSize: 14 }}>{mt("durationMin", { count: d.duration_minutes })}</Text>
                       </View>
                     ) : null}
                     {req?.preferred_start_at ? (
@@ -1555,7 +1557,7 @@ export default function ChatScreen() {
                       <View style={{ flexDirection: "row", gap: 10 }}>
                         <Ionicons name="hourglass-outline" size={16} color={isExpired ? "#B45309" : "#6b7280"} style={{ marginTop: 1 }} />
                         <Text style={{ color: isExpired ? "#B45309" : "#374151", fontSize: 14 }}>
-                          Offer expires: {formatDate(d.expiration_at)}
+                          {mt("offerExpires", { date: formatDate(d.expiration_at) })}
                         </Text>
                       </View>
                     ) : null}
@@ -1596,7 +1598,7 @@ export default function ChatScreen() {
                         paddingVertical: 14,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>View booking</Text>
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{mt("viewBooking")}</Text>
                     </TouchableOpacity>
                   ) : null}
                   {isPending && !isPaid && d.id ? (
@@ -1614,7 +1616,7 @@ export default function ChatScreen() {
                         paddingVertical: 14,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Withdraw offer</Text>
+                      <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{mt("withdrawOffer")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </ScrollView>

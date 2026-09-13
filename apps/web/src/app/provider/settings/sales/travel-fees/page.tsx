@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -47,6 +48,7 @@ interface PlatformLimits {
 }
 
 export default function TravelFeesSettings() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [settings, setSettings] = useState<TravelFeeSettings>({
@@ -117,7 +119,7 @@ export default function TravelFeesSettings() {
         console.error("Error loading travel fee settings:", e);
         const errorMessage = e instanceof FetchError
           ? e.message
-          : e?.error?.message || "Failed to load travel fee settings";
+          : e?.error?.message || t("web.provider.settings.pages.sales/travel-fees.failedToLoadTravelFeeSettings");
         toast.error(errorMessage);
       } finally {
         setIsLoading(false);
@@ -136,7 +138,7 @@ export default function TravelFeesSettings() {
           if (settings.rate_per_km < platformLimits.provider_min_rate_per_km || 
               settings.rate_per_km > platformLimits.provider_max_rate_per_km) {
             toast.error(
-              `Rate per km must be between ${platformLimits.provider_min_rate_per_km} and ${platformLimits.provider_max_rate_per_km}`
+              t("web.provider.settings.pages.sales/travel-fees.ratePerKmRange", { min: platformLimits.provider_min_rate_per_km, max: platformLimits.provider_max_rate_per_km })
             );
             return;
           }
@@ -145,7 +147,7 @@ export default function TravelFeesSettings() {
           if (settings.minimum_fee < platformLimits.provider_min_minimum_fee || 
               settings.minimum_fee > platformLimits.provider_max_minimum_fee) {
             toast.error(
-              `Minimum fee must be between ${platformLimits.provider_min_minimum_fee} and ${platformLimits.provider_max_minimum_fee}`
+              t("web.provider.settings.pages.sales/travel-fees.minimumFeeRange", { min: platformLimits.provider_min_minimum_fee, max: platformLimits.provider_max_minimum_fee })
             );
             return;
           }
@@ -154,25 +156,25 @@ export default function TravelFeesSettings() {
 
       // Validate maximum fee if set
       if (settings.maximum_fee !== null && settings.maximum_fee < 0) {
-        toast.error("Maximum fee cannot be negative");
+        toast.error(t("web.provider.settings.pages.sales/travel-fees.maximumFeeCannotBeNegative"));
         return;
       }
 
       // Validate currency
       if (settings.currency && settings.currency.length !== 3) {
-        toast.error("Currency must be a 3-letter code (e.g., ZAR, USD)");
+        toast.error(t("web.provider.settings.pages.sales/travel-fees.currencyMustBeA3Letter"));
         return;
       }
 
       if (!settings.use_platform_default && settings.pricing_model === "tiered") {
         const tiers = settings.tiers ?? [];
         if (tiers.length === 0) {
-          toast.error("Add at least one distance tier");
+          toast.error(t("web.provider.settings.pages.sales/travel-fees.addAtLeastOneDistanceTier"));
           return;
         }
         for (let i = 1; i < tiers.length; i++) {
           if (tiers[i].max_km <= tiers[i - 1].max_km) {
-            toast.error("Tiers must be in ascending order by max km");
+            toast.error(t("web.provider.settings.pages.sales/travel-fees.tiersMustBeInAscendingOrder"));
             return;
           }
         }
@@ -194,11 +196,11 @@ export default function TravelFeesSettings() {
         payload
       );
       setSettings(res.data);
-      toast.success("Travel fee settings saved successfully");
+      toast.success(t("web.provider.settings.pages.sales/travel-fees.travelFeeSettingsSavedSuccessfully"));
     } catch (e: any) {
       const errorMessage = e instanceof FetchError
         ? e.message
-        : e?.error?.message || "Failed to save travel fee settings";
+        : e?.error?.message || t("web.provider.settings.pages.sales/travel-fees.failedToSaveTravelFeeSettings");
       toast.error(errorMessage);
       console.error("Error saving travel fee settings:", e);
     } finally {
@@ -207,11 +209,11 @@ export default function TravelFeesSettings() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Sales", href: "/provider/settings/sales/yoco-integration" },
-    { label: "Travel Fees" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.sales/travel-fees.sales"), href: "/provider/settings/sales/yoco-integration" },
+    { label: t("web.provider.settings.pages.sales/travel-fees.travelFees") },
   ];
 
   const previewCurrency =
@@ -246,14 +248,14 @@ export default function TravelFeesSettings() {
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Travel Fees"
-        subtitle="Configure travel fees for at-home services"
+        title={t("web.provider.settings.categories.sales.items.travelFees.title")}
+        subtitle={t("web.provider.settings.categories.sales.items.travelFees.description")}
         onSave={onSave}
         isSaving={isSaving}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading travel fee settings..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.sales/travel-fees.loadingTravelFeeSettings")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -261,8 +263,8 @@ export default function TravelFeesSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Travel Fees"
-      subtitle="Configure travel fees for at-home services"
+      title={t("web.provider.settings.pages.sales/travel-fees.travelFees")}
+      subtitle={t("web.provider.settings.pages.sales/travel-fees.configureTravelFeesForAtHome")}
       onSave={onSave}
       isSaving={isSaving}
       breadcrumbs={breadcrumbs}
@@ -270,10 +272,9 @@ export default function TravelFeesSettings() {
       <SectionCard>
         <div className="space-y-4">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">House calls & travel setup</h2>
+            <h2 className="text-base font-semibold text-gray-900">{t("web.provider.settings.pages.sales/travel-fees.houseCallsTravelSetup")}</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Travel fees, service radius, and service zones work together. Set the fee rule here,
-              then confirm where you travel and which zones are available for at-home bookings.
+              {t("web.provider.settings.pages.sales/travel-fees.houseCallsTravelBody")}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -281,22 +282,22 @@ export default function TravelFeesSettings() {
               href="/provider/settings/distance"
               className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
             >
-              Distance & radius
-              <span className="mt-1 block text-xs font-normal text-gray-500">How far you travel</span>
+              {t("web.provider.settings.pages.sales/travel-fees.distanceAndRadius")}
+              <span className="mt-1 block text-xs font-normal text-gray-500">{t("web.provider.settings.pages.sales/travel-fees.howFarYouTravel")}</span>
             </Link>
             <Link
               href="/provider/settings/service-zones"
               className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
             >
-              Service zones
-              <span className="mt-1 block text-xs font-normal text-gray-500">Where at-home bookings are allowed</span>
+              {t("web.provider.settings.pages.sales/travel-fees.serviceZones")}
+              <span className="mt-1 block text-xs font-normal text-gray-500">{t("web.provider.settings.pages.sales/travel-fees.whereAtHomeAllowed")}</span>
             </Link>
             <Link
               href="/provider/settings/appointment-activity/online-booking"
               className="rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-800 hover:border-primary hover:text-primary"
             >
-              Online booking rules
-              <span className="mt-1 block text-xs font-normal text-gray-500">Lead time and customer booking windows</span>
+              {t("web.provider.settings.pages.sales/travel-fees.onlineBookingRules")}
+              <span className="mt-1 block text-xs font-normal text-gray-500">{t("web.provider.settings.pages.sales/travel-fees.leadTimeWindows")}</span>
             </Link>
           </div>
         </div>
@@ -306,9 +307,9 @@ export default function TravelFeesSettings() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <Label>Enable Travel Fees</Label>
+              <Label>{t("web.provider.settings.pages.sales/travel-fees.enableTravelFees")}</Label>
               <p className="text-sm text-gray-600 mt-1">
-                Charge customers for travel to their location
+                {t("web.provider.settings.pages.sales/travel-fees.chargeCustomersForTravel")}
               </p>
             </div>
             <Checkbox
@@ -323,9 +324,9 @@ export default function TravelFeesSettings() {
             <>
               <div className="flex items-center justify-between border-t pt-4">
                 <div>
-                  <Label>Use Platform Default Rates</Label>
+                  <Label>{t("web.provider.settings.pages.sales/travel-fees.usePlatformDefaultRates")}</Label>
                   <p className="text-sm text-gray-600 mt-1">
-                    Use the platform's default travel fee rates
+                    {t("web.provider.settings.pages.sales/travel-fees.usePlatformDefaultHint")}
                   </p>
                 </div>
                 <Checkbox
@@ -339,15 +340,15 @@ export default function TravelFeesSettings() {
               <div className="rounded-xl border border-sky-100 bg-sky-50 p-4">
                 <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
                   <div>
-                    <Label htmlFor="travel_fee_preview_km">Live travel-fee preview</Label>
+                    <Label htmlFor="travel_fee_preview_km">{t("web.provider.settings.pages.sales/travel-fees.liveTravelFeePreview")}</Label>
                     <p className="mt-1 text-sm text-sky-800">
-                      This estimate uses the same pricing model shown on this screen. Address validation still decides the real booking distance.
+                      {t("web.provider.settings.pages.sales/travel-fees.previewUsesSameModel")}
                     </p>
                   </div>
                   <div className="flex items-end gap-3">
                     <div>
                       <Label htmlFor="travel_fee_preview_km" className="text-xs text-sky-900">
-                        Distance
+                        {t("web.provider.settings.pages.sales/travel-fees.distance")}
                       </Label>
                       <Input
                         id="travel_fee_preview_km"
@@ -360,7 +361,7 @@ export default function TravelFeesSettings() {
                       />
                     </div>
                     <div className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-sky-900 shadow-sm">
-                      {previewKm} km → {previewCurrency} {previewFee.toFixed(2)}
+{t("web.provider.settings.pages.sales/travel-fees.previewKmFee", { km: previewKm, currency: previewCurrency, fee: previewFee.toFixed(2) })}
                     </div>
                   </div>
                 </div>
@@ -368,10 +369,10 @@ export default function TravelFeesSettings() {
 
               {settings.use_platform_default && platformLimits?.default_tiers?.length && platformLimits?.pricing_model === "tiered" && (
                 <div className="border-t pt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Platform default: distance tiers</p>
+                  <p className="text-sm font-medium text-gray-700 mb-2">{t("web.provider.settings.pages.sales/travel-fees.platformDefaultTiers")}</p>
                   <ul className="text-sm text-gray-600 list-disc list-inside">
-                    {platformLimits.default_tiers.map((t, i) => (
-                      <li key={i}>Up to {t.max_km} km = {settings.currency} {t.fee}</li>
+                    {platformLimits.default_tiers.map((tier, i) => (
+                      <li key={i}>{t("web.provider.settings.pages.sales/travel-fees.upToKmFee", { km: tier.max_km, currency: settings.currency, fee: tier.fee })}</li>
                     ))}
                   </ul>
                 </div>
@@ -380,12 +381,12 @@ export default function TravelFeesSettings() {
               {!settings.use_platform_default && platformLimits?.allow_provider_customization && (
                 <div className="space-y-4 border-t pt-4">
                   <p className="text-sm font-medium text-gray-700">
-                    Custom Travel Fee Rates
+                    {t("web.provider.settings.pages.sales/travel-fees.customTravelFeeRates")}
                   </p>
 
                   {platformLimits?.allow_provider_tiered && (
                     <div>
-                      <Label>Pricing model</Label>
+                      <Label>{t("web.provider.settings.pages.sales/travel-fees.pricingModel")}</Label>
                       <div className="flex gap-4 mt-2">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -397,7 +398,7 @@ export default function TravelFeesSettings() {
                             }
                             className="w-4 h-4"
                           />
-                          <span className="text-sm">Per kilometer</span>
+                          <span className="text-sm">{t("web.provider.settings.pages.sales/travel-fees.perKilometer")}</span>
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
@@ -412,7 +413,7 @@ export default function TravelFeesSettings() {
                             }}
                             className="w-4 h-4"
                           />
-                          <span className="text-sm">Distance tiers</span>
+                          <span className="text-sm">{t("web.provider.settings.pages.sales/travel-fees.distanceTiers")}</span>
                         </label>
                       </div>
                     </div>
@@ -422,10 +423,10 @@ export default function TravelFeesSettings() {
                     <>
                   <div>
                     <Label htmlFor="rate_per_km">
-                      Rate per Kilometer ({settings.currency})
+                      {t("web.provider.settings.pages.sales/travel-fees.ratePerKilometer", { currency: settings.currency })}
                       {platformLimits && (
-                        <span className="text-xs text-gray-500 ml-2">
-                          (Min: {platformLimits.provider_min_rate_per_km}, Max: {platformLimits.provider_max_rate_per_km})
+                        <span className="text-xs text-gray-500 ms-2">
+{t("web.provider.settings.pages.sales/travel-fees.minMaxHint", { min: platformLimits.provider_min_rate_per_km, max: platformLimits.provider_max_rate_per_km })}
                         </span>
                       )}
                     </Label>
@@ -446,16 +447,16 @@ export default function TravelFeesSettings() {
                       className="mt-1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Amount charged per kilometer traveled
+                      {t("web.provider.settings.pages.sales/travel-fees.amountPerKm")}
                     </p>
                   </div>
 
                   <div>
                     <Label htmlFor="minimum_fee">
-                      Minimum Fee ({settings.currency})
+                      {t("web.provider.settings.pages.sales/travel-fees.minimumFee", { currency: settings.currency })}
                       {platformLimits && (
-                        <span className="text-xs text-gray-500 ml-2">
-                          (Min: {platformLimits.provider_min_minimum_fee}, Max: {platformLimits.provider_max_minimum_fee})
+                        <span className="text-xs text-gray-500 ms-2">
+{t("web.provider.settings.pages.sales/travel-fees.minMaxHint", { min: platformLimits.provider_min_minimum_fee, max: platformLimits.provider_max_minimum_fee })}
                         </span>
                       )}
                     </Label>
@@ -476,13 +477,13 @@ export default function TravelFeesSettings() {
                       className="mt-1"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Minimum travel fee regardless of distance
+                      {t("web.provider.settings.pages.sales/travel-fees.minimumFeeHint")}
                     </p>
                   </div>
 
                   <div>
                     <Label htmlFor="maximum_fee">
-                      Maximum Fee ({settings.currency}) - Optional
+                      {t("web.provider.settings.pages.sales/travel-fees.maximumFeeOptional", { currency: settings.currency })}
                     </Label>
                     <Input
                       id="maximum_fee"
@@ -498,15 +499,15 @@ export default function TravelFeesSettings() {
                         })
                       }
                       className="mt-1"
-                      placeholder="No maximum"
+                      placeholder={t("web.provider.settings.pages.sales/travel-fees.noMaximum")}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Maximum travel fee cap (leave empty for no limit)
+                      {t("web.provider.settings.pages.sales/travel-fees.maximumFeeHint")}
                     </p>
                   </div>
 
                   <div>
-                    <Label htmlFor="currency">Currency</Label>
+                    <Label htmlFor="currency">{t("web.provider.settings.pages.sales/travel-fees.currency")}</Label>
                     <Input
                       id="currency"
                       type="text"
@@ -518,7 +519,7 @@ export default function TravelFeesSettings() {
                       maxLength={3}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Currency code (e.g., ZAR, USD)
+                      {t("web.provider.settings.pages.sales/travel-fees.currencyCodeHint")}
                     </p>
                   </div>
                     </>
@@ -526,11 +527,11 @@ export default function TravelFeesSettings() {
 
                   {platformLimits?.allow_provider_tiered && settings.pricing_model === "tiered" && (
                     <div className="space-y-2">
-                      <Label>Distance tiers</Label>
-                      <p className="text-xs text-gray-500">Fixed fee per distance band. Add tiers in ascending order by max km.</p>
+                      <Label>{t("web.provider.settings.pages.sales/travel-fees.distanceTiers")}</Label>
+                      <p className="text-xs text-gray-500">{t("web.provider.settings.pages.sales/travel-fees.tiersHint")}</p>
                       {(settings.tiers ?? []).map((tier, i) => (
                         <div key={i} className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-gray-600">Up to</span>
+                          <span className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/travel-fees.upTo")}</span>
                           <Input
                             type="number"
                             min={0}
@@ -543,7 +544,7 @@ export default function TravelFeesSettings() {
                             }}
                             className="w-24"
                           />
-                          <span className="text-sm text-gray-600">km =</span>
+                          <span className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/travel-fees.kmEquals")}</span>
                           <Input
                             type="number"
                             min={0}
@@ -567,7 +568,7 @@ export default function TravelFeesSettings() {
                                 tiers: (settings.tiers ?? []).filter((_, j) => j !== i),
                               })
                             }
-                            aria-label="Remove tier"
+                            aria-label={t("web.provider.settings.pages.sales/travel-fees.removeTier")}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -587,8 +588,8 @@ export default function TravelFeesSettings() {
                           });
                         }}
                       >
-                        <Plus className="w-4 h-4 mr-1" />
-                        Add tier
+                        <Plus className="w-4 h-4 me-1" />
+                        {t("web.provider.settings.pages.sales/travel-fees.addTier")}
                       </Button>
                     </div>
                   )}
@@ -598,8 +599,7 @@ export default function TravelFeesSettings() {
               {!platformLimits?.allow_provider_customization && (
                 <div className="border-t pt-4">
                   <p className="text-sm text-gray-600">
-                    Provider customization is currently disabled by the platform. 
-                    You must use the platform default rates.
+                    {t("web.provider.settings.pages.sales/travel-fees.customizationDisabled")}
                   </p>
                 </div>
               )}

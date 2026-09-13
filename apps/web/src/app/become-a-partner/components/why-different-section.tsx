@@ -41,7 +41,7 @@ export default function WhyDifferentSection() {
           >
             <Link href="/why-beautonomi">
               Learn why we&apos;re different
-              <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
+              <ArrowRight className="ms-2 w-4 h-4 sm:w-5 sm:h-5" />
             </Link>
           </Button>
         </div>

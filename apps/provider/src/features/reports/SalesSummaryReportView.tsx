@@ -2,6 +2,7 @@
  * Sales Summary: dual headline — ledger net vs recorded takings (cash-register style).
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -40,6 +41,9 @@ function isSalesSummaryPayload(data: unknown): data is Record<string, unknown> &
 }
 
 export function SalesSummaryReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const ss = (key: string) => t(`provider.mobile.screens.salesSummaryReport.${key}`) as string;
+
   if (!isSalesSummaryPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -59,29 +63,29 @@ export function SalesSummaryReportView({ data }: { data: unknown }) {
     <View>
       <View style={twStyle("mb-5 gap-3")}>
         <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-          How to read this report
+          {ss("howToRead")}
         </Text>
         <View style={twStyle("flex-row flex-wrap gap-3")}>
           <View
             style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-indigo-100 bg-indigo-50/80 px-4 py-3")}
           >
-            <Text style={twStyle("text-xs font-medium text-indigo-900")}>Ledger net (platform)</Text>
+            <Text style={twStyle("text-xs font-medium text-indigo-900")}>{ss("ledgerNet")}</Text>
             <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>
               {formatCurrency(ledgerTotal)}
             </Text>
             <Text style={twStyle("mt-1 text-[11px] leading-4 text-indigo-800/90")}>
-              Recognized in finance_transactions — settlement economics, not necessarily cash in bank.
+              {ss("ledgerNetHint")}
             </Text>
           </View>
           <View
             style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3")}
           >
-            <Text style={twStyle("text-xs font-medium text-emerald-900")}>Recorded takings</Text>
+            <Text style={twStyle("text-xs font-medium text-emerald-900")}>{ss("recordedTakings")}</Text>
             <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
               {formatCurrency(recordedTotal)}
             </Text>
             <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/90")}>
-              What was logged in-app (payments, wallet, retail, tips & fees in range).
+              {ss("recordedTakingsHint")}
             </Text>
           </View>
         </View>
@@ -93,7 +97,7 @@ export function SalesSummaryReportView({ data }: { data: unknown }) {
         {methods.length > 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
             <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-              Recorded takings by method
+              {ss("takingsByMethod")}
             </Text>
             {methods.map(([method, amt]) => (
               <View
@@ -111,9 +115,7 @@ export function SalesSummaryReportView({ data }: { data: unknown }) {
 
         <View style={twStyle("rounded-xl bg-gray-50 px-3 py-2")}>
           <Text style={twStyle("text-[11px] leading-4 text-gray-600")}>
-            Ledger net can be lower than recorded takings when customers pay cash or terminal in-salon without those
-            funds settling through Paystack. The opposite can happen when ledger recognizes activity before payment is
-            marked in-app — use End of day for single-day cash-up.
+            {ss("readHint")}
           </Text>
         </View>
       </View>

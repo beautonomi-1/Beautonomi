@@ -4,6 +4,7 @@ import Image from "next/image";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 type TeamMember = {
   id: string;
@@ -23,6 +24,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { pp } = usePartnerProfileT();
 
   useEffect(() => {
     const loadTeam = async () => {
@@ -44,7 +46,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
         const errorMessage =
           err instanceof FetchError
             ? err.message
-            : "Failed to load team members";
+            : pp("failedLoadTeam");
         setError(errorMessage);
         console.error("Error loading team:", err);
       } finally {
@@ -58,7 +60,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
   if (isLoading) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <LoadingTimeout loadingMessage="Loading team..." />
+        <LoadingTimeout loadingMessage={pp("loadingTeam")} />
       </div>
     );
   }
@@ -67,7 +69,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
         <EmptyState
-          title="Failed to load team"
+          title={pp("failedLoadTeam")}
           description={error}
         />
       </div>
@@ -77,10 +79,10 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
   if (teamMembers.length === 0) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <h2 className="text-2xl font-semibold mb-6">Team</h2>
+        <h2 className="text-2xl font-semibold mb-6">{pp("tabTeam")}</h2>
         <EmptyState
-          title="No team members"
-          description="This provider hasn't added team members yet."
+          title={pp("noTeamMembers")}
+          description={pp("noTeamHint")}
         />
       </div>
     );
@@ -88,7 +90,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-      <h2 className="text-2xl font-semibold mb-6">Team</h2>
+      <h2 className="text-2xl font-semibold mb-6">{pp("tabTeam")}</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {teamMembers.map((member) => (
           <div key={member.id} className="flex flex-col items-center text-center">
@@ -108,7 +110,7 @@ const PartnerTeam: React.FC<PartnerTeamProps> = ({ slug, id: _id }) => {
               )}
             </div>
             <p className="font-medium text-sm mb-1">{member.name}</p>
-            <p className="text-gray-500 text-xs">{member.role || "Staff"}</p>
+            <p className="text-gray-500 text-xs">{member.role || pp("staffFallback")}</p>
             {member.specialties && member.specialties.length > 0 && (
               <p className="text-gray-400 text-xs mt-1">
                 {member.specialties.join(", ")}

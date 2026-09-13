@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -17,6 +18,7 @@ interface ReferralSourceSelectProps {
 }
 
 export function ReferralSourceSelect({ value, onChange }: ReferralSourceSelectProps) {
+  const { t } = useTranslation();
   const [sources, setSources] = useState<Array<{ id: string; name: string }>>([]);
 
   useEffect(() => {
@@ -41,13 +43,13 @@ export function ReferralSourceSelect({ value, onChange }: ReferralSourceSelectPr
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-2">How did this client find you?</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.referralSource.label")}</BookingSectionLabel>
       <Select value={value || "none"} onValueChange={(v) => onChange(v === "none" ? "" : v)}>
         <SelectTrigger className="rounded-xl min-h-[44px]">
-          <SelectValue placeholder="Not specified" />
+          <SelectValue placeholder={t("web.referralSource.notSpecified")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="none">Not specified</SelectItem>
+          <SelectItem value="none">{t("web.referralSource.notSpecified")}</SelectItem>
           {sources.map((s) => (
             <SelectItem key={s.id} value={s.id}>
               {s.name}

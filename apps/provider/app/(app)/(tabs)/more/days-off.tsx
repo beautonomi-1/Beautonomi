@@ -25,6 +25,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { twStyle } from "@/lib/twStyle";
 import { useCalendarScopeLock } from "@/hooks/useCalendarScopeLock";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface StaffMember {
   id: string;
@@ -53,6 +54,12 @@ function parseDayOffDate(dateStr: string): Date {
 
 /** Content-only for use in Schedule hub (Days off tab). */
 export function DaysOffContent() {
+  const { t } = useTranslation();
+  const dof = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.daysOff.${key}`, opts) as string,
+    [t],
+  );
   const params = useLocalSearchParams<{ staffId?: string }>();
   const [daysOff, setDaysOff] = useState<DayOff[]>([]);
   const [loadingDaysOff, setLoadingDaysOff] = useState(false);
@@ -116,7 +123,7 @@ export function DaysOffContent() {
               id: d.id,
               staff_id: d.staff_id ?? member.id,
               team_member_id: d.staff_id ?? member.id,
-              team_member_name: member.name ?? "Staff",
+              team_member_name: member.name ?? dof("staffFallback"),
               date: d.date,
               reason: d.reason ?? null,
               is_approved: d.is_approved !== false,
@@ -132,16 +139,16 @@ export function DaysOffContent() {
       all.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setDaysOff(all);
       if (errors.length > 0) {
-        setDaysOffError(`Could not load days off for: ${errors.join(", ")}. Pull to refresh.`);
+        setDaysOffError(dof("loadPartialError", { names: errors.join(", ") }));
       }
     } catch (e) {
       console.error("Failed to load days off:", e);
-      setDaysOffError("Failed to load days off. Pull down to retry.");
+      setDaysOffError(dof("loadFailed"));
       setDaysOff([]);
     } finally {
       setLoadingDaysOff(false);
     }
-  }, [activeStaff]);
+  }, [activeStaff, dof]);
 
   useEffect(() => {
     loadDaysOff();
@@ -160,7 +167,7 @@ export function DaysOffContent() {
 
   const handleSaveDayOff = async () => {
     if (selectedStaffIds.length === 0) {
-      Alert.alert("Select staff", "Please select at least one team member.");
+      Alert.alert(dof("selectStaffTitle"), dof("selectStaffBody"));
       return;
     }
     if (saving) return;
@@ -210,8 +217,8 @@ export function DaysOffContent() {
       const overlapCount = results.reduce((sum, r) => sum + (r.ok ? r.overlap : 0), 0);
       if (failures.length === results.length && results.length > 0) {
         Alert.alert(
-          "Failed",
-          "None of the selected days off could be created. Please try again.",
+          dof("failedTitle"),
+          dof("failedBody"),
         );
         return;
       }
@@ -222,13 +229,13 @@ export function DaysOffContent() {
       await loadDaysOff();
       if (failures.length > 0) {
         Alert.alert(
-          "Partial success",
-          `${results.length - failures.length} day(s) off created. ${failures.length} could not be created (possibly duplicates).`,
+          dof("partialTitle"),
+          dof("partialBody", { created: results.length - failures.length, failed: failures.length }),
         );
       } else if (overlapCount > 0) {
         Alert.alert(
-          "Upcoming bookings",
-          `${overlapCount} upcoming booking${overlapCount === 1 ? "" : "s"} fall on this day off. Reassign or reschedule them.`,
+          dof("upcomingTitle"),
+          dof("upcomingBody", { count: overlapCount }),
         );
       }
     } finally {
@@ -238,23 +245,27 @@ export function DaysOffContent() {
 
   const handleReviewTimeOff = (dayOff: DayOff, status: "approved" | "denied") => {
     if (!dayOff.time_off_id) {
-      Alert.alert("Not ready", "This request is not ready to review yet. Pull to refresh.");
+      Alert.alert(dof("notReadyTitle"), dof("notReadyBody"));
       return;
     }
     Alert.alert(
-      status === "approved" ? "Approve time off" : "Deny time off",
-      `${status === "approved" ? "Approve" : "Deny"} ${dayOff.team_member_name}'s request for ${dayOff.date}?`,
+      status === "approved" ? dof("approveTitle") : dof("denyTitle"),
+      dof("reviewConfirm", {
+        action: status === "approved" ? dof("approve") : dof("deny"),
+        name: dayOff.team_member_name,
+        date: dayOff.date,
+      }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: dof("cancel"), style: "cancel" },
         {
-          text: status === "approved" ? "Approve" : "Deny",
+          text: status === "approved" ? dof("approve") : dof("deny"),
           style: status === "denied" ? "destructive" : "default",
           onPress: async () => {
             const { error } = await patchTimeOff(
               `/api/provider/staff/${dayOff.team_member_id}/time-off/${dayOff.time_off_id}`,
               { status },
             );
-            if (error) Alert.alert("Error", error);
+            if (error) Alert.alert(dof("errorTitle"), error);
             else void loadDaysOff();
           },
         },
@@ -264,18 +275,18 @@ export function DaysOffContent() {
 
   const handleRemoveDayOff = (dayOff: DayOff) => {
     Alert.alert(
-      "Remove day off",
-      `Remove this day off for ${dayOff.team_member_name}?`,
+      dof("removeTitle"),
+      dof("removeBody", { name: dayOff.team_member_name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: dof("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: dof("remove"),
           style: "destructive",
           onPress: async () => {
             const { error } = await deleteDayOff(
               `/api/provider/staff/${dayOff.team_member_id}/days-off/${dayOff.id}`
             );
-            if (error) Alert.alert("Error", error);
+            if (error) Alert.alert(dof("errorTitle"), error);
             else loadDaysOff();
           },
         },
@@ -310,14 +321,14 @@ export function DaysOffContent() {
         {daysOffError && (
           <View style={twStyle("mx-4 mb-3 flex-row items-start rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
             <Ionicons name="warning-outline" size={16} color="#dc2626" style={{ marginTop: 1 }} />
-            <Text style={twStyle("ml-2 flex-1 text-sm text-red-700")}>{daysOffError}</Text>
+            <Text style={twStyle("ms-2 flex-1 text-sm text-red-700")}>{daysOffError}</Text>
           </View>
         )}
         {activeStaff.length === 0 ? (
           <EmptyState
             icon="people-outline"
-            title="No team members"
-            description="Add staff in Team settings to manage days off"
+            title={dof("emptyTeamTitle")}
+            description={dof("emptyTeamDesc")}
           />
         ) : loadingDaysOff && daysOff.length === 0 ? (
           <View style={twStyle("py-12")}>
@@ -328,16 +339,16 @@ export function DaysOffContent() {
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-amber-50")}>
               <Ionicons name="sunny-outline" size={32} color="#f59e0b" />
             </View>
-            <Text style={twStyle("text-center text-lg font-semibold text-gray-900")}>Staff time off</Text>
+            <Text style={twStyle("text-center text-lg font-semibold text-gray-900")}>{dof("staffTimeOff")}</Text>
             <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
-              No days off scheduled. Tap &quot;Set Day Off&quot; to add one.
+              {dof("emptyHint")}
             </Text>
             <TouchableOpacity
               onPress={openAddDayOff}
               style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-amber-500 px-6 py-3")}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <Text style={twStyle("ml-2 font-medium text-white")}>Set Day Off</Text>
+              <Text style={twStyle("ms-2 font-medium text-white")}>{dof("setDayOff")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -347,11 +358,11 @@ export function DaysOffContent() {
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 py-3")}
             >
               <Ionicons name="add" size={18} color="#f59e0b" />
-              <Text style={twStyle("ml-2 font-medium text-amber-800")}>Set Day Off</Text>
+              <Text style={twStyle("ms-2 font-medium text-amber-800")}>{dof("setDayOff")}</Text>
             </TouchableOpacity>
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <Text style={twStyle("text-sm text-gray-500")}>
-                {daysOff.length} day{daysOff.length !== 1 ? "s" : ""} off
+                {dof("daysOffCount", { count: daysOff.length })}
               </Text>
               <TouchableOpacity
                 onPress={() => setShowPast((v) => !v)}
@@ -363,8 +374,8 @@ export function DaysOffContent() {
                   size={14}
                   color="#6366f1"
                 />
-                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                  {showPast ? "Hide past" : "Show past"}
+                <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                  {showPast ? dof("hidePast") : dof("showPast")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -383,35 +394,35 @@ export function DaysOffContent() {
                   style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
                 >
                   <Avatar name={dayOff.team_member_name} size="sm" />
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <Text style={twStyle("font-medium text-gray-900")}>{dayOff.team_member_name}</Text>
                     <Text style={twStyle("text-sm text-gray-600")}>
                       {format(parseDayOffDate(dayOff.date), "EEE, MMM d, yyyy")}
                       {dayOff.reason ? ` · ${dayOff.reason}` : ""}
                     </Text>
                     {isPast && (
-                      <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>Past</Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{dof("past")}</Text>
                     )}
                     {dayOff.time_off_status === "pending" || dayOff.is_approved === false ? (
-                      <Text style={twStyle("mt-0.5 text-xs font-medium text-amber-700")}>Pending approval</Text>
+                      <Text style={twStyle("mt-0.5 text-xs font-medium text-amber-700")}>{dof("pendingApproval")}</Text>
                     ) : (
-                      <Text style={twStyle("mt-0.5 text-xs text-emerald-700")}>Approved</Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-emerald-700")}>{dof("approved")}</Text>
                     )}
                   </View>
                   {(dayOff.time_off_status === "pending" || dayOff.is_approved === false) &&
                   dayOff.time_off_id ? (
-                    <View style={twStyle("mr-2")}>
+                    <View style={twStyle("me-2")}>
                       <TouchableOpacity
                         onPress={() => handleReviewTimeOff(dayOff, "approved")}
                         style={twStyle("mb-1 rounded-lg bg-emerald-50 px-2 py-1")}
                       >
-                        <Text style={twStyle("text-xs font-medium text-emerald-800")}>Approve</Text>
+                        <Text style={twStyle("text-xs font-medium text-emerald-800")}>{dof("approve")}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleReviewTimeOff(dayOff, "denied")}
                         style={twStyle("rounded-lg bg-red-50 px-2 py-1")}
                       >
-                        <Text style={twStyle("text-xs font-medium text-red-700")}>Deny</Text>
+                        <Text style={twStyle("text-xs font-medium text-red-700")}>{dof("deny")}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -432,9 +443,9 @@ export function DaysOffContent() {
       <Modal visible={addModalOpen} transparent animationType="slide">
         <Pressable style={twStyle("flex-1 justify-end bg-black/40")} onPress={() => setAddModalOpen(false)}>
           <Pressable style={twStyle("max-h-[90%] rounded-t-2xl bg-white p-6")} onPress={() => {}}>
-            <Text style={twStyle("mb-4 text-lg font-semibold text-gray-900")}>Set Day Off</Text>
+            <Text style={twStyle("mb-4 text-lg font-semibold text-gray-900")}>{dof("modalTitle")}</Text>
 
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Team members</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{dof("teamMembers")}</Text>
             <ScrollView style={twStyle("mb-4 max-h-40 rounded-xl border border-gray-200 bg-gray-50")} nestedScrollEnabled>
               {activeStaff
                 .filter((member) => !calendarScopeOwn || member.id === selfStaffId)
@@ -447,7 +458,7 @@ export function DaysOffContent() {
                     style={twStyle("flex-row items-center border-b border-gray-100 px-4 py-3 last:border-b-0")}
                   >
                     <Avatar name={member.name} size="sm" />
-                    <Text style={twStyle("ml-3 flex-1 font-medium text-gray-900")}>{member.name}</Text>
+                    <Text style={twStyle("ms-3 flex-1 font-medium text-gray-900")}>{member.name}</Text>
                     {selected && <Ionicons name="checkmark-circle" size={22} color="#f59e0b" />}
                   </TouchableOpacity>
                 );
@@ -455,14 +466,14 @@ export function DaysOffContent() {
             </ScrollView>
 
             <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-              {selectedEndDate ? "Start date" : "Date"}
+              {selectedEndDate ? dof("startDate") : dof("date")}
             </Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
               style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
             >
               <Ionicons name="calendar-outline" size={20} color="#6366f1" />
-              <Text style={twStyle("ml-2 text-base text-gray-900")}>{format(selectedDate, "PPP")}</Text>
+              <Text style={twStyle("ms-2 text-base text-gray-900")}>{format(selectedDate, "PPP")}</Text>
             </TouchableOpacity>
             {showDatePicker && (
               <DateTimePicker
@@ -484,19 +495,19 @@ export function DaysOffContent() {
 
             {selectedEndDate ? (
               <>
-                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End date</Text>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{dof("endDate")}</Text>
                 <View style={twStyle("mb-4 flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => setShowEndDatePicker(true)}
                     style={twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                   >
                     <Ionicons name="calendar-outline" size={20} color="#6366f1" />
-                    <Text style={twStyle("ml-2 text-base text-gray-900")}>{format(selectedEndDate, "PPP")}</Text>
+                    <Text style={twStyle("ms-2 text-base text-gray-900")}>{format(selectedEndDate, "PPP")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setSelectedEndDate(null)}
-                    style={[twStyle("h-11 w-11 items-center justify-center rounded-xl bg-gray-100"), { marginLeft: 8 }]}
-                    accessibilityLabel="Remove end date"
+                    style={[twStyle("h-11 w-11 items-center justify-center rounded-xl bg-gray-100"), { marginStart: 8 }]}
+                    accessibilityLabel={dof("removeEndDateA11y")}
                   >
                     <Ionicons name="close" size={18} color="#6b7280" />
                   </TouchableOpacity>
@@ -526,17 +537,17 @@ export function DaysOffContent() {
                 accessibilityRole="button"
               >
                 <Ionicons name="add-circle-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                  Add end date (block a range)
+                <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                  {dof("addEndDate")}
                 </Text>
               </TouchableOpacity>
             )}
 
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Reason (optional)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{dof("reasonOptional")}</Text>
             <TextInput
               value={reason}
               onChangeText={setReason}
-              placeholder="e.g. Vacation, Sick leave"
+              placeholder={dof("reasonPlaceholder")}
               placeholderTextColor="#9ca3af"
               style={twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             />
@@ -544,9 +555,9 @@ export function DaysOffContent() {
             <View style={twStyle("flex-row")}>
               <TouchableOpacity
                 onPress={() => setAddModalOpen(false)}
-                style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginRight: 12 }]}
+                style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginEnd: 12 }]}
               >
-                <Text style={twStyle("font-medium text-gray-600")}>Cancel</Text>
+                <Text style={twStyle("font-medium text-gray-600")}>{dof("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveDayOff}
@@ -554,7 +565,7 @@ export function DaysOffContent() {
                 style={twStyle(`flex-1 items-center rounded-xl py-3 ${saving ? "bg-amber-300" : "bg-amber-500"}`)}
               >
                 <Text style={twStyle("font-medium text-white")}>
-                  {saving ? "Saving…" : "Set Day Off"}
+                  {saving ? dof("saving") : dof("setDayOff")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -566,9 +577,10 @@ export function DaysOffContent() {
 }
 
 export default function DaysOffScreen() {
+  const { t } = useTranslation();
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Days Off" showBack />
+      <ScreenHeader title={t("provider.mobile.screens.daysOff.title") as string} showBack />
       <DaysOffContent />
     </ScreenContainer>
   );

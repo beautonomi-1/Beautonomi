@@ -14,8 +14,10 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function ResetPasswordPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [newPassword, setNewPassword] = useState("");
@@ -93,9 +95,9 @@ export default function ResetPasswordPage() {
     if (/[0-9]/.test(pwd)) score++;
     if (/[^A-Za-z0-9]/.test(pwd)) score++;
 
-    if (score <= 1) return { label: "Weak", color: "bg-red-500", score };
-    if (score <= 3) return { label: "Fair", color: "bg-yellow-500", score };
-    return { label: "Strong", color: "bg-green-500", score };
+    if (score <= 1) return { label: t("auth.passwordWeak"), color: "bg-red-500", score };
+    if (score <= 3) return { label: t("auth.passwordFair"), color: "bg-yellow-500", score };
+    return { label: t("auth.passwordStrong"), color: "bg-green-500", score };
   };
 
   const strength = passwordStrength(newPassword);
@@ -105,15 +107,17 @@ export default function ResetPasswordPage() {
     setError(null);
 
     if (newPassword.length < policy.minimum_password_length) {
-      setError(`Password must be at least ${policy.minimum_password_length} characters`);
+      setError(t("web.accountSettings.loginAndSecurity.resetPassword.minLength", {
+        min: policy.minimum_password_length,
+      }));
       return;
     }
     if (!passwordMeetsPolicyRequirements(newPassword, policy.password_requirements)) {
-      setError("Password does not meet the required character mix for this platform");
+      setError(t("web.accountSettings.loginAndSecurity.resetPassword.policyMix"));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("web.accountSettings.loginAndSecurity.resetPassword.passwordsMismatch"));
       return;
     }
 
@@ -122,13 +126,13 @@ export default function ResetPasswordPage() {
       await updatePassword(newPassword);
       await fetcher.post("/api/me/password/changed", {}).catch(() => {});
       setSuccess(true);
-      toast.success("Password updated successfully");
+      toast.success(t("web.accountSettings.loginAndSecurity.passwordUpdated"));
       const nextRaw = searchParams.get("next");
       const nextPath =
         nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/";
       setTimeout(() => router.push(nextPath), 3000);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update password");
+      setError(err instanceof Error ? err.message : t("web.accountSettings.loginAndSecurity.updatePasswordFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -144,10 +148,10 @@ export default function ResetPasswordPage() {
             <CheckCircle2 className="h-8 w-8 text-green-600" />
           </div>
           <h2 className="mb-2 text-xl font-semibold text-gray-900">
-            Password Updated
+            {t("web.accountSettings.loginAndSecurity.resetPassword.updatedTitle")}
           </h2>
           <p className="text-sm text-gray-500">
-            Your password has been reset successfully. Redirecting you…
+            {t("web.accountSettings.loginAndSecurity.resetPassword.updatedBody")}
           </p>
         </div>
       </div>
@@ -163,10 +167,16 @@ export default function ResetPasswordPage() {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
             <AlertCircle className="h-7 w-7 text-red-600" />
           </div>
-          <h2 className="mb-2 text-lg font-semibold text-gray-900">Invalid or expired link</h2>
+          <h2 className="mb-2 text-lg font-semibold text-gray-900">
+            {t("web.accountSettings.loginAndSecurity.resetPassword.invalidLink")}
+          </h2>
           <p className="mb-6 text-sm text-gray-500">{verifyError}</p>
-          <Button onClick={() => router.push("/forgot-password")} className="w-full mb-2">Request new link</Button>
-          <button type="button" onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700">Back to home</button>
+          <Button onClick={() => router.push("/forgot-password")} className="w-full mb-2">
+            {t("web.accountSettings.loginAndSecurity.resetPassword.requestNewLink")}
+          </Button>
+          <button type="button" onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700">
+            {t("web.accountSettings.loginAndSecurity.resetPassword.backToHome")}
+          </button>
         </div>
       </div>
     );
@@ -178,9 +188,9 @@ export default function ResetPasswordPage() {
         <div
           className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-lg"
         >
-          <p className="mx-auto mb-4 text-sm text-gray-500">Loading…</p>
+          <p className="mx-auto mb-4 text-sm text-gray-500">{t("web.accountSettings.loading.loading")}</p>
           <p className="text-sm text-gray-500">
-            Verifying your reset link…
+            {t("web.accountSettings.loginAndSecurity.resetPassword.verifyingLink")}
           </p>
         </div>
       </div>
@@ -197,24 +207,26 @@ export default function ResetPasswordPage() {
         </div>
 
         <h1 className="mb-1 text-center text-xl font-semibold text-gray-900">
-          Set a New Password
+          {t("web.accountSettings.loginAndSecurity.resetPassword.title")}
         </h1>
         <p className="mb-6 text-center text-sm text-gray-500">
-          Choose a strong password for your account.
+          {t("web.accountSettings.loginAndSecurity.resetPassword.subtitle")}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              New Password
+              {t("web.accountSettings.loginAndSecurity.newPassword")}
             </label>
             <div className="relative">
               <Input
                 type={showPassword ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder={`At least ${policy.minimum_password_length} characters`}
-                className="pr-10"
+                placeholder={t("web.accountSettings.loginAndSecurity.resetPassword.atLeastChars", {
+                  min: policy.minimum_password_length,
+                })}
+                className="pe-10"
                 required
               />
               <button
@@ -242,7 +254,9 @@ export default function ResetPasswordPage() {
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Strength: {strength.label}
+                  {t("web.accountSettings.loginAndSecurity.resetPassword.strength", {
+                    label: strength.label,
+                  })}
                 </p>
               </div>
             )}
@@ -250,13 +264,13 @@ export default function ResetPasswordPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Confirm Password
+              {t("web.accountSettings.loginAndSecurity.confirmPassword")}
             </label>
             <Input
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter your password"
+              placeholder={t("web.accountSettings.loginAndSecurity.resetPassword.confirmPlaceholder")}
               required
             />
           </div>
@@ -273,7 +287,9 @@ export default function ResetPasswordPage() {
             disabled={isSubmitting || !newPassword || !confirmPassword}
             className="w-full"
           >
-            {isSubmitting ? "Updating…" : "Update Password"}
+            {isSubmitting
+              ? t("web.accountSettings.loginAndSecurity.updating")
+              : t("web.accountSettings.loginAndSecurity.updatePasswordCta")}
           </Button>
         </form>
       </div>

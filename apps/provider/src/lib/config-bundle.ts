@@ -2,7 +2,12 @@
  * Fetch config bundle from backend. Uses backend URL – no auth required for public bundle.
  * On Expo web at localhost:8081/8082 (or when APP_URL unset) we use http://localhost:3000.
  */
-import { getBackendUrl, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
+import {
+  getBackendUrl,
+  withWebApiTenantHeaders,
+  DEFAULT_REGION_CURRENCY,
+  MOBILE_WEB_USER_AGENT_TOKEN,
+} from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
 export type Platform = "web" | "customer" | "provider";
@@ -25,6 +30,7 @@ export interface ConfigBundleMeta {
     default_language: string;
     timezone: string;
     phone_country_code: string;
+    supported_languages?: string[];
     region_id?: string;
   };
   region_settings_public?: Record<string, unknown>;
@@ -134,41 +140,20 @@ export interface PublicConfigBundle {
   };
   verification?: PublicVerificationPolicy;
   content_safety?: PublicContentSafetyPolicy;
+  /** True when the network fetch failed — flags must not be trusted. */
+  isStub?: boolean;
 }
 
 let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
-const CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners still refresh stale data
+export const CONFIG_BUNDLE_CACHE_MS = 30 * 60 * 1000; // 30 min — foreground listeners refresh stale data
 
-export async function fetchConfigBundle(params?: {
-  platform?: Platform;
-  environment?: Environment;
-  appVersion?: string | null;
-}): Promise<PublicConfigBundle> {
-  const platform = params?.platform ?? "provider";
-  const environment = params?.environment ?? (__DEV__ ? "development" : "production");
-  if (cached && Date.now() - cacheTime < CACHE_MS) {
-    return cached;
-  }
-  const base = getBackendUrl().replace(/\/$/, "");
-  const url = `${base}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
-  try {
-    const res = await fetch(
-      url,
-      withWebApiTenantHeaders({
-        headers: { "X-Active-Market-Country": getDeviceRegionCountryIso() },
-      }),
-    );
-    const data = (await res.json()) as PublicConfigBundle;
-    if (data?.meta) {
-      cached = data;
-      cacheTime = Date.now();
-      return data;
-    }
-  } catch {
-    // fallback
-  }
-  cached = {
+function createStubBundle(
+  environment: Environment,
+  platform: Platform,
+): PublicConfigBundle {
+  return {
+    isStub: true,
     meta: { env: environment, platform, version: null, fetched_at: new Date().toISOString() },
     amplitude: {},
     third_party: {},
@@ -198,8 +183,54 @@ export async function fetchConfigBundle(params?: {
     verification: { ...DEFAULT_VERIFICATION_POLICY },
     content_safety: { ...DEFAULT_CONTENT_SAFETY_POLICY },
   };
-  cacheTime = Date.now();
-  return cached as PublicConfigBundle;
+}
+
+export function isConfigBundleStub(bundle: PublicConfigBundle | null | undefined): boolean {
+  return bundle?.isStub === true;
+}
+
+export function isConfigBundleCacheFresh(): boolean {
+  return cached != null && !isConfigBundleStub(cached) && Date.now() - cacheTime < CONFIG_BUNDLE_CACHE_MS;
+}
+
+export async function fetchConfigBundle(params?: {
+  platform?: Platform;
+  environment?: Environment;
+  appVersion?: string | null;
+}): Promise<PublicConfigBundle> {
+  const platform = params?.platform ?? "provider";
+  const environment = params?.environment ?? (__DEV__ ? "development" : "production");
+  if (isConfigBundleCacheFresh()) {
+    return cached as PublicConfigBundle;
+  }
+  const base = getBackendUrl().replace(/\/$/, "");
+  if (!base) {
+    return createStubBundle(environment, platform);
+  }
+  const url = `${base}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
+  try {
+    const res = await fetch(
+      url,
+      withWebApiTenantHeaders({
+        headers: {
+          "X-Active-Market-Country": getDeviceRegionCountryIso(),
+          "User-Agent": MOBILE_WEB_USER_AGENT_TOKEN,
+        },
+      }),
+    );
+    if (!res.ok) {
+      return createStubBundle(environment, platform);
+    }
+    const data = (await res.json()) as PublicConfigBundle;
+    if (data?.meta) {
+      cached = { ...data, isStub: false };
+      cacheTime = Date.now();
+      return cached;
+    }
+  } catch {
+    // fallback below — do not cache
+  }
+  return createStubBundle(environment, platform);
 }
 
 export function getCachedConfigBundle(): PublicConfigBundle | null {
@@ -210,6 +241,12 @@ export function getTenantDefaultCurrency(): string {
   const fromBundle = getCachedConfigBundle()?.meta?.tenant_region?.default_currency?.trim();
   if (fromBundle) return fromBundle;
   return DEFAULT_REGION_CURRENCY;
+}
+
+export function getTenantRegionCode(): string {
+  const fromBundle = getCachedConfigBundle()?.meta?.tenant_region?.code?.trim();
+  if (fromBundle) return fromBundle.toUpperCase();
+  return "ZA";
 }
 
 export function clearConfigBundleCache(): void {

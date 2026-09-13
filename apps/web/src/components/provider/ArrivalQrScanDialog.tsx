@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useId, useRef, useState } from "react";
 import {
   Dialog,
@@ -19,6 +21,7 @@ type Props = {
 };
 
 export function ArrivalQrScanDialog({ open, onOpenChange, onValidScan }: Props) {
+  const { t } = useTranslation();
   const reactId = useId();
   const readerId = `arrival-qr-${reactId.replace(/:/g, "")}`;
   const onValidScanRef = useRef(onValidScan);
@@ -70,7 +73,7 @@ export function ArrivalQrScanDialog({ open, onOpenChange, onValidScan }: Props) 
           setHint(
             e instanceof Error
               ? e.message
-              : "Could not start the camera. Use https, allow access, or enter the code manually."
+              : t("web.arrivalQr.cameraFailed")
           );
         }
       })
@@ -93,22 +96,22 @@ export function ArrivalQrScanDialog({ open, onOpenChange, onValidScan }: Props) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Scan arrival QR</DialogTitle>
+          <DialogTitle>{t("web.arrivalQr.title")}</DialogTitle>
           <DialogDescription>
-            Allow camera access, then point at the QR on the customer&apos;s phone.
+            {t("web.arrivalQr.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="relative min-h-[280px] rounded-lg overflow-hidden bg-black">
           {starting ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center text-white text-sm bg-black/80">
-              Starting camera…
+              {t("web.arrivalQr.startingCamera")}
             </div>
           ) : null}
           <div id={readerId} className="w-full min-h-[280px]" />
         </div>
         {hint ? <p className="text-sm text-red-600 mt-2">{hint}</p> : null}
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full mt-2 min-h-[44px]">
-          Cancel
+          {t("common.cancel")}
         </Button>
       </DialogContent>
     </Dialog>

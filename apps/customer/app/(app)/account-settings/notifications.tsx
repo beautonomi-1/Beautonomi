@@ -65,7 +65,7 @@ function ToggleRow({ label, description, value, disabled, saving, onToggle }: To
         marginBottom: 12,
       }}
     >
-      <View style={{ flex: 1, marginRight: 12 }}>
+      <View style={{ flex: 1, marginEnd: 12 }}>
         <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{label}</Text>
         {description ? (
           <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>{description}</Text>
@@ -110,6 +110,7 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 export default function NotificationsScreen() {
   const { t } = useTranslation();
   const np = useCallback((key: string) => t(`customer.mobile.screens.notificationPreferences.${key}`), [t]);
+  const an = useCallback((key: string) => t(`customer.mobile.screens.accountNotifications.${key}`), [t]);
   const insets = useSafeAreaInsets();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const scrollConstraint =
@@ -157,7 +158,7 @@ export default function NotificationsScreen() {
     const current = await Notifications.getPermissionsAsync();
     setPushPermissionStatus(current.status);
     if (current.status === "granted") {
-      Alert.alert("Push enabled", "Notifications are already allowed for this device.");
+      Alert.alert(an("pushEnabledTitle"), an("pushEnabledBody"));
       return;
     }
     if (current.status === "undetermined" || current.canAskAgain) {
@@ -166,25 +167,25 @@ export default function NotificationsScreen() {
       setPushPermissionStatus(next.status);
       if (!accepted && next.status !== "granted") {
         Alert.alert(
-          "Enable notifications",
-          "Allow notifications in system settings to receive push alerts.",
+          an("enableNotificationsTitle"),
+          an("enableNotificationsBody"),
           [
-            { text: "Not now", style: "cancel" },
-            { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
+            { text: an("notNow"), style: "cancel" },
+            { text: an("openSettings"), onPress: () => void openAppNotificationSettings() },
           ],
         );
       }
       return;
     }
     Alert.alert(
-      "Enable notifications",
-      "Push was blocked for Beautonomi. Open system settings to turn notifications on.",
+      an("pushBlockedTitle"),
+      an("pushBlockedBody"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Open Settings", onPress: () => void openAppNotificationSettings() },
+        { text: t("common.cancel"), style: "cancel" },
+        { text: an("openSettings"), onPress: () => void openAppNotificationSettings() },
       ],
     );
-  }, []);
+  }, [an, t]);
 
   const toggle = useCallback(async (key: string, value: boolean) => {
     const previous = prefsRef.current;
@@ -256,8 +257,8 @@ export default function NotificationsScreen() {
               marginBottom: 16,
             }}
           >
-            <Ionicons name="notifications-off-outline" size={22} color="#B42318" style={{ marginRight: 12 }} />
-            <View style={{ flex: 1, marginRight: 12 }}>
+            <Ionicons name="notifications-off-outline" size={22} color="#B42318" style={{ marginEnd: 12 }} />
+            <View style={{ flex: 1, marginEnd: 12 }}>
               <Text style={{ fontWeight: "700", color: "#7A271A" }}>
                 {t("common.pushPermission.systemOffTitle")}
               </Text>
@@ -281,40 +282,40 @@ export default function NotificationsScreen() {
         {/* ── Offers & Updates ── */}
         <View style={{ marginBottom: 8 }}>
           <SectionHeader
-            title="Offers and updates"
-            subtitle="Promotions, tips, and news from Beautonomi."
+            title={np("offersTitle")}
+            subtitle={np("offersSubtitle")}
           />
           <ToggleRow
-            label="Inspiration and offers"
-            description="Email and SMS deals, tips, and promotions"
+            label={np("inspirationLabel")}
+            description={np("inspirationDesc")}
             value={prefs.inspiration_and_offers?.email !== false}
             saving={isSaving("inspiration_and_offers.email")}
             onToggle={(v) => toggleNested("inspiration_and_offers", "email", v)}
           />
           <ToggleRow
-            label="SMS offers"
-            description="Receive promotional SMS messages"
+            label={np("smsOffersLabel")}
+            description={np("smsOffersDesc")}
             value={prefs.inspiration_and_offers?.sms === true}
             saving={isSaving("inspiration_and_offers.sms")}
             onToggle={(v) => toggleNested("inspiration_and_offers", "sms", v)}
           />
           <ToggleRow
-            label="WhatsApp offers"
-            description="Receive promotional WhatsApp messages (requires opt-in)"
+            label={np("whatsappOffersLabel")}
+            description={np("whatsappOffersDesc")}
             value={prefs.inspiration_and_offers?.whatsapp === true}
             saving={isSaving("inspiration_and_offers.whatsapp")}
             onToggle={(v) => toggleNested("inspiration_and_offers", "whatsapp", v)}
           />
           <ToggleRow
-            label="News and programs"
-            description="Brand new programs and announcements"
+            label={np("newsLabel")}
+            description={np("newsDesc")}
             value={prefs.news_and_programs?.email !== false}
             saving={isSaving("news_and_programs.email")}
             onToggle={(v) => toggleNested("news_and_programs", "email", v)}
           />
           <ToggleRow
-            label="Unsubscribe from all marketing"
-            description="Stop receiving promotional messages"
+            label={np("unsubscribeLabel")}
+            description={np("unsubscribeDesc")}
             value={prefs.unsubscribe_marketing === true}
             saving={isSaving("unsubscribe_marketing")}
             onToggle={(v) => toggle("unsubscribe_marketing", v)}
@@ -324,47 +325,47 @@ export default function NotificationsScreen() {
         {/* ── Account & Bookings ── */}
         <View style={{ marginBottom: 8, marginTop: 12 }}>
           <SectionHeader
-            title="Account"
-            subtitle="Booking reminders, account activity, and policies."
+            title={np("accountTitle")}
+            subtitle={np("accountSubtitle")}
           />
           <ToggleRow
-            label="Booking reminders"
-            description="Reminders before your upcoming appointments"
+            label={np("bookingRemindersLabel")}
+            description={np("bookingRemindersDesc")}
             value={prefs.booking_reminders !== false}
             saving={isSaving("booking_reminders")}
             onToggle={(v) => toggle("booking_reminders", v)}
           />
           <ToggleRow
-            label="Booking confirmation emails"
-            description="Email when a booking is confirmed or updated"
+            label={np("bookingConfEmailLabel")}
+            description={np("bookingConfEmailDesc")}
             value={prefs.account_activity?.email !== false}
             saving={isSaving("account_activity.email")}
             onToggle={(v) => toggleNested("account_activity", "email", v)}
           />
           <ToggleRow
-            label="Booking confirmation SMS"
-            description="SMS when a booking is confirmed or updated"
+            label={np("bookingConfSmsLabel")}
+            description={np("bookingConfSmsDesc")}
             value={prefs.account_activity?.sms === true}
             saving={isSaving("account_activity.sms")}
             onToggle={(v) => toggleNested("account_activity", "sms", v)}
           />
           <ToggleRow
-            label="Booking confirmation WhatsApp"
-            description="WhatsApp when a booking is confirmed or updated"
+            label={np("bookingConfWhatsappLabel")}
+            description={np("bookingConfWhatsappDesc")}
             value={prefs.account_activity?.whatsapp === true}
             saving={isSaving("account_activity.whatsapp")}
             onToggle={(v) => toggleNested("account_activity", "whatsapp", v)}
           />
           <ToggleRow
-            label="Email notifications"
-            description="Receive general Beautonomi emails"
+            label={np("emailNotifLabel")}
+            description={np("emailNotifDesc")}
             value={prefs.email_notifications !== false}
             saving={isSaving("email_notifications")}
             onToggle={(v) => toggle("email_notifications", v)}
           />
           <ToggleRow
-            label="SMS notifications"
-            description="Receive general Beautonomi SMS messages"
+            label={np("smsNotifLabel")}
+            description={np("smsNotifDesc")}
             value={prefs.sms_notifications === true}
             saving={isSaving("sms_notifications")}
             onToggle={(v) => toggle("sms_notifications", v)}
@@ -374,33 +375,33 @@ export default function NotificationsScreen() {
         {/* ── Messages ── */}
         <View style={{ marginBottom: 8, marginTop: 12 }}>
           <SectionHeader
-            title="Messages"
-            subtitle="Stay in touch with your beauty partner."
+            title={np("messagesTitle")}
+            subtitle={np("messagesSubtitle")}
           />
           <ToggleRow
-            label="Message emails"
-            description="Email when you receive a new message"
+            label={np("messageEmailLabel")}
+            description={np("messageEmailDesc")}
             value={prefs.messages?.email !== false}
             saving={isSaving("messages.email")}
             onToggle={(v) => toggleNested("messages", "email", v)}
           />
           <ToggleRow
-            label="Message SMS"
-            description="SMS when you receive a new message"
+            label={np("messageSmsLabel")}
+            description={np("messageSmsDesc")}
             value={prefs.messages?.sms === true}
             saving={isSaving("messages.sms")}
             onToggle={(v) => toggleNested("messages", "sms", v)}
           />
           <ToggleRow
-            label="Message WhatsApp"
-            description="WhatsApp when you receive a new message"
+            label={np("messageWhatsappLabel")}
+            description={np("messageWhatsappDesc")}
             value={prefs.messages?.whatsapp === true}
             saving={isSaving("messages.whatsapp")}
             onToggle={(v) => toggleNested("messages", "whatsapp", v)}
           />
           <ToggleRow
-            label="Push notifications for messages"
-            description="In-app push alerts for new messages"
+            label={np("messagePushLabel")}
+            description={np("messagePushDesc")}
             value={prefs.messages?.push === true}
             saving={isSaving("messages.push")}
             onToggle={(v) => toggleNested("messages", "push", v)}
@@ -410,40 +411,40 @@ export default function NotificationsScreen() {
         {/* ── Push notifications matrix ── */}
         <View style={{ marginBottom: 8, marginTop: 12 }}>
           <SectionHeader
-            title="Push notifications"
-            subtitle="Choose which push alerts you receive on this device. Critical alerts (like payment and safety) are always delivered."
+            title={np("pushTitle")}
+            subtitle={np("pushSubtitle")}
           />
           <ToggleRow
-            label="Booking reminders"
-            description="Push reminders before your upcoming appointments"
+            label={np("pushRemindersLabel")}
+            description={np("pushRemindersDesc")}
             value={prefs.reminders?.push === true}
             saving={isSaving("reminders.push")}
             onToggle={(v) => toggleNested("reminders", "push", v)}
           />
           <ToggleRow
-            label="WhatsApp reminders"
-            description="WhatsApp reminders before your upcoming appointments"
+            label={np("whatsappRemindersLabel")}
+            description={np("whatsappRemindersDesc")}
             value={prefs.reminders?.whatsapp === true}
             saving={isSaving("reminders.whatsapp")}
             onToggle={(v) => toggleNested("reminders", "whatsapp", v)}
           />
           <ToggleRow
-            label="Account activity"
-            description="Push when a booking is confirmed, updated, or cancelled"
+            label={np("pushAccountActivityLabel")}
+            description={np("pushAccountActivityDesc")}
             value={prefs.account_activity?.push === true}
             saving={isSaving("account_activity.push")}
             onToggle={(v) => toggleNested("account_activity", "push", v)}
           />
           <ToggleRow
-            label="Policies and reminders"
-            description="Push for policy updates and check-ins"
+            label={np("pushPoliciesLabel")}
+            description={np("pushPoliciesDesc")}
             value={prefs.client_policies?.push === true}
             saving={isSaving("client_policies.push")}
             onToggle={(v) => toggleNested("client_policies", "push", v)}
           />
           <ToggleRow
-            label="Offers and promotions"
-            description="Push for deals, tips, and promotions"
+            label={np("pushOffersLabel")}
+            description={np("pushOffersDesc")}
             value={prefs.inspiration_and_offers?.push === true}
             saving={isSaving("inspiration_and_offers.push")}
             onToggle={(v) => toggleNested("inspiration_and_offers", "push", v)}
@@ -456,8 +457,8 @@ export default function NotificationsScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={
                   pushPermissionStatus === "granted"
-                    ? "Push notifications enabled on this device"
-                    : "Enable push notifications on this device"
+                    ? np("pushEnabledA11y")
+                    : np("enablePushA11y")
                 }
                 style={{
                   flexDirection: "row",
@@ -471,16 +472,16 @@ export default function NotificationsScreen() {
                   marginBottom: 12,
                 }}
               >
-                <View style={{ flex: 1, marginRight: 12 }}>
+                <View style={{ flex: 1, marginEnd: 12 }}>
                   <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                     {pushPermissionStatus === "granted"
-                      ? "Push notifications enabled"
-                      : "Enable push notifications"}
+                      ? np("pushEnabledLabel")
+                      : np("enablePushLabel")}
                   </Text>
                   <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
                     {pushPermissionStatus === "granted"
-                      ? "This device can receive push alerts"
-                      : "Request permission if you skipped push during setup"}
+                      ? np("pushEnabledDesc")
+                      : np("enablePushDesc")}
                   </Text>
                 </View>
                 <Ionicons
@@ -492,7 +493,7 @@ export default function NotificationsScreen() {
               <TouchableOpacity
               onPress={() => void openAppNotificationSettings()}
               accessibilityRole="button"
-              accessibilityLabel="Open system notification settings"
+              accessibilityLabel={np("systemSettingsA11y")}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -505,12 +506,12 @@ export default function NotificationsScreen() {
                 marginTop: 4,
               }}
             >
-              <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={{ flex: 1, marginEnd: 12 }}>
                 <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
-                  System notification settings
+                  {np("systemSettingsLabel")}
                 </Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
-                  Manage OS-level permissions if push isn’t arriving
+                  {np("systemSettingsDesc")}
                 </Text>
               </View>
               <Ionicons name="open-outline" size={20} color={Colors.primary} />

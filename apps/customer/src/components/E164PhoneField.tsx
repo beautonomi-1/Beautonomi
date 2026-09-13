@@ -21,6 +21,7 @@ import {
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { normalizeSupabaseAuthPhone } from "@/lib/supabase-sms-otp";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type E164PhoneFieldProps = {
   valueE164: string;
@@ -43,8 +44,10 @@ export function E164PhoneField({
   compact = false,
   muted = false,
   showHint = true,
-  accessibilityLabel = "Phone number",
+  accessibilityLabel,
 }: E164PhoneFieldProps) {
+  const { t } = useTranslation();
+  const pi = (key: string) => t(`customer.mobile.components.phoneInput.${key}`) as string;
   const { contentPadding } = useResponsive();
   const lastSyncedExternal = useRef<string | undefined>(undefined);
   const resolvedDefaultDial = defaultCountryDial ?? getDeviceDefaultCountryDial();
@@ -52,7 +55,7 @@ export function E164PhoneField({
   const [countryCode, setCountryCode] = useState(() => resolvedDefaultDial);
   const [national, setNational] = useState("");
   const nationalPlaceholder =
-    placeholderNational ?? (resolvedDefaultDial === "+27" ? "82 123 4567" : "Mobile number");
+    placeholderNational ?? (resolvedDefaultDial === "+27" ? "82 123 4567" : pi("mobileNumberPlaceholder"));
   const [showPicker, setShowPicker] = useState(false);
   const [search, setSearch] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
@@ -137,14 +140,14 @@ export function E164PhoneField({
             backgroundColor: "#F3F4F6",
             paddingHorizontal: compact ? 10 : 12,
             paddingVertical: py,
-            borderRightWidth: 1,
-            borderRightColor: "#E5E7EB",
+            borderEndWidth: 1,
+            borderEndColor: "#E5E7EB",
           }}
-          accessibilityLabel="Select country code"
+          accessibilityLabel={pi("selectCountryCodeA11y")}
           accessibilityRole="button"
         >
-          <Text style={{ fontSize: compact ? 16 : 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-          <Text style={{ fontSize: compact ? 14 : 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>
+          <Text style={{ fontSize: compact ? 16 : 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+          <Text style={{ fontSize: compact ? 14 : 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>
             {countryCode}
           </Text>
           <Ionicons name="chevron-down" size={compact ? 12 : 14} color="#6B7280" />
@@ -157,18 +160,19 @@ export function E164PhoneField({
             paddingVertical: py,
             fontSize: compact ? 15 : 16,
             color: "#111827",
+            writingDirection: "ltr",
           }}
           value={national}
           onChangeText={onNationalChange}
           placeholder={nationalPlaceholder}
           placeholderTextColor="#9ca3af"
           keyboardType="phone-pad"
-          accessibilityLabel={accessibilityLabel}
+          accessibilityLabel={accessibilityLabel ?? pi("phoneNumberA11y")}
         />
       </View>
       {showHint ? (
         <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500], lineHeight: 18 }}>
-          Enter your national number without repeating the country code. Leading 0 is optional.
+          {pi("nationalNumberHint")}
         </Text>
       ) : null}
       {fieldError ? <Text style={{ marginTop: 4, fontSize: 12, color: "#EF4444" }}>{fieldError}</Text> : null}
@@ -177,7 +181,7 @@ export function E164PhoneField({
         <Pressable
           style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
           onPress={() => setShowPicker(false)}
-          accessibilityLabel="Close country picker"
+          accessibilityLabel={pi("closeCountryPickerA11y")}
           accessibilityRole="button"
         >
           <Pressable
@@ -196,7 +200,7 @@ export function E164PhoneField({
               }}
             >
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select country
+                {pi("selectCountryTitle")}
               </Text>
               <View
                 style={{
@@ -210,7 +214,7 @@ export function E164PhoneField({
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: pickerPy, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={pi("searchCountry")}
                   placeholderTextColor="#9CA3AF"
                   value={search}
                   onChangeText={setSearch}
@@ -243,7 +247,7 @@ export function E164PhoneField({
                   accessibilityLabel={c.label}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,

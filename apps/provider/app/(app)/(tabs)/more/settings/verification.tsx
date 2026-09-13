@@ -10,8 +10,11 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useApi } from "@/hooks/useApi";
 import { providerVerificationSubtitle, verificationPolicyFromBundle } from "@/lib/verification/policy";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function VerificationScreen() {
+  const { t } = useTranslation();
+  const vs = (key: string) => t(`provider.mobile.screens.verificationSettings.${key}`) as string;
   const router = useRouter();
   const { bundle } = useConfigBundle();
   const verificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
@@ -32,13 +35,13 @@ export default function VerificationScreen() {
     <ScreenContainer scrollable noPadding>
       <View style={{ paddingHorizontal: 16 }}>
         <ScreenHeader
-          title="Verification"
+          title={vs("title")}
           subtitle={providerVerificationSubtitle(verificationRequired)}
           onBack={() => router.back()}
         />
       </View>
       {loading && !statusData ? (
-        <LoadingState message="Loading verification…" />
+        <LoadingState message={vs("loading")} />
       ) : (
         <ProviderVerificationHub
           env={env}

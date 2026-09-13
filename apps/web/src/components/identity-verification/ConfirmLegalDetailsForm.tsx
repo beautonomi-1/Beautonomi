@@ -8,6 +8,7 @@
  */
 
 import { type ChangeEvent } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import type { LegalDetails } from "@/hooks/useIdentityVerification";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,9 @@ export function ConfirmLegalDetailsForm({
   loading,
   isProvider = false,
 }: Props) {
+  const { t } = useTranslation();
+  const prefix = "web.accountSettings.identityVerification.confirmLegal";
+
   function update(field: keyof LegalDetails) {
     return (e: ChangeEvent<HTMLInputElement>) => {
       onChange({ ...legalDetails, [field]: e.target.value });
@@ -41,13 +45,11 @@ export function ConfirmLegalDetailsForm({
   }
 
   return (
-    <div className="space-y-5" role="form" aria-label="Confirm legal details before verification">
+    <div className="space-y-5" role="form" aria-label={t(`${prefix}.formAria`)}>
       <Alert className="border-amber-200 bg-amber-50 text-amber-900">
         <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
         <AlertDescription className="text-sm leading-snug">
-          <strong>Important:</strong> Enter your details exactly as they appear on your government
-          ID or passport — including middle names and accents. Nicknames or mismatched details will
-          cause verification to fail.
+          <strong>{t(`${prefix}.important`)}:</strong> {t(`${prefix}.importantBody`)}
         </AlertDescription>
       </Alert>
 
@@ -55,9 +57,9 @@ export function ConfirmLegalDetailsForm({
         <Alert className="border-blue-200 bg-blue-50 text-blue-900">
           <InfoIcon className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
           <AlertDescription className="text-sm leading-snug">
-            You&apos;re verifying <strong>your own identity</strong> as the owner or authorized
-            representative. If your salon is a registered business, your payout account can be in
-            the business name — that&apos;s expected and won&apos;t cause an issue.
+            {t(`${prefix}.providerNoteBefore`)}{" "}
+            <strong>{t(`${prefix}.providerOwnIdentity`)}</strong>{" "}
+            {t(`${prefix}.providerNoteAfter`)}
           </AlertDescription>
         </Alert>
       )}
@@ -65,13 +67,13 @@ export function ConfirmLegalDetailsForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="legal-first-name">
-            Legal first name <span aria-hidden="true" className="text-destructive">*</span>
+            {t(`${prefix}.legalFirstName`)} <span aria-hidden="true" className="text-destructive">*</span>
           </Label>
           <Input
             id="legal-first-name"
             value={legalDetails.firstName}
             onChange={update("firstName")}
-            placeholder="As on your ID / passport"
+            placeholder={t(`${prefix}.idPlaceholder`)}
             autoComplete="given-name"
             aria-required="true"
             aria-describedby={errors.firstName ? "err-first-name" : undefined}
@@ -86,13 +88,13 @@ export function ConfirmLegalDetailsForm({
 
         <div className="space-y-1.5">
           <Label htmlFor="legal-last-name">
-            Legal last name <span aria-hidden="true" className="text-destructive">*</span>
+            {t(`${prefix}.legalLastName`)} <span aria-hidden="true" className="text-destructive">*</span>
           </Label>
           <Input
             id="legal-last-name"
             value={legalDetails.lastName}
             onChange={update("lastName")}
-            placeholder="As on your ID / passport"
+            placeholder={t(`${prefix}.idPlaceholder`)}
             autoComplete="family-name"
             aria-required="true"
             aria-describedby={errors.lastName ? "err-last-name" : undefined}
@@ -119,17 +121,20 @@ export function ConfirmLegalDetailsForm({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Fields marked <span className="text-destructive" aria-hidden="true">*</span> are required.
-        Your legal details are used only to cross-check your document during verification.
+        {t(`${prefix}.requiredHintBefore`)}{" "}
+        <span className="text-destructive" aria-hidden="true">*</span>{" "}
+        {t(`${prefix}.requiredHintAfter`)}
       </p>
 
       <Button
         onClick={onSubmit}
         disabled={loading}
         className="w-full"
-        aria-label="Start identity verification"
+        aria-label={t("web.accountSettings.identityVerification.statusCard.startAria")}
       >
-        {loading ? "Starting…" : "Start verification"}
+        {loading
+          ? t(`${prefix}.starting`)
+          : t("web.accountSettings.identityVerification.statusCard.startVerification")}
       </Button>
     </div>
   );

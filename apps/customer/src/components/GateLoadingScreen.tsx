@@ -29,6 +29,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { colors, colorsDark } from "@beautonomi/ui-tokens";
 import { BEAUTONOMI_B_PATH, BEAUTONOMI_SWIRL_PATH } from "@/components/brand-glyph-paths";
+import { useTranslation } from "@beautonomi/i18n";
 
 const AnimatedView = Animated.View;
 
@@ -48,6 +49,7 @@ export function GateLoadingScreen({
   showWordmark = true,
   testID,
 }: GateLoadingScreenProps) {
+  const { t } = useTranslation();
   const scheme = useColorScheme();
   const palette = scheme === "dark" ? colorsDark : colors;
   const accent = primaryColor ?? palette.primary;
@@ -140,7 +142,7 @@ export function GateLoadingScreen({
     <View
       style={[styles.root, { backgroundColor: bg }]}
       accessibilityRole="progressbar"
-      accessibilityLabel={message ?? "Loading"}
+      accessibilityLabel={message ?? t("customer.mobile.components.gateLoading.defaultA11y")}
       testID={testID}
     >
       <LinearGradient

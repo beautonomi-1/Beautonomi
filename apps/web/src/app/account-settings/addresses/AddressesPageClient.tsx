@@ -17,12 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function SavedAddressesPage({
   initialAddresses,
 }: {
   initialAddresses: SavedAddress[] | null;
 }) {
+  const { t } = useTranslation();
   const { addresses, isLoading, saveAddress, updateAddress, deleteAddress } =
     useSavedAddresses(initialAddresses);
   const [showDialog, setShowDialog] = useState(false);
@@ -39,14 +41,14 @@ export default function SavedAddressesPage({
   };
 
   const handleDelete = async (address: SavedAddress) => {
-    if (!confirm(`Are you sure you want to delete "${address.label || address.address_line1}"?`))
+    if (!confirm(t("web.accountSettings.addresses.deleteConfirm", { label: address.label || address.address_line1 })))
       return;
 
     try {
       await deleteAddress(address.id);
-      toast.success("Address deleted");
+      toast.success(t("web.accountSettings.addresses.deleted"));
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to delete address";
+      const message = error instanceof Error ? error.message : t("web.accountSettings.addresses.deleteFailed");
       toast.error(message);
     }
   };
@@ -55,15 +57,15 @@ export default function SavedAddressesPage({
     try {
       if (editingAddress) {
         await updateAddress(editingAddress.id, addressData as { label?: string; address_line1?: string; address_line2?: string | null; city?: string; state?: string | null; postal_code?: string | null; country?: string; latitude?: number | null; longitude?: number | null; is_default?: boolean; [key: string]: unknown });
-        toast.success("Address updated");
+        toast.success(t("web.accountSettings.addresses.updated"));
       } else {
         await saveAddress(addressData as { label: string; address_line1: string; address_line2?: string | null; city: string; state?: string | null; postal_code?: string | null; country: string; latitude?: number | null; longitude?: number | null; is_default: boolean; [key: string]: unknown });
-        toast.success("Address saved");
+        toast.success(t("web.accountSettings.addresses.saved"));
       }
       setShowDialog(false);
       setEditingAddress(null);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Failed to save address";
+      const message = error instanceof Error ? error.message : t("web.accountSettings.addresses.saveFailed");
       toast.error(message);
     }
   };
@@ -72,7 +74,7 @@ export default function SavedAddressesPage({
     return (
       <div className="min-h-screen bg-zinc-50/50">
           <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-            <LoadingTimeout loadingMessage="Loading saved addresses..." />
+            <LoadingTimeout loadingMessage={t("web.accountSettings.addresses.loading")} />
           </div>
         </div>
     );
@@ -87,8 +89,8 @@ export default function SavedAddressesPage({
             <BackButton href="/account-settings" />
             <Breadcrumb
               items={[
-                { label: "Account", href: "/account-settings" },
-                { label: "Saved Addresses" },
+                { label: t("web.accountSettings.account"), href: "/account-settings" },
+                { label: t("web.accountSettings.addresses.breadcrumbTitle") },
               ]}
             />
 
@@ -96,7 +98,7 @@ export default function SavedAddressesPage({
               <h1
                 className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900"
               >
-                Saved Addresses
+                {t("web.accountSettings.addresses.title")}
               </h1>
               <div
               >
@@ -104,8 +106,8 @@ export default function SavedAddressesPage({
                   onClick={handleCreate}
                   className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-medium px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Address
+                  <Plus className="w-4 h-4 me-2" />
+                  {t("web.accountSettings.addresses.addAddress")}
                 </Button>
               </div>
             </div>
@@ -119,9 +121,9 @@ export default function SavedAddressesPage({
                     <Sparkles className="w-12 h-12 text-[#FF0077]" />
                   </div>
                 </div>
-                <h2 className="text-xl font-semibold mb-2 text-gray-900">No saved addresses</h2>
+                <h2 className="text-xl font-semibold mb-2 text-gray-900">{t("web.accountSettings.addresses.emptyTitle")}</h2>
                 <p className="text-gray-600 mb-6 font-light">
-                  Save addresses for faster checkout
+                  {t("web.accountSettings.addresses.emptyDesc")}
                 </p>
                 <div
                 >
@@ -129,8 +131,8 @@ export default function SavedAddressesPage({
                     onClick={handleCreate}
                     className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-medium px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all"
                   >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Your First Address
+                    <Plus className="w-4 h-4 me-2" />
+                    {t("web.accountSettings.addresses.addFirst")}
                   </Button>
                 </div>
               </div>
@@ -148,31 +150,31 @@ export default function SavedAddressesPage({
                             <MapPin className="w-4 h-4 text-[#FF0077]" />
                           </div>
                           <h3 className="font-semibold text-lg text-gray-900">
-                            {address.label || "Address"}
+                            {address.label || t("web.accountSettings.addresses.addressFallback")}
                           </h3>
                           {address.is_default && (
                             <Badge
                               variant="default"
                               className="bg-gradient-to-r from-pink-100 to-purple-100 text-[#FF0077] border border-pink-200"
                             >
-                              <Star className="w-3 h-3 mr-1 fill-[#FF0077]" />
-                              Default
+                              <Star className="w-3 h-3 me-1 fill-[#FF0077]" />
+                              {t("web.accountSettings.addresses.default")}
                             </Badge>
                           )}
                         </div>
-                        <div className="text-gray-600 space-y-1 ml-7">
+                        <div className="text-gray-600 space-y-1 ms-7">
                           <p className="text-sm md:text-base">{address.address_line1}</p>
                           {address.address_line2 && (
                             <p className="text-sm md:text-base">{address.address_line2}</p>
                           )}
                           {address.apartment_unit && (
-                            <p className="text-sm md:text-base text-gray-500">Unit: {address.apartment_unit}</p>
+                            <p className="text-sm md:text-base text-gray-500">{t("web.accountSettings.addresses.unit", { value: address.apartment_unit })}</p>
                           )}
                           {address.building_name && (
-                            <p className="text-sm md:text-base text-gray-500">Building: {address.building_name}</p>
+                            <p className="text-sm md:text-base text-gray-500">{t("web.accountSettings.addresses.building", { value: address.building_name })}</p>
                           )}
                           {address.floor_number && (
-                            <p className="text-sm md:text-base text-gray-500">Floor: {address.floor_number}</p>
+                            <p className="text-sm md:text-base text-gray-500">{t("web.accountSettings.addresses.floor", { value: address.floor_number })}</p>
                           )}
                           <p className="text-sm md:text-base">
                             {address.city}
@@ -184,25 +186,27 @@ export default function SavedAddressesPage({
                             <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
                               {address.parking_instructions && (
                                 <p className="text-xs text-gray-500">
-                                  <span className="font-medium">Parking:</span> {address.parking_instructions}
+                                  <span className="font-medium">{t("web.accountSettings.addresses.parking")}</span> {address.parking_instructions}
                                 </p>
                               )}
                               {address.location_landmarks && (
                                 <p className="text-xs text-gray-500">
-                                  <span className="font-medium">Landmarks:</span> {address.location_landmarks}
+                                  <span className="font-medium">{t("web.accountSettings.addresses.landmarks")}</span> {address.location_landmarks}
                                 </p>
                               )}
                             </div>
                           )}
                           {address.latitude && address.longitude && (
                             <p className="text-xs text-gray-400 mt-2">
-                              Coordinates: {address.latitude.toFixed(6)},{" "}
-                              {address.longitude.toFixed(6)}
+                              {t("web.accountSettings.addresses.coordinates", {
+                                lat: address.latitude.toFixed(6),
+                                lng: address.longitude.toFixed(6),
+                              })}
                             </p>
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2 ml-4">
+                      <div className="flex gap-2 ms-4">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -237,12 +241,14 @@ export default function SavedAddressesPage({
                 <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
                   <DialogHeader>
                     <DialogTitle>
-                      {editingAddress ? "Edit Address" : "Add Address"}
+                      {editingAddress
+                        ? t("web.accountSettings.addresses.editTitle")
+                        : t("web.accountSettings.addresses.addTitle")}
                     </DialogTitle>
                     <DialogDescription>
                       {editingAddress
-                        ? "Update your saved address"
-                        : "Save an address for faster checkout"}
+                        ? t("web.accountSettings.addresses.editDesc")
+                        : t("web.accountSettings.addresses.addDesc")}
                     </DialogDescription>
                   </DialogHeader>
                   <AddressForm

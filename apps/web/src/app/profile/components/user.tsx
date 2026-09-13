@@ -82,7 +82,7 @@ const User = () => {
               </div>
             ))}
           </div>
-          <div className="text-right">
+          <div className="text-end">
             <Button variant="default" className="mt-4" onClick={handleContinue}>
               Continue
             </Button>
@@ -136,7 +136,7 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
       <h2 className="text-[22px] font-medium text-secondary mb-4">Choose an ID type to add</h2>
 
       <div className="border rounded-md -space-y-2 mb-4">
-        <Label htmlFor="country" className="text-xs pl-3 text-destructive">
+        <Label htmlFor="country" className="text-xs ps-3 text-destructive">
           Country/region
         </Label>
         <Select value={country} onValueChange={setCountry}>

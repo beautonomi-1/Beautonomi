@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MapPin, Navigation } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -42,6 +44,7 @@ export function effectiveAtHomeTravelFee(value: AtHomeAddressValue): number {
 }
 
 export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionProps) {
+  const { t } = useTranslation();
   const { provider } = useProviderPortal();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [validating, setValidating] = useState(false);
@@ -138,7 +141,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
 
           const payload = json?.data;
           if (payload?.valid === false) {
-            setValidationError(payload.message || "Address is outside the service area");
+            setValidationError(payload.message || t("web.provider.atHomeAddress.outsideArea"));
             patch({ travelFee: 0, travelPreviewMinutes: null, travelPreviewDistanceKm: null });
             return;
           }
@@ -161,7 +164,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
           });
         } catch {
           if (!cancelled) {
-            setValidationError("Could not validate address");
+            setValidationError(t("web.provider.atHomeAddress.validateFailed"));
             patch({ travelFee: 0, travelPreviewMinutes: null, travelPreviewDistanceKm: null });
           }
         } finally {
@@ -234,7 +237,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
 
   return (
     <BookingSectionCard data-testid="at-home-address-section">
-      <BookingSectionLabel className="mb-2">At-home address</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.provider.atHomeAddress.title")}</BookingSectionLabel>
       <div className="space-y-2">
         <AddressAutocomplete
           value={value.addressLine1}
@@ -252,7 +255,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
           onInputChange={(val) => {
             if (val) patch({ addressLine1: val });
           }}
-          placeholder="Search for address…"
+          placeholder={t("web.provider.atHomeAddress.searchPlaceholder")}
           label=""
           country="ZA"
           defaultCountryName="South Africa"
@@ -262,27 +265,27 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
         <Input
           value={value.addressLine2}
           onChange={(e) => patch({ addressLine2: e.target.value })}
-          placeholder="Apt / unit (optional)"
+          placeholder={t("web.provider.atHomeAddress.aptPlaceholder")}
           className="rounded-xl min-h-[44px]"
         />
         <div className="grid grid-cols-2 gap-2">
           <Input
             value={value.addressCity}
             onChange={(e) => patch({ addressCity: e.target.value })}
-            placeholder="City"
+            placeholder={t("web.provider.atHomeAddress.city")}
             className="rounded-xl min-h-[44px]"
           />
           <Input
             value={value.addressState}
             onChange={(e) => patch({ addressState: e.target.value })}
-            placeholder="Province / state"
+            placeholder={t("web.provider.atHomeAddress.province")}
             className="rounded-xl min-h-[44px]"
           />
         </div>
         <Input
           value={value.addressPostalCode}
           onChange={(e) => patch({ addressPostalCode: e.target.value })}
-          placeholder="Postal code"
+          placeholder={t("web.provider.atHomeAddress.postalCode")}
           className="rounded-xl min-h-[44px]"
         />
         <div className="flex flex-wrap gap-2 pt-1">
@@ -293,8 +296,8 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             className="rounded-xl min-h-[40px] touch-manipulation"
             onClick={() => setMapOpen(true)}
           >
-            <MapPin className="mr-1.5 h-4 w-4" />
-            Pin on map
+            <MapPin className="me-1.5 h-4 w-4" />
+            {t("web.provider.atHomeAddress.pinOnMap")}
           </Button>
           <Button
             type="button"
@@ -305,11 +308,11 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             disabled={locating}
           >
             {locating ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              <Loader2 className="me-1.5 h-4 w-4 animate-spin" />
             ) : (
-              <Navigation className="mr-1.5 h-4 w-4" />
+              <Navigation className="me-1.5 h-4 w-4" />
             )}
-            Use my location
+            {t("web.provider.atHomeAddress.useMyLocation")}
           </Button>
         </div>
       </div>
@@ -319,7 +322,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
           {validating ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-              <span>Calculating travel fee…</span>
+              <span>{t("web.provider.atHomeAddress.calculating")}</span>
             </>
           ) : validationError ? (
             <span className="text-amber-800">{validationError}</span>
@@ -327,35 +330,35 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
             <>
               <MapPin className="h-4 w-4 shrink-0 text-blue-600" />
               <span>
-                Travel fee: <span className="font-semibold">{formatMoney(displayFee)}</span>
-                {value.useTravelOverride ? " (override)" : null}
+                {t("web.provider.atHomeAddress.travelFee", { amount: formatMoney(displayFee) })}
+                {value.useTravelOverride ? t("web.provider.atHomeAddress.overrideSuffix") : null}
               </span>
             </>
           ) : (
-            <span className="text-blue-700">Enter or search an address to calculate travel fee</span>
+            <span className="text-blue-700">{t("web.provider.atHomeAddress.enterAddress")}</span>
           )}
         </div>
         {!validationError &&
         (value.travelPreviewDistanceKm != null || value.travelPreviewMinutes != null) ? (
           <p className="text-xs text-blue-600 mt-1">
             {value.travelPreviewDistanceKm != null
-              ? `${value.travelPreviewDistanceKm.toFixed(1)} km`
+              ? t("web.provider.atHomeAddress.distanceKm", { km: value.travelPreviewDistanceKm.toFixed(1) })
               : null}
             {value.travelPreviewDistanceKm != null && value.travelPreviewMinutes != null
-              ? " · "
+              ? t("web.provider.atHomeAddress.separator")
               : null}
             {value.travelPreviewMinutes != null
-              ? `~${value.travelPreviewMinutes} min drive`
+              ? t("web.provider.atHomeAddress.driveMin", { minutes: value.travelPreviewMinutes })
               : null}
-            {value.addressLatitude != null && value.addressLongitude != null ? " · Geocoded" : null}
+            {value.addressLatitude != null && value.addressLongitude != null ? t("web.provider.atHomeAddress.separator") + t("web.provider.atHomeAddress.geocoded") : null}
           </p>
         ) : null}
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-gray-900">Override travel fee</p>
-          <p className="text-xs text-gray-500">Use a custom fee instead of calculated</p>
+          <p className="text-sm font-medium text-gray-900">{t("web.provider.atHomeAddress.overrideTitle")}</p>
+          <p className="text-xs text-gray-500">{t("web.provider.atHomeAddress.overrideHint")}</p>
         </div>
         <Switch
           checked={value.useTravelOverride}
@@ -378,7 +381,7 @@ export function AtHomeAddressSection({ value, onChange }: AtHomeAddressSectionPr
               travelFeeOverride: e.target.value ? Math.max(0, Number(e.target.value)) : null,
             })
           }
-          placeholder="Custom travel fee"
+          placeholder={t("web.provider.atHomeAddress.customFeePlaceholder")}
           className="rounded-xl min-h-[44px] mt-2"
         />
       ) : null}

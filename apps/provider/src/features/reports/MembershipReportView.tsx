@@ -2,6 +2,7 @@
  * Salon membership sales report — liability gross, recognized earnings, discounts.
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -23,6 +24,10 @@ function isMembershipPayload(data: unknown): data is {
 }
 
 export function MembershipReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const mr = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.membershipReport.${key}`, opts) as string;
+
   if (!isMembershipPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -34,35 +39,35 @@ export function MembershipReportView({ data }: { data: unknown }) {
       ) : null}
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-violet-100 bg-violet-50/85 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-violet-950")}>Gross sales (liability)</Text>
+          <Text style={twStyle("text-xs font-medium text-violet-950")}>{mr("grossSales")}</Text>
           <Text style={twStyle("mt-2 text-xl font-semibold tabular-nums text-violet-950")}>
             {formatCurrency(data.gross_sales)}
           </Text>
-          <Text style={twStyle("mt-1 text-xs text-violet-950/80")}>{data.sales_count ?? 0} sales</Text>
+          <Text style={twStyle("mt-1 text-xs text-violet-950/80")}>{mr("salesCount", { count: data.sales_count ?? 0 })}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/85 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-950")}>Recognized earnings</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-950")}>{mr("recognizedEarnings")}</Text>
           <Text style={twStyle("mt-2 text-xl font-semibold tabular-nums text-emerald-950")}>
             {formatCurrency(data.recognized_earnings)}
           </Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-amber-100 bg-amber-50/85 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-amber-950")}>Member discounts</Text>
+          <Text style={twStyle("text-xs font-medium text-amber-950")}>{mr("memberDiscounts")}</Text>
           <Text style={twStyle("mt-2 text-xl font-semibold tabular-nums text-amber-950")}>
             {formatCurrency(data.member_discounts_applied)}
           </Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-slate-100 bg-slate-50/85 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-slate-900")}>Active subscribers</Text>
+          <Text style={twStyle("text-xs font-medium text-slate-900")}>{mr("activeSubscribers")}</Text>
           <Text style={twStyle("mt-2 text-xl font-semibold tabular-nums text-slate-950")}>
             {data.active_subscribers}
           </Text>
-          <Text style={twStyle("mt-1 text-xs text-slate-800/90")}>Current status=active</Text>
+          <Text style={twStyle("mt-1 text-xs text-slate-800/90")}>{mr("activeStatusHint")}</Text>
         </View>
       </View>
       {(data.sales_by_day?.length ?? 0) > 0 ? (
         <>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Sales by day</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{mr("salesByDay")}</Text>
           {data.sales_by_day!.map((row) => (
             <View
               key={row.date}
@@ -70,7 +75,7 @@ export function MembershipReportView({ data }: { data: unknown }) {
             >
               <Text style={twStyle("text-sm text-gray-600")}>{row.date}</Text>
               <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                {formatCurrency(row.gross)} ({row.count})
+                {mr("dayGross", { amount: formatCurrency(row.gross), count: row.count })}
               </Text>
             </View>
           ))}

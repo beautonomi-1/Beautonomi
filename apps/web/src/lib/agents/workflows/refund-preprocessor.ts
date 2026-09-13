@@ -25,6 +25,23 @@ import { hashPayload } from "@beautonomi/agent-policy";
 
 const PER_TENANT_LIMIT = 10;
 
+/**
+ * Lifecycle evidence attached to a refund/dispute briefing (plan §R). A
+ * no-show fee dispute is decided very differently when the customer reported
+ * running late at 09:05 and the salon logged two unanswered calls, versus a
+ * booking that was never checked in with zero contact attempts.
+ */
+export type BookingLifecycleEvidence = {
+  status: string | null;
+  scheduledAt: string | null;
+  checkedInAt: string | null;
+  customerRunningLateAt: string | null;
+  customerRunningLateMinutes: number | null;
+  providerLateAckAt: string | null;
+  contactAttempts: Array<{ at: string; channel?: string; note?: string }>;
+  arrivalVerified: boolean | null;
+};
+
 export type RefundBriefing = {
   requestedAmount: number;
   bookingTotal: number;
@@ -36,7 +53,32 @@ export type RefundBriefing = {
   customerRefunds90d: number;
   flags: string[];
   summary: string;
+  lifecycle?: BookingLifecycleEvidence;
 };
+
+export function buildLifecycleEvidenceFlags(evidence: BookingLifecycleEvidence): string[] {
+  const flags: string[] = [];
+  if (evidence.status === "no_show") {
+    if (evidence.customerRunningLateAt) {
+      flags.push(
+        `no_show_after_running_late_report (${evidence.customerRunningLateMinutes ?? "?"} min at ${evidence.customerRunningLateAt})`,
+      );
+    }
+    if (evidence.customerRunningLateAt && !evidence.providerLateAckAt) {
+      flags.push("running_late_not_acknowledged_by_provider");
+    }
+    if (evidence.contactAttempts.length === 0) {
+      flags.push("no_show_without_contact_attempts");
+    }
+    if (evidence.checkedInAt) {
+      flags.push(`no_show_but_checked_in_at (${evidence.checkedInAt})`);
+    }
+    if (evidence.arrivalVerified === true) {
+      flags.push("no_show_but_arrival_verified");
+    }
+  }
+  return flags;
+}
 
 export function buildRefundBriefing(input: {
   requestedAmount: number;
@@ -47,8 +89,9 @@ export function buildRefundBriefing(input: {
   refundMethod: string | null;
   paymentBreakdown: string;
   customerRefunds90d: number;
+  lifecycle?: BookingLifecycleEvidence;
 }): RefundBriefing {
-  const flags: string[] = [];
+  const flags: string[] = input.lifecycle ? buildLifecycleEvidenceFlags(input.lifecycle) : [];
   const remainingRefundable = Math.max(0, input.totalPaid - input.alreadyRefunded);
   const method = (input.refundMethod ?? "original").toLowerCase();
   const methodCap = method === "cash" ? Math.min(remainingRefundable, input.inPersonCap) : remainingRefundable;
@@ -86,6 +129,35 @@ export function buildRefundBriefing(input: {
     customerRefunds90d: input.customerRefunds90d,
     flags,
     summary,
+    ...(input.lifecycle ? { lifecycle: input.lifecycle } : {}),
+  };
+}
+
+async function loadBookingLifecycleEvidence(
+  supabase: SupabaseClient,
+  bookingId: string,
+): Promise<BookingLifecycleEvidence | undefined> {
+  const { data } = await supabase
+    .from("bookings")
+    .select(
+      "status, scheduled_at, checked_in_time, customer_running_late_at, customer_running_late_minutes, provider_late_ack_at, contact_attempts, provider_arrived_at",
+    )
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (!data) return undefined;
+  const row = data as Record<string, unknown>;
+  const attempts = Array.isArray(row.contact_attempts)
+    ? (row.contact_attempts as Array<{ at: string; channel?: string; note?: string }>)
+    : [];
+  return {
+    status: (row.status as string | null) ?? null,
+    scheduledAt: (row.scheduled_at as string | null) ?? null,
+    checkedInAt: (row.checked_in_time as string | null) ?? null,
+    customerRunningLateAt: (row.customer_running_late_at as string | null) ?? null,
+    customerRunningLateMinutes: (row.customer_running_late_minutes as number | null) ?? null,
+    providerLateAckAt: (row.provider_late_ack_at as string | null) ?? null,
+    contactAttempts: attempts,
+    arrivalVerified: row.provider_arrived_at ? true : null,
   };
 }
 
@@ -165,8 +237,10 @@ export async function runRefundBriefingSweepForTenant(params: {
         .map((p) => `${p.payment_method ?? "?"}/${p.payment_provider ?? "?"} ${Number(p.amount ?? 0).toFixed(2)}`)
         .join(", ");
       const customerRefunds90d = await countCustomerRefunds90d(supabase, String(booking.customer_id));
+      const lifecycle = await loadBookingLifecycleEvidence(supabase, refund.booking_id);
 
       const briefing = buildRefundBriefing({
+        lifecycle,
         requestedAmount: Number(refund.amount ?? 0),
         bookingTotal: Number(booking.total_amount ?? 0),
         totalPaid: Number(booking.total_paid ?? 0),

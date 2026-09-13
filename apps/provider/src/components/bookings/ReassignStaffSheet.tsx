@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { getApiErrorCode, getApiErrorMessage, getHttpErrorStatus } from "@/lib/api-error";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 type StaffOption = { id: string; name: string };
 
@@ -38,6 +39,8 @@ export function ReassignStaffSheet({
   onClose,
   onReassigned,
 }: Props) {
+  const { t } = useTranslation();
+  const rs = (key: string) => t(`provider.mobile.components.reassignStaff.${key}`) as string;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,21 +74,21 @@ export function ReassignStaffSheet({
           const status = getHttpErrorStatus(res.error);
           const code = getApiErrorCode(res.error);
           if (status === 409 || code === "CONFLICT") {
-            setError("This booking changed, reload");
+            setError(rs("conflict"));
             onReassigned();
             return;
           }
-          throw new Error(getApiErrorMessage(res.error, "Failed to reassign staff"));
+          throw new Error(getApiErrorMessage(res.error, rs("failed")));
         }
         onReassigned();
         onClose();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to reassign staff");
+        setError(e instanceof Error ? e.message : rs("failed"));
       } finally {
         setSaving(false);
       }
     },
-    [bookingId, bookingServiceId, onClose, onReassigned],
+    [bookingId, bookingServiceId, onClose, onReassigned, t],
   );
 
   return (
@@ -93,7 +96,7 @@ export function ReassignStaffSheet({
       <View style={twStyle("flex-1 justify-end bg-black/40")}>
         <View style={twStyle("bg-white rounded-t-3xl max-h-[70%]")}>
           <View style={twStyle("flex-row items-center justify-between px-4 py-4 border-b border-gray-100")}>
-            <Text style={twStyle("text-lg font-semibold text-gray-900")}>Reassign staff</Text>
+            <Text style={twStyle("text-lg font-semibold text-gray-900")}>{rs("title")}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Ionicons name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
@@ -114,7 +117,7 @@ export function ReassignStaffSheet({
                 onPress={() => reassign(null)}
                 style={twStyle("py-3 px-4 rounded-xl border border-gray-200 mb-2")}
               >
-                <Text style={twStyle("text-base text-gray-800")}>Any available staff</Text>
+                <Text style={twStyle("text-base text-gray-800")}>{rs("anyStaff")}</Text>
               </TouchableOpacity>
 
               {staffList.map((member) => {

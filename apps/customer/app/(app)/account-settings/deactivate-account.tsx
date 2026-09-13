@@ -86,7 +86,7 @@ export default function DeactivateAccountScreen() {
     const pwd = password.trim();
     const nonce = verificationNonce.trim();
     if (!authSecurityLoaded) {
-      Alert.alert(errTitle, "Still loading account security settings. Please try again.");
+      Alert.alert(errTitle, da("stillLoadingSecurity"));
       return;
     }
     if (hasPassword && !pwd) {
@@ -94,7 +94,7 @@ export default function DeactivateAccountScreen() {
       return;
     }
     if (!hasPassword && !nonce) {
-      Alert.alert(errTitle, "Enter the verification code to deactivate your account.");
+      Alert.alert(errTitle, da("enterVerificationToDeactivate"));
       return;
     }
 
@@ -144,9 +144,9 @@ export default function DeactivateAccountScreen() {
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", otpDestination.codeSentMessage);
+      Alert.alert(t("customer.mobile.screens.loginSecurity.codeSentTitle"), otpDestination.codeSentMessage);
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e, "Failed to send verification code."));
+      Alert.alert(errTitle, getApiErrorMessage(e, da("sendVerificationCodeFailed")));
     } finally {
       setRequestingNonce(false);
     }
@@ -179,14 +179,14 @@ export default function DeactivateAccountScreen() {
           {!authSecurityLoaded ? (
             <View style={{ paddingVertical: 12, alignItems: "center" }}>
               <ActivityIndicator color={Colors.gray[600]} />
-              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+              <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>{da("loadingVerificationOptions")}</Text>
             </View>
           ) : hasPassword ? (
             <>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{da("passwordLabel")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="Enter your password"
+                placeholder={da("passwordPlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={password}
                 onChangeText={setPassword}
@@ -203,11 +203,11 @@ export default function DeactivateAccountScreen() {
                 disabled={requestingNonce || !canVerifyWithCode}
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
               >
-                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? da("sending") : da("sendVerificationCode")}</Text>
               </TouchableOpacity>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="Enter code"
+                placeholder={da("enterCodePlaceholder")}
                 placeholderTextColor={Colors.gray[400]}
                 value={verificationNonce}
                 onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}

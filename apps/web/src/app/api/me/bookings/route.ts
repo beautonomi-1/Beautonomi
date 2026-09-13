@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getPaginationParams, createPaginatedResponse } from "@/lib/supabase/api-helpers";
 import type { Booking, PaginatedResponse } from "@/types/beautonomi";
-import { mapStatusFromCustomer, mapStatusToCustomer } from "@/lib/utils/booking-status";
+import { mapStatusFromCustomer, resolveCustomerListTab } from "@/lib/utils/booking-status";
+import {
+  enrichBookingLifecycleFields,
+  mapProviderSettingsFromRow,
+} from "@/lib/bookings/lifecycle-booking-enrichment";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
@@ -65,6 +69,7 @@ export async function GET(request: NextRequest) {
           offering_id,
           staff_id,
           duration_minutes,
+          scheduled_end_at,
           price,
           guest_name,
           offering:offerings (
@@ -104,21 +109,21 @@ export async function GET(request: NextRequest) {
     
     // Apply status filters using centralized mapping
     if (status === "upcoming") {
-      // Upcoming: pending / confirmed / in_progress. Must include in_progress even when
-      // scheduled_at is already in the past (service started — same row the provider marked started).
       const dbStatuses = mapStatusFromCustomer("upcoming");
-      const nowQuoted = `"${now}"`;
+      // Late window can last duration + close-out grace. Keep confirmed leftovers
+      // in the fetch set long enough that post-filter by lifecycle_hint can put
+      // still-open visits on Upcoming and closed leftovers on Past.
+      const upcomingLookback = `"${new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString()}"`;
       query = query
         .in("status", dbStatuses)
-        .or(`scheduled_at.gte.${nowQuoted},status.eq.in_progress`);
+        .or(
+          `status.in.(pending,pending_payment,in_progress,waiting,checked_in),scheduled_at.gte.${upcomingLookback}`,
+        );
     } else if (status === "past") {
-      // Past is now fully database-filtered so high-volume customers do not
-      // force the API to load their entire history before slicing.
       const nowQuoted = `"${now}"`;
-      query = query
-        .neq("status", "cancelled")
-        .neq("status", "in_progress")
-        .or(`status.eq.completed,scheduled_at.lt.${nowQuoted}`);
+      query = query.or(
+        `status.eq.completed,status.eq.no_show,and(scheduled_at.lt.${nowQuoted},status.in.(confirmed,checked_in,waiting,in_progress))`,
+      );
     } else if (status === "cancelled") {
       // Cancelled: only cancelled bookings
       query = query.eq("status", "cancelled");
@@ -141,10 +146,35 @@ export async function GET(request: NextRequest) {
       throw error;
     }
     const filteredBookings = data || [];
+    const providerSettingsCache = new Map<string, ReturnType<typeof mapProviderSettingsFromRow>>();
+
+    const providerIds = [
+      ...new Set(
+        filteredBookings
+          .map((b: { provider_id?: string | null }) => b.provider_id)
+          .filter(Boolean) as string[],
+      ),
+    ];
+
+    if (providerIds.length > 0) {
+      const { data: providerRows } = await supabase
+        .from("providers")
+        .select(
+          "id, closeout_grace_minutes_salon, closeout_grace_minutes_at_home, late_arrival_grace_minutes, confirmation_sla_hours, unconfirmed_expire_hours_before_slot",
+        )
+        .in("id", providerIds);
+      for (const row of providerRows ?? []) {
+        providerSettingsCache.set(
+          (row as { id: string }).id,
+          mapProviderSettingsFromRow(row as Record<string, unknown>),
+        );
+      }
+    }
+
     const totalCount = count || 0;
 
     // Transform bookings to match Booking interface
-    const transformedBookings = (filteredBookings || []).map((booking: any) => {
+    let transformedBookings = (filteredBookings || []).map((booking: any) => {
       // Coherence: a row stuck at `status = 'pending_payment'` while
       // `payment_status` is paid/partially_paid is a transient state that the
       // DB trigger now repairs (migration 595), but list responses must still
@@ -160,7 +190,22 @@ export async function GET(request: NextRequest) {
       }
 
       // Keep database status for consistency, add customer status for display
-      const customerStatus = mapStatusToCustomer(booking.status, booking.scheduled_at);
+      const lifecycle = enrichBookingLifecycleFields(
+        {
+          status: booking.status,
+          scheduled_at: booking.scheduled_at,
+          location_type: booking.location_type,
+          current_stage: booking.current_stage,
+          booking_services: booking.booking_services,
+        },
+        providerSettingsCache.get(booking.provider_id) ?? undefined,
+      );
+
+      const customerStatus = resolveCustomerListTab({
+        status: booking.status,
+        scheduledAt: booking.scheduled_at,
+        lifecycleHint: lifecycle.lifecycle_hint,
+      });
       
       // Transform booking_services to BookingServiceDetail format
       const services = (booking.booking_services || []).map((bs: any) => ({
@@ -209,6 +254,10 @@ export async function GET(request: NextRequest) {
         // Keep database status for consistency, add customer status for display
         status: booking.status, // Database status (pending, confirmed, etc.)
         customer_status: customerStatus, // Customer portal status (upcoming, past, cancelled)
+        lifecycle_hint: lifecycle.lifecycle_hint,
+        end_at: lifecycle.end_at,
+        close_out_at: lifecycle.close_out_at,
+        in_late_window: lifecycle.in_late_window,
         provider_name: booking.provider?.business_name || "Provider",
         provider_slug: booking.provider?.slug || null,
         is_group_booking: !!booking.group_booking_id,
@@ -228,6 +277,14 @@ export async function GET(request: NextRequest) {
         loyalty_points_used: booking.loyalty_points_used || 0,
       };
     });
+
+    if (status === "upcoming") {
+      transformedBookings = transformedBookings.filter(
+        (b) => b.customer_status === "upcoming",
+      );
+    } else if (status === "past") {
+      transformedBookings = transformedBookings.filter((b) => b.customer_status === "past");
+    }
 
     const result: PaginatedResponse<Booking> = createPaginatedResponse(
       transformedBookings as Booking[],

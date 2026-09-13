@@ -1,14 +1,21 @@
 /**
  * App language – choose from supported languages. Persists to AsyncStorage via changeLanguage.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation , i18n, supportedLanguages } from "@beautonomi/i18n";
 
-import { changeLanguage } from "@/lib/i18n";
+import { changeLanguage, promptReloadIfDirectionChanged } from "@/lib/i18n";
+import { normalizeLanguageCode } from "@beautonomi/i18n";
+import { api } from "@/lib/api-client";
+import { useApi } from "@/hooks/useApi";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { buildFormatLocale } from "@beautonomi/i18n";
+import { setDefaultMoneyLocale } from "@beautonomi/utils";
+import { getTenantRegionCode } from "@/lib/config-bundle";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -22,6 +29,12 @@ import {
 } from "@/config/public-env";
 
 type MarketOption = { host: string; label: string };
+
+interface PreferencesResponse {
+  preferences: { language: string; currency?: string; timezone?: string };
+}
+
+const API_LANGUAGE_CODES = new Set(supportedLanguages.map((l) => l.code));
 
 function normalizeHost(value: string | null | undefined): string {
   if (!value) return "";
@@ -62,9 +75,30 @@ export default function LanguageSettingsScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const { t } = useTranslation();
+  const { bundle, refresh: refreshConfigBundle } = useConfigBundle();
+  const ls = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.languageSettings.${key}`, opts) as string,
+    [t],
+  );
+  const visibleLanguages = useMemo(() => supportedLanguages, []);
   const [currentCode, setCurrentCode] = useState(i18n.language || "en");
   const [currentMarketHost, setCurrentMarketHost] = useState<string>(normalizeHost(getRuntimeMarketHost()));
   const marketOptions = buildMarketOptions();
+  const { data: preferences, refresh: refreshPreferences } =
+    useApi<PreferencesResponse>("/api/me/preferences");
+
+  const serverLang = preferences?.preferences?.language ?? null;
+  useEffect(() => {
+    if (
+      serverLang &&
+      API_LANGUAGE_CODES.has(serverLang) &&
+      normalizeLanguageCode(serverLang) !== normalizeLanguageCode(i18n.language || "en")
+    ) {
+      void changeLanguage(serverLang);
+      setCurrentCode(serverLang);
+    }
+  }, [serverLang]);
 
   useEffect(() => {
     const handler = (lng: string) => setCurrentCode(lng);
@@ -78,10 +112,22 @@ export default function LanguageSettingsScreen() {
     async (code: string) => {
       if (code === currentCode) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await changeLanguage(code);
+      const { directionChanged } = await changeLanguage(code);
       setCurrentCode(code);
+      promptReloadIfDirectionChanged(directionChanged, Alert.alert, {
+        title: ls("restartRequiredTitle"),
+        body: ls("restartRequiredBody"),
+        reload: ls("restartNow"),
+      });
+      if (API_LANGUAGE_CODES.has(code)) {
+        const res = await api.post("/api/me/preferences", { language: code });
+        if (res.error) {
+          Alert.alert(ls("syncNoteTitle"), ls("syncNoteBody"));
+        }
+        refreshPreferences();
+      }
     },
-    [currentCode]
+    [currentCode, refreshPreferences, ls]
   );
 
   const handleMarketSelect = useCallback(async (host: string) => {
@@ -90,8 +136,14 @@ export default function LanguageSettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await setRuntimeMarketHost(normalized);
     setCurrentMarketHost(normalized);
-    Alert.alert("Market updated", `Provider app now uses ${normalized}.`);
-  }, [currentMarketHost]);
+    try {
+      await refreshConfigBundle();
+      setDefaultMoneyLocale(buildFormatLocale(i18n.language, getTenantRegionCode()));
+    } catch {
+      // Non-fatal: bundle refreshes on next launch.
+    }
+    Alert.alert(ls("marketUpdatedTitle"), ls("marketUpdatedBody", { host: normalized }));
+  }, [currentMarketHost, refreshConfigBundle, ls]);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -105,8 +157,8 @@ export default function LanguageSettingsScreen() {
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {supportedLanguages.map(({ code, name, nativeName }) => {
-          const isSelected = currentCode.split("-")[0] === code;
+        {visibleLanguages.map(({ code, name, nativeName }) => {
+          const isSelected = normalizeLanguageCode(currentCode) === code;
           return (
             <TouchableOpacity
               key={code}
@@ -130,7 +182,7 @@ export default function LanguageSettingsScreen() {
         })}
 
         <View style={twStyle("mt-5 mb-2 px-1")}>
-          <Text style={twStyle("text-xs uppercase tracking-wider text-gray-400")}>Market</Text>
+          <Text style={twStyle("text-xs uppercase tracking-wider text-gray-400")}>{ls("marketLabel")}</Text>
         </View>
         {marketOptions.map((option) => {
           const isSelected = currentMarketHost === option.host;

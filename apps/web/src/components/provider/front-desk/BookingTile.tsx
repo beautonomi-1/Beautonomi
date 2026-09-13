@@ -24,6 +24,8 @@ import {
   startService,
   markReadyToPay,
 } from "@/lib/front-desk/actions";
+import { useTranslation } from "@beautonomi/i18n";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 /** Desaturated status pills - matches reference (lavender for in_service, etc.) */
 const BADGE_STYLES: Record<string, string> = {
@@ -52,7 +54,7 @@ function getInitials(name: string) {
 }
 
 function formatTime(date: Date | string): string {
-  return new Date(date).toLocaleTimeString("en-US", {
+  return new Date(date).toLocaleTimeString(getDefaultMoneyLocale(), {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -74,6 +76,7 @@ export function BookingTile({
   onActionComplete,
   isLoading,
 }: BookingTileProps) {
+  const { t } = useTranslation();
   const name = booking.customer_name || "Customer";
   const badge = booking.operationalBadge || "confirmed";
   const locationType = (booking as any).location_type as string | undefined;
@@ -109,26 +112,26 @@ export function BookingTile({
     if (["completed", "cancelled"].includes(badge)) return actions;
     if (badge === "needs_confirmation") {
       actions.push({
-        label: "Confirm booking",
+        label: t("booking.confirmBooking"),
         onClick: () => runQuickAction(() => confirmBooking(booking.id, (booking as any).version)),
       });
       return actions;
     }
     if (badge === "confirmed") {
       if (isAtHome) {
-        actions.push({ label: "I've Arrived", onClick: () => runQuickAction(() => arriveAtHome(booking.id)) });
+        actions.push({ label: t("web.provider.frontDesk.iveArrived"), onClick: () => runQuickAction(() => arriveAtHome(booking.id)) });
       } else {
         actions.push({
-          label: "Check in",
+          label: t("web.provider.frontDesk.checkIn"),
           onClick: () => runQuickAction(() => checkInBooking(booking.id, (booking as any).version)),
         });
       }
     }
     if (["checked_in", "arriving", "late"].includes(badge)) {
-      actions.push({ label: "Start service", onClick: () => runQuickAction(() => startService(booking.id)) });
+      actions.push({ label: t("web.provider.frontDesk.startService"), onClick: () => runQuickAction(() => startService(booking.id)) });
     }
     if (badge === "in_service") {
-      actions.push({ label: "Ready to pay", onClick: () => runQuickAction(() => markReadyToPay(booking.id)) });
+      actions.push({ label: t("web.provider.frontDesk.readyToPay"), onClick: () => runQuickAction(() => markReadyToPay(booking.id)) });
     }
     return actions;
   };
@@ -200,7 +203,7 @@ export function BookingTile({
             BADGE_STYLES[badge] || BADGE_STYLES.confirmed
           )}
         >
-          {BADGE_LABELS[badge] ?? badge.replace(/_/g, " ")}
+          {badge === "needs_confirmation" ? t("web.provider.frontDesk.confirmFirst") : (BADGE_LABELS[badge] ?? badge.replace(/_/g, " "))}
         </span>
       </div>
 
@@ -225,7 +228,7 @@ export function BookingTile({
         <span className="text-lg font-bold text-slate-900 tabular-nums">
           {booking.currency} {Number(booking.total_amount || 0).toFixed(2)}
           {paid && (
-            <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" />
+            <span className="ms-1.5 inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" />
           )}
         </span>
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
@@ -268,7 +271,7 @@ export function BookingTile({
                   }}
                   className="cursor-pointer rounded-lg"
                 >
-                  View details
+                  {t("web.provider.frontDesk.viewDetails")}
                 </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

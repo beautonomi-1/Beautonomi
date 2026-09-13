@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, isSameDay, startOfDay } from "date-fns";
 import { ChevronDown, Clock, Loader2, Moon, Sun, Cloud } from "lucide-react";
@@ -24,8 +26,7 @@ const PERIOD_ICONS: Record<BookingSlotPeriod, typeof Sun> = {
   evening: Moon,
 };
 
-const SCHEDULING_HINT =
-  "Add a service or product first so we can calculate duration and show available times.";
+const SCHEDULING_HINT_KEY = "web.provider.bookingDateTimePicker.schedulingHint";
 
 export interface ProviderBookingDateTimePickerProps {
   date: string;
@@ -68,6 +69,7 @@ export function ProviderBookingDateTimePicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [debouncedDate, setDebouncedDate] = useState(date);
+  const { t } = useTranslation();
 
   const selectedDate = useMemo(() => parseDateValue(date || format(new Date(), "yyyy-MM-dd")), [date]);
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -108,7 +110,7 @@ export function ProviderBookingDateTimePicker({
       const payload = (res as { data?: typeof res }).data ?? res;
       setRows(normalizeSlotRows(payload as { slot_grid?: BookingSlotRow[]; slots?: string[] }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load available times");
+      setError(err instanceof Error ? err.message : t("web.provider.bookingDateTimePicker.loadFailed"));
       setRows([]);
     } finally {
       setLoading(false);
@@ -174,10 +176,10 @@ export function ProviderBookingDateTimePicker({
   return (
     <div className="space-y-4">
       <div>
-        <BookingSectionLabel className="mb-2">Date</BookingSectionLabel>
+        <BookingSectionLabel className="mb-2">{t("web.provider.bookingDateTimePicker.date")}</BookingSectionLabel>
         {needsServiceFirst ? (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
-            {SCHEDULING_HINT}
+            {t(SCHEDULING_HINT_KEY)}
           </p>
         ) : null}
         <div className="flex gap-2 overflow-x-auto pb-1 snap-x">
@@ -225,10 +227,10 @@ export function ProviderBookingDateTimePicker({
       </div>
 
       <div>
-        <BookingSectionLabel className="mb-2">Time</BookingSectionLabel>
+        <BookingSectionLabel className="mb-2">{t("web.provider.bookingDateTimePicker.time")}</BookingSectionLabel>
         {needsServiceFirst ? (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-2">
-            {SCHEDULING_HINT}
+            {t(SCHEDULING_HINT_KEY)}
           </p>
         ) : null}
         <button
@@ -251,7 +253,7 @@ export function ProviderBookingDateTimePicker({
                 startTime && !needsServiceFirst ? "font-semibold text-emerald-800" : "text-gray-400",
               )}
             >
-              {startTime ? formatTime(startTime) : "Select time slot"}
+              {startTime ? formatTime(startTime) : t("web.provider.bookingDateTimePicker.selectTimeSlot")}
             </span>
           </span>
           <ChevronDown className="h-4 w-4 text-gray-400" />
@@ -262,19 +264,19 @@ export function ProviderBookingDateTimePicker({
         open={timeSheetOpen}
         onOpenChange={setTimeSheetOpen}
         mode="create"
-        title="Select time"
+        title={t("web.provider.bookingDateTimePicker.selectTime")}
       >
         <div className="pb-4">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading available times…
+{t("web.provider.bookingDateTimePicker.loadingTimes")}
             </div>
           ) : error ? (
             <p className="text-sm text-red-600 py-4">{error}</p>
           ) : rows.length === 0 ? (
             <p className="text-sm text-gray-500 py-4 text-center">
-              No time slots for this date. Try another day or adjust services.
+{t("web.provider.bookingDateTimePicker.noSlots")}
             </p>
           ) : (
             <>
@@ -300,7 +302,7 @@ export function ProviderBookingDateTimePicker({
                         {p.openCount > 0 ? (
                           <span
                             className={cn(
-                              "ml-0.5 rounded-full px-1.5 text-[10px] font-bold",
+                              "ms-0.5 rounded-full px-1.5 text-[10px] font-bold",
                               isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-700",
                             )}
                           >

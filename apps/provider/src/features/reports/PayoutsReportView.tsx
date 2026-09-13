@@ -1,7 +1,9 @@
 /**
  * Payout earnings (ledger): provider_earnings in the settlement window — not bank payouts.
  */
+import { useCallback } from "react";
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -39,7 +41,22 @@ function isPayoutsPayload(data: unknown): data is {
   return data != null && typeof data === "object" && !Array.isArray(data) && "totalPayoutAmount" in data;
 }
 
+const BASIS_KEYS: Record<string, string> = {
+  headlineTotal: "basisHeadlineTotal",
+  bookedAmount: "basisBookedAmount",
+  payoutAmountPerRow: "basisPayoutAmountPerRow",
+  platformFeesAndRefunds: "basisPlatformFeesAndRefunds",
+  notIncluded: "basisNotIncluded",
+};
+
 export function PayoutsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const po = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.payoutsReport." + key, opts) as string,
+    [t],
+  );
+
   if (!isPayoutsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -56,13 +73,6 @@ export function PayoutsReportView({ data }: { data: unknown }) {
     Number(data.totalBookedNetOfRefunds ?? Math.max(0, booked - Number(data.totalRefunded ?? 0)));
   const feePct = Number(data.platformFeeRate ?? 0);
 
-  const basisLabels: Record<string, string> = {
-    headlineTotal: "Headline total",
-    bookedAmount: "Booked amount",
-    payoutAmountPerRow: "Earnings per row",
-    platformFeesAndRefunds: "Fees & refunds",
-    notIncluded: "Not included",
-  };
   const basisEntries = data.basis
     ? Object.entries(data.basis).filter(([, v]) => typeof v === "string" && String(v).trim())
     : [];
@@ -70,22 +80,24 @@ export function PayoutsReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {po("factsDefinitions")}
       </Text>
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-sky-950")}>{basis}</Text>
-          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
-          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Ledger window · {range}</Text> : null}
+          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{po("timezone", { tz })}</Text> : null}
+          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{po("ledgerWindow", { range })}</Text> : null}
         </View>
       ) : null}
 
       {basisEntries.length > 0 ? (
         <View style={twStyle("rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>Definitions</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>{po("definitions")}</Text>
           {basisEntries.map(([k, v]) => (
             <Text key={k} style={twStyle("mt-2 text-sm leading-5 text-violet-950")}>
-              <Text style={twStyle("font-medium")}>{basisLabels[k] ?? k} · </Text>
+              <Text style={twStyle("font-medium")}>
+                {po("definitionLabel", { label: BASIS_KEYS[k] ? po(BASIS_KEYS[k]) : k })}
+              </Text>
               {v}
             </Text>
           ))}
@@ -94,11 +106,11 @@ export function PayoutsReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-indigo-900")}>Ledger rows</Text>
+          <Text style={twStyle("text-xs font-medium text-indigo-900")}>{po("ledgerRows")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-indigo-950")}>{data.totalPayouts}</Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Net earnings</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{po("netEarnings")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
             {formatCurrency(data.totalPayoutAmount)}
           </Text>
@@ -107,20 +119,20 @@ export function PayoutsReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-blue-100 bg-blue-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-blue-900")}>Booked net of refunds</Text>
+          <Text style={twStyle("text-xs font-medium text-blue-900")}>{po("bookedNetOfRefunds")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-blue-950")}>
             {formatCurrency(bookedNet)}
           </Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-amber-900")}>Fees vs booked</Text>
+          <Text style={twStyle("text-xs font-medium text-amber-900")}>{po("feesVsBooked")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-amber-950")}>{feePct.toFixed(1)}%</Text>
-          <Text style={twStyle("mt-1 text-[11px] text-amber-900/85")}>Share of gross booked</Text>
+          <Text style={twStyle("mt-1 text-[11px] text-amber-900/85")}>{po("shareOfGrossBooked")}</Text>
         </View>
       </View>
 
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Ledger earnings by month
+        {po("ledgerEarningsByMonth")}
       </Text>
       {(data.monthlyBreakdown ?? []).map((m) => {
         const parts = m.month.split("-");
@@ -135,17 +147,17 @@ export function PayoutsReportView({ data }: { data: unknown }) {
           >
             <View>
               <Text style={twStyle("font-medium text-gray-900")}>{title}</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{m.count} rows</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{po("rowsCount", { count: m.count })}</Text>
             </View>
             <Text style={twStyle("font-semibold tabular-nums text-gray-900")}>{formatCurrency(m.amount)}</Text>
           </View>
         );
       })}
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Recent rows</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{po("recentRows")}</Text>
       {(data.recentPayouts ?? []).slice(0, 15).map((p) => {
         const when = p.ledgerSettlementAt ?? p.createdAt;
-        const label = p.referenceLabel ?? (p.productOrderId ? "Retail order" : "Booking");
+        const label = p.referenceLabel ?? (p.productOrderId ? po("retailOrder") : po("booking"));
         return (
           <View
             key={`${p.bookingId ?? ""}-${p.productOrderId ?? ""}-${when}`}

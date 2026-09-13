@@ -9,10 +9,12 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import type { MarketingStatus, MarketingLedgerResponse } from "@/lib/marketing/useMarketingCredits";
+import { useTranslation } from "@beautonomi/i18n";
+import { formatMoney } from "@beautonomi/utils";
 
 function formatZar(value: number | null | undefined): string {
   const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
-  return `R${n.toFixed(2)}`;
+  return formatMoney(n, "ZAR");
 }
 
 interface Props {
@@ -24,6 +26,8 @@ interface Props {
 }
 
 export function MarketingCreditsCard({ status, ledger, loading, creditsApply, onTopUp }: Props) {
+  const { t } = useTranslation();
+  const mc = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.marketingCredits.${key}`, opts) as string;
   if (loading && !status) {
     return (
       <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
@@ -38,13 +42,13 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
   if (!creditsApply) {
     const detail =
       status.sending_mode && status.sending_mode !== "platform"
-        ? "Campaigns send through your own integrations, so Beautonomi doesn't charge marketing credits."
-        : "Connect your own email/SMS provider or upgrade to Beautonomi platform sending to run campaigns.";
+        ? mc("ownIntegrationsDetail")
+        : mc("connectOrUpgrade");
     return (
       <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16, flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
         <Ionicons name="information-circle-outline" size={20} color={Colors.gray[500]} />
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Own sending integrations</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{mc("ownSendingTitle")}</Text>
           <Text style={{ marginTop: 2, fontSize: 13, color: Colors.gray[600] }}>{detail}</Text>
         </View>
       </View>
@@ -72,7 +76,7 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Ionicons name="wallet-outline" size={18} color={low ? "#dc2626" : Colors.primary} />
           <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[500], letterSpacing: 0.4 }}>
-            MARKETING CREDIT
+            {mc("heading")}
           </Text>
         </View>
         {onTopUp ? (
@@ -80,10 +84,10 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
           onPress={onTopUp}
           style={{ flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 9999, backgroundColor: Colors.primary, paddingHorizontal: 12, paddingVertical: 6 }}
           accessibilityRole="button"
-          accessibilityLabel="Top up marketing credit"
+          accessibilityLabel={mc("topUpA11y")}
         >
           <Ionicons name="add" size={14} color={Colors.white} />
-          <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.white }}>Top up</Text>
+          <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.white }}>{mc("topUp")}</Text>
         </TouchableOpacity>
         ) : null}
       </View>
@@ -93,14 +97,14 @@ export function MarketingCreditsCard({ status, ledger, loading, creditsApply, on
       </Text>
 
       <View style={{ marginTop: 6, flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Included {formatZar(included)}</Text>
-        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Purchased {formatZar(purchased)}</Text>
-        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Spent this month {formatZar(spent)}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{mc("included", { amount: formatZar(included) })}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{mc("purchased", { amount: formatZar(purchased) })}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{mc("spentThisMonth", { amount: formatZar(spent) })}</Text>
       </View>
 
       {low ? (
         <Text style={{ marginTop: 10, fontSize: 13, color: "#b91c1c" }}>
-          Low balance — top up so your next campaign can send to every recipient.
+          {mc("lowBalance")}
         </Text>
       ) : null}
     </View>

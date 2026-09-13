@@ -12,10 +12,7 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
 import { cn } from "@/lib/utils";
 import Stars from '../../../../public/images/Group 1.8f1d86be 1.svg';
-
-// Use static strings to avoid useTranslation() running before i18n is ready (prevents hook-order and .length errors)
-const LABEL_TOP_RATED = "Top rated";
-const LABEL_VIEW_ALL = "View all";
+import { useTranslation } from "@beautonomi/i18n";
 
 type TopRatedSectionProps = {
   categorySlug?: string;
@@ -29,6 +26,7 @@ const TopRatedSection = ({
   initialProviders,
   initialHydrated = false,
 }: TopRatedSectionProps) => {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<PublicProviderCard[]>(() =>
     initialHydrated ? (initialProviders ?? []) : [],
   );
@@ -114,7 +112,7 @@ const TopRatedSection = ({
     return (
       <div className="mb-8 md:mb-12 mt-4 md:mt-8">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading top rated providers..." onRetry={handleRetry} />
+          <LoadingTimeout loadingMessage={t("web.home.loadingTopRated")} onRetry={handleRetry} />
         </div>
       </div>
     );
@@ -127,17 +125,17 @@ const TopRatedSection = ({
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           {error ? (
             <EmptyState
-              title="Unable to load providers"
+              title={t("web.home.unableToLoadProviders")}
               description={error}
               action={{
-                label: "Retry",
+                label: t("web.home.retry"),
                 onClick: handleRetry,
               }}
             />
           ) : (
             <EmptyState
-              title="No top rated providers yet"
-              description="Check back later for top rated providers"
+              title={t("web.home.noTopRated")}
+              description={t("web.home.noTopRatedHint")}
             />
           )}
         </div>
@@ -161,12 +159,12 @@ const TopRatedSection = ({
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{LABEL_TOP_RATED}</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{t("web.home.topRated")}</h2>
             <Image src={Stars} alt="Stars" className="h-6 w-6 md:h-8 md:w-8 lg:h-12 lg:w-12" />
           </div>
           <Link href="/more-top-rated-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-primary">
-            {LABEL_VIEW_ALL}
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            {t("web.home.viewAll")}
+            <ArrowRight className="ms-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>
         {/* Mobile: Horizontal scroll with peek effect, Desktop: Grid */}

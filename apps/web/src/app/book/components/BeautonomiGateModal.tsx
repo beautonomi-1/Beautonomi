@@ -44,18 +44,28 @@ import { getSocialAuthConfig } from "@/lib/social-auth-config";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { DEFAULT_PUBLIC_AUTH } from "@/lib/config/auth-policy-public";
 import { isSafeRelativeRedirect, sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
+import { appendBookingEmbedQuery, buildBookContinuePath } from "@beautonomi/utils";
+import { isLikelyFramed, navigateForEmbedBreakout } from "@/lib/booking/embed-host";
+import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
+import { useTranslation } from "@beautonomi/i18n";
+
+function currentBookingEmbedFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("embed") === "1";
+}
 
 function resolveGatePostLoginNext(customRedirectUrl: string | undefined, holdId: string): string {
-  const fallback = `/book/continue?hold_id=${holdId}`;
+  const embed = currentBookingEmbedFlag();
+  const fallback = buildBookContinuePath(holdId, embed);
   const raw = customRedirectUrl?.trim();
   if (!raw) return fallback;
-  if (isSafeRelativeRedirect(raw)) return raw.trim();
+  if (isSafeRelativeRedirect(raw)) return appendBookingEmbedQuery(raw.trim(), embed);
   if (typeof window !== "undefined") {
     try {
       const u = new URL(raw, window.location.origin);
       if (u.origin === window.location.origin) {
         const pathWithQuery = `${u.pathname}${u.search}`;
-        return sanitizeRelativeRedirect(pathWithQuery) ?? fallback;
+        return appendBookingEmbedQuery(sanitizeRelativeRedirect(pathWithQuery) ?? fallback, embed);
       }
     } catch {
       /* use fallback */
@@ -88,6 +98,7 @@ export function BeautonomiGateModal({
   onAuthComplete,
   redirectUrl: customRedirectUrl,
 }: BeautonomiGateModalProps) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState<string | null>(null);
   const [holdSecondsLeft, setHoldSecondsLeft] = useState<number | null>(null);
   const [email, setEmail] = useState("");
@@ -156,12 +167,19 @@ export function BeautonomiGateModal({
       if (typeof window !== "undefined") {
         sessionStorage.setItem(PENDING_MARKETING_CONSENT_KEY, marketingConsent ? "1" : "0");
       }
-      await signInWithOAuth(provider, oauthCallbackUrl);
+      const framed = isLikelyFramed();
+      const data = await signInWithOAuth(provider, oauthCallbackUrl, {
+        skipBrowserRedirect: framed,
+      });
+      if (framed && data?.url) {
+        navigateForEmbedBreakout(data.url, "auth_required");
+        return;
+      }
       onAuthComplete();
     } catch (err) {
       clearBeautonomiHoldIdCookie();
       console.error("OAuth error:", err);
-      toast.error(err instanceof Error ? err.message : "Sign in failed");
+      toast.error(err instanceof Error ? err.message : t("web.book.gate.signInFailed"));
       setLoading(null);
     } finally {
       setLoading(null);
@@ -170,11 +188,11 @@ export function BeautonomiGateModal({
 
   const handleEmailOtp = async () => {
     if (!authPolicy.email_provider_enabled) {
-      toast.error("Email sign-in is not available for this platform.");
+      toast.error(t("web.book.gate.emailSignInUnavailable"));
       return;
     }
     if (!email.trim()) {
-      toast.error("Please enter your email");
+      toast.error(t("web.book.gate.enterEmail"));
       return;
     }
     setLoading("email");
@@ -183,10 +201,10 @@ export function BeautonomiGateModal({
       setOtpCode("");
       setOtpSent("email");
       toast.success(
-        `Check your email for the ${emailOtpLen}-digit code (valid about ${emailOtpExpiryMin} minutes).`,
+        t("web.book.gate.emailOtpSentToast", { digits: emailOtpLen, minutes: emailOtpExpiryMin }),
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send email");
+      toast.error(err instanceof Error ? err.message : t("web.book.gate.emailSendFailed"));
     } finally {
       setLoading(null);
     }
@@ -194,16 +212,16 @@ export function BeautonomiGateModal({
 
   const handlePhoneOtp = async () => {
     if (!authPolicy.phone_provider_enabled) {
-      toast.error("Phone sign-in is not available for this platform.");
+      toast.error(t("web.book.gate.phoneSignInUnavailable"));
       return;
     }
     if (!phone.trim()) {
-      toast.error("Please enter your phone number");
+      toast.error(t("web.book.gate.enterPhone"));
       return;
     }
     const e164 = phone.trim();
     if (!isCompleteE164(e164)) {
-      toast.error("Please enter a valid phone number with country code.");
+      toast.error(t("web.book.gate.enterValidPhone"));
       return;
     }
     setLoading("phone");
@@ -213,10 +231,14 @@ export function BeautonomiGateModal({
       setSentPhoneE164(normalizeSupabaseAuthPhone(e164));
       setOtpSent("phone");
       toast.success(
-        `Check your phone for the ${smsOtpLen}-digit code (valid about ${smsOtpExpiryMin} ${smsOtpExpiryMin === 1 ? "minute" : "minutes"}).`,
+        t("web.book.gate.smsOtpSentToast", {
+          digits: smsOtpLen,
+          minutes: smsOtpExpiryMin,
+          minuteLabel: smsOtpExpiryMin === 1 ? t("web.book.gate.minute") : t("web.book.gate.minutes"),
+        }),
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to send code");
+      toast.error(err instanceof Error ? err.message : t("web.book.gate.smsSendFailed"));
     } finally {
       setLoading(null);
     }
@@ -232,8 +254,8 @@ export function BeautonomiGateModal({
     if (!codeOk) {
       toast.error(
         otpSent === "email"
-          ? `Enter the ${emailOtpLen}-digit code from your email`
-          : `Enter the ${smsOtpLen}-digit code from your SMS`,
+          ? t("web.book.gate.enterEmailCode", { digits: emailOtpLen })
+          : t("web.book.gate.enterSmsCode", { digits: smsOtpLen }),
       );
       return;
     }
@@ -250,13 +272,19 @@ export function BeautonomiGateModal({
         });
       }
       await submitMarketingConsent(marketingConsent);
+      await completeCustomerOnboardingQuietly();
       if (holdId && typeof document !== "undefined") {
         document.cookie = `beautonomi_hold_id=${holdId}; path=/; max-age=600; SameSite=Lax`;
       }
+      // Full reload inside a third-party iframe drops the in-memory session when
+      // the browser blocks partitioned cookies (Safari). Stay in the SPA instead.
+      if (isLikelyFramed()) {
+        onAuthComplete();
+        return;
+      }
       window.location.href = redirectUrl;
-      onAuthComplete();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Invalid code");
+      toast.error(err instanceof Error ? err.message : t("web.book.gate.invalidCode"));
     } finally {
       setLoading(null);
     }
@@ -284,18 +312,18 @@ export function BeautonomiGateModal({
         className="sm:max-w-[430px] w-[95vw] p-6 sm:p-8 rounded-[32px] border-0 gap-0 max-h-[90vh] overflow-y-auto min-[640px]:my-8"
         style={contentStyle}
       >
-        <DialogHeader className="text-left space-y-1.5 pb-6">
+        <DialogHeader className="text-start space-y-1.5 pb-6">
           <DialogTitle
             className="text-2xl font-semibold tracking-tight"
             style={{ color: BOOKING_TEXT_PRIMARY }}
           >
-            Secure your slot
+            {t("web.book.gate.title")}
           </DialogTitle>
           <DialogDescription
             className="text-sm mt-0"
             style={{ color: BOOKING_TEXT_SECONDARY }}
           >
-            Great choice! To secure this slot and save your booking history, please sign in or create your Beautonomi profile.
+            {t("web.book.gate.description")}
           </DialogDescription>
           {holdExpiresAt && holdSecondsLeft != null && (
             <div
@@ -313,14 +341,14 @@ export function BeautonomiGateModal({
             >
               <Clock className="h-4 w-4 shrink-0" style={{ color: BOOKING_ACCENT }} aria-hidden />
               {holdSecondsLeft <= 0 ? (
-                <span style={{ color: "#991b1b" }}>This slot hold has expired. Close and choose another time.</span>
+                <span style={{ color: "#991b1b" }}>{t("web.book.gate.holdExpired")}</span>
               ) : (
                 <span style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  Slot held for{" "}
+                  {t("web.book.gate.slotHeldFor")}{" "}
                   <span className="tabular-nums font-semibold">
                     {Math.floor(holdSecondsLeft / 60)}:{String(holdSecondsLeft % 60).padStart(2, "0")}
                   </span>
-                  . Finish signing in to continue.
+                  . {t("web.book.gate.finishSigningIn")}
                 </span>
               )}
             </div>
@@ -350,7 +378,7 @@ export function BeautonomiGateModal({
               ) : (
                 <Image src="/images/google.svg" alt="" width={20} height={20} className="shrink-0" />
               )}
-              Continue with Google
+              {t("web.book.gate.continueGoogle")}
             </Button>
           )}
           {socialAuth.apple && (
@@ -370,7 +398,7 @@ export function BeautonomiGateModal({
               ) : (
                 <Image src="/images/apple-icon.svg" alt="" width={20} height={20} className="shrink-0" />
               )}
-              Continue with Apple
+              {t("web.book.gate.continueApple")}
             </Button>
           )}
           {!otpSent ? (
@@ -385,7 +413,7 @@ export function BeautonomiGateModal({
                       className="px-3 text-xs font-medium uppercase tracking-wider bg-white"
                       style={{ color: BOOKING_TEXT_SECONDARY }}
                     >
-                      Or
+{t("web.book.gate.or")}
                     </span>
                   </div>
                 </div>
@@ -393,16 +421,16 @@ export function BeautonomiGateModal({
               {authPolicy.email_provider_enabled && (
                 <div className="space-y-2">
                   <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                    Email ({emailOtpLen}-digit code)
+                    {t("web.book.gate.emailOtpLabel", { digits: emailOtpLen })}
                   </Label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Input
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder={t("web.book.engine.emailPlaceholder")}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="rounded-xl h-12 border bg-gray-50/50 focus-visible:ring-2 focus-visible:ring-offset-0 pr-10"
+                        className="rounded-xl h-12 border bg-gray-50/50 focus-visible:ring-2 focus-visible:ring-offset-0 pe-10"
                         style={{ borderColor: BOOKING_BORDER, outlineColor: BOOKING_ACCENT }}
                         autoComplete="email"
                       />
@@ -428,7 +456,7 @@ export function BeautonomiGateModal({
                     </Button>
                   </div>
                   <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                    We&apos;ll email you a {emailOtpLen}-digit verification code
+                    {t("web.book.gate.emailOtpHint", { digits: emailOtpLen })}
                   </p>
                 </div>
               )}
@@ -444,14 +472,14 @@ export function BeautonomiGateModal({
                           className="px-3 text-xs font-medium uppercase tracking-wider bg-white"
                           style={{ color: BOOKING_TEXT_SECONDARY }}
                         >
-                          Or
+    {t("web.book.gate.or")}
                         </span>
                       </div>
                     </div>
                   )}
                   <div className="space-y-2">
                     <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                      Phone (SMS code)
+                      {t("web.book.gate.phoneSmsLabel")}
                     </Label>
                     <div className="flex gap-2 items-start">
                       <div className="flex-1 min-w-0">
@@ -460,7 +488,7 @@ export function BeautonomiGateModal({
                           label=""
                           value={phone}
                           onChange={setPhone}
-                          placeholder="Phone number"
+                          placeholder={t("web.book.gate.phonePlaceholder")}
                         />
                       </div>
                       <Button
@@ -479,8 +507,11 @@ export function BeautonomiGateModal({
                       </Button>
                     </div>
                     <p className="text-xs leading-relaxed" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                      Pick country, then enter national digits (hint under the field). We&apos;ll SMS a {smsOtpLen}
-                      -digit code (valid about {smsOtpExpiryMin} {smsOtpExpiryMin === 1 ? "minute" : "minutes"}).
+                      {t("web.book.gate.phoneOtpHint", {
+                        digits: smsOtpLen,
+                        minutes: smsOtpExpiryMin,
+                        minuteLabel: smsOtpExpiryMin === 1 ? t("web.book.gate.minute") : t("web.book.gate.minutes"),
+                      })}
                     </p>
                   </div>
                 </>
@@ -489,10 +520,10 @@ export function BeautonomiGateModal({
           ) : otpSent === "phone" ? (
             <div className="space-y-3">
               <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                Enter verification code
+                {t("web.book.gate.enterVerificationCode")}
               </Label>
               <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                Enter the {smsOtpLen}-digit code we sent by SMS.
+                {t("web.book.gate.smsCodeHint", { digits: smsOtpLen })}
               </p>
               <OtpDigitInput
                 length={smsOtpLen}
@@ -503,7 +534,7 @@ export function BeautonomiGateModal({
                 }}
                 disabled={!!loading}
                 autoFocus
-                label="SMS verification code"
+                label={t("web.book.gate.smsVerificationLabel")}
               />
               <Button
                 type="button"
@@ -517,7 +548,7 @@ export function BeautonomiGateModal({
                 onClick={() => void handleVerifyOtp()}
                 disabled={!!loading || !isCompleteOtpForLength(otpCode, smsOtpLen)}
               >
-                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
+                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("web.book.gate.verify")}
               </Button>
               <Button
                 variant="ghost"
@@ -526,16 +557,16 @@ export function BeautonomiGateModal({
                 style={{ color: BOOKING_TEXT_SECONDARY }}
                 onClick={() => { setOtpSent(null); setOtpCode(""); }}
               >
-                Use different method
+                {t("web.book.gate.useDifferentMethod")}
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
               <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                Enter verification code
+{t("web.book.gate.enterVerificationCode")}
               </Label>
               <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                Enter the {emailOtpLen}-digit code we sent to{" "}
+                {t("web.book.gate.emailCodeHint", { digits: emailOtpLen })}{" "}
                 <span className="font-semibold text-gray-900">{email.trim()}</span>
               </p>
               <OtpDigitInput
@@ -547,7 +578,7 @@ export function BeautonomiGateModal({
                 }}
                 disabled={!!loading}
                 autoFocus
-                label="Email verification code"
+                label={t("web.book.gate.emailVerificationLabel")}
               />
               <Button
                 type="button"
@@ -561,7 +592,7 @@ export function BeautonomiGateModal({
                 onClick={() => void handleVerifyOtp()}
                 disabled={!!loading || !isCompleteOtpForLength(otpCode, emailOtpLen)}
               >
-                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
+                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("web.book.gate.verify")}
               </Button>
               <Button
                 variant="ghost"
@@ -573,7 +604,7 @@ export function BeautonomiGateModal({
                   setOtpCode("");
                 }}
               >
-                Use different method
+{t("web.book.gate.useDifferentMethod")}
               </Button>
             </div>
           )}

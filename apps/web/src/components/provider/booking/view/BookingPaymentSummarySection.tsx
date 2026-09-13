@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import type { Appointment } from "@/lib/provider-portal/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { BookingSectionCard, BookingSectionLabel, BookingSummaryRow } from "../ui";
@@ -14,6 +16,7 @@ export function BookingPaymentSummarySection({
   outstanding,
 }: BookingPaymentSummarySectionProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const raw = appointment as unknown as Record<string, unknown>;
   const totalAmount = Number(appointment.total_amount ?? appointment.price ?? 0);
   const totalPaid = Number(raw.total_paid ?? 0);
@@ -29,21 +32,21 @@ export function BookingPaymentSummarySection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-3">Payment summary</BookingSectionLabel>
-      {totalAmount > 0 ? <BookingSummaryRow label="Total" value={formatMoney(totalAmount)} /> : null}
+      <BookingSectionLabel className="mb-3">{t("web.provider.bookings.detail.leftoverCopy.paymentSummary")}</BookingSectionLabel>
+      {totalAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.total")} value={formatMoney(totalAmount)} /> : null}
       {discountAmount > 0 ? (
-        <BookingSummaryRow label="Discount" value={`−${formatMoney(discountAmount)}`} />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.discount")} value={`−${formatMoney(discountAmount)}`} />
       ) : null}
-      {travelFee > 0 ? <BookingSummaryRow label="Travel fee" value={formatMoney(travelFee)} /> : null}
-      {tipAmount > 0 ? <BookingSummaryRow label="Tip" value={formatMoney(tipAmount)} /> : null}
+      {travelFee > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentDetails.travelFee")} value={formatMoney(travelFee)} /> : null}
+      {tipAmount > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentSummary.tip")} value={formatMoney(tipAmount)} /> : null}
       {depositRequired && paymentOption === "deposit" && depositAmount > 0 ? (
-        <BookingSummaryRow label="Deposit required" value={formatMoney(depositAmount)} />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.paymentDetails.depositRequired")} value={formatMoney(depositAmount)} />
       ) : null}
-      {totalPaid > 0 ? <BookingSummaryRow label="Paid" value={formatMoney(totalPaid)} /> : null}
+      {totalPaid > 0 ? <BookingSummaryRow label={t("web.provider.bookings.detail.paymentActions.paid")} value={formatMoney(totalPaid)} /> : null}
       {outstanding > 0 ? (
-        <BookingSummaryRow label="Balance due" value={formatMoney(outstanding)} emphasize />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.leftoverCopy.balanceDue")} value={formatMoney(outstanding)} emphasize />
       ) : paymentStatus === "paid" ? (
-        <BookingSummaryRow label="Status" value="Paid in full" />
+        <BookingSummaryRow label={t("web.provider.bookings.detail.leftoverCopy.status")} value={t("web.provider.bookings.detail.leftoverCopy.paidInFull")} />
       ) : null}
     </BookingSectionCard>
   );

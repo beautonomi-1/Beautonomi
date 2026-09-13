@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import { Package } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -12,6 +14,7 @@ interface BookingProductFulfillmentBlockProps {
 }
 
 export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulfillmentBlockProps) {
+  const { t } = useTranslation();
   const mobileShell = useProviderBookingMobileShell();
   const [orderId, setOrderId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -43,10 +46,10 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
     <BookingSectionCard className="border-amber-200 bg-amber-50">
       <BookingSectionLabel className="mb-1 flex items-center gap-1.5 text-amber-900">
         <Package className="h-4 w-4" />
-        Product pickup
+        {t("web.provider.bookings.detail.leftoverCopy.productPickup")}
       </BookingSectionLabel>
       <p className="text-sm text-amber-950">
-        Linked product order{status ? ` · ${status.replace(/_/g, " ")}` : ""}
+        {status ? t("web.provider.bookings.detail.leftoverCopy.linkedProductOrderStatus", { status: status.replace(/_/g, " ") }) : t("web.provider.bookings.detail.leftoverCopy.linkedProductOrder")}
       </p>
       {mobileShell ? (
         <BookingActionButton
@@ -56,14 +59,14 @@ export function BookingProductFulfillmentBlock({ bookingId }: BookingProductFulf
           variant="outline"
           onClick={() => openProductOrderView(orderId)}
         >
-          Fulfill order
+          {t("web.provider.bookings.detail.leftoverCopy.fulfillOrder")}
         </BookingActionButton>
       ) : (
         <a
           href={`/provider/ecommerce/orders?order=${orderId}`}
           className="text-xs font-semibold text-amber-900 underline mt-2 inline-block"
         >
-          Fulfill order
+          {t("web.provider.bookings.detail.leftoverCopy.fulfillOrder")}
         </a>
       )}
     </BookingSectionCard>

@@ -23,6 +23,7 @@ import type { CalendarLink, CalendarProvider } from "@/lib/provider-portal/types
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CalendarLinkDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function CalendarLinkDialog({
   link,
   onSuccess,
 }: CalendarLinkDialogProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -104,20 +106,20 @@ export function CalendarLinkDialog({
 
       if (link) {
         await providerApi.updateCalendarLink(link.id, linkData);
-        toast.success("Calendar link updated");
+        toast.success(t("web.provider.portal.calendarLinkDialog.updated"));
       } else {
         const newLink = await providerApi.createCalendarLink(linkData);
-        toast.success("Calendar link created");
+        toast.success(t("web.provider.portal.calendarLinkDialog.created"));
         const copied = await copyTextToClipboard(newLink.full_url);
         if (copied) {
-          toast.info("Link copied to clipboard");
+          toast.info(t("web.provider.portal.calendarLinkDialog.linkCopied"));
         }
       }
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save calendar link:", error);
-      toast.error("Failed to save calendar link");
+      toast.error(t("web.provider.portal.calendarLinkDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -128,25 +130,25 @@ export function CalendarLinkDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader className="px-0 sm:px-0">
           <DialogTitle className="text-base sm:text-lg">
-            {link ? "Edit Calendar Link" : "New Calendar Link"}
+            {link ? t("web.provider.portal.calendarLinkDialog.titleEdit") : t("web.provider.portal.calendarLinkDialog.titleNew")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 px-0 sm:px-0">
           <div>
-            <Label htmlFor="name">Link Name *</Label>
+            <Label htmlFor="name">{t("web.provider.portal.calendarLinkDialog.linkNameRequired")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Public Calendar, Client Subscription"
+              placeholder={t("web.provider.portal.calendarLinkDialog.linkNamePlaceholder")}
               required
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="calendar_type">Calendar Type *</Label>
+              <Label htmlFor="calendar_type">{t("web.provider.portal.calendarLinkDialog.calendarTypeRequired")}</Label>
               <Select
                 value={formData.calendar_type}
                 onValueChange={(value) =>
@@ -157,13 +159,13 @@ export function CalendarLinkDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="public">Public Link</SelectItem>
-                  <SelectItem value="subscription">Subscription (iCal/Google)</SelectItem>
+                  <SelectItem value="public">{t("web.provider.portal.calendarLinkDialog.publicLink")}</SelectItem>
+                  <SelectItem value="subscription">{t("web.provider.portal.calendarLinkDialog.subscriptionIcal")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="provider">Provider</Label>
+              <Label htmlFor="provider">{t("web.provider.portal.calendarLinkDialog.provider")}</Label>
               <Select
                 value={formData.provider}
                 onValueChange={(value) =>
@@ -174,16 +176,16 @@ export function CalendarLinkDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="google">Google Calendar</SelectItem>
-                  <SelectItem value="apple">Apple Calendar (iCal)</SelectItem>
-                  <SelectItem value="outlook">Microsoft Outlook</SelectItem>
+                  <SelectItem value="google">{t("web.provider.portal.calendarLinkDialog.googleCalendar")}</SelectItem>
+                  <SelectItem value="apple">{t("web.provider.portal.calendarLinkDialog.appleCalendar")}</SelectItem>
+                  <SelectItem value="outlook">{t("web.provider.portal.calendarLinkDialog.microsoftOutlook")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div>
-            <Label htmlFor="expires_at">Expiration Date (Optional)</Label>
+            <Label htmlFor="expires_at">{t("web.provider.portal.calendarLinkDialog.expirationOptional")}</Label>
             <Input
               id="expires_at"
               type="date"
@@ -191,12 +193,12 @@ export function CalendarLinkDialog({
               onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Leave empty for no expiration
+              {t("web.provider.portal.calendarLinkDialog.noExpiration")}
             </p>
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold mb-2">Display Settings</h4>
+            <h4 className="text-sm font-semibold mb-2">{t("web.provider.portal.calendarLinkDialog.displaySettings")}</h4>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -207,7 +209,7 @@ export function CalendarLinkDialog({
                   }
                 />
                 <Label htmlFor="show_client_names" className="cursor-pointer text-sm">
-                  Show client names
+                  {t("web.provider.portal.calendarLinkDialog.showClientNames")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -219,7 +221,7 @@ export function CalendarLinkDialog({
                   }
                 />
                 <Label htmlFor="show_service_details" className="cursor-pointer text-sm">
-                  Show service details
+                  {t("web.provider.portal.calendarLinkDialog.showServiceDetails")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -231,7 +233,7 @@ export function CalendarLinkDialog({
                   }
                 />
                 <Label htmlFor="show_team_member_names" className="cursor-pointer text-sm">
-                  Show team member names
+                  {t("web.provider.portal.calendarLinkDialog.showTeamMemberNames")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -243,7 +245,7 @@ export function CalendarLinkDialog({
                   }
                 />
                 <Label htmlFor="include_cancelled" className="cursor-pointer text-sm">
-                  Include cancelled appointments
+                  {t("web.provider.portal.calendarLinkDialog.includeCancelled")}
                 </Label>
               </div>
             </div>
@@ -258,13 +260,13 @@ export function CalendarLinkDialog({
               }
             />
             <Label htmlFor="is_active" className="cursor-pointer">
-              Active
+              {t("web.provider.portal.calendarLinkDialog.active")}
             </Label>
           </div>
 
           {link && (
             <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm font-medium text-blue-800 mb-1">Calendar Link URL:</p>
+              <p className="text-sm font-medium text-blue-800 mb-1">{t("web.provider.portal.calendarLinkDialog.calendarLinkUrl")}</p>
               <code className="text-xs text-blue-600 break-all">{link.full_url}</code>
             </div>
           )}
@@ -276,14 +278,18 @@ export function CalendarLinkDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.portal.calendarLinkDialog.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : link ? "Update" : "Create"}
+              {isLoading
+                ? t("web.provider.portal.calendarLinkDialog.saving")
+                : link
+                  ? t("web.provider.portal.calendarLinkDialog.update")
+                  : t("web.provider.portal.calendarLinkDialog.create")}
             </Button>
           </DialogFooter>
         </form>

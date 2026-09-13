@@ -126,11 +126,11 @@ export default function LoginAndSecurityScreen() {
       return;
     }
     if (isSettingFirstPassword && !passwordNonce.trim()) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), "Enter the verification code before setting a password.");
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("enterVerificationBeforePassword"));
       return;
     }
     if (!password || password.length < minimumPasswordLength) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), `Password must be at least ${minimumPasswordLength} characters long.`);
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), ls("passwordMinLengthDynamic", { min: String(minimumPasswordLength) }));
       return;
     }
     if (password !== confirmPassword) {
@@ -149,8 +149,8 @@ export default function LoginAndSecurityScreen() {
         Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), res.error.message ?? ls("updatePasswordFailed"));
       } else {
         Alert.alert(
-          isSettingFirstPassword ? "Password set" : ls("passwordUpdatedTitle"),
-          isSettingFirstPassword ? "You can now sign in with your password as well as one-time codes." : ls("passwordUpdatedBody"),
+          isSettingFirstPassword ? ls("passwordSetTitle") : ls("passwordUpdatedTitle"),
+          isSettingFirstPassword ? ls("passwordSetBody") : ls("passwordUpdatedBody"),
         );
         setCurrentPassword("");
         setPassword("");
@@ -167,16 +167,16 @@ export default function LoginAndSecurityScreen() {
 
   const requestPasswordNonce = async () => {
     if (!canVerifyPasswordAction) {
-      Alert.alert("Add contact method", "Add and verify an email or phone number before setting a password.");
+      Alert.alert(ls("addContactMethodTitle"), ls("addContactMethodBody"));
       return;
     }
     setRequestingPasswordNonce(true);
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", "Enter the verification code below to set your password.");
+      Alert.alert(ls("codeSentTitle"), ls("passwordNonceSentBody"));
     } catch (e) {
-      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, "Failed to send verification code."));
+      Alert.alert(t("customer.mobile.screens.authLogin.errorTitle"), getApiErrorMessage(e, ls("sendVerificationCodeFailed")));
     } finally {
       setRequestingPasswordNonce(false);
     }
@@ -317,7 +317,7 @@ export default function LoginAndSecurityScreen() {
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flex: 1, marginRight: 12 }}>
+                <View style={{ flex: 1, marginEnd: 12 }}>
                   <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{ls("appLockTitle")}</Text>
                   {biometric.isAvailable ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
@@ -325,7 +325,7 @@ export default function LoginAndSecurityScreen() {
                     </Text>
                   ) : (
                     <Text style={{ fontSize: 14, color: Colors.gray[400], marginTop: 4 }}>
-                      Biometric authentication is not available on this device
+                      {ls("biometricUnavailable")}
                     </Text>
                   )}
                 </View>
@@ -345,10 +345,10 @@ export default function LoginAndSecurityScreen() {
             {/* Change Email */}
             <View style={{ marginTop: 24 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>
-                Email address
+                {ls("emailAddressTitle")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>
-                Current: {currentEmail || "—"}
+                {ls("currentEmailLabel", { value: currentEmail || "—" })}
               </Text>
               {emailChange.step === null ? (
                 <>
@@ -365,14 +365,14 @@ export default function LoginAndSecurityScreen() {
                     }}
                     value={emailChange.newEmail}
                     onChangeText={emailChange.setNewEmail}
-                    placeholder="New email address"
+                    placeholder={ls("newEmailPlaceholder")}
                     placeholderTextColor={Colors.gray[400]}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8, lineHeight: 18 }}>
-                    We&apos;ll email a {emailChange.otpLength}-digit code to verify your new address.
+                    {ls("emailCodeHint", { digits: String(emailChange.otpLength) })}
                   </Text>
                   <TouchableOpacity
                     onPress={() => void emailChange.sendCode()}
@@ -388,17 +388,17 @@ export default function LoginAndSecurityScreen() {
                     {emailChange.sending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={{ color: Colors.white, fontWeight: "600" }}>Send verification code</Text>
+                      <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("sendVerificationCode")}</Text>
                     )}
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>
-                    Code sent to {emailChange.pendingEmail}
+                    {ls("codeSentToEmail", { email: emailChange.pendingEmail })}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
-                    Enter the {emailChange.otpLength}-digit code from your email
+                    {ls("enterEmailOtp", { digits: String(emailChange.otpLength) })}
                   </Text>
                   <OtpDigitRow
                     value={emailChange.otpCode}
@@ -423,7 +423,7 @@ export default function LoginAndSecurityScreen() {
                         borderColor: Colors.gray[300],
                       }}
                     >
-                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>Cancel</Text>
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>{t("common.cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => void emailChange.verifyCode()}
@@ -439,17 +439,17 @@ export default function LoginAndSecurityScreen() {
                       {emailChange.verifying ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={{ color: Colors.white, fontWeight: "600" }}>Verify & save</Text>
+                        <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("verifyAndSave")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
                   {emailChange.resendCooldown > 0 ? (
                     <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 10, textAlign: "center" }}>
-                      Resend in {emailChange.resendCooldown}s
+                      {ls("resendInSeconds", { seconds: String(emailChange.resendCooldown) })}
                     </Text>
                   ) : (
                     <TouchableOpacity onPress={() => void emailChange.resendCode()} style={{ marginTop: 10, alignItems: "center" }}>
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Resend code</Text>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>{ls("resendCode")}</Text>
                     </TouchableOpacity>
                   )}
                 </>
@@ -459,10 +459,10 @@ export default function LoginAndSecurityScreen() {
             {/* Change Phone */}
             <View style={{ marginTop: 28 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>
-                Phone number
+                {ls("phoneNumberTitle")}
               </Text>
               <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>
-                Current: {currentPhone ? `${parsedPhone.countryCode} *** ***${(parsedPhone.national || "").slice(-4)}` : "—"}
+                {ls("currentPhoneLabel", { value: currentPhone ? `${parsedPhone.countryCode} *** ***${(parsedPhone.national || "").slice(-4)}` : "—" })}
               </Text>
               {phoneStep === null ? (
                 <>
@@ -471,13 +471,15 @@ export default function LoginAndSecurityScreen() {
                     onCountryCodeChange={setPhoneCountryCode}
                     nationalValue={phoneNational}
                     onNationalChange={setPhoneNational}
-                    placeholder="New phone number"
-                    accessibilityLabel="New phone number"
+                    placeholder={ls("newPhonePlaceholder")}
+                    accessibilityLabel={ls("newPhonePlaceholder")}
                   />
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8, lineHeight: 18 }}>
-                    We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
-                    {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
-                    {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
+                    {ls("smsCodeHint", {
+                      digits: String(SUPABASE_AUTH_OTP_LENGTH),
+                      minutes: String(Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))),
+                      minuteUnit: Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? ls("minuteSingular") : ls("minutePlural"),
+                    })}
                   </Text>
                   <TouchableOpacity
                     onPress={handleSendPhoneOtp}
@@ -493,17 +495,17 @@ export default function LoginAndSecurityScreen() {
                     {phoneSending ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
-                      <Text style={{ color: Colors.white, fontWeight: "600" }}>Send verification code</Text>
+                      <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("sendVerificationCode")}</Text>
                     )}
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>
-                    Code sent to {pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}
+                    {ls("codeSentToPhone", { phone: pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4") })}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
-                    Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                    {ls("enterOtp", { digits: String(SUPABASE_AUTH_OTP_LENGTH) })}
                   </Text>
                   <OtpDigitRow
                     value={phoneOtpCode}
@@ -532,7 +534,7 @@ export default function LoginAndSecurityScreen() {
                         borderColor: Colors.gray[300],
                       }}
                     >
-                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>Cancel</Text>
+                      <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>{t("common.cancel")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => void handleVerifyPhoneOtp()}
@@ -548,7 +550,7 @@ export default function LoginAndSecurityScreen() {
                       {phoneVerifying ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={{ color: Colors.white, fontWeight: "600" }}>Verify & save</Text>
+                        <Text style={{ color: Colors.white, fontWeight: "600" }}>{ls("verifyAndSave")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -559,16 +561,16 @@ export default function LoginAndSecurityScreen() {
             {/* Password */}
             <View style={{ marginTop: 28 }}>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>
-                {isSettingFirstPassword ? "Set password" : "Change password"}
+                {isSettingFirstPassword ? ls("setPassword") : ls("changePassword")}
               </Text>
               {isSettingFirstPassword ? (
                 <View style={{ borderRadius: 12, backgroundColor: "#EEF2FF", padding: 12, marginBottom: 16 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>
-                    Your account uses one-time codes or social login. Send a verification code, then choose a password.
+                    {ls("setPasswordIntro")}
                   </Text>
                   {!canVerifyPasswordAction ? (
                     <Text style={{ marginTop: 8, fontSize: 13, color: "#b91c1c" }}>
-                      Add and verify an email or phone number before setting a password.
+                      {ls("addContactMethodBody")}
                     </Text>
                   ) : null}
                   <TouchableOpacity
@@ -585,11 +587,11 @@ export default function LoginAndSecurityScreen() {
                     }}
                   >
                     <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>
-                      {requestingPasswordNonce ? "Sending..." : "Send verification code"}
+                      {requestingPasswordNonce ? ls("sending") : ls("sendVerificationCode")}
                     </Text>
                   </TouchableOpacity>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4, marginTop: 12 }}>
-                    Verification code
+                    {ls("verificationCodeLabel")}
                   </Text>
                   <TextInput
                     style={{
@@ -604,7 +606,7 @@ export default function LoginAndSecurityScreen() {
                     }}
                     value={passwordNonce}
                     onChangeText={(value) => setPasswordNonce(value.replace(/\D/g, ""))}
-                    placeholder="Enter code"
+                    placeholder={ls("enterCodePlaceholder")}
                     placeholderTextColor={Colors.gray[400]}
                     keyboardType="number-pad"
                     autoComplete="sms-otp"
@@ -614,7 +616,7 @@ export default function LoginAndSecurityScreen() {
               ) : (
                 <>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                    Current password
+                    {ls("currentPasswordLabel")}
                   </Text>
                   <TextInput
                     style={{
@@ -629,7 +631,7 @@ export default function LoginAndSecurityScreen() {
                     }}
                     value={currentPassword}
                     onChangeText={setCurrentPassword}
-                    placeholder="••••••••"
+                    placeholder={ls("currentPasswordPlaceholder")}
                     placeholderTextColor={Colors.gray[400]}
                     secureTextEntry
                   />
@@ -637,15 +639,15 @@ export default function LoginAndSecurityScreen() {
                     onPress={() => router.push("/(auth)/forgot-password")}
                     style={{ marginTop: 8 }}
                     accessibilityRole="link"
-                    accessibilityLabel="Forgot password"
+                    accessibilityLabel={ls("forgotPassword")}
                   >
-                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>Forgot password?</Text>
+                    <Text style={{ color: Colors.primary, fontWeight: "600" }}>{ls("forgotPassword")}</Text>
                   </TouchableOpacity>
                 </>
               )}
               <View style={{ marginTop: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                  New password
+                  {ls("newPasswordLabel")}
                 </Text>
                 <TextInput
                   style={{
@@ -660,14 +662,14 @@ export default function LoginAndSecurityScreen() {
                   }}
                   value={password}
                   onChangeText={setPassword}
-                  placeholder={`At least ${minimumPasswordLength} characters`}
+                  placeholder={ls("newPasswordPlaceholderDynamic", { min: String(minimumPasswordLength) })}
                   placeholderTextColor={Colors.gray[400]}
                   secureTextEntry
                 />
               </View>
               <View style={{ marginTop: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>
-                  Confirm new password
+                  {ls("confirmNewPasswordLabel")}
                 </Text>
                 <TextInput
                   style={{
@@ -682,7 +684,7 @@ export default function LoginAndSecurityScreen() {
                   }}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
-                  placeholder="••••••••"
+                  placeholder={ls("confirmPasswordPlaceholder")}
                   placeholderTextColor={Colors.gray[400]}
                   secureTextEntry
                 />
@@ -699,16 +701,16 @@ export default function LoginAndSecurityScreen() {
                 }}
               >
                 <Text style={{ color: Colors.white, fontWeight: "600" }}>
-                  {updating ? (isSettingFirstPassword ? "Setting..." : "Updating...") : (isSettingFirstPassword ? "Set password" : "Update password")}
+                  {updating ? (isSettingFirstPassword ? ls("sending") : ls("updating")) : (isSettingFirstPassword ? ls("setPassword") : ls("updatePassword"))}
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* Wave 2.4 (audit 2026-04 final 100/100): global sign-out */}
             <View style={{ marginTop: 32 }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Active sessions</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{ls("activeSessionsTitle")}</Text>
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
-                Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in.
+                {ls("activeSessionsBody")}
               </Text>
               <TouchableOpacity
                 onPress={handleGlobalSignOut}
@@ -723,22 +725,22 @@ export default function LoginAndSecurityScreen() {
                   alignItems: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Sign out from all devices"
+                accessibilityLabel={ls("signOutFromAllDevices")}
               >
                 {signingOutGlobal ? (
                   <ActivityIndicator size="small" color={Colors.gray[700]} />
                 ) : (
                   <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 16 }}>
-                    Sign out from all devices
+                    {ls("signOutFromAllDevices")}
                   </Text>
                 )}
               </TouchableOpacity>
             </View>
 
             <View style={{ marginTop: 32 }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Account</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{ls("accountTitle")}</Text>
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
-                Temporarily disable your account. You can reactivate later by signing in again.
+                {ls("deactivateAccountBody")}
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/account-settings/deactivate-account")}
@@ -752,9 +754,9 @@ export default function LoginAndSecurityScreen() {
                   alignItems: "center",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Deactivate account"
+                accessibilityLabel={ls("deactivateAccount")}
               >
-                <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>Deactivate account</Text>
+                <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>{ls("deactivateAccount")}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>

@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
@@ -38,59 +39,59 @@ interface TeamAccessPayload {
 
 const PERMISSION_GROUPS = [
   {
-    title: "Bookings",
+    titleKey: "groupBookings",
     permissions: [
-      { key: "view_calendar", label: "View calendar", icon: "calendar-outline" },
-      { key: "create_appointments", label: "Create Appointments", icon: "add-circle-outline" },
-      { key: "edit_appointments", label: "Edit Appointments", icon: "create-outline" },
-      { key: "cancel_appointments", label: "Cancel appointments", icon: "close-circle-outline" },
-      { key: "delete_appointments", label: "Delete appointments", icon: "trash-outline" },
+      { key: "view_calendar", labelKey: "permViewCalendar", icon: "calendar-outline" },
+      { key: "create_appointments", labelKey: "permCreateAppointments", icon: "add-circle-outline" },
+      { key: "edit_appointments", labelKey: "permEditAppointments", icon: "create-outline" },
+      { key: "cancel_appointments", labelKey: "permCancelAppointments", icon: "close-circle-outline" },
+      { key: "delete_appointments", labelKey: "permDeleteAppointments", icon: "trash-outline" },
     ],
   },
   {
-    title: "Clients",
+    titleKey: "groupClients",
     permissions: [
-      { key: "view_clients", label: "View Clients", icon: "people-outline" },
-      { key: "edit_clients", label: "Edit Clients", icon: "person-add-outline" },
+      { key: "view_clients", labelKey: "permViewClients", icon: "people-outline" },
+      { key: "edit_clients", labelKey: "permEditClients", icon: "person-add-outline" },
     ],
   },
   {
-    title: "Business",
+    titleKey: "groupBusiness",
     permissions: [
-      { key: "view_reports", label: "View Reports", icon: "bar-chart-outline" },
-      { key: "view_team", label: "View Team", icon: "people-outline" },
-      { key: "manage_team", label: "Manage Team", icon: "people-circle-outline" },
-      { key: "view_settings", label: "View Settings", icon: "options-outline" },
-      { key: "edit_settings", label: "Edit Settings", icon: "settings-outline" },
+      { key: "view_reports", labelKey: "permViewReports", icon: "bar-chart-outline" },
+      { key: "view_team", labelKey: "permViewTeam", icon: "people-outline" },
+      { key: "manage_team", labelKey: "permManageTeam", icon: "people-circle-outline" },
+      { key: "view_settings", labelKey: "permViewSettings", icon: "options-outline" },
+      { key: "edit_settings", labelKey: "permEditSettings", icon: "settings-outline" },
     ],
   },
   {
-    title: "Sales & Products",
+    titleKey: "groupSalesProducts",
     permissions: [
-      { key: "view_sales", label: "View Sales", icon: "receipt-outline" },
-      { key: "create_sales", label: "Create Sales", icon: "add-circle-outline" },
-      { key: "process_payments", label: "Process Payments", icon: "card-outline" },
-      { key: "view_services", label: "View Services", icon: "list-outline" },
-      { key: "edit_services", label: "Edit Services", icon: "construct-outline" },
-      { key: "view_products", label: "View Products", icon: "cube-outline" },
-      { key: "edit_products", label: "Edit Products", icon: "cube-outline" },
+      { key: "view_sales", labelKey: "permViewSales", icon: "receipt-outline" },
+      { key: "create_sales", labelKey: "permCreateSales", icon: "add-circle-outline" },
+      { key: "process_payments", labelKey: "permProcessPayments", icon: "card-outline" },
+      { key: "view_services", labelKey: "permViewServices", icon: "list-outline" },
+      { key: "edit_services", labelKey: "permEditServices", icon: "construct-outline" },
+      { key: "view_products", labelKey: "permViewProducts", icon: "cube-outline" },
+      { key: "edit_products", labelKey: "permEditProducts", icon: "cube-outline" },
     ],
   },
   {
-    title: "Communication",
+    titleKey: "groupCommunication",
     permissions: [
-      { key: "view_messages", label: "View Messages", icon: "chatbubbles-outline" },
-      { key: "send_messages", label: "Send Messages", icon: "chatbubble-outline" },
-      { key: "create_explore_posts", label: "Create Explore posts", icon: "share-social-outline" },
+      { key: "view_messages", labelKey: "permViewMessages", icon: "chatbubbles-outline" },
+      { key: "send_messages", labelKey: "permSendMessages", icon: "chatbubble-outline" },
+      { key: "create_explore_posts", labelKey: "permCreateExplorePosts", icon: "share-social-outline" },
     ],
   },
   {
-    title: "Reviews",
+    titleKey: "groupReviews",
     permissions: [
-      { key: "view_reviews", label: "View Reviews", icon: "star-outline" },
-      { key: "edit_reviews", label: "Edit Reviews", icon: "star-half-outline" },
-      { key: "view_client_ratings", label: "View Client Ratings", icon: "person-circle-outline" },
-      { key: "rate_clients", label: "Rate Clients", icon: "create-outline" },
+      { key: "view_reviews", labelKey: "permViewReviews", icon: "star-outline" },
+      { key: "edit_reviews", labelKey: "permEditReviews", icon: "star-half-outline" },
+      { key: "view_client_ratings", labelKey: "permViewClientRatings", icon: "person-circle-outline" },
+      { key: "rate_clients", labelKey: "permRateClients", icon: "create-outline" },
     ],
   },
 ];
@@ -128,6 +129,12 @@ function normalizeRolePermissions(
 }
 
 export default function TeamRolesScreen() {
+  const { t } = useTranslation();
+  const tr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.teamRoles.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Role | null>(null);
@@ -206,7 +213,7 @@ export default function TeamRolesScreen() {
     if (!canManageTeam) return;
     setEditing(null);
     setForm({
-      name: `${role.name} (Copy)`,
+      name: tr("copyName", { name: role.name }),
       description: role.description ?? "",
       permissions: normalizeRolePermissions(role.permissions),
     });
@@ -251,11 +258,11 @@ export default function TeamRolesScreen() {
 
   async function handleSave() {
     if (!canManageTeam) {
-      Alert.alert("Permission", "You do not have permission to manage team roles.");
+      Alert.alert(tr("permissionTitle"), tr("permissionBody"));
       return;
     }
     if (!form.name.trim()) {
-      Alert.alert("Required", "Role name is required");
+      Alert.alert(tr("requiredTitle"), tr("requiredBody"));
       return;
     }
     const payload = {
@@ -271,14 +278,14 @@ export default function TeamRolesScreen() {
       );
       if (error) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Error", error);
+        Alert.alert(tr("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createRole(payload);
       if (error) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Error", error);
+        Alert.alert(tr("errorTitle"), error);
         return;
       }
     }
@@ -289,8 +296,8 @@ export default function TeamRolesScreen() {
     // know the role save landed. The form sheet auto-closes, which
     // previously left users uncertain whether the change persisted.
     Alert.alert(
-      wasEditing ? "Role updated" : "Role created",
-      wasEditing ? "Changes saved successfully." : "New role is ready to assign.",
+      wasEditing ? tr("updatedTitle") : tr("createdTitle"),
+      wasEditing ? tr("updatedBody") : tr("createdBody"),
     );
   }
 
@@ -298,21 +305,21 @@ export default function TeamRolesScreen() {
     if (!canManageTeam) return;
     if (role.member_count && role.member_count > 0) {
       Alert.alert(
-        "Cannot Delete",
-        `This role is assigned to ${role.member_count} team member(s). Reassign them first.`
+        tr("cannotDeleteTitle"),
+        tr("cannotDeleteAssigned", { count: role.member_count })
       );
       return;
     }
-    Alert.alert("Delete Role", `Delete "${role.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(tr("deleteTitle"), tr("deleteBody", { name: role.name }), [
+      { text: tr("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: tr("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteRole(
             `/api/provider/roles/${role.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(tr("errorTitle"), error);
           else refresh();
         },
       },
@@ -327,9 +334,9 @@ export default function TeamRolesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Team Roles"
+        title={tr("title")}
         showBack
-        subtitle={canManageTeam ? "Manage roles & permissions" : "Role templates (read-only)"}
+        subtitle={canManageTeam ? tr("subtitleManage") : tr("subtitleReadonly")}
         rightAction={
           canManageTeam ? (
             <TouchableOpacity
@@ -343,15 +350,15 @@ export default function TeamRolesScreen() {
       />
       {!canManageTeam ? (
         <Text style={twStyle("mb-3 px-1 text-xs text-gray-500")}>
-          Only owners or users with Manage team can create, edit, duplicate, or delete roles.
+          {tr("readonlyHint")}
         </Text>
       ) : null}
 
       {roles && roles.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Roles"
+              title={tr("statRoles")}
               value={String(roles.length)}
               icon="shield-outline"
               iconColor="#6366f1"
@@ -359,9 +366,9 @@ export default function TeamRolesScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Members"
+              title={tr("statMembers")}
               value={String(totalMembers)}
               icon="people-outline"
               iconColor="#22c55e"
@@ -371,7 +378,7 @@ export default function TeamRolesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Avg Perms"
+              title={tr("statAvgPerms")}
               value={String(avgPermissions)}
               icon="key-outline"
               iconColor="#f59e0b"
@@ -387,7 +394,7 @@ export default function TeamRolesScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search roles..."
+            placeholder={tr("searchPlaceholder")}
           />
         </View>
       )}
@@ -399,11 +406,11 @@ export default function TeamRolesScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="shield-outline"
-          title={search ? "No matches" : "No custom roles"}
+          title={search ? tr("emptyMatches") : tr("emptyTitle")}
           description={
             search
-              ? "Try a different search"
-              : "Create roles to manage team permissions"
+              ? tr("emptyMatchesHint")
+              : tr("emptyHint")
           }
         />
       ) : (
@@ -426,14 +433,14 @@ export default function TeamRolesScreen() {
                 onLongPress={() => {
                   if (!canManageTeam) return;
                   Alert.alert(role.name, undefined, [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Edit", onPress: () => openEdit(role) },
+                    { text: tr("cancel"), style: "cancel" },
+                    { text: tr("edit"), onPress: () => openEdit(role) },
                     {
-                      text: "Duplicate",
+                      text: tr("duplicate"),
                       onPress: () => duplicateRole(role),
                     },
                     {
-                      text: "Delete",
+                      text: tr("delete"),
                       style: "destructive",
                       onPress: () => handleDelete(role),
                     },
@@ -450,7 +457,7 @@ export default function TeamRolesScreen() {
                         color="#6366f1"
                       />
                     </View>
-                    <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("ms-3 flex-1")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {role.name}
                       </Text>
@@ -473,22 +480,21 @@ export default function TeamRolesScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={twStyle("mt-2 flex-row items-center")}>
-                  <View style={[twStyle("flex-row items-center"), { marginRight: 4 }]}>
+                  <View style={[twStyle("flex-row items-center"), { marginEnd: 4 }]}>
                     <Ionicons name="key-outline" size={12} color="#6366f1" />
                     <Text style={twStyle("text-xs text-indigo-600")}>
-                      {permCount}/{ALL_PERMISSIONS.length} permissions
+                      {tr("permissionsCount", { count: permCount, total: ALL_PERMISSIONS.length })}
                     </Text>
                   </View>
                   {role.member_count !== undefined && (
-                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                    <View style={[twStyle("flex-row items-center"), { marginEnd: 12 }]}>
                       <Ionicons
                         name="people-outline"
                         size={12}
                         color="#6b7280"
                       />
                       <Text style={twStyle("text-xs text-gray-500")}>
-                        {role.member_count} member
-                        {role.member_count !== 1 ? "s" : ""}
+                        {tr("memberCount", { count: role.member_count })}
                       </Text>
                     </View>
                   )}
@@ -510,46 +516,46 @@ export default function TeamRolesScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Role" : "New Role"}
+        title={editing ? tr("editTitle") : tr("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Role Name *
+            {tr("nameLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
-            onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Senior Stylist"
+            onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+            placeholder={tr("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {tr("description")}
           </Text>
           <TextInput
             style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) =>
-              setForm((p) => ({ ...p, description: t }))
+            onChangeText={(text) =>
+              setForm((p) => ({ ...p, description: text }))
             }
-            placeholder="Optional description"
+            placeholder={tr("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
             <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
-              Permissions ({formEnabledCount}/{ALL_PERMISSIONS.length})
+              {tr("permissionsHeader", { count: formEnabledCount, total: ALL_PERMISSIONS.length })}
             </Text>
             <View style={twStyle("flex-row")}>
-              <TouchableOpacity style={{ marginRight: 8 }} onPress={selectAllPermissions}>
+              <TouchableOpacity style={{ marginEnd: 8 }} onPress={selectAllPermissions}>
                 <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
-                  Select All
+                  {tr("selectAll")}
                 </Text>
               </TouchableOpacity>
-              <Text style={[twStyle("text-[10px] text-gray-300"), { marginRight: 8 }]}>|</Text>
+              <Text style={[twStyle("text-[10px] text-gray-300"), { marginEnd: 8 }]}>|</Text>
               <TouchableOpacity onPress={clearAllPermissions}>
                 <Text style={twStyle("text-[10px] font-medium text-gray-400")}>
-                  Clear All
+                  {tr("clearAll")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -562,7 +568,7 @@ export default function TeamRolesScreen() {
             );
             return (
               <View
-                key={group.title}
+                key={group.titleKey}
                 style={twStyle("mb-3 overflow-hidden rounded-xl border border-gray-100 bg-white")}
               >
                 <TouchableOpacity
@@ -570,7 +576,7 @@ export default function TeamRolesScreen() {
                   onPress={() => toggleGroupAll(groupKeys)}
                 >
                   <Text style={twStyle("text-xs font-semibold text-gray-600")}>
-                    {group.title}
+                    {tr(group.titleKey)}
                   </Text>
                   <View
                     style={twStyle(`h-4 w-4 items-center justify-center rounded ${
@@ -600,7 +606,7 @@ export default function TeamRolesScreen() {
                     <View style={twStyle("flex-row items-center")}>
                       <Ionicons
                         name={perm.icon as keyof typeof Ionicons.glyphMap}
-                        style={{ marginRight: 8 }}
+                        style={{ marginEnd: 8 }}
                         size={14}
                         color={
                           form.permissions[perm.key]
@@ -609,7 +615,7 @@ export default function TeamRolesScreen() {
                         }
                       />
                       <Text style={twStyle("text-sm text-gray-700")}>
-                        {perm.label}
+                        {tr(perm.labelKey)}
                       </Text>
                     </View>
                     <Switch
@@ -631,7 +637,7 @@ export default function TeamRolesScreen() {
 
           <View style={twStyle("mt-2")}>
             <ActionButton
-              label={editing ? "Update Role" : "Create Role"}
+              label={editing ? tr("updateRole") : tr("createRole")}
               onPress={handleSave}
               loading={creating || updatingRole}
               fullWidth

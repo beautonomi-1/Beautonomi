@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ export default function VirtualWaitingRoom({
   services,
   onStatusUpdate,
 }: VirtualWaitingRoomProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<BookingStatus>({
     id: bookingId,
     status: "pending",
@@ -48,7 +50,6 @@ export default function VirtualWaitingRoom({
   const [timeElapsed, setTimeElapsed] = useState(0);
 
   useEffect(() => {
-    // Poll for status updates
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/bookings/${bookingId}/status`);
@@ -60,9 +61,8 @@ export default function VirtualWaitingRoom({
       } catch (error) {
         console.error("Error fetching booking status:", error);
       }
-    }, 10000); // Poll every 10 seconds
+    }, 10000);
 
-    // Update elapsed time
     const timeInterval = setInterval(() => {
       setTimeElapsed((prev) => prev + 1);
     }, 1000);
@@ -77,59 +77,61 @@ export default function VirtualWaitingRoom({
     switch (status.status) {
       case "pending":
         return {
-          title: "Waiting for Confirmation",
-          description: "Your booking is being reviewed by the provider",
+          title: t("web.booking.virtualWaitingRoom.pendingTitle"),
+          description: t("web.booking.virtualWaitingRoom.pendingDescription"),
           icon: Clock,
           color: "bg-yellow-100 text-yellow-800",
         };
       case "confirmed":
         return {
-          title: "Booking Confirmed",
-          description: "Your appointment has been confirmed",
+          title: t("web.booking.virtualWaitingRoom.confirmedTitle"),
+          description: t("web.booking.virtualWaitingRoom.confirmedDescription"),
           icon: CheckCircle2,
           color: "bg-green-100 text-green-800",
         };
       case "provider_en_route":
         return {
-          title: "Provider On The Way",
+          title: t("web.booking.virtualWaitingRoom.enRouteTitle"),
           description: status.estimated_arrival
-            ? `Estimated arrival: ${format(new Date(status.estimated_arrival), "h:mm a")}`
-            : "Your provider is on the way",
+            ? t("web.booking.virtualWaitingRoom.enRouteEta", {
+                time: format(new Date(status.estimated_arrival), "h:mm a"),
+              })
+            : t("web.booking.virtualWaitingRoom.enRouteDescription"),
           icon: MapPin,
           color: "bg-blue-100 text-blue-800",
         };
       case "provider_arrived":
         return {
-          title: "Provider Has Arrived",
-          description: "Your provider has arrived at the location",
+          title: t("web.booking.virtualWaitingRoom.arrivedTitle"),
+          description: t("web.booking.virtualWaitingRoom.arrivedDescription"),
           icon: CheckCircle2,
           color: "bg-green-100 text-green-800",
         };
       case "in_progress":
         return {
-          title: "Service In Progress",
-          description: "Your appointment is currently in progress",
+          title: t("web.booking.virtualWaitingRoom.inProgressTitle"),
+          description: t("web.booking.virtualWaitingRoom.inProgressDescription"),
           icon: Clock,
           color: "bg-purple-100 text-purple-800",
         };
       case "completed":
         return {
-          title: "Service Completed",
-          description: "Your appointment has been completed",
+          title: t("web.booking.virtualWaitingRoom.completedTitle"),
+          description: t("web.booking.virtualWaitingRoom.completedDescription"),
           icon: CheckCircle2,
           color: "bg-green-100 text-green-800",
         };
       case "cancelled":
         return {
-          title: "Booking Cancelled",
-          description: "This booking has been cancelled",
+          title: t("web.booking.virtualWaitingRoom.cancelledTitle"),
+          description: t("web.booking.virtualWaitingRoom.cancelledDescription"),
           icon: AlertCircle,
           color: "bg-red-100 text-red-800",
         };
       default:
         return {
-          title: "Unknown Status",
-          description: "Unable to determine booking status",
+          title: t("web.booking.virtualWaitingRoom.unknownTitle"),
+          description: t("web.booking.virtualWaitingRoom.unknownDescription"),
           icon: AlertCircle,
           color: "bg-gray-100 text-gray-800",
         };
@@ -150,16 +152,17 @@ export default function VirtualWaitingRoom({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>Virtual Waiting Room</span>
+            <span>{t("web.booking.virtualWaitingRoom.title")}</span>
             {status.queue_position && status.queue_position > 0 && (
               <Badge variant="secondary">
-                Queue Position: #{status.queue_position}
+                {t("web.booking.virtualWaitingRoom.queuePosition", {
+                  position: status.queue_position,
+                })}
               </Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Status Indicator */}
           <div className={`rounded-lg p-4 ${statusInfo.color}`}>
             <div className="flex items-center gap-3">
               <StatusIcon className="w-6 h-6" />
@@ -170,7 +173,6 @@ export default function VirtualWaitingRoom({
             </div>
           </div>
 
-          {/* Booking Details */}
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               {providerImage && (
@@ -191,7 +193,7 @@ export default function VirtualWaitingRoom({
 
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-gray-600 mb-1">Appointment Time</p>
+                <p className="text-gray-600 mb-1">{t("web.booking.virtualWaitingRoom.appointmentTime")}</p>
                 <p className="font-medium">
                   {format(bookingDateTime, "MMM d, yyyy")}
                 </p>
@@ -200,25 +202,26 @@ export default function VirtualWaitingRoom({
                 </p>
               </div>
               <div>
-                <p className="text-gray-600 mb-1">Services</p>
+                <p className="text-gray-600 mb-1">{t("web.booking.virtualWaitingRoom.services")}</p>
                 <p className="font-medium">{services.join(", ")}</p>
               </div>
             </div>
           </div>
 
-          {/* Wait Time */}
           {status.status === "pending" && (
             <div className="bg-gray-50 rounded-lg p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Time Elapsed</p>
+                  <p className="text-sm text-gray-600">{t("web.booking.virtualWaitingRoom.timeElapsed")}</p>
                   <p className="text-2xl font-bold">{formatTimeElapsed(timeElapsed)}</p>
                 </div>
                 {status.estimated_wait_time && (
-                  <div className="text-right">
-                    <p className="text-sm text-gray-600">Estimated Wait</p>
+                  <div className="text-end">
+                    <p className="text-sm text-gray-600">{t("web.booking.virtualWaitingRoom.estimatedWait")}</p>
                     <p className="text-lg font-semibold">
-                      {status.estimated_wait_time} min
+                      {t("web.booking.virtualWaitingRoom.estimatedWaitMin", {
+                        minutes: status.estimated_wait_time,
+                      })}
                     </p>
                   </div>
                 )}
@@ -226,46 +229,45 @@ export default function VirtualWaitingRoom({
             </div>
           )}
 
-          {/* Provider Location (if en route) */}
           {status.status === "provider_en_route" && status.provider_location && (
             <div className="bg-blue-50 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <MapPin className="w-5 h-5 text-blue-600" />
-                <p className="font-semibold text-blue-900">Provider Location</p>
+                <p className="font-semibold text-blue-900">{t("web.booking.virtualWaitingRoom.providerLocation")}</p>
               </div>
               <p className="text-sm text-blue-800">
-                Provider is on the way. You can track their location in real-time.
+                {t("web.booking.virtualWaitingRoom.providerOnTheWay")}
               </p>
               {status.estimated_arrival && (
                 <p className="text-xs text-blue-700 mt-2">
-                  ETA: {formatDistanceToNow(new Date(status.estimated_arrival))}
+                  {t("web.booking.virtualWaitingRoom.eta", {
+                    eta: formatDistanceToNow(new Date(status.estimated_arrival)),
+                  })}
                 </p>
               )}
             </div>
           )}
 
-          {/* Action Buttons */}
           <div className="flex gap-2 pt-4 border-t">
             {providerPhone && (
               <Button variant="outline" className="flex-1" asChild>
                 <a href={`tel:${providerPhone}`}>
-                  <Phone className="w-4 h-4 mr-2" />
-                  Call Provider
+                  <Phone className="w-4 h-4 me-2" />
+                  {t("web.booking.virtualWaitingRoom.callProvider")}
                 </a>
               </Button>
             )}
             <Button variant="outline" className="flex-1">
-              <MessageSquare className="w-4 h-4 mr-2" />
-              Message Provider
+              <MessageSquare className="w-4 h-4 me-2" />
+              {t("web.booking.virtualWaitingRoom.messageProvider")}
             </Button>
           </div>
 
-          {/* Ringtone/Waiting Screen Note */}
           {status.status === "pending" || status.status === "confirmed" ? (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
               <p className="text-xs text-yellow-800">
-                <strong>Tip:</strong> Enable notifications to receive updates when your provider confirms or arrives.
-                You can also enable a ringtone for booking updates in your settings.
+                <strong>{t("web.booking.virtualWaitingRoom.tipLabel")}</strong>{" "}
+                {t("web.booking.virtualWaitingRoom.tipBody")}
               </p>
             </div>
           ) : null}

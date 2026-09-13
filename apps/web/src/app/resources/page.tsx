@@ -1,23 +1,21 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import Link from "next/link";
 import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
 import { sanitizeCmsPageHtml } from "@/lib/html/cms-page-html";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
-
-export const metadata: Metadata = {
-  title: "Resources",
-  description:
-    "Explore Beautonomi resources, tools, and guides for customers and beauty partners.",
-  alternates: {
-    canonical: "/resources",
-    languages: getHreflangAlternateUrls("/resources"),
-  },
-};
 
 export const revalidate = 300;
+
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/resources",
+    titleKey: "web.seo.resourcesTitle",
+    descriptionKey: "web.seo.resourcesDescription",
+  });
+}
 
 export default async function ResourcesPage() {
   const content = await getPublicPageContent("resources");

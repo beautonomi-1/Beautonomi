@@ -1,3 +1,4 @@
+import { useTranslation } from "@beautonomi/i18n";
 // import { X } from "lucide-react";
 // import React from "react";
 // import { Button } from "../ui/button";
@@ -27,10 +28,10 @@
 //           placeholder=""
 //           className="border rounded-md w-full p-2"
 //         ></textarea>
-//         <p className="text-right text-xs text-destructive font-light">
+//         <p className="text-end text-xs text-destructive font-light">
 //           450 characters available
 //         </p>
-//         <div className="mt-8 text-right border-t pt-4">
+//         <div className="mt-8 text-end border-t pt-4">
 //           <Button onClick={closeModal} variant="default" className="h-12">
 //             Done
 //           </Button>
@@ -69,6 +70,7 @@ const IntroModal: React.FC<IntroModalProps> = ({
   defaultValue = "",
   onSave,
 }) => {
+  const { t } = useTranslation();
   const [value, setValue] = React.useState(defaultValue);
 
   React.useEffect(() => {
@@ -111,12 +113,12 @@ const IntroModal: React.FC<IntroModalProps> = ({
             className="border rounded-md w-full p-2"
           />
         )}
-        <p className="text-right text-xs text-destructive font-light">
-          {maxChars - value.length} characters available
+        <p className="text-end text-xs text-destructive font-light">
+          {t("web.global.introModal.charactersAvailable", { count: maxChars - value.length })}
         </p>
-        <div className="mt-8 text-right border-t pt-4">
+        <div className="mt-8 text-end border-t pt-4">
           <Button onClick={handleSave} variant="default" className="h-12">
-            Done
+            {t("common.done")}
           </Button>
         </div>
       </div>

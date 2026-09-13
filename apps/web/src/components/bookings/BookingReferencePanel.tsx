@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Copy, LifeBuoy } from "lucide-react";
@@ -33,6 +35,7 @@ export function BookingReferencePanel({
   audience,
   supportPath,
 }: Props) {
+  const { t } = useTranslation();
   const number = String(bookingNumber ?? "").trim();
   const prompt = getBookingSupportPrompt({
     status,
@@ -51,11 +54,11 @@ export function BookingReferencePanel({
   async function copy(text: string, which: "number" | "id" | "both", label: string) {
     const ok = await copyTextToClipboard(text);
     if (!ok) {
-      toast.error("Could not copy. Select the text instead.");
+      toast.error(t("customer.mobile.components.bookingReferencePanel.copyFailedSelect"));
       return;
     }
     setCopied(which);
-    toast.success(`${label} copied`);
+    toast.success(t("customer.mobile.components.bookingReferencePanel.labelCopied", { label }));
     window.setTimeout(() => setCopied((current) => (current === which ? null : current)), 1800);
   }
 
@@ -74,7 +77,7 @@ export function BookingReferencePanel({
       className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
     >
       {copied === which ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-      {copied === which ? "Copied" : "Copy"}
+      {copied === which ? t("customer.mobile.components.bookingReferencePanel.copied") : t("customer.mobile.components.bookingReferencePanel.copy")}
     </button>
   );
 
@@ -84,27 +87,27 @@ export function BookingReferencePanel({
         {number ? (
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Booking number</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("customer.mobile.components.bookingReferencePanel.bookingNumber")}</p>
               <p className="mt-1 select-all text-xl font-semibold tracking-tight text-gray-900">{number}</p>
             </div>
-            <CopyBtn which="number" text={number} label="Booking number" />
+            <CopyBtn which="number" text={number} label={t("customer.mobile.components.bookingReferencePanel.bookingNumber")} />
           </div>
         ) : null}
         <div className={cn("flex items-start justify-between gap-3", number ? "mt-4 border-t border-gray-100 pt-4" : "")}>
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Booking ID</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("customer.mobile.components.bookingReferencePanel.bookingId")}</p>
             <p className="mt-1 break-all font-mono text-sm text-gray-800 select-all">{bookingId}</p>
           </div>
-          <CopyBtn which="id" text={bookingId} label="Booking ID" />
+          <CopyBtn which="id" text={bookingId} label={t("customer.mobile.components.bookingReferencePanel.bookingId")} />
         </div>
         {number ? (
           <div className="mt-3 flex justify-end">
             <button
               type="button"
-              onClick={() => void copy(supportLabel, "both", "Booking reference")}
+              onClick={() => void copy(supportLabel, "both", t("customer.mobile.components.bookingReferencePanel.bookingReference"))}
               className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline"
             >
-              {copied === "both" ? "Number and ID copied" : "Copy number and ID"}
+              {copied === "both" ? t("customer.mobile.components.bookingReferencePanel.numberAndIdCopied") : t("customer.mobile.components.bookingReferencePanel.copyNumberAndId")}
             </button>
           </div>
         ) : null}
@@ -152,7 +155,7 @@ export function BookingReferencePanel({
                   : "bg-white text-gray-800 ring-1 ring-gray-200 hover:bg-gray-100",
               )}
             >
-              Contact support
+              {t("customer.mobile.components.bookingReferencePanel.contactSupport")}
             </Link>
           </div>
         </div>

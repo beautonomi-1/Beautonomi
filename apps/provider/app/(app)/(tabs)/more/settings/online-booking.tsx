@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import QRCode from "react-native-qrcode-svg";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -22,6 +23,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
+import { buildBookingIframeSnippet } from "@beautonomi/utils";
 
 interface OnlineBookingSettings {
   enabled: boolean;
@@ -40,7 +42,23 @@ interface BookingLink {
   is_active: boolean;
 }
 
+function iframeSnippetForLink(link: BookingLink): string {
+  try {
+    return buildBookingIframeSnippet({
+      origin: new URL(link.embed_url).origin,
+      slug: link.slug,
+      height: 700,
+    });
+  } catch {
+    return "";
+  }
+}
+
 export default function OnlineBookingScreen() {
+  const { t } = useTranslation();
+  const ob = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.onlineBooking.${key}`, opts) as string;
+
   const {
     data: settings,
     loading: loadingSettings,
@@ -90,7 +108,7 @@ export default function OnlineBookingScreen() {
       maxAdvanceDays: Number(maxAdvanceDays) || 90,
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ob("alertErrorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -101,14 +119,14 @@ export default function OnlineBookingScreen() {
     if (link?.url) {
       await Clipboard.setStringAsync(link.url);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Copied", "Booking link copied to clipboard");
+      Alert.alert(ob("alertCopiedLinkTitle"), ob("alertCopiedLinkBody"));
     }
   }
 
   async function handleShareLink() {
     if (link?.url) {
       await Share.share({
-        message: `Book an appointment with us: ${link.url}`,
+        message: ob("shareMessage", { url: link.url }),
         url: link.url,
       });
     }
@@ -117,7 +135,7 @@ export default function OnlineBookingScreen() {
   async function handleShareWhatsApp() {
     if (link?.url) {
       const message = encodeURIComponent(
-        `Book an appointment with us! 💈✨\n${link.url}`
+        ob("shareWhatsAppMessage", { url: link.url }),
       );
       const url =
         Platform.OS === "web"
@@ -126,42 +144,42 @@ export default function OnlineBookingScreen() {
       try {
         await Linking.openURL(url);
       } catch {
-        await Share.share({ message: `Book an appointment: ${link.url}` });
+        await Share.share({ message: ob("shareFallbackMessage", { url: link.url }) });
       }
     }
   }
 
   async function handleShareSMS() {
     if (link?.url) {
-      const body = encodeURIComponent(`Book an appointment with us: ${link.url}`);
+      const body = encodeURIComponent(ob("shareSmsMessage", { url: link.url }));
       const url =
         Platform.OS === "ios" ? `sms:&body=${body}` : `sms:?body=${body}`;
       try {
         await Linking.openURL(url);
       } catch {
-        await Share.share({ message: `Book an appointment: ${link.url}` });
+        await Share.share({ message: ob("shareFallbackMessage", { url: link.url }) });
       }
     }
   }
 
   async function handleCopyEmbed() {
     if (link?.embed_url) {
-      const embedCode = `<iframe src="${link.embed_url}" width="100%" height="700" frameborder="0" style="border-radius: 12px; border: 1px solid #e5e7eb;"></iframe>`;
+      const embedCode = iframeSnippetForLink(link);
       await Clipboard.setStringAsync(embedCode);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Copied", "Embed code copied to clipboard");
+      Alert.alert(ob("alertCopiedEmbedTitle"), ob("alertCopiedEmbedBody"));
     }
   }
 
   async function handleSaveSlug() {
     if (!newSlug.trim()) {
-      Alert.alert("Required", "Custom URL slug is required");
+      Alert.alert(ob("alertRequiredTitle"), ob("alertSlugRequired"));
       return;
     }
     if (!/^[a-z0-9-]+$/.test(newSlug.trim())) {
       Alert.alert(
-        "Invalid",
-        "Slug can only contain lowercase letters, numbers, and hyphens"
+        ob("alertInvalidTitle"),
+        ob("alertSlugInvalid"),
       );
       return;
     }
@@ -169,7 +187,7 @@ export default function OnlineBookingScreen() {
       slug: newSlug.trim(),
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ob("alertErrorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -181,28 +199,28 @@ export default function OnlineBookingScreen() {
   if (loading && !settings && !link)
     return (
       <ScreenContainer>
-        <ScreenHeader title="Online Booking" showBack />
-        <LoadingState message="Loading settings..." />
+        <ScreenHeader title={ob("title")} showBack />
+        <LoadingState message={ob("loadingSettings")} />
       </ScreenContainer>
     );
 
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Online Booking"
+        title={ob("title")}
         showBack
-        subtitle="Booking link & settings"
+        subtitle={ob("subtitle")}
       />
 
       {/* Booking Link Section */}
       {link && (
         <>
-          <SectionHeader title="Booking Link" />
+          <SectionHeader title={ob("sectionBookingLink")} />
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
             {/* URL display */}
             <View style={twStyle("mb-3 flex-row items-center rounded-xl bg-gray-50 p-3")}>
               <Ionicons name="link-outline" size={16} color="#6b7280" />
-              <Text style={twStyle("ml-2 flex-1 text-sm text-gray-700")} selectable>
+              <Text style={twStyle("ms-2 flex-1 text-sm text-gray-700")} selectable>
                 {link.url}
               </Text>
             </View>
@@ -216,20 +234,20 @@ export default function OnlineBookingScreen() {
               }}
             >
               <Ionicons name="create-outline" size={14} color="#6366f1" />
-              <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-                Customize URL
+              <Text style={twStyle("ms-1 text-xs font-medium text-indigo-600")}>
+                {ob("customizeUrl")}
               </Text>
             </TouchableOpacity>
 
             {/* Primary share actions */}
             <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"), { marginEnd: 8 }]}
                 onPress={handleCopyLink}
               >
                 <Ionicons name="copy-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
-                  Copy
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-indigo-700")}>
+                  {ob("copy")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -237,8 +255,8 @@ export default function OnlineBookingScreen() {
                 onPress={handleShareLink}
               >
                 <Ionicons name="share-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
-                  Share
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-indigo-700")}>
+                  {ob("share")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -246,8 +264,8 @@ export default function OnlineBookingScreen() {
                 onPress={() => setShowQR(true)}
               >
                 <Ionicons name="qr-code-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
-                  QR
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-indigo-700")}>
+                  {ob("qr")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -255,21 +273,21 @@ export default function OnlineBookingScreen() {
             {/* Social share buttons */}
             <View style={twStyle("mt-3 flex-row")}>
               <TouchableOpacity
-                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-2.5"), { marginEnd: 8 }]}
                 onPress={handleShareWhatsApp}
               >
                 <Ionicons name="logo-whatsapp" size={16} color="#22c55e" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-green-700")}>
-                  WhatsApp
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-green-700")}>
+                  {ob("whatsapp")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-blue-50 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-blue-50 py-2.5"), { marginEnd: 8 }]}
                 onPress={handleShareSMS}
               >
                 <Ionicons name="chatbubble-outline" size={16} color="#3b82f6" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-blue-700")}>
-                  SMS
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-blue-700")}>
+                  {ob("sms")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -277,8 +295,8 @@ export default function OnlineBookingScreen() {
                 onPress={() => setShowEmbed(true)}
               >
                 <Ionicons name="code-slash-outline" size={16} color="#6b7280" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-700")}>
-                  Embed
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-gray-700")}>
+                  {ob("embed")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -287,15 +305,15 @@ export default function OnlineBookingScreen() {
       )}
 
       {/* Booking Settings */}
-      <SectionHeader title="Booking Settings" />
+      <SectionHeader title={ob("sectionBookingSettings")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Online Booking Enabled
+              {ob("onlineBookingEnabled")}
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Allow clients to book online
+              {ob("onlineBookingEnabledHint")}
             </Text>
           </View>
           <Switch
@@ -309,10 +327,10 @@ export default function OnlineBookingScreen() {
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Allow Guest Booking
+              {ob("allowGuestBooking")}
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Clients can book without an account
+              {ob("allowGuestBookingHint")}
             </Text>
           </View>
           <Switch
@@ -324,7 +342,7 @@ export default function OnlineBookingScreen() {
         </View>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Advance Notice (hours)
+          {ob("advanceNoticeLabel")}
         </Text>
         <TextInput
           style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -335,11 +353,11 @@ export default function OnlineBookingScreen() {
           placeholderTextColor="#9ca3af"
         />
         <Text style={twStyle("mb-3 text-xs text-gray-400")}>
-          Minimum hours before appointment that clients can book
+          {ob("advanceNoticeHint")}
         </Text>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Cancellation Window (hours)
+          {ob("cancellationWindowLabel")}
         </Text>
         <TextInput
           style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -350,11 +368,11 @@ export default function OnlineBookingScreen() {
           placeholderTextColor="#9ca3af"
         />
         <Text style={twStyle("mb-3 text-xs text-gray-400")}>
-          Minimum hours before appointment that clients can cancel
+          {ob("cancellationWindowHint")}
         </Text>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Max Advance Booking (days)
+          {ob("maxAdvanceBookingLabel")}
         </Text>
         <TextInput
           style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -365,20 +383,20 @@ export default function OnlineBookingScreen() {
           placeholderTextColor="#9ca3af"
         />
         <Text style={twStyle("mb-3 text-xs text-gray-400")}>
-          How far in advance clients can book
+          {ob("maxAdvanceBookingHint")}
         </Text>
       </View>
 
       {/* Deposit Settings */}
-      <SectionHeader title="Deposit Settings" />
+      <SectionHeader title={ob("sectionDepositSettings")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
           <View style={twStyle("flex-1")}>
             <Text style={twStyle("text-sm font-medium text-gray-900")}>
-              Require Deposit
+              {ob("requireDeposit")}
             </Text>
             <Text style={twStyle("text-xs text-gray-500")}>
-              Clients must pay a deposit to confirm booking
+              {ob("requireDepositHint")}
             </Text>
           </View>
           <Switch
@@ -392,7 +410,7 @@ export default function OnlineBookingScreen() {
         {requireDeposit && (
           <>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              Deposit Percentage (%)
+              {ob("depositPercentageLabel")}
             </Text>
             <TextInput
               style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -403,7 +421,7 @@ export default function OnlineBookingScreen() {
               placeholderTextColor="#9ca3af"
             />
             <Text style={twStyle("mb-1 text-xs text-gray-400")}>
-              Percentage of service price required as deposit
+              {ob("depositPercentageHint")}
             </Text>
           </>
         )}
@@ -411,7 +429,7 @@ export default function OnlineBookingScreen() {
 
       <View style={twStyle("mt-4")}>
         <ActionButton
-          label="Save Settings"
+          label={ob("saveSettings")}
           onPress={handleSave}
           loading={saving}
           fullWidth
@@ -424,7 +442,7 @@ export default function OnlineBookingScreen() {
       <BottomSheet
         visible={showQR}
         onClose={() => setShowQR(false)}
-        title="Booking QR Code"
+        title={ob("qrSheetTitle")}
       >
         {link && (
           <View style={twStyle("items-center")}>
@@ -437,20 +455,19 @@ export default function OnlineBookingScreen() {
               />
             </View>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>
-              Scan to book
+              {ob("scanToBook")}
             </Text>
             <Text style={twStyle("mb-4 text-center text-xs text-gray-500")}>
-              Print this QR code and display it at your reception desk, business
-              card, or storefront
+              {ob("qrSheetHint")}
             </Text>
             <View style={twStyle("w-full flex-row")}>
               <TouchableOpacity
-                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginRight: 12 }]}
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginEnd: 12 }]}
                 onPress={handleCopyLink}
               >
                 <Ionicons name="copy-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
-                  Copy Link
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-indigo-700")}>
+                  {ob("copyLink")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -458,8 +475,8 @@ export default function OnlineBookingScreen() {
                 onPress={handleShareLink}
               >
                 <Ionicons name="share-outline" size={16} color="#6366f1" />
-                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
-                  Share
+                <Text style={twStyle("ms-1.5 text-sm font-medium text-indigo-700")}>
+                  {ob("share")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -471,21 +488,21 @@ export default function OnlineBookingScreen() {
       <BottomSheet
         visible={showEmbed}
         onClose={() => setShowEmbed(false)}
-        title="Embed on Website"
+        title={ob("embedSheetTitle")}
       >
         {link && (
           <View>
             <Text style={twStyle("mb-2 text-sm text-gray-700")}>
-              Add this code to your website to embed the booking widget:
+              {ob("embedSheetBody")}
             </Text>
             <View style={twStyle("mb-4 rounded-xl bg-gray-900 p-4")}>
               <Text style={twStyle("font-mono text-xs leading-5 text-green-400")} selectable>
-                {`<iframe\n  src="${link.embed_url}"\n  width="100%"\n  height="700"\n  frameborder="0"\n  style="border-radius: 12px;"\n></iframe>`}
+                {iframeSnippetForLink(link)}
               </Text>
             </View>
-            <ActionButton label="Copy Embed Code" onPress={handleCopyEmbed} fullWidth />
+            <ActionButton label={ob("copyEmbedCode")} onPress={handleCopyEmbed} fullWidth />
             <Text style={twStyle("mt-2 text-center text-xs text-gray-400")}>
-              Works with any website builder — WordPress, Wix, Squarespace, etc.
+              {ob("embedSheetFooter")}
             </Text>
           </View>
         )}
@@ -495,29 +512,29 @@ export default function OnlineBookingScreen() {
       <BottomSheet
         visible={showSlugEdit}
         onClose={() => setShowSlugEdit(false)}
-        title="Customize Booking URL"
+        title={ob("slugSheetTitle")}
       >
         <View>
           <Text style={twStyle("mb-2 text-sm text-gray-700")}>
-            Choose a custom URL for your booking page:
+            {ob("slugSheetBody")}
           </Text>
           <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-            <Text style={twStyle("text-sm text-gray-400")}>book.beautonomi.com/</Text>
+            <Text style={twStyle("text-sm text-gray-400")}>{ob("slugPrefix")}</Text>
             <TextInput
               style={twStyle("flex-1 text-base font-medium text-gray-900")}
               value={newSlug}
               onChangeText={(t) => setNewSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-              placeholder="your-salon"
+              placeholder={ob("slugPlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="none"
               autoCorrect={false}
             />
           </View>
           <Text style={twStyle("mb-4 text-xs text-gray-400")}>
-            Only lowercase letters, numbers, and hyphens allowed
+            {ob("slugHelp")}
           </Text>
           <ActionButton
-            label="Save Custom URL"
+            label={ob("saveCustomUrl")}
             onPress={handleSaveSlug}
             loading={updatingSlug}
             fullWidth

@@ -42,6 +42,14 @@ describe("proxy public EULA routes", () => {
     vi.clearAllMocks();
   });
 
+  it("allows unauthenticated partner signup on .com without login redirect", async () => {
+    const response = await proxy(request("/provider/signup"));
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+    expect(supabaseMocks.getUser).not.toHaveBeenCalled();
+  });
+
   it("allows unauthenticated Partner EULA on .com without login redirect", async () => {
     const response = await proxy(request("/provider/eula"));
 

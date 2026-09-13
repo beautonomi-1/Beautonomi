@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -30,21 +31,21 @@ interface StatementData {
   currency: string;
 }
 
-function downloadCSV(data: StatementData) {
+function downloadCSV(data: StatementData, t: (key: string) => string) {
   const quote = (v: string | number) => {
     const s = String(v ?? "");
     return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows = [
-    ["Payout statement", `${data.period.from} to ${data.period.to}`],
+    [t("web.provider.pages.payouts/statements.csvTitle"), `${data.period.from} to ${data.period.to}`],
     [],
-    ["Summary", ""],
-    ["Total earnings (period)", `${data.currency} ${data.total_earnings.toLocaleString()}`],
-    ["Total payouts (period)", `${data.currency} ${data.total_payouts.toLocaleString()}`],
-    ["Total platform fees", `${data.currency} ${data.total_platform_fees.toLocaleString()}`],
+    [t("web.provider.pages.payouts/statements.csvSummary"), ""],
+    [t("web.provider.pages.payouts/statements.csvTotalEarnings"), `${data.currency} ${data.total_earnings.toLocaleString()}`],
+    [t("web.provider.pages.payouts/statements.csvTotalPayouts"), `${data.currency} ${data.total_payouts.toLocaleString()}`],
+    [t("web.provider.pages.payouts/statements.csvPlatformFees"), `${data.currency} ${data.total_platform_fees.toLocaleString()}`],
     [],
-    ["Payouts", ""],
-    ["Payout #", "Amount", "Net", "Status", "Requested", "Processed"],
+    [t("web.provider.pages.payouts/statements.csvPayouts"), ""],
+    [t("web.provider.pages.payouts/statements.csvPayoutNumber"), t("web.provider.common.amount"), t("web.provider.pages.payouts/statements.csvNet"), t("web.provider.common.statusLabel"), t("web.provider.pages.payouts/statements.csvRequested"), t("web.provider.pages.payouts/statements.csvProcessed")],
     ...data.payouts.map((p) => [
       p.payout_number,
       p.amount,
@@ -65,6 +66,7 @@ function downloadCSV(data: StatementData) {
 }
 
 export default function ProviderPayoutStatements() {
+  const { t } = useTranslation();
   const now = new Date();
   const [from, setFrom] = useState(format(subDays(now, 90), "yyyy-MM-dd"));
   const [to, setTo] = useState(format(now, "yyyy-MM-dd"));
@@ -83,7 +85,7 @@ export default function ProviderPayoutStatements() {
       setData(res.data ?? null);
     } catch (err) {
       setData(null);
-      setError(err instanceof Error ? err.message : "Could not load statement");
+      setError(err instanceof Error ? err.message : t("web.provider.pages.payouts/statements.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -97,19 +99,19 @@ export default function ProviderPayoutStatements() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff", "superadmin"]}>
       <div className="w-full max-w-full space-y-4 sm:space-y-6">
         <PageHeader
-          title="Payout statements"
-          subtitle="Download earnings and payout summary for accounting or tax"
+          title={t("web.provider.finance.payoutStatements")}
+          subtitle={t("web.provider.pages.payouts/statements.subtitle")}
           breadcrumbs={[
-            { label: "More", href: "/provider/more" },
-            { label: "Finance", href: "/provider/finance?tab=payouts" },
-            { label: "Statements" },
+            { label: t("web.provider.topbar.mobileTitles.more"), href: "/provider/more" },
+            { label: t("web.provider.sidebar.sections.finance"), href: "/provider/finance?tab=payouts" },
+            { label: t("web.provider.finance.statements") },
           ]}
         />
 
-        <SectionCard title="Date range">
+        <SectionCard title={t("web.provider.pages.payouts/statements.dateRange")}>
           <div className="flex flex-wrap gap-4 items-end">
             <div>
-              <Label className="text-sm">From</Label>
+              <Label className="text-sm">{t("web.provider.reports.common.from")}</Label>
               <Input
                 type="date"
                 value={from}
@@ -118,7 +120,7 @@ export default function ProviderPayoutStatements() {
               />
             </div>
             <div>
-              <Label className="text-sm">To</Label>
+              <Label className="text-sm">{t("web.provider.reports.common.to")}</Label>
               <Input
                 type="date"
                 value={to}
@@ -131,54 +133,54 @@ export default function ProviderPayoutStatements() {
 
         {loading ? (
           <SectionCard>
-            <p className="text-sm text-gray-500">Loading...</p>
+            <p className="text-sm text-gray-500">{t("web.provider.settings.common.loading")}</p>
           </SectionCard>
         ) : data ? (
           <>
-            <SectionCard title="Summary">
+            <SectionCard title={t("web.provider.pages.payouts/statements.csvSummary")}>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div>
-                  <p className="text-sm text-gray-500">Total earnings (period)</p>
+                  <p className="text-sm text-gray-500">{t("web.provider.pages.payouts/statements.csvTotalEarnings")}</p>
                   <p className="text-xl font-semibold">{data.currency} {data.total_earnings.toLocaleString()}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Total payouts</p>
+                  <p className="text-sm text-gray-500">{t("web.provider.pages.payouts/statements.totalPayouts")}</p>
                   <p className="text-xl font-semibold">{data.currency} {data.total_payouts.toLocaleString()}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Platform fees</p>
+                  <p className="text-sm text-gray-500">{t("web.provider.pages.payouts/statements.platformFees")}</p>
                   <p className="text-xl font-semibold">{data.currency} {data.total_platform_fees.toLocaleString()}</p>
                 </div>
               </div>
-              <Button onClick={() => downloadCSV(data)} className="mt-4" variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Download CSV
+              <Button onClick={() => downloadCSV(data, t)} className="mt-4" variant="outline">
+                <Download className="me-2 h-4 w-4" />
+                {t("web.provider.pages.payouts/statements.downloadCsv")}
               </Button>
             </SectionCard>
 
-            <SectionCard title="Payouts in period">
+            <SectionCard title={t("web.provider.pages.payouts/statements.payoutsInPeriod")}>
               {data.payouts.length === 0 ? (
-                <p className="text-sm text-gray-500">No payouts in this period.</p>
+                <p className="text-sm text-gray-500">{t("web.provider.pages.payouts/statements.emptyPayouts")}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b text-left text-gray-500">
-                        <th className="pb-2 pr-4">Payout #</th>
-                        <th className="pb-2 pr-4">Amount</th>
-                        <th className="pb-2 pr-4">Status</th>
-                        <th className="pb-2 pr-4">Requested</th>
-                        <th className="pb-2">Processed</th>
+                      <tr className="border-b text-start text-gray-500">
+                        <th className="pb-2 pe-4">{t("web.provider.pages.payouts/statements.payoutNumber")}</th>
+                        <th className="pb-2 pe-4">{t("web.provider.common.amount")}</th>
+                        <th className="pb-2 pe-4">{t("web.provider.common.statusLabel")}</th>
+                        <th className="pb-2 pe-4">{t("web.provider.pages.payouts/statements.requested")}</th>
+                        <th className="pb-2">{t("web.provider.pages.payouts/statements.processed")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.payouts.map((p) => (
                         <tr key={p.id} className="border-b last:border-0">
-                          <td className="py-3 pr-4">{p.payout_number || p.id.slice(0, 8)}</td>
-                          <td className="py-3 pr-4 font-medium">{data.currency} {p.amount.toLocaleString()}</td>
-                          <td className="py-3 pr-4">{p.status}</td>
-                          <td className="py-3 pr-4">{p.requested_at ? format(new Date(p.requested_at), "yyyy-MM-dd") : "—"}</td>
-                          <td className="py-3">{p.processed_at ? format(new Date(p.processed_at), "yyyy-MM-dd") : "—"}</td>
+                          <td className="py-3 pe-4">{p.payout_number || p.id.slice(0, 8)}</td>
+                          <td className="py-3 pe-4 font-medium">{data.currency} {p.amount.toLocaleString()}</td>
+                          <td className="py-3 pe-4">{p.status}</td>
+                          <td className="py-3 pe-4">{p.requested_at ? format(new Date(p.requested_at), "yyyy-MM-dd") : t("web.provider.common.emDash")}</td>
+                          <td className="py-3">{p.processed_at ? format(new Date(p.processed_at), "yyyy-MM-dd") : t("web.provider.common.emDash")}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -188,24 +190,24 @@ export default function ProviderPayoutStatements() {
             </SectionCard>
           </>
         ) : error ? (
-          <SectionCard title="Could not load statement">
+          <SectionCard title={t("web.provider.pages.payouts/statements.loadFailed")}>
             <p className="text-sm text-red-600">{error}</p>
             <Button onClick={() => void load()} className="mt-4" variant="outline">
-              Try again
+              {t("web.provider.pages.payouts/statements.tryAgain")}
             </Button>
           </SectionCard>
         ) : (
           <SectionCard>
-            <p className="text-sm text-gray-500">Could not load statement. Try another date range.</p>
+            <p className="text-sm text-gray-500">{t("web.provider.pages.payouts/statements.tryAnotherRange")}</p>
             <Button onClick={() => void load()} className="mt-4" variant="outline">
-              Try again
+              {t("web.provider.pages.payouts/statements.tryAgain")}
             </Button>
           </SectionCard>
         )}
 
         <p className="text-sm text-gray-500">
           <Link href="/provider/finance?tab=payouts" className="text-primary-600 hover:underline">
-            ← Back to Finance payouts
+            {t("web.provider.pages.payouts/statements.backToFinance")}
           </Link>
         </p>
       </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { providerPortalFetch } from "@/lib/http/fetcher";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 interface ClientHistory {
   id: string;
   type: "appointment" | "sale" | "note";
@@ -85,6 +87,7 @@ export interface HistoryItemProps {
 }
 
 function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
+  const { t } = useTranslation();
   const { provider: portalProvider } = useProviderPortal();
   const [isExpanded, setIsExpanded] = useState(false);
   const hasDetails = item.type === "appointment" && (
@@ -99,7 +102,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
   const handlePrintInvoice = async (bookingId: string) => {
     try {
       if (!bookingId) {
-        throw new Error("Booking ID is missing");
+        throw new Error(t("web.provider.clientsPage.historyItem.bookingIdMissing"));
       }
 
       const cleanBookingId = String(bookingId).trim();
@@ -108,14 +111,14 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
       });
 
       if (!response.ok) {
-        let errorMessage = "Failed to generate invoice";
+        let errorMessage = t("web.provider.clientsPage.historyItem.failedInvoice");
         try {
           const result = await response.json();
           if (result.error) {
             errorMessage = typeof result.error === "string" ? result.error : result.error.message || errorMessage;
           }
         } catch {
-          errorMessage = `Failed to generate invoice (${response.status})`;
+          errorMessage = t("web.provider.clientsPage.historyItem.failedInvoiceStatus", { status: response.status });
         }
         throw new Error(errorMessage);
       }
@@ -134,28 +137,28 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       console.error("Failed to generate invoice:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to generate invoice");
+      toast.error(error instanceof Error ? error.message : t("web.provider.clientsPage.historyItem.failedInvoice"));
     }
   };
 
   const handleEmailInvoice = async (bookingId: string, email?: string) => {
     if (!email) {
-      toast.error("Client email is required to send invoice");
+      toast.error(t("web.provider.clientsPage.historyItem.clientEmailRequired"));
       return;
     }
 
     try {
       if (!bookingId) {
-        throw new Error("Booking ID is missing");
+        throw new Error(t("web.provider.clientsPage.historyItem.bookingIdMissing"));
       }
 
       const { fetcher } = await import("@/lib/http/fetcher");
       await fetcher.post(`/api/provider/bookings/${bookingId}/receipt/send`, { email });
 
-      toast.success(`Invoice sent to ${email}`);
+      toast.success(t("web.provider.clientsPage.historyItem.invoiceSent", { email }));
     } catch (error) {
       console.error("Failed to send invoice:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to send invoice");
+      toast.error(error instanceof Error ? error.message : t("web.provider.clientsPage.historyItem.failedSend"));
     }
   };
 
@@ -211,13 +214,13 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
               <p className="font-medium text-sm">
                 {item.description}
                 {item.services && item.services.length > 0 && (
-                  <span className="text-gray-600 font-normal ml-2">
-                    - {item.services.map((s: any) => s.offerings?.name || "Service").join(", ")}
+                  <span className="text-gray-600 font-normal ms-2">
+                    - {item.services.map((s: any) => s.offerings?.name || t("web.provider.common.service")).join(", ")}
                   </span>
                 )}
               </p>
               <div className="flex items-center gap-2 text-xs text-gray-600 mt-1 flex-wrap">
-                <span>{new Date(item.date).toLocaleDateString("en-US", {
+                <span>{new Date(item.date).toLocaleDateString(getDefaultMoneyLocale(), {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
@@ -227,7 +230,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                     <span>•</span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(item.scheduled_at).toLocaleTimeString("en-US", {
+                      {new Date(item.scheduled_at).toLocaleTimeString(getDefaultMoneyLocale(), {
                         hour: "numeric",
                         minute: "2-digit",
                       })}
@@ -286,13 +289,13 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
           <div className="grid grid-cols-2 gap-4 text-sm">
             {item.booking_number && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Booking Number</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.clientsPage.historyItem.bookingNumber")}</p>
                 <p className="font-medium">{item.booking_number}</p>
               </div>
             )}
             {item.payment_status && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Payment Status</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.clientsPage.historyItem.paymentStatus")}</p>
                 {(() => {
                   const totalPaid = item.total_paid || 0;
                   const totalAmount = item.amount || 0;
@@ -307,7 +310,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                       </span>
                       {totalPaid > 0 && totalPaid < totalAmount && (
                         <p className="text-xs text-gray-500 mt-0.5">
-                          Paid: <Money amount={totalPaid} /> of <Money amount={totalAmount} />
+                          {t("web.provider.clientsPage.historyItem.paid")}: <Money amount={totalPaid} /> / <Money amount={totalAmount} />
                         </p>
                       )}
                     </>
@@ -317,21 +320,21 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
             )}
             {item.team_member_name && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Staff Member</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.common.staffMember")}</p>
                 <p className="font-medium">{item.team_member_name}</p>
               </div>
             )}
             {item.location_type && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Location</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.common.location")}</p>
                 <p className="font-medium capitalize">{item.location_type.replace("_", " ")}</p>
               </div>
             )}
             {item.completed_at && (
               <div>
-                <p className="text-xs text-gray-500 mb-0.5">Completed</p>
+                <p className="text-xs text-gray-500 mb-0.5">{t("web.provider.clientsPage.historyItem.completed")}</p>
                 <p className="font-medium">
-                  {new Date(item.completed_at).toLocaleDateString("en-US", {
+                  {new Date(item.completed_at).toLocaleDateString(getDefaultMoneyLocale(), {
                     month: "short",
                     day: "numeric",
                     year: "numeric",
@@ -348,7 +351,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
                 <Calendar className="w-3 h-3" />
-                Services ({item.services.length})
+{t("web.provider.clientsPage.historyItem.servicesCount", { count: item.services.length })}
               </p>
               <div className="space-y-2">
                 {item.services.map((service, idx) => (
@@ -356,27 +359,27 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <p className="font-medium">
-                          {service.offerings?.name || "Service"}
+                          {service.offerings?.name || t("web.provider.common.service")}
                           {service.offerings?.global_service_categories?.name && (
-                            <span className="text-xs text-gray-500 ml-1">
+                            <span className="text-xs text-gray-500 ms-1">
                               ({service.offerings.global_service_categories.name})
                             </span>
                           )}
                         </p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                           {service.quantity > 1 && (
-                            <span>Qty: {service.quantity}</span>
+                            <span>{t("web.provider.clientsPage.historyItem.qty", { count: service.quantity })}</span>
                           )}
                           {service.duration_minutes && (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              {service.duration_minutes} min
+                              {t("web.provider.clientsPage.historyItem.min", { count: service.duration_minutes })}
                             </span>
                           )}
                           <span>
                             <Money amount={service.unit_price} />
                             {service.quantity > 1 && (
-                              <span> × {service.quantity} = <Money amount={service.total_price} /></span>
+                              <span>{t("web.provider.clientsPage.historyItem.timesQty", { count: service.quantity })}<Money amount={service.total_price} /></span>
                             )}
                           </span>
                         </div>
@@ -396,22 +399,22 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
                 <Tag className="w-3 h-3" />
-                Add-ons ({item.addons.length})
+{t("web.provider.clientsPage.historyItem.addonsCount", { count: item.addons.length })}
               </p>
               <div className="space-y-2">
                 {item.addons.map((addon, idx) => (
                   <div key={idx} className="bg-gray-50 rounded p-2 text-sm">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <p className="font-medium">{addon.service_addons?.name || "Add-on"}</p>
+                        <p className="font-medium">{addon.service_addons?.name || t("web.provider.common.addOn")}</p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                           {addon.quantity > 1 && (
-                            <span>Qty: {addon.quantity}</span>
+                            <span>{t("web.provider.clientsPage.historyItem.qty", { count: addon.quantity })}</span>
                           )}
                           <span>
                             <Money amount={addon.unit_price} />
                             {addon.quantity > 1 && (
-                              <span> × {addon.quantity} = <Money amount={addon.total_price} /></span>
+                              <span>{t("web.provider.clientsPage.historyItem.timesQty", { count: addon.quantity })}<Money amount={addon.total_price} /></span>
                             )}
                           </span>
                         </div>
@@ -428,22 +431,22 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
             <div>
               <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
                 <ShoppingBag className="w-3 h-3" />
-                Products ({item.products.length})
+{t("web.provider.clientsPage.historyItem.productsCount", { count: item.products.length })}
               </p>
               <div className="space-y-2">
                 {item.products.map((product, idx) => (
                   <div key={idx} className="bg-gray-50 rounded p-2 text-sm">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <p className="font-medium">{product.products?.name || "Product"}</p>
+                        <p className="font-medium">{product.products?.name || t("web.provider.clientsPage.historyItem.product")}</p>
                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                           {product.quantity > 1 && (
-                            <span>Qty: {product.quantity}</span>
+                            <span>{t("web.provider.clientsPage.historyItem.qty", { count: product.quantity })}</span>
                           )}
                           <span>
                             <Money amount={product.unit_price} />
                             {product.quantity > 1 && (
-                              <span> × {product.quantity} = <Money amount={product.total_price} /></span>
+                              <span>{t("web.provider.clientsPage.historyItem.timesQty", { count: product.quantity })}<Money amount={product.total_price} /></span>
                             )}
                           </span>
                         </div>
@@ -460,21 +463,21 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
             <div className="border-t border-gray-200 pt-3">
               <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
                 <CreditCard className="w-3 h-3" />
-                Financial Breakdown
+{t("web.provider.clientsPage.historyItem.financialBreakdown")}
               </p>
               <div className="space-y-1.5 text-sm">
                 {item.subtotal !== undefined && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal</span>
+                    <span className="text-gray-600">{t("web.provider.common.subtotal")}</span>
                     <span className="font-medium"><Money amount={item.subtotal} /></span>
                   </div>
                 )}
                 {item.discount_amount && item.discount_amount > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span>
-                      Discount
+                      {t("web.provider.clientsPage.historyItem.discount")}
                       {item.discount_code && (
-                        <span className="text-xs ml-1">({item.discount_code})</span>
+                        <span className="text-xs ms-1">({item.discount_code})</span>
                       )}
                     </span>
                     <span className="font-medium">-<Money amount={item.discount_amount} /></span>
@@ -483,9 +486,9 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                 {item.tax_amount !== undefined && item.tax_amount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">
-                      Tax
+                      {t("web.provider.clientsPage.historyItem.tax")}
                       {item.tax_rate !== undefined && item.tax_rate !== null && item.tax_rate !== 0 && (
-                        <span className="text-xs ml-1">
+                        <span className="text-xs ms-1">
                           ({(() => {
                             const rate = typeof item.tax_rate === 'number' 
                               ? item.tax_rate 
@@ -500,7 +503,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                 )}
                 {item.travel_fee && item.travel_fee > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Travel Fee</span>
+                    <span className="text-gray-600">{t("web.provider.clientsPage.historyItem.travelFee")}</span>
                     <span className="font-medium"><Money amount={item.travel_fee} /></span>
                   </div>
                 )}
@@ -524,9 +527,9 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                     return (
                       <div className="flex justify-between">
                         <span className="text-gray-600">
-                          Platform Fee
+                          {t("web.provider.clientsPage.historyItem.platformFee")}
                           {item.service_fee_percentage !== undefined && item.service_fee_percentage !== null && item.service_fee_percentage !== 0 && (
-                            <span className="text-xs ml-1">
+                            <span className="text-xs ms-1">
                               ({(() => {
                                 const rate = typeof item.service_fee_percentage === 'number' 
                                   ? item.service_fee_percentage 
@@ -544,23 +547,23 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                 })()}
                 {item.tip_amount && item.tip_amount > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Tip</span>
+                    <span className="text-gray-600">{t("web.provider.clientsPage.historyItem.tip")}</span>
                     <span className="font-medium"><Money amount={item.tip_amount} /></span>
                   </div>
                 )}
                 <div className="flex justify-between pt-2 border-t border-gray-200 font-semibold">
-                  <span>Total</span>
+                  <span>{t("web.provider.clientsPage.historyItem.total")}</span>
                   <span><Money amount={item.amount || 0} /></span>
                 </div>
                 {item.total_paid !== undefined && item.total_paid > 0 && (
                   <div className="flex justify-between text-sm pt-1">
-                    <span className="text-gray-600">Paid</span>
+                    <span className="text-gray-600">{t("web.provider.clientsPage.historyItem.paid")}</span>
                     <span className="font-medium text-green-600"><Money amount={item.total_paid} /></span>
                   </div>
                 )}
                 {item.total_refunded !== undefined && item.total_refunded > 0 && (
                   <div className="flex justify-between text-sm pt-1">
-                    <span className="text-gray-600">Refunded</span>
+                    <span className="text-gray-600">{t("web.provider.clientsPage.historyItem.refunded")}</span>
                     <span className="font-medium text-red-600"><Money amount={item.total_refunded} /></span>
                   </div>
                 )}
@@ -571,7 +574,7 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
           {/* Notes */}
           {item.notes && (
             <div className="border-t border-gray-200 pt-3">
-              <p className="text-xs font-semibold text-gray-700 mb-1">Notes</p>
+              <p className="text-xs font-semibold text-gray-700 mb-1">{t("web.provider.common.notes")}</p>
               <p className="text-sm text-gray-600 bg-gray-50 rounded p-2">{item.notes}</p>
             </div>
           )}
@@ -588,8 +591,8 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                 }}
                 className="flex-1"
               >
-                <Printer className="w-4 h-4 mr-2" />
-                Print Invoice
+                <Printer className="w-4 h-4 me-2" />
+                {t("web.provider.clientsPage.historyItem.printInvoice")}
               </Button>
               <Button
                 variant="outline"
@@ -601,8 +604,8 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
                 disabled={!clientEmail}
                 className="flex-1"
               >
-                <Mail className="w-4 h-4 mr-2" />
-                Email Invoice
+                <Mail className="w-4 h-4 me-2" />
+                {t("web.provider.clientsPage.historyItem.emailInvoice")}
               </Button>
             </div>
           )}

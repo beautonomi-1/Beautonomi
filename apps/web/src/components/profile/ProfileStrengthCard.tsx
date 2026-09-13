@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,7 @@ export default function ProfileStrengthCard({
   onItemClick,
   variant = "compact",
 }: ProfileStrengthCardProps) {
+  const { t } = useTranslation();
   const isComplete = percentage === 100;
 
   return (
@@ -40,7 +43,7 @@ export default function ProfileStrengthCard({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between mb-2">
           <CardTitle className="text-lg font-semibold text-gray-900">
-            Profile Strength
+            {t("web.profile.floatingProgress.title")}
           </CardTitle>
           {isComplete && (
             <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -48,7 +51,7 @@ export default function ProfileStrengthCard({
         </div>
         <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
           <span>
-            {completed} of {total} completed
+            {t("web.profile.floatingProgress.completedOf", { completed, total })}
           </span>
           <span className="font-semibold text-[#FF0077]">{percentage}%</span>
         </div>
@@ -58,7 +61,7 @@ export default function ProfileStrengthCard({
         <CardContent className="pt-0">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 mb-2">
-              Top items to complete:
+              {t("web.profile.topItems")}
             </p>
             {topItems.slice(0, 3).map((item) => (
               <button
@@ -66,7 +69,7 @@ export default function ProfileStrengthCard({
                 onClick={() => {
                   onItemClick?.(item.id);
                 }}
-                className="w-full text-left flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors group border border-transparent hover:border-gray-200"
+                className="w-full text-start flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-colors group border border-transparent hover:border-gray-200"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                   {item.completed ? (
@@ -83,8 +86,8 @@ export default function ProfileStrengthCard({
                     </span>
                   </div>
                 </div>
-                <span className="text-xs text-[#FF0077] font-medium ml-2 flex-shrink-0 group-hover:underline">
-                  {item.completed ? "Edit" : "Start"}
+                <span className="text-xs text-[#FF0077] font-medium ms-2 flex-shrink-0 group-hover:underline">
+                  {item.completed ? t("common.edit") : t("web.profile.start")}
                 </span>
               </button>
             ))}
@@ -97,7 +100,7 @@ export default function ProfileStrengthCard({
             onClick={onCompleteClick}
             className="w-full bg-[#FF0077] hover:bg-[#E6006A] text-white"
           >
-            Complete profile
+            {t("web.profile.floatingProgress.completeProfile")}
           </Button>
         </CardContent>
       )}

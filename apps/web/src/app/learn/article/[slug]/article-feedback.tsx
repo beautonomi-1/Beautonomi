@@ -38,7 +38,7 @@ export default function ArticleFeedback({ slug }: { slug: string }) {
             onClick={() => sendFeedback(true)}
             disabled={feedbackSent !== null}
           >
-            <ThumbsUp className="h-4 w-4 mr-1" />
+            <ThumbsUp className="h-4 w-4 me-1" />
             Yes
           </Button>
         </motion.div>
@@ -50,7 +50,7 @@ export default function ArticleFeedback({ slug }: { slug: string }) {
             onClick={() => sendFeedback(false)}
             disabled={feedbackSent !== null}
           >
-            <ThumbsDown className="h-4 w-4 mr-1" />
+            <ThumbsDown className="h-4 w-4 me-1" />
             No
           </Button>
         </motion.div>

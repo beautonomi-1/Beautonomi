@@ -28,6 +28,7 @@ import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 import { stripHtmlToPlainText } from "@/lib/htmlPlainText";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface MembershipPlan {
   id: string;
@@ -48,9 +49,9 @@ interface PlansResponse {
 }
 
 const STATUS_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" },
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "filterActive", value: "active" },
+  { labelKey: "filterInactive", value: "inactive" },
 ];
 
 const INITIAL_FORM = {
@@ -63,6 +64,9 @@ const INITIAL_FORM = {
 };
 
 export default function MembershipPlansScreen() {
+  const { t } = useTranslation();
+  const mp = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.membershipPlans.${key}`, opts) as string;
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -145,7 +149,7 @@ export default function MembershipPlansScreen() {
 
   async function handleSave() {
     if (!form.name.trim() || !form.priceMonthly) {
-      Alert.alert("Required", "Name and price are required");
+      Alert.alert(mp("requiredTitle"), mp("requiredBody"));
       return;
     }
 
@@ -163,10 +167,10 @@ export default function MembershipPlansScreen() {
         `/api/provider/membership-plans/${editing.id}`,
         payload
       );
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(mp("errorTitle"), error); return; }
     } else {
       const { error } = await createPlan(payload);
-      if (error) { Alert.alert("Error", error); return; }
+      if (error) { Alert.alert(mp("errorTitle"), error); return; }
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -180,19 +184,19 @@ export default function MembershipPlansScreen() {
     const { error } = await updatePlan(`/api/provider/membership-plans/${plan.id}`, {
       is_active: !plan.is_active,
     });
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(mp("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(plan: MembershipPlan) {
-    Alert.alert("Delete", `Remove "${plan.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(mp("deleteTitle"), mp("deleteBody", { name: plan.name }), [
+      { text: mp("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: mp("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deletePlan(`/api/provider/membership-plans/${plan.id}`);
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(mp("errorTitle"), error);
           else {
             setShowDetail(null);
             refresh();
@@ -204,14 +208,14 @@ export default function MembershipPlansScreen() {
 
   async function handleDuplicate(plan: MembershipPlan) {
     const { error } = await createPlan({
-      name: `${plan.name} (Copy)`,
+      name: mp("copySuffix", { name: plan.name }),
       description: plan.description,
       price_monthly: plan.price_monthly,
       discount_percent: plan.discount_percent,
       is_active: false,
       benefits: plan.benefits,
     });
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(mp("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowDetail(null);
@@ -222,9 +226,9 @@ export default function MembershipPlansScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Membership Plans"
+        title={mp("title")}
         showBack
-        subtitle={`${stats.active} active · ${stats.subscribers} subscribers`}
+        subtitle={mp("subtitle", { active: stats.active, subscribers: stats.subscribers })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -236,29 +240,29 @@ export default function MembershipPlansScreen() {
       />
 
       <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Plans" value={String(stats.total)} icon="card-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+          <StatCard title={mp("statPlans")} value={String(stats.total)} icon="card-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
         <TouchableOpacity
-          style={[twStyle("flex-1"), { marginRight: 8 }]}
+          style={[twStyle("flex-1"), { marginEnd: 8 }]}
           activeOpacity={0.75}
           onPress={() =>
             router.push("/(app)/(tabs)/more/membership-subscribers" as never)
           }
           accessibilityRole="button"
-          accessibilityLabel="View all membership subscribers"
+          accessibilityLabel={mp("viewSubscribersA11y")}
         >
-          <StatCard title="Members" value={String(stats.subscribers)} icon="people-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+          <StatCard title={mp("statMembers")} value={String(stats.subscribers)} icon="people-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </TouchableOpacity>
         <View style={twStyle("flex-1")}>
-          <StatCard title="MRR" value={formatCurrency(stats.revenue)} icon="trending-up-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+          <StatCard title={mp("statMrr")} value={formatCurrency(stats.revenue)} icon="trending-up-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
-      <SearchBar value={search} onChangeText={setSearch} placeholder="Search plans..." />
+      <SearchBar value={search} onChangeText={setSearch} placeholder={mp("searchPlaceholder")} />
 
       <View style={twStyle("my-3")}>
-        <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
+        <FilterChipGroup options={STATUS_FILTERS.map((f) => ({ label: mp(f.labelKey), value: f.value }))} selected={filter} onSelect={setFilter} />
       </View>
 
       {loadError && !rawData ? (
@@ -268,8 +272,8 @@ export default function MembershipPlansScreen() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="card-outline"
-          title="No membership plans"
-          description={search || filter !== "all" ? "No results" : "Create plans to offer recurring client memberships"}
+          title={mp("emptyTitle")}
+          description={search || filter !== "all" ? mp("emptyFiltered") : mp("emptyCreate")}
         />
       ) : (
         <FlatList
@@ -290,7 +294,7 @@ export default function MembershipPlansScreen() {
               <View style={twStyle("flex-row items-start justify-between")}>
                 <View style={twStyle("flex-1")}>
                   <View style={twStyle("flex-row items-center")}>
-                    <View style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-indigo-50"), { marginRight: 8 }]}>
+                    <View style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-indigo-50"), { marginEnd: 8 }]}>
                       <Ionicons name="card" size={16} color="#6366f1" />
                     </View>
                     <View style={twStyle("flex-1")}>
@@ -305,11 +309,11 @@ export default function MembershipPlansScreen() {
                 </View>
                 <View style={twStyle("items-end")}>
                   <Text style={twStyle("text-base font-bold text-indigo-600")}>
-                    {formatCurrency(plan.price_monthly)}<Text style={twStyle("text-xs font-normal text-gray-400")}>/mo</Text>
+                    {formatCurrency(plan.price_monthly)}<Text style={twStyle("text-xs font-normal text-gray-400")}>{mp("perMonthShort")}</Text>
                   </Text>
                   <View style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${plan.is_active ? "bg-green-50" : "bg-gray-100"}`)}>
                     <Text style={twStyle(`text-[10px] font-medium ${plan.is_active ? "text-green-700" : "text-gray-500"}`)}>
-                      {plan.is_active ? "Active" : "Inactive"}
+                      {plan.is_active ? mp("active") : mp("inactive")}
                     </Text>
                   </View>
                 </View>
@@ -317,15 +321,15 @@ export default function MembershipPlansScreen() {
 
               <View style={twStyle("mt-2 flex-row items-center")}>
                 {plan.discount_percent > 0 && (
-                  <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
-                    <Ionicons name="pricetag-outline" size={12} color="#22c55e" style={{ marginRight: 4 }} />
-                    <Text style={twStyle("text-xs text-green-600")}>{plan.discount_percent}% off</Text>
+                  <View style={[twStyle("flex-row items-center"), { marginEnd: 12 }]}>
+                    <Ionicons name="pricetag-outline" size={12} color="#22c55e" style={{ marginEnd: 4 }} />
+                    <Text style={twStyle("text-xs text-green-600")}>{mp("percentOff", { percent: plan.discount_percent })}</Text>
                   </View>
                 )}
                 {plan.subscriber_count != null && (
                   <View style={twStyle("flex-row items-center")}>
-                    <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                    <Text style={twStyle("text-xs text-gray-500")}>{plan.subscriber_count} subscribers</Text>
+                    <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginEnd: 4 }} />
+                    <Text style={twStyle("text-xs text-gray-500")}>{mp("subscriberCount", { count: plan.subscriber_count })}</Text>
                   </View>
                 )}
               </View>
@@ -338,7 +342,7 @@ export default function MembershipPlansScreen() {
       <BottomSheet
         visible={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title={showDetail?.name ?? "Plan Details"}
+        title={showDetail?.name ?? mp("planDetails")}
       >
         {showDetail && (
           <View>
@@ -346,7 +350,7 @@ export default function MembershipPlansScreen() {
               <Text style={twStyle("text-3xl font-bold text-indigo-700")}>
                 {formatCurrency(showDetail.price_monthly)}
               </Text>
-              <Text style={twStyle("text-sm text-indigo-500")}>per month</Text>
+              <Text style={twStyle("text-sm text-indigo-500")}>{mp("perMonth")}</Text>
             </View>
 
             {showDetail.description && (
@@ -356,19 +360,19 @@ export default function MembershipPlansScreen() {
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-3")}>
               {showDetail.discount_percent > 0 && (
                 <View style={twStyle("flex-row justify-between mb-1.5")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Discount</Text>
-                  <Text style={twStyle("text-sm font-medium text-green-600")}>{showDetail.discount_percent}%</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{mp("discount")}</Text>
+                  <Text style={twStyle("text-sm font-medium text-green-600")}>{mp("percentValue", { percent: showDetail.discount_percent })}</Text>
                 </View>
               )}
               <View style={twStyle("flex-row justify-between mb-1.5")}>
-                <Text style={twStyle("text-sm text-gray-500")}>Status</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{mp("status")}</Text>
                 <Text style={twStyle(`text-sm font-medium ${showDetail.is_active ? "text-green-600" : "text-gray-500"}`)}>
-                  {showDetail.is_active ? "Active" : "Inactive"}
+                  {showDetail.is_active ? mp("active") : mp("inactive")}
                 </Text>
               </View>
               {showDetail.subscriber_count != null && (
                 <View style={twStyle("flex-row justify-between")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Subscribers</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{mp("subscribers")}</Text>
                   <Text style={twStyle("text-sm text-gray-700")}>{showDetail.subscriber_count}</Text>
                 </View>
               )}
@@ -384,19 +388,19 @@ export default function MembershipPlansScreen() {
                 } as never);
               }}
               accessibilityRole="button"
-              accessibilityLabel="View subscribers for this plan"
+              accessibilityLabel={mp("viewMembersA11y")}
             >
-              <Text style={twStyle("text-sm font-semibold text-indigo-800")}>View members</Text>
+              <Text style={twStyle("text-sm font-semibold text-indigo-800")}>{mp("viewMembers")}</Text>
             </TouchableOpacity>
 
             {showDetail.benefits && showDetail.benefits.length > 0 && (
               <View style={twStyle("mb-3")}>
                 <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase text-gray-400")}>
-                  Benefits (display only)
+                  {mp("benefitsDisplayOnly")}
                 </Text>
                 {showDetail.benefits.map((b, i) => (
-                  <View key={i} style={[twStyle("flex-row items-center mb-1"), { marginRight: 8 }]}>
-                    <Ionicons name="checkmark-circle" size={14} color="#22c55e" style={{ marginRight: 8 }} />
+                  <View key={i} style={[twStyle("flex-row items-center mb-1"), { marginEnd: 8 }]}>
+                    <Ionicons name="checkmark-circle" size={14} color="#22c55e" style={{ marginEnd: 8 }} />
                     <Text style={twStyle("text-sm text-gray-700")}>{b}</Text>
                   </View>
                 ))}
@@ -405,23 +409,23 @@ export default function MembershipPlansScreen() {
 
             <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                style={[twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"), { marginEnd: 8 }]}
                 onPress={() => openEdit(showDetail)}
               >
-                <Text style={twStyle("text-sm font-medium text-indigo-700")}>Edit</Text>
+                <Text style={twStyle("text-sm font-medium text-indigo-700")}>{mp("edit")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[twStyle("flex-1 items-center rounded-lg bg-gray-100 py-2.5"), { marginRight: 8 }]}
+                style={[twStyle("flex-1 items-center rounded-lg bg-gray-100 py-2.5"), { marginEnd: 8 }]}
                 onPress={() => handleDuplicate(showDetail)}
               >
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Duplicate</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{mp("duplicate")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={twStyle("flex-1 items-center rounded-lg bg-gray-100 py-2.5")}
                 onPress={() => handleToggleActive(showDetail)}
               >
                 <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                  {showDetail.is_active ? "Deactivate" : "Activate"}
+                  {showDetail.is_active ? mp("deactivate") : mp("activate")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -430,7 +434,7 @@ export default function MembershipPlansScreen() {
               style={twStyle("mt-2 items-center rounded-lg bg-red-50 py-2.5")}
               onPress={() => handleDelete(showDetail)}
             >
-              <Text style={twStyle("text-sm font-medium text-red-700")}>Delete Plan</Text>
+              <Text style={twStyle("text-sm font-medium text-red-700")}>{mp("deletePlan")}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -440,72 +444,72 @@ export default function MembershipPlansScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Plan" : "New Membership Plan"}
+        title={editing ? mp("editPlan") : mp("newPlan")}
       >
         <View>
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Plan Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{mp("planNameRequired")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Gold Membership"
+            placeholder={mp("planNamePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{mp("description")}</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Plan benefits overview..."
+            placeholder={mp("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
 
           <View style={twStyle("mb-3 flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Monthly Price (${getTenantDefaultCurrency()}) *`}</Text>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{mp("monthlyPrice", { currency: getTenantDefaultCurrency() })}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.priceMonthly}
                 onChangeText={(t) => setForm((p) => ({ ...p, priceMonthly: t }))}
                 keyboardType="decimal-pad"
-                placeholder="0.00"
+                placeholder={mp("pricePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Discount %</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{mp("discountPercent")}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.discountPercent}
                 onChangeText={(t) => setForm((p) => ({ ...p, discountPercent: t }))}
                 keyboardType="decimal-pad"
-                placeholder="0"
+                placeholder={mp("discountPlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
           </View>
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Benefits</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{mp("benefits")}</Text>
           <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-            Shown to customers on the plan page. Only the discount % above is applied automatically at checkout; other benefits are display-only.
+            {mp("benefitsHint")}
           </Text>
           <ChipCombobox
             value={form.benefitsList}
             onChange={(v) => setForm((p) => ({ ...p, benefitsList: v }))}
             staticSuggestions={[
-              { value: "Priority booking", label: "Priority booking" },
-              { value: "10% off", label: "10% off" },
-              { value: "Free product", label: "Free product" },
-              { value: "Exclusive events", label: "Exclusive events" },
+              { value: mp("benefitPriorityBooking"), label: mp("benefitPriorityBooking") },
+              { value: mp("benefitTenOff"), label: mp("benefitTenOff") },
+              { value: mp("benefitFreeProduct"), label: mp("benefitFreeProduct") },
+              { value: mp("benefitExclusiveEvents"), label: mp("benefitExclusiveEvents") },
             ]}
-            placeholder="e.g. Priority booking, 10% off"
-            accessibilityLabel="Benefits"
+            placeholder={mp("benefitsPlaceholder")}
+            accessibilityLabel={mp("benefitsA11y")}
           />
 
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{mp("active")}</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
@@ -515,7 +519,7 @@ export default function MembershipPlansScreen() {
           </View>
 
           <ActionButton
-            label={editing ? "Update Plan" : "Create Plan"}
+            label={editing ? mp("updatePlan") : mp("createPlan")}
             onPress={handleSave}
             loading={creating || updating}
             fullWidth

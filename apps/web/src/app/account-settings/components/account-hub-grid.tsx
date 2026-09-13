@@ -27,43 +27,44 @@ import {
   BadgePercent,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 const AboutUsModal = lazy(() => import("@/components/global/about-us-modal"));
 const ShareAppModal = lazy(() => import("@/components/global/share-app-modal"));
 
 export interface AccountHubCard {
   icon: React.ElementType;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   link: string;
   isAction?: boolean;
 }
 
 export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
-  { icon: User, title: "Personal info", description: "Provide personal details and how we can reach you", link: "/account-settings/personal-info" },
-  { icon: ShieldCheck, title: "Login & security", description: "Update your password and secure your account", link: "/account-settings/login-and-security" },
-  { icon: CreditCard, title: "Payments & payouts", description: "Review payments, payouts, coupons, and gift cards", link: "/account-settings/payments" },
-  { icon: Wallet, title: "Wallet", description: "Top up your wallet and view wallet activity", link: "/account-settings/wallet" },
-  { icon: BadgePercent, title: "Memberships", description: "Manage salon memberships, auto-renewal, and billing history", link: "/account-settings/membership" },
-  { icon: Trophy, title: "Loyalty Points", description: "Earn points on every booking, unlock rewards and milestones, redeem for discounts", link: "/account-settings/loyalty" },
-  { icon: FileText, title: "Taxes", description: "Manage taxpayer information and tax documents", link: "/account-settings/taxes" },
-  { icon: MapPin, title: "Saved addresses", description: "Manage your saved addresses for faster checkout", link: "/account-settings/addresses" },
-  { icon: CalendarDays, title: "Bookings", description: "View and manage your upcoming, past, and cancelled bookings", link: "/account-settings/bookings" },
-  { icon: ShoppingBag, title: "Product Orders", description: "Track your product purchases and delivery status", link: "/account-settings/orders" },
-  { icon: Undo2, title: "Returns & Refunds", description: "Request returns and track refund status", link: "/account-settings/returns" },
-  { icon: CalendarDays, title: "Recurring Bookings", description: "Manage your recurring appointments and subscriptions", link: "/account-settings/recurring-bookings" },
-  { icon: CalendarDays, title: "Waitlist", description: "View your waitlist entries and get notified when slots open", link: "/account-settings/waitlist" },
-  { icon: Bell, title: "Notifications", description: "Choose notification preferences and how you want to be contacted", link: "/account-settings/notifications" },
-  { icon: Globe, title: "Global preferences", description: "Set your default language, currency, and timezone", link: "/account-settings/preferences" },
-  { icon: Eye, title: "Privacy & sharing", description: "Manage your personal data, connected services, and data sharing settings", link: "/account-settings/privacy-and-sharing" },
-  { icon: Gift, title: "Referral credit & coupon", description: "You have $0 referral credits and coupon. Learn more.", link: "/account-settings/referrals" },
-  { icon: Star, title: "My Reviews", description: "View and edit your reviews for completed bookings", link: "/account-settings/reviews" },
-  { icon: Heart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
-  { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners", link: "/account-settings/messages" },
-  { icon: Briefcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
-  { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/identity-verification" },
-  { icon: Info, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },
-  { icon: Share2, title: "Share App", description: "Share Beautonomi with your friends and family", link: "#share-app", isAction: true },
+  { icon: User, titleKey: "customer.accountSettings.personalInfoTitle", descriptionKey: "web.accountSettings.hub.personalInfoDesc", link: "/account-settings/personal-info" },
+  { icon: ShieldCheck, titleKey: "customer.accountSettings.loginSecurityTitle", descriptionKey: "web.accountSettings.hub.loginSecurityDesc", link: "/account-settings/login-and-security" },
+  { icon: CreditCard, titleKey: "web.accountSettings.hub.paymentsTitle", descriptionKey: "web.accountSettings.hub.paymentsDesc", link: "/account-settings/payments" },
+  { icon: Wallet, titleKey: "web.accountSettings.wallet.title", descriptionKey: "web.accountSettings.hub.walletDesc", link: "/account-settings/wallet" },
+  { icon: BadgePercent, titleKey: "web.accountSettings.hub.membershipsTitle", descriptionKey: "web.accountSettings.hub.membershipsDesc", link: "/account-settings/membership" },
+  { icon: Trophy, titleKey: "web.accountSettings.hub.loyaltyTitle", descriptionKey: "web.accountSettings.hub.loyaltyDesc", link: "/account-settings/loyalty" },
+  { icon: FileText, titleKey: "web.accountSettings.taxes.title", descriptionKey: "web.accountSettings.hub.taxesDesc", link: "/account-settings/taxes" },
+  { icon: MapPin, titleKey: "customer.accountSettings.savedAddressesTitle", descriptionKey: "web.accountSettings.hub.savedAddressesDesc", link: "/account-settings/addresses" },
+  { icon: CalendarDays, titleKey: "customer.accountSettings.bookingsMenuTitle", descriptionKey: "web.accountSettings.hub.bookingsDesc", link: "/account-settings/bookings" },
+  { icon: ShoppingBag, titleKey: "web.accountSettings.hub.productOrdersTitle", descriptionKey: "web.accountSettings.hub.productOrdersDesc", link: "/account-settings/orders" },
+  { icon: Undo2, titleKey: "web.accountSettings.hub.returnsTitle", descriptionKey: "web.accountSettings.hub.returnsDesc", link: "/account-settings/returns" },
+  { icon: CalendarDays, titleKey: "web.accountSettings.hub.recurringTitle", descriptionKey: "web.accountSettings.hub.recurringDesc", link: "/account-settings/recurring-bookings" },
+  { icon: CalendarDays, titleKey: "customer.accountSettings.waitlistTitle", descriptionKey: "web.accountSettings.hub.waitlistDesc", link: "/account-settings/waitlist" },
+  { icon: Bell, titleKey: "customer.notifications", descriptionKey: "web.accountSettings.hub.notificationsDesc", link: "/account-settings/notifications" },
+  { icon: Globe, titleKey: "web.accountSettings.hub.globalPrefsTitle", descriptionKey: "web.accountSettings.hub.globalPrefsDesc", link: "/account-settings/preferences" },
+  { icon: Eye, titleKey: "customer.accountSettings.privacySharingTitle", descriptionKey: "web.accountSettings.hub.privacyDesc", link: "/account-settings/privacy-and-sharing" },
+  { icon: Gift, titleKey: "web.accountSettings.hub.referralTitle", descriptionKey: "web.accountSettings.hub.referralDesc", link: "/account-settings/referrals" },
+  { icon: Star, titleKey: "web.accountSettings.hub.reviewsTitle", descriptionKey: "web.accountSettings.hub.reviewsDesc", link: "/account-settings/reviews" },
+  { icon: Heart, titleKey: "web.accountSettings.hub.wishlistsTitle", descriptionKey: "web.accountSettings.hub.wishlistsDesc", link: "/account-settings/wishlists" },
+  { icon: MessageCircle, titleKey: "customer.messages", descriptionKey: "web.accountSettings.hub.messagesDesc", link: "/account-settings/messages" },
+  { icon: Briefcase, titleKey: "web.accountSettings.customRequests.title", descriptionKey: "web.accountSettings.hub.customRequestsDesc", link: "/account-settings/custom-requests" },
+  { icon: ShieldCheck, titleKey: "web.accountSettings.hub.identityTitle", descriptionKey: "web.accountSettings.hub.identityDesc", link: "/account-settings/identity-verification" },
+  { icon: Info, titleKey: "customer.mobile.stackTitles.aboutUs", descriptionKey: "web.accountSettings.hub.aboutUsDesc", link: "#about-us", isAction: true },
+  { icon: Share2, titleKey: "web.accountSettings.hub.shareAppTitle", descriptionKey: "web.accountSettings.hub.shareAppDesc", link: "#share-app", isAction: true },
 ];
 
 type AccountHubGridProps = {
@@ -76,6 +77,7 @@ type HubLinkCardProps = {
 };
 
 const HubLinkCard = memo(function HubLinkCard({ card }: HubLinkCardProps) {
+  const { t } = useTranslation();
   const Icon = card.icon;
   return (
     <Link href={card.link} className="block">
@@ -87,8 +89,8 @@ const HubLinkCard = memo(function HubLinkCard({ card }: HubLinkCardProps) {
         }`}
       >
         <Icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
-        <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
-        <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
+        <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{t(card.titleKey)}</h2>
+        <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{t(card.descriptionKey)}</p>
       </div>
     </Link>
   );
@@ -101,6 +103,7 @@ type HubActionCardProps = {
 };
 
 const HubActionCard = memo(function HubActionCard({ card, onOpen }: HubActionCardProps) {
+  const { t } = useTranslation();
   const Icon = card.icon;
   return (
     <div
@@ -116,14 +119,15 @@ const HubActionCard = memo(function HubActionCard({ card, onOpen }: HubActionCar
       className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-[box-shadow,border-color] duration-200 h-full cursor-pointer"
     >
       <Icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
-      <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
-      <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
+      <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{t(card.titleKey)}</h2>
+      <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{t(card.descriptionKey)}</p>
     </div>
   );
 });
 HubActionCard.displayName = "HubActionCard";
 
 export default function AccountHubGrid({ embeddedInProfile = false }: AccountHubGridProps) {
+  const { t } = useTranslation();
   const [showAboutUs, setShowAboutUs] = useState(false);
   const [showShareApp, setShowShareApp] = useState(false);
   const { user } = useAuth();
@@ -140,9 +144,9 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
       >
         {embeddedInProfile ? (
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">More</h2>
+            <h2 className="text-lg font-semibold text-gray-900">{t("common.more")}</h2>
             <p className="text-sm text-gray-500 mt-1 font-light">
-              Bookings, wallet, notifications, and security.
+              {t("web.accountSettings.hub.moreSubtitle")}
             </p>
           </div>
         ) : null}
@@ -159,9 +163,9 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
             <Link href="/provider/onboarding" className="block">
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">
                 <Store className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
-                <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>
+                <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{t("web.accountSettings.hub.becomeProviderTitle")}</h2>
                 <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">
-                  Start offering your beauty services on Beautonomi. Manage bookings, payments, and grow your business all in one place.
+                  {t("web.accountSettings.hub.becomeProviderDesc")}
                 </p>
               </div>
             </Link>

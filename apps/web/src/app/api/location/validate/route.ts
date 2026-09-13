@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isProviderPubliclyVisible } from "@/lib/providers/public-provider-visibility";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { computeTravelFee } from "@/lib/travel/travelFeeEngine";
@@ -33,14 +34,10 @@ const validateSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const body = validateSchema.parse(await request.json());
-    // §Customer-audit 2026-04 (synergy sweep): previously called
-    // `getSupabaseServer()` with no request, so the Authorization header
-    // from mobile clients was dropped and the query fell back to the anon
-    // client. Most reads here are for public provider data (RLS allows it)
-    // but forwarding the request keeps this route behaving like every
-    // other `/api/*` handler — and is required if we ever tighten RLS on
-    // `provider_locations` or add a tenant-scoped filter.
-    const supabase = await getSupabaseServer(request);
+    // Public booking (guests included) must use the admin client — anon/session
+    // RLS hides many active providers the same way `/api/public/providers/[slug]`
+    // used to 404 before it switched to admin + isProviderPubliclyVisible.
+    const supabase = getSupabaseAdmin();
 
     // Get provider ID from provider_id or provider_slug
     let providerId: string | null = null;
@@ -48,21 +45,20 @@ export async function POST(request: NextRequest) {
     if (body.provider_id) {
       providerId = body.provider_id;
     } else if (body.provider_slug) {
-      const { data: provider } = await supabase
+      const { data: providerBySlug } = await supabase
         .from("providers")
-        .select("id")
+        .select("id, status, deleted_at")
         .eq("slug", body.provider_slug)
-        .eq("is_active", true)
-        .single();
+        .maybeSingle();
       
-      if (!provider) {
+      if (!providerBySlug || !isProviderPubliclyVisible(providerBySlug)) {
         return errorResponse(
           "Provider not found",
           "NOT_FOUND",
           404
         );
       }
-      providerId = provider.id;
+      providerId = providerBySlug.id;
     } else {
       return errorResponse(
         "provider_id or provider_slug is required",
@@ -126,11 +122,11 @@ export async function POST(request: NextRequest) {
     // Step 2: Get provider's settings and check if mobile services are enabled
     const { data: provider } = await supabase
       .from("providers")
-      .select("max_service_distance_km, is_distance_filter_enabled, offers_mobile_services")
+      .select("max_service_distance_km, is_distance_filter_enabled, offers_mobile_services, status, deleted_at")
       .eq("id", providerId)
-      .single();
+      .maybeSingle();
 
-    if (!provider) {
+    if (!provider || !isProviderPubliclyVisible(provider)) {
       return errorResponse(
         "Provider not found",
         "NOT_FOUND",

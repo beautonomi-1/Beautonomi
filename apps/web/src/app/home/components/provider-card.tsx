@@ -14,6 +14,7 @@ import {
   providerAvatarImage,
   providerHeroImageCandidates,
 } from "@/lib/provider-images";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -38,9 +39,10 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   showHottestBadge = false,
   showNearestBadge = false,
   showUpcomingTalentBadge = false,
-  sponsoredBadgeText = "Sponsored",
+  sponsoredBadgeText,
   isInWishlistProp,
 }) => {
+  const { t } = useTranslation();
   const { user, session, isLoading: authLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = React.useState(false);
   const [isToggling, setIsToggling] = React.useState(false);
@@ -71,10 +73,14 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     setAvatarBroken(false);
   }, [thumbnailUrl, avatarUrl]);
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
-  const businessName = provider.business_name.trim() || "Provider";
+  const businessName = provider.business_name.trim() || t("web.cards.providerFallback");
   const cardDescription = formatProviderDescriptionForCard(provider.description);
-  const ratingText = provider.rating > 0 ? `${provider.rating.toFixed(1)} out of 5` : "No reviews yet";
-  const reviewCountText = provider.review_count ? `${formatReviewCount(provider.review_count)} reviews` : "No reviews";
+  const ratingText = provider.rating > 0
+    ? t("web.cards.outOf5", { rating: provider.rating.toFixed(1) })
+    : t("web.cards.noReviewsYet");
+  const reviewCountText = provider.review_count
+    ? t("web.cards.reviews", { count: provider.review_count, formatted: formatReviewCount(provider.review_count) })
+    : t("web.cards.noReviews");
 
   // Check if provider is in wishlist - optimized with caching for instant display
   // Skip check if isInWishlistProp is explicitly provided (e.g., from wishlist page)
@@ -150,10 +156,10 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           localStorage.setItem(cacheKey, String(newState));
         }
         
-        toast.success(action === "added" ? "Saved to wishlist" : "Removed from wishlist");
+        toast.success(action === "added" ? t("web.cards.savedWishlist") : t("web.cards.removedWishlist"));
       }
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to update wishlist";
+      const msg = err instanceof FetchError ? err.message : t("web.cards.wishlistFailed");
       toast.error(msg);
     } finally {
       setIsToggling(false);
@@ -182,11 +188,11 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
       href={profileHref}
       className="block"
       onClick={handleClick}
-      aria-label={`View ${businessName}, ${ratingText}, ${reviewCountText}`}
+      aria-label={t("web.cards.viewListingA11y", { name: businessName, rating: ratingText, reviews: reviewCountText })}
     >
       <article className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>
         {/* Image Container - card hero (main listing image) */}
-        <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3" role="img" aria-label={`${businessName} listing photo`}>
+        <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3" role="img" aria-label={t("web.cards.listingPhotoA11y", { name: businessName })}>
           <Image
             src={thumbnailSrc}
             alt=""
@@ -214,7 +220,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             const MAX_VISIBLE = 3;
             const badges: Array<{ key: string; label: string; style?: React.CSSProperties; className: string; title?: string; iconUrl?: string }> = [];
             if (provider.is_sponsored) {
-              badges.push({ key: "spon", label: sponsoredBadgeText, className: "bg-amber-600" });
+              badges.push({ key: "spon", label: sponsoredBadgeText || t("web.cards.sponsored"), className: "bg-amber-600" });
             }
             if (provider.current_badge) {
               badges.push({
@@ -226,19 +232,19 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 iconUrl: provider.current_badge.icon_url ?? undefined,
               });
             }
-            if (showTopRatedBadge) badges.push({ key: "top", label: "Top Rated", className: "bg-[#FF0077]" });
-            if (showHottestBadge) badges.push({ key: "hot", label: "Hottest", className: "bg-orange-600" });
-            if (showNearestBadge) badges.push({ key: "near", label: "Nearest", className: "bg-blue-600" });
-            if (showUpcomingTalentBadge) badges.push({ key: "up", label: "Rising Star", className: "bg-purple-600" });
-            if (provider.business_type === "freelancer") badges.push({ key: "free", label: "Freelancer", className: "bg-orange-500" });
-            if (provider.supports_house_calls) badges.push({ key: "house", label: "House Calls", className: "bg-green-500" });
-            if (provider.supports_salon) badges.push({ key: "salon", label: "At Salon", className: "bg-purple-500" });
+            if (showTopRatedBadge) badges.push({ key: "top", label: t("web.cards.topRated"), className: "bg-[#FF0077]" });
+            if (showHottestBadge) badges.push({ key: "hot", label: t("web.cards.hottest"), className: "bg-orange-600" });
+            if (showNearestBadge) badges.push({ key: "near", label: t("web.cards.nearest"), className: "bg-blue-600" });
+            if (showUpcomingTalentBadge) badges.push({ key: "up", label: t("web.cards.risingStar"), className: "bg-purple-600" });
+            if (provider.business_type === "freelancer") badges.push({ key: "free", label: t("web.cards.freelancer"), className: "bg-orange-500" });
+            if (provider.supports_house_calls) badges.push({ key: "house", label: t("web.cards.houseCalls"), className: "bg-green-500" });
+            if (provider.supports_salon) badges.push({ key: "salon", label: t("web.cards.atSalon"), className: "bg-purple-500" });
 
             const visible = badges.slice(0, MAX_VISIBLE);
             const overflow = badges.length - MAX_VISIBLE;
 
             return (
-              <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10" role="list" aria-label="Listing badges">
+              <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10" role="list" aria-label={t("web.cards.listingBadges")}>
                 {visible.map((b) => (
                   <span
                     key={b.key}
@@ -259,9 +265,9 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                   <span
                     className="text-white text-[11px] md:text-xs font-semibold px-2 md:px-3 py-1 rounded-full inline-block bg-black/55"
                     role="listitem"
-                    aria-label={`${overflow} more badges`}
+                    aria-label={t("web.cards.moreBadges", { count: overflow })}
                   >
-                    +{overflow} more
+                    {t("web.cards.moreBadgesShort", { count: overflow })}
                   </span>
                 )}
               </div>
@@ -279,7 +285,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
               toggleWishlist();
             }}
             disabled={isToggling}
-            aria-label={isInWishlist ? `Remove ${businessName} from wishlist` : `Add ${businessName} to wishlist`}
+            aria-label={isInWishlist ? t("web.cards.removeWishlistA11y", { name: businessName }) : t("web.cards.addWishlistA11y", { name: businessName })}
             aria-pressed={isInWishlist}
           >
             <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-[#FF0077] text-[#FF0077]" : "text-gray-600"}`} aria-hidden />
@@ -356,7 +362,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           </div>
 
           {/* Rating */}
-          <div className="flex items-center gap-1 md:gap-1.5 mb-1.5 md:mb-1" aria-label={`Rating: ${ratingText}, ${reviewCountText}`}>
+          <div className="flex items-center gap-1 md:gap-1.5 mb-1.5 md:mb-1" aria-label={t("web.cards.ratingA11y", { rating: ratingText, reviews: reviewCountText })}>
             <FaStar className="text-yellow-400 flex-shrink-0 w-3.5 h-3.5 md:w-4 md:h-4" aria-hidden />
             <span className="text-xs md:text-sm font-medium leading-tight">
               {provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}
@@ -385,10 +391,10 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           {provider.distance_km != null && (
             <p
               className="mt-1 inline-flex items-center gap-1.5 whitespace-nowrap text-xs md:text-sm font-medium text-gray-600"
-              aria-label={`${provider.distance_km.toFixed(1)} kilometers away`}
+              aria-label={t("web.search.distanceAway", { km: provider.distance_km.toFixed(1) })}
             >
               <MapPin className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-500" aria-hidden />
-              {provider.distance_km.toFixed(1)} km away
+              {t("web.search.distanceAway", { km: provider.distance_km.toFixed(1) })}
             </p>
           )}
         </div>

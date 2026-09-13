@@ -3,7 +3,10 @@ import { Suspense } from "react";
 import HomeMarketplaceHeader from "./home-marketplace-header";
 import HomeMarketplaceBody from "./home-marketplace-body";
 import HomePageSuspenseFallback from "./home-page-suspense-fallback";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { buildTranslatedPageMetadata } from "@/lib/i18n/metadata";
+import { buildHreflangAlternates } from "@/lib/seo/hreflang-from-languages";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import {
   getCategoryLabelForSeo,
   homePathWithCategory,
@@ -21,37 +24,27 @@ export async function generateMetadata({
   const path = homePathWithCategory(slug);
 
   if (slug === "all") {
-    return {
-      title: "Beauty Services Marketplace",
-      description:
-        "Discover and book beauty services from verified providers near you.",
-      alternates: {
-        canonical: path,
-        languages: getHreflangAlternateUrls(path),
-      },
-      openGraph: {
-        title: "Beauty Services Marketplace",
-        description:
-          "Discover and book beauty services from verified providers near you.",
-        url: path,
-      },
-      twitter: {
-        title: "Beauty Services Marketplace",
-        description:
-          "Discover and book beauty services from verified providers near you.",
-      },
-    };
+    return buildTranslatedPageMetadata({
+      titleKey: "web.seo.homeTitle",
+      descriptionKey: "web.seo.homeDescription",
+      path,
+    });
   }
 
-  const title = `${label} — Book verified beauty professionals`;
-  const description = `Find ${label.toLowerCase()} services from verified salons and professionals near you. Book on Beautonomi.`;
+  const localeCtx = await resolveRequestLanguage();
+  const t = await getServerT(localeCtx.language);
+  const title = t("web.seo.categoryTitle", { name: label }) as string;
+  const description = t("web.seo.categoryDescription", { name: label }) as string;
 
   return {
     title,
     description,
     alternates: {
       canonical: path,
-      languages: getHreflangAlternateUrls(path),
+      languages: buildHreflangAlternates(path, {
+        supportedLanguages: localeCtx.marketSupportedLanguages,
+        regionCode: localeCtx.regionCode,
+      }),
     },
     openGraph: {
       title,
@@ -65,8 +58,12 @@ export async function generateMetadata({
   };
 }
 
-/** ISR: revalidate every 60s; home API has its own unstable_cache layer internally. */
-export const revalidate = 60;
+/**
+ * Home listings are cached in `/api/public/home`. This page reads the language
+ * cookie so the header / sr-only title cannot hydrate from a stale English RSC
+ * payload against a localized LocaleProvider.
+ */
+export const dynamic = "force-dynamic";
 
 export default async function Page({
   searchParams,
@@ -76,10 +73,12 @@ export default async function Page({
   const sp = await searchParams;
   const slug = normalizeHomeCategoryParam(sp.category);
   const label = getCategoryLabelForSeo(slug);
+  const localeCtx = await resolveRequestLanguage();
+  const t = await getServerT(localeCtx.language);
   const heroTitle =
     slug === "all"
-      ? "Discover and book verified beauty professionals"
-      : `${label} — book trusted beauty professionals near you`;
+      ? (t("web.seo.homeSrOnlyTitle") as string)
+      : (t("web.seo.homeSrOnlyTitleCategory", { label }) as string);
 
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">

@@ -32,6 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -40,6 +41,7 @@ import CustomOfferModal from "./custom-offer-modal";
 import { CustomOfferCard } from "@beautonomi/ui/web";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Attachment {
   url: string;
@@ -124,6 +126,7 @@ export default function WhatsAppChat({
   initialOfferId,
 }: WhatsAppChatProps) {
   const clientMounted = useClientMounted();
+  const { t } = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -190,12 +193,12 @@ export default function WhatsAppChat({
     if (text) return text.length > 120 ? `${text.slice(0, 120)}…` : text;
     const att = msg.attachments?.[0];
     if (!att) return "";
-    if (att.type === "custom_offer") return "Custom offer";
-    if (att.type === "custom_request") return "Custom request";
-    if (att.type === "custom_offer_paid") return "Payment received";
-    if (att.type?.startsWith("image/")) return "Photo";
-    if (att.type?.startsWith("video/")) return "Video";
-    return att.name || "Attachment";
+    if (att.type === "custom_offer") return t("web.messaging.whatsappChat.previewCustomOffer");
+    if (att.type === "custom_request") return t("web.messaging.whatsappChat.previewCustomRequest");
+    if (att.type === "custom_offer_paid") return t("web.messaging.whatsappChat.previewPaymentReceived");
+    if (att.type?.startsWith("image/")) return t("web.messaging.whatsappChat.previewPhoto");
+    if (att.type?.startsWith("video/")) return t("web.messaging.whatsappChat.previewVideo");
+    return att.name || t("web.messaging.whatsappChat.previewAttachment");
   };
 
   const buildReplyPreview = (msg: Message): MessageReplyTo => ({
@@ -203,7 +206,11 @@ export default function WhatsAppChat({
     sender_id: msg.sender_id,
     sender_name:
       msg.sender_name ||
-      (msg.sender_id === currentUserId ? "You" : isProviderChat ? "Customer" : "Provider"),
+      (msg.sender_id === currentUserId
+        ? t("web.messaging.whatsappChat.you")
+        : isProviderChat
+          ? t("web.messaging.whatsappChat.customer")
+          : t("web.messaging.whatsappChat.provider")),
     content_preview: getMessagePreviewText(msg),
   });
 
@@ -221,7 +228,7 @@ export default function WhatsAppChat({
 
   const handlePhoneCall = () => {
     if (!contactPhone) {
-      toast.error("Phone number not available");
+      toast.error(t("web.messaging.whatsappChat.phoneNotAvailable"));
       return;
     }
     window.location.href = `tel:${contactPhone}`;
@@ -229,31 +236,31 @@ export default function WhatsAppChat({
 
   const handleCopyPhone = async () => {
     if (!contactPhone) {
-      toast.error("Phone number not available");
+      toast.error(t("web.messaging.whatsappChat.phoneNotAvailable"));
       return;
     }
     try {
       await navigator.clipboard.writeText(contactPhone);
       setCopiedPhone(true);
-      toast.success("Phone number copied");
+      toast.success(t("web.messaging.whatsappChat.phoneCopied"));
       setTimeout(() => setCopiedPhone(false), 2000);
     } catch {
-      toast.error("Failed to copy phone number");
+      toast.error(t("web.messaging.whatsappChat.copyPhoneFailed"));
     }
   };
 
   const handleCopyEmail = async () => {
     if (!contactEmail) {
-      toast.error("Email not available");
+      toast.error(t("web.messaging.whatsappChat.emailNotAvailable"));
       return;
     }
     try {
       await navigator.clipboard.writeText(contactEmail);
       setCopiedEmail(true);
-      toast.success("Email copied");
+      toast.success(t("web.messaging.whatsappChat.emailCopied"));
       setTimeout(() => setCopiedEmail(false), 2000);
     } catch {
-      toast.error("Failed to copy email");
+      toast.error(t("web.messaging.whatsappChat.copyEmailFailed"));
     }
   };
   
@@ -261,14 +268,14 @@ export default function WhatsAppChat({
     if (isProviderChat) {
       // Provider viewing customer profile
       if (!conversation?.customer_id) {
-        toast.error("Customer information not available");
+        toast.error(t("web.messaging.whatsappChat.customerInfoUnavailable"));
         return;
       }
       window.location.href = `/provider/customers/${conversation.customer_id}/profile`;
     } else {
       // Customer viewing provider profile
       if (!conversation?.provider_id) {
-        toast.error("Provider information not available");
+        toast.error(t("web.messaging.whatsappChat.providerInfoUnavailable"));
         return;
       }
       window.location.href = `/partner-profile?slug=${conversation.provider_id}`;
@@ -277,7 +284,7 @@ export default function WhatsAppChat({
 
   const handleTogglePin = async () => {
     if (!conversation?.id) {
-      toast.error("Cannot pin: Conversation ID is missing");
+      toast.error(t("web.messaging.whatsappChat.pinMissingConversation"));
       return;
     }
     const nextPinned = !conversation.is_pinned;
@@ -286,17 +293,17 @@ export default function WhatsAppChat({
         ? `/api/provider/conversations/${conversation.id}/pin`
         : `/api/me/conversations/${conversation.id}/pin`;
       await fetcher.patch(endpoint, { pinned: nextPinned });
-      toast.success(nextPinned ? "Chat pinned" : "Chat unpinned");
+      toast.success(nextPinned ? t("web.messaging.whatsappChat.chatPinned") : t("web.messaging.whatsappChat.chatUnpinned"));
       onConversationUpdate?.();
     } catch (err) {
-      const message = err instanceof FetchError ? err.message : "Failed to update pin";
+      const message = err instanceof FetchError ? err.message : t("web.messaging.whatsappChat.pinUpdateFailed");
       toast.error(message);
     }
   };
 
   const handleDeleteConversation = async () => {
     if (!conversation || !conversation.id) {
-      toast.error("Cannot delete: Conversation ID is missing");
+      toast.error(t("web.messaging.whatsappChat.deleteMissingConversation"));
       setShowDeleteDialog(false);
       return;
     }
@@ -309,7 +316,7 @@ export default function WhatsAppChat({
 
       await fetcher.delete(endpoint);
       
-      toast.success("Conversation deleted");
+      toast.success(t("web.messaging.whatsappChat.conversationDeleted"));
       setShowDeleteDialog(false);
       
       // Call onConversationUpdate to refresh the list
@@ -323,7 +330,7 @@ export default function WhatsAppChat({
       }
     } catch (error) {
       console.error("Error deleting conversation:", error);
-      toast.error("Failed to delete conversation. Please try again.");
+      toast.error(t("web.messaging.whatsappChat.deleteConversationFailed"));
     } finally {
       setIsDeleting(false);
     }
@@ -340,7 +347,7 @@ export default function WhatsAppChat({
       const res = await fetcher.get<{ data: Record<string, any> }>(endpoint);
       setOfferDetailData(res.data);
     } catch {
-      toast.error("Failed to load offer details");
+      toast.error(t("web.messaging.whatsappChat.offerDetailsLoadFailed"));
       setOfferDetailOpen(false);
     } finally {
       setOfferDetailLoading(false);
@@ -348,37 +355,37 @@ export default function WhatsAppChat({
   };
 
   const handleDeclineOffer = async (offerId: string) => {
-    if (!window.confirm("Decline this custom offer? The provider will be notified.")) return;
+    if (!window.confirm(t("web.messaging.whatsappChat.declineOfferConfirm"))) return;
     setDecliningOfferId(offerId);
     try {
       await fetcher.post(`/api/me/custom-offers/${offerId}/decline`, {});
-      toast.success("Offer declined");
+      toast.success(t("web.messaging.whatsappChat.offerDeclined"));
       setPaymentOptionOpen(false);
       setOfferDetailOpen(false);
       await loadMessages();
       onConversationUpdate?.();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to decline offer");
+      toast.error(err instanceof FetchError ? err.message : t("web.messaging.whatsappChat.declineOfferFailed"));
     } finally {
       setDecliningOfferId(null);
     }
   };
 
   const handleRequestChanges = async (offerId: string) => {
-    const note = window.prompt("What would you like changed on this offer?");
+    const note = window.prompt(t("web.messaging.whatsappChat.requestChangesPrompt"));
     if (note === null) return;
     if (!note.trim()) {
-      toast.error("Please describe the changes you want");
+      toast.error(t("web.messaging.whatsappChat.requestChangesEmpty"));
       return;
     }
     try {
       await fetcher.post(`/api/me/custom-offers/${offerId}/request-changes`, { note: note.trim() });
-      toast.success("Change request sent");
+      toast.success(t("web.messaging.whatsappChat.changeRequestSent"));
       setOfferDetailOpen(false);
       await loadMessages();
       onConversationUpdate?.();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to request changes");
+      toast.error(err instanceof FetchError ? err.message : t("web.messaging.whatsappChat.requestChangesFailed"));
     }
   };
 
@@ -393,15 +400,15 @@ export default function WhatsAppChat({
       if (url) {
         window.location.href = url;
       } else if (res.data?.charged) {
-        toast.success("Payment successful — booking confirmed!");
+        toast.success(t("web.messaging.whatsappChat.paymentSuccessful"));
         setPaymentOptionOpen(false);
         setOfferDetailOpen(false);
         setTimeout(() => loadMessages(), 600);
       } else {
-        toast.error("Unable to start payment. Please try again.");
+        toast.error(t("web.messaging.whatsappChat.paymentStartFailed"));
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to accept offer");
+      toast.error(err instanceof FetchError ? err.message : t("web.messaging.whatsappChat.acceptOfferFailed"));
     } finally {
       setIsAcceptingOffer(false);
     }
@@ -426,7 +433,7 @@ export default function WhatsAppChat({
   const formatPaymentMoney = useCallback((amount: number, currency?: string) => {
     if (!currency) return amount.toFixed(2);
     try {
-      return new Intl.NumberFormat(undefined, {
+      return new Intl.NumberFormat(getDefaultMoneyLocale(), {
         style: "currency",
         currency,
         maximumFractionDigits: 2,
@@ -455,7 +462,7 @@ export default function WhatsAppChat({
 
     for (const file of files) {
       if (!allowedTypes.includes(file.type)) {
-        toast.error(`${file.name}: Invalid file type`);
+        toast.error(t("web.messaging.whatsappChat.invalidFileType", { name: file.name }));
         continue;
       }
 
@@ -468,7 +475,7 @@ export default function WhatsAppChat({
 
       if (file.size > maxSize) {
         const sizeMB = Math.round(maxSize / (1024 * 1024));
-        toast.error(`${file.name}: File too large (max ${sizeMB}MB)`);
+        toast.error(t("web.messaging.whatsappChat.fileTooLarge", { name: file.name, sizeMB }));
         continue;
       }
 
@@ -487,7 +494,7 @@ export default function WhatsAppChat({
 
     if (validFiles.length > 0) {
       setSelectedFiles((prev) => [...prev, ...validFiles]);
-      toast.success(`${validFiles.length} file(s) selected`);
+      toast.success(t("web.messaging.whatsappChat.filesSelected", { count: validFiles.length }));
     }
 
     // Reset input
@@ -717,7 +724,7 @@ export default function WhatsAppChat({
       setMessages(transformed);
     } catch (err) {
       setMessages([]);
-      toast.error("Failed to load messages");
+      toast.error(t("web.messaging.whatsappChat.loadMessagesFailed"));
       console.error("Error loading messages:", err);
     } finally {
       setIsLoading(false);
@@ -880,13 +887,13 @@ export default function WhatsAppChat({
 
         if (!uploadResponse.ok) {
           const error = await uploadResponse.json();
-          throw new Error(error.error?.message || "Failed to upload files");
+          throw new Error(error.error?.message || t("web.messaging.whatsappChat.uploadFilesFailed"));
         }
 
         const uploadData = await uploadResponse.json();
         uploadedAttachments = uploadData.data?.attachments || [];
       } catch (err: any) {
-        toast.error(err.message || "Failed to upload files");
+        toast.error(err.message || t("web.messaging.whatsappChat.uploadFilesFailed"));
         setIsUploading(false);
         return;
       } finally {
@@ -900,7 +907,7 @@ export default function WhatsAppChat({
       id: tempId,
       conversation_id: conversation.id,
       sender_id: currentUserId,
-      content: messageContent || (uploadedAttachments.length > 0 ? "📎 Attachment" : ""),
+      content: messageContent || (uploadedAttachments.length > 0 ? t("web.messaging.whatsappChat.optimisticAttachment") : ""),
       attachments: uploadedAttachments,
       created_at: new Date().toISOString(),
       read_at: undefined,
@@ -948,13 +955,13 @@ export default function WhatsAppChat({
       // Remove optimistic message on error
       setMessages((prev) => (Array.isArray(prev) ? prev : []).filter((m) => m.id !== tempId));
       
-      let errorMessage = "Failed to send message";
+      let errorMessage = t("web.messaging.whatsappChat.sendMessageFailed");
       if (err instanceof FetchError) {
-        errorMessage = err.message || "Failed to send message";
+        errorMessage = err.message || t("web.messaging.whatsappChat.sendMessageFailed");
         if (isProviderChat && isPlanGateErrorCode(err.code)) {
           toast.error(errorMessage, {
             action: {
-              label: "View plans",
+              label: t("web.messaging.whatsappChat.viewPlans"),
               onClick: () => {
                 window.location.assign("/provider/subscription");
               },
@@ -985,7 +992,7 @@ export default function WhatsAppChat({
     if (isToday(date)) {
       return format(date, "HH:mm");
     } else if (isYesterday(date)) {
-      return "Yesterday";
+      return t("web.messaging.whatsappChat.yesterday");
     } else {
       return format(date, "dd/MM/yyyy");
     }
@@ -995,9 +1002,9 @@ export default function WhatsAppChat({
     if (!conversation) return "";
     // For provider chat, show customer name; for customer chat, show provider name
     if (isProviderChat) {
-      return conversation.customer_name || "Customer";
+      return conversation.customer_name || t("web.messaging.whatsappChat.customer");
     } else {
-      return conversation.provider_name || "Provider";
+      return conversation.provider_name || t("web.messaging.whatsappChat.provider");
     }
   };
 
@@ -1018,7 +1025,7 @@ export default function WhatsAppChat({
           <div className="w-16 h-16 rounded-full bg-primary mx-auto mb-4 flex items-center justify-center">
             <Send className="w-8 h-8 text-white" />
           </div>
-          <p className="text-[#667781] text-sm">Select a conversation to start messaging</p>
+          <p className="text-[#667781] text-sm">{t("web.messaging.whatsappChat.selectConversation")}</p>
         </div>
       </div>
     );
@@ -1031,8 +1038,8 @@ export default function WhatsAppChat({
         {onBack && (
           <button
             onClick={onBack}
-            className="md:hidden p-2 -ml-1 hover:bg-white/10 rounded-full transition-colors active:bg-white/20"
-            aria-label="Back to conversations"
+            className="md:hidden p-2 -ms-1 hover:bg-white/10 rounded-full transition-colors active:bg-white/20"
+            aria-label={t("web.messaging.whatsappChat.backToConversations")}
           >
             <ArrowLeft className="w-6 h-6" />
           </button>
@@ -1051,7 +1058,7 @@ export default function WhatsAppChat({
             ) : null}
           </h2>
           {conversation.booking_number && (
-            <p className="text-xs text-white/80 truncate">Booking #{conversation.booking_number}</p>
+            <p className="text-xs text-white/80 truncate">{t("web.messaging.whatsappChat.bookingNumber", { number: conversation.booking_number })}</p>
           )}
         </div>
         <div className="flex items-center gap-1 md:gap-2">
@@ -1059,7 +1066,7 @@ export default function WhatsAppChat({
             <button
               onClick={() => setShowCustomOfferModal(true)}
               className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors"
-              title="Send Custom Offer"
+              title={t("web.messaging.whatsappChat.sendCustomOffer")}
             >
               <Tag className="w-5 h-5" />
             </button>
@@ -1068,7 +1075,7 @@ export default function WhatsAppChat({
             <button
               onClick={handlePhoneCall}
               className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors"
-              title={isProviderChat ? "Call client" : "Call"}
+              title={isProviderChat ? t("web.messaging.whatsappChat.callClient") : t("web.messaging.whatsappChat.call")}
             >
               <Phone className="w-5 h-5" />
             </button>
@@ -1077,13 +1084,13 @@ export default function WhatsAppChat({
             <DropdownMenuTrigger asChild>
               <button
                 className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors flex items-center gap-1"
-                title={isProviderChat ? "Client details & options" : "More options"}
-                aria-label={isProviderChat ? "Client details and options" : "More options"}
+                title={isProviderChat ? t("web.messaging.whatsappChat.clientDetailsOptions") : t("web.messaging.whatsappChat.moreOptions")}
+                aria-label={isProviderChat ? t("web.messaging.whatsappChat.clientDetailsAndOptions") : t("web.messaging.whatsappChat.moreOptions")}
               >
                 {isProviderChat ? (
                   <>
                     <Info className="w-5 h-5 md:w-5 md:h-5" />
-                    <span className="hidden sm:inline text-xs font-medium">Details</span>
+                    <span className="hidden sm:inline text-xs font-medium">{t("web.messaging.whatsappChat.details")}</span>
                   </>
                 ) : (
                   <MoreVertical className="w-5 h-5" />
@@ -1094,21 +1101,21 @@ export default function WhatsAppChat({
               {isProviderChat && conversation.customer_id && (
                 <>
                   <DropdownMenuItem onClick={() => setShowCustomOfferModal(true)}>
-                    <Tag className="w-4 h-4 mr-2" />
-                    Send Custom Offer
+                    <Tag className="w-4 h-4 me-2" />
+                    {t("web.messaging.whatsappChat.sendCustomOffer")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleViewProfile}>
-                    <User className="w-4 h-4 mr-2" />
-                    View Customer Profile
+                    <User className="w-4 h-4 me-2" />
+                    {t("web.messaging.whatsappChat.viewCustomerProfile")}
                   </DropdownMenuItem>
                   {(contactPhone || contactEmail) && <DropdownMenuSeparator />}
                 </>
               )}
               {conversation.provider_id && !isProviderChat && (
                 <DropdownMenuItem onClick={handleViewProfile}>
-                  <User className="w-4 h-4 mr-2" />
-                  View Provider Profile
+                  <User className="w-4 h-4 me-2" />
+                  {t("web.messaging.whatsappChat.viewProviderProfile")}
                 </DropdownMenuItem>
               )}
               {contactPhone && (
@@ -1116,19 +1123,19 @@ export default function WhatsAppChat({
                   <DropdownMenuItem onClick={handleCopyPhone}>
                     {copiedPhone ? (
                       <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Copied!
+                        <Check className="w-4 h-4 me-2" />
+                        {t("web.messaging.whatsappChat.copied")}
                       </>
                     ) : (
                       <>
-                        <Copy className="w-4 h-4 mr-2" />
-                        {isProviderChat ? "Copy client phone" : "Copy Phone Number"}
+                        <Copy className="w-4 h-4 me-2" />
+                        {isProviderChat ? t("web.messaging.whatsappChat.copyClientPhone") : t("web.messaging.whatsappChat.copyPhoneNumber")}
                       </>
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePhoneCall}>
-                    <Phone className="w-4 h-4 mr-2" />
-                    Call {contactPhone}
+                    <Phone className="w-4 h-4 me-2" />
+                    {t("web.messaging.whatsappChat.callPhone", { phone: contactPhone })}
                   </DropdownMenuItem>
                 </>
               )}
@@ -1136,13 +1143,13 @@ export default function WhatsAppChat({
                 <DropdownMenuItem onClick={handleCopyEmail}>
                   {copiedEmail ? (
                     <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Copied!
+                      <Check className="w-4 h-4 me-2" />
+                      {t("web.messaging.whatsappChat.copied")}
                     </>
                   ) : (
                     <>
-                      <Mail className="w-4 h-4 mr-2" />
-                      {isProviderChat ? "Copy client email" : "Copy Email"}
+                      <Mail className="w-4 h-4 me-2" />
+                      {isProviderChat ? t("web.messaging.whatsappChat.copyClientEmail") : t("web.messaging.whatsappChat.copyEmail")}
                     </>
                   )}
                 </DropdownMenuItem>
@@ -1153,13 +1160,13 @@ export default function WhatsAppChat({
                   <DropdownMenuItem onClick={() => void handleTogglePin()}>
                     {conversation.is_pinned ? (
                       <>
-                        <PinOff className="w-4 h-4 mr-2" />
-                        Unpin chat
+                        <PinOff className="w-4 h-4 me-2" />
+                        {t("web.messaging.whatsappChat.unpinChat")}
                       </>
                     ) : (
                       <>
-                        <Pin className="w-4 h-4 mr-2" />
-                        Pin chat
+                        <Pin className="w-4 h-4 me-2" />
+                        {t("web.messaging.whatsappChat.pinChat")}
                       </>
                     )}
                   </DropdownMenuItem>
@@ -1167,8 +1174,8 @@ export default function WhatsAppChat({
                     onClick={() => setShowDeleteDialog(true)}
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"
                   >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Conversation
+                    <Trash2 className="w-4 h-4 me-2" />
+                    {t("web.messaging.whatsappChat.deleteConversation")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -1181,19 +1188,19 @@ export default function WhatsAppChat({
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Conversation</AlertDialogTitle>
+            <AlertDialogTitle>{t("web.messaging.whatsappChat.deleteConversation")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this conversation? This action cannot be undone and all messages will be permanently deleted.
+              {t("web.messaging.whatsappChat.deleteConversationDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeleting}>{t("web.messaging.whatsappChat.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConversation}
               disabled={isDeleting}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
-              {isDeleting ? "Deleting..." : "Delete"}
+              {isDeleting ? t("web.messaging.whatsappChat.deleting") : t("web.messaging.whatsappChat.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1210,15 +1217,15 @@ export default function WhatsAppChat({
       >
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-[#667781] text-sm">Loading messages...</div>
+            <div className="text-[#667781] text-sm">{t("web.messaging.whatsappChat.loadingMessages")}</div>
           </div>
         ) : (() => {
           const messageList = Array.isArray(messages) ? messages : [];
           return messageList.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <p className="text-[#667781] text-sm">No messages yet</p>
-                <p className="text-[#667781] text-xs mt-1">Start the conversation!</p>
+                <p className="text-[#667781] text-sm">{t("web.messaging.whatsappChat.noMessagesYet")}</p>
+                <p className="text-[#667781] text-xs mt-1">{t("web.messaging.whatsappChat.startConversation")}</p>
               </div>
             </div>
           ) : (
@@ -1248,8 +1255,8 @@ export default function WhatsAppChat({
                     "focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                     isOwnMessage ? "order-first" : "order-last"
                   )}
-                  title="Reply"
-                  aria-label="Reply to message"
+                  title={t("web.messaging.whatsappChat.reply")}
+                  aria-label={t("web.messaging.whatsappChat.replyToMessage")}
                 >
                   <CornerDownRight className="w-4 h-4" />
                 </button>
@@ -1269,7 +1276,7 @@ export default function WhatsAppChat({
                   {quotedReply ? (
                     <div
                       className={cn(
-                        "mb-2 rounded-md border-l-4 pl-2 py-1 pr-1 text-xs cursor-pointer",
+                        "mb-2 rounded-md border-s-4 ps-2 py-1 pe-1 text-xs cursor-pointer",
                         quotedReply.sender_id === currentUserId
                           ? "border-primary/60 bg-primary/5"
                           : "border-primary bg-[#f5f6f6]"
@@ -1327,11 +1334,11 @@ export default function WhatsAppChat({
                         onWithdraw={async () => {
                           try {
                             await fetcher.post(`/api/provider/custom-offers/${att.offer_id}/retract`, {});
-                            toast.success("Offer withdrawn");
+                            toast.success(t("web.messaging.whatsappChat.offerWithdrawn"));
                             loadMessages();
                             onConversationUpdate?.();
                           } catch {
-                            toast.error("Failed to retract offer");
+                            toast.error(t("web.messaging.whatsappChat.retractOfferFailed"));
                           }
                         }}
                         onEdit={() => {
@@ -1347,26 +1354,26 @@ export default function WhatsAppChat({
                     <div className="space-y-2">
                       <p className="text-sm text-[#111b21]">{message.content}</p>
                       <div className="rounded-md border border-primary/20 bg-white/50 p-3">
-                        <div className="text-sm font-semibold text-[#111b21]">Custom Request</div>
+                        <div className="text-sm font-semibold text-[#111b21]">{t("web.messaging.whatsappChat.customRequest")}</div>
                         <div className="text-xs text-[#667781] mt-1">
                           {messagesEndpoint ? (
                             <>
-                              Track it in{" "}
+                              {t("web.messaging.whatsappChat.trackInCustomRequests")}{" "}
                               <a
                                 href="/provider/custom-requests"
                                 className="underline text-primary"
                               >
-                                Custom Requests
+                                {t("web.messaging.whatsappChat.customRequestsLink")}
                               </a>
                             </>
                           ) : (
                             <>
-                              View & respond in{" "}
+                              {t("web.messaging.whatsappChat.viewRespondCustomRequests")}{" "}
                               <a
                                 href="/account-settings/custom-requests"
                                 className="underline text-primary"
                               >
-                                Custom Requests
+                                {t("web.messaging.whatsappChat.customRequestsLink")}
                               </a>
                             </>
                           )}
@@ -1383,7 +1390,7 @@ export default function WhatsAppChat({
                       <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-start gap-3">
                         <div className="text-emerald-600 text-xl mt-0.5">✓</div>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-emerald-800">Payment received — booking confirmed</div>
+                          <div className="text-sm font-semibold text-emerald-800">{t("web.messaging.whatsappChat.paymentReceivedConfirmed")}</div>
                           {message.attachments[0]?.booking_number && (
                             <div className="text-xs text-emerald-600 mt-0.5">#{message.attachments[0].booking_number}</div>
                           )}
@@ -1396,7 +1403,7 @@ export default function WhatsAppChat({
                               }
                               className="text-xs text-emerald-700 underline mt-1 inline-block"
                             >
-                              View Booking →
+                              {t("web.messaging.whatsappChat.viewBookingArrow")}
                             </a>
                           )}
                         </div>
@@ -1416,13 +1423,13 @@ export default function WhatsAppChat({
                               {attachment.expired || !attachment.url ? (
                                 <div className="flex items-center gap-2 p-3 bg-gray-100/80 rounded-lg border border-dashed border-gray-300 text-sm text-[#667781]">
                                   <File className="w-5 h-5 shrink-0 opacity-60" />
-                                  <span>{attachment.name || "Attachment"} is no longer available (retention policy).</span>
+                                  <span>{t("web.messaging.whatsappChat.attachmentExpiredNamed", { name: attachment.name || t("web.messaging.whatsappChat.previewAttachment") })}</span>
                                 </div>
                               ) : isImage(attachment.type) ? (
                                 <div className="relative max-w-full">
                                   <Image
                                     src={attachment.url}
-                                    alt={attachment.name || "Image"}
+                                    alt={attachment.name || t("web.messaging.whatsappChat.imageAlt")}
                                     width={300}
                                     height={300}
                                     className="rounded-lg object-cover max-w-full h-auto cursor-pointer"
@@ -1438,7 +1445,7 @@ export default function WhatsAppChat({
                                     className="rounded-lg max-w-full h-auto max-h-[400px]"
                                     preload="metadata"
                                   >
-                                    Your browser does not support the video tag.
+                                    {t("web.messaging.whatsappChat.videoNotSupported")}
                                   </video>
                                 </div>
                               ) : (
@@ -1450,10 +1457,10 @@ export default function WhatsAppChat({
                                 >
                                   <File className="w-5 h-5 text-primary" />
                                   <span className="text-sm text-[#111b21] truncate flex-1">
-                                    {attachment.name || "Document"}
+                                    {attachment.name || t("web.messaging.whatsappChat.document")}
                                   </span>
                                   <span className="text-xs text-[#667781]">
-                                    {attachment.size ? `${Math.round(attachment.size / 1024)}KB` : ""}
+                                    {attachment.size ? t("web.messaging.whatsappChat.sizeKb", { size: Math.round(attachment.size / 1024) }) : ""}
                                   </span>
                                 </a>
                               )}
@@ -1482,8 +1489,8 @@ export default function WhatsAppChat({
                         }`}
                         title={
                           message.read_at 
-                            ? "Read" 
-                            : "Delivered"
+                            ? t("web.messaging.whatsappChat.read")
+                            : t("web.messaging.whatsappChat.delivered")
                         }
                       >
                         {message.read_at ? "✓✓" : "✓"}
@@ -1503,7 +1510,7 @@ export default function WhatsAppChat({
         <button
           onClick={() => scrollToBottom(true)}
           className="absolute bottom-[90px] right-4 z-30 w-10 h-10 bg-white rounded-full shadow-lg border border-gray-200 flex items-center justify-center text-[#667781] hover:text-[#111b21] hover:bg-gray-50 transition-all hover:scale-105 active:scale-95"
-          aria-label="Scroll to bottom"
+          aria-label={t("web.messaging.whatsappChat.scrollToBottom")}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -1564,7 +1571,7 @@ export default function WhatsAppChat({
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-primary truncate">
               {replyingTo.sender_id === currentUserId
-                ? "You"
+                ? t("web.messaging.whatsappChat.you")
                 : replyingTo.sender_name || getContactName()}
             </p>
             <p className="text-xs text-[#667781] line-clamp-2 break-words">
@@ -1575,7 +1582,7 @@ export default function WhatsAppChat({
             type="button"
             onClick={() => setReplyingTo(null)}
             className="p-1 rounded-full text-[#667781] hover:bg-white/80 shrink-0"
-            aria-label="Cancel reply"
+            aria-label={t("web.messaging.whatsappChat.cancelReply")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -1605,7 +1612,7 @@ export default function WhatsAppChat({
             onClick={() => fileInputRef.current?.click()}
             disabled={isSending || isUploading}
             className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-            title="Attach file"
+            title={t("web.messaging.whatsappChat.attachFile")}
           >
             <Paperclip className="w-5 h-5 text-primary" />
           </button>
@@ -1621,8 +1628,8 @@ export default function WhatsAppChat({
                   sendMessage();
                 }
               }}
-              placeholder={selectedFiles.length > 0 ? "Add a caption (optional)" : "Type a message"}
-              className="rounded-full border-gray-200 bg-gray-100 focus:bg-white focus:border-primary pr-12 py-5 md:py-6 text-sm md:text-base message-input"
+              placeholder={selectedFiles.length > 0 ? t("web.messaging.whatsappChat.captionPlaceholder") : t("web.messaging.whatsappChat.typeMessage")}
+              className="rounded-full border-gray-200 bg-gray-100 focus:bg-white focus:border-primary pe-12 py-5 md:py-6 text-sm md:text-base message-input"
               disabled={isSending || isUploading}
               autoFocus
             />
@@ -1669,8 +1676,8 @@ export default function WhatsAppChat({
       <Dialog open={paymentOptionOpen} onOpenChange={(open) => { if (!isAcceptingOffer) setPaymentOptionOpen(open); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Complete Your Payment</DialogTitle>
-            <DialogDescription>Confirm your booking by completing payment below.</DialogDescription>
+            <DialogTitle>{t("web.messaging.whatsappChat.completePaymentTitle")}</DialogTitle>
+            <DialogDescription>{t("web.messaging.whatsappChat.completePaymentDesc")}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
             {paymentQuoteLoading ? (
@@ -1682,48 +1689,48 @@ export default function WhatsAppChat({
                 {paymentQuote?.pricing ? (
                   <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-sm space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600">Service subtotal</span>
+                      <span className="text-gray-600">{t("web.messaging.whatsappChat.serviceSubtotal")}</span>
                       <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.subtotal ?? 0), paymentOfferCurrency)}</span>
                     </div>
                     {Number(paymentQuote.pricing.travelFee ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Travel fee</span>
+                        <span className="text-gray-600">{t("web.messaging.whatsappChat.travelFee")}</span>
                         <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.travelFee ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.promotionDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Promotion discount</span>
+                        <span className="text-emerald-700">{t("web.messaging.whatsappChat.promotionDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.promotionDiscountAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.membershipDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Membership discount</span>
+                        <span className="text-emerald-700">{t("web.messaging.whatsappChat.membershipDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.membershipDiscountAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.loyaltyDiscountAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-emerald-700">Loyalty discount</span>
+                        <span className="text-emerald-700">{t("web.messaging.whatsappChat.loyaltyDiscount")}</span>
                         <span className="font-medium text-emerald-700">-{formatPaymentMoney(Number(paymentQuote.pricing.loyaltyDiscountAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.taxAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Tax</span>
+                        <span className="text-gray-600">{t("web.messaging.whatsappChat.tax")}</span>
                         <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.taxAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.serviceFeeAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Platform fee</span>
+                        <span className="text-gray-600">{t("web.messaging.whatsappChat.platformFee")}</span>
                         <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.serviceFeeAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
                     {Number(paymentQuote.pricing.tipAmount ?? 0) > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600">Tip</span>
+                        <span className="text-gray-600">{t("web.messaging.whatsappChat.tip")}</span>
                         <span className="font-medium text-gray-900">{formatPaymentMoney(Number(paymentQuote.pricing.tipAmount ?? 0), paymentOfferCurrency)}</span>
                       </div>
                     )}
@@ -1732,22 +1739,22 @@ export default function WhatsAppChat({
                 {/* Pay in Full — always the primary recommended action */}
                 <div className="rounded-xl border-2 border-primary bg-primary/5 p-4">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-primary text-sm">Pay in Full</span>
-                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">Recommended</span>
+                    <span className="font-semibold text-primary text-sm">{t("web.messaging.whatsappChat.payInFull")}</span>
+                    <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full font-medium">{t("web.messaging.whatsappChat.recommended")}</span>
                   </div>
                   {paymentQuote?.pricing?.totalAmount != null && (
                     <div className="text-2xl font-bold text-gray-900 mb-1">
                       {formatPaymentMoney(paymentQuote.pricing.totalAmount, paymentOfferCurrency)}
                     </div>
                   )}
-                  <p className="text-xs text-gray-500 mb-3">Secure instant confirmation · No balance due later</p>
+                  <p className="text-xs text-gray-500 mb-3">{t("web.messaging.whatsappChat.payInFullHint")}</p>
                   <Button
                     className="w-full"
                     disabled={isAcceptingOffer}
                     onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "full")}
                   >
-                    {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                    Pay in Full
+                    {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
+                    {t("web.messaging.whatsappChat.payInFull")}
                   </Button>
                 </div>
 
@@ -1756,13 +1763,13 @@ export default function WhatsAppChat({
                   <>
                     <div className="flex items-center gap-2 my-1">
                       <div className="flex-1 h-px bg-gray-200" />
-                      <span className="text-xs text-gray-400 whitespace-nowrap">or pay a deposit</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{t("web.messaging.whatsappChat.orPayDeposit")}</span>
                       <div className="flex-1 h-px bg-gray-200" />
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-medium text-sm text-gray-700">
-                          Pay {paymentQuote.deposit.percentage}% Deposit
+                          {t("web.messaging.whatsappChat.payPercentDeposit", { percent: paymentQuote.deposit.percentage })}
                         </span>
                         {paymentQuote.deposit.deposit_amount != null && (
                           <span className="text-sm font-semibold text-gray-900">
@@ -1772,12 +1779,12 @@ export default function WhatsAppChat({
                       </div>
                       {paymentQuote.deposit.full_total != null && paymentQuote.deposit.deposit_amount != null && (
                         <p className="text-xs text-gray-500 mb-2">
-                          Remaining{" "}
-                          {formatPaymentMoney(
-                            paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!,
-                            paymentOfferCurrency,
-                          )}{" "}
-                          due before appointment
+                          {t("web.messaging.whatsappChat.remainingDue", {
+                            amount: formatPaymentMoney(
+                              paymentQuote.deposit.full_total! - paymentQuote.deposit.deposit_amount!,
+                              paymentOfferCurrency,
+                            ),
+                          })}
                         </p>
                       )}
                       <Button
@@ -1787,8 +1794,8 @@ export default function WhatsAppChat({
                         disabled={isAcceptingOffer}
                         onClick={() => selectedOfferIdForPayment && handleAcceptOffer(selectedOfferIdForPayment, "deposit")}
                       >
-                        {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                        Pay Deposit Only
+                        {isAcceptingOffer ? <Loader2 className="w-4 h-4 animate-spin me-2" /> : null}
+                        {t("web.messaging.whatsappChat.payDepositOnly")}
                       </Button>
                     </div>
                   </>
@@ -1798,7 +1805,7 @@ export default function WhatsAppChat({
           </div>
           <DialogFooter>
             <Button variant="ghost" size="sm" disabled={isAcceptingOffer} onClick={() => setPaymentOptionOpen(false)}>
-              Cancel
+              {t("web.messaging.whatsappChat.cancel")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1808,7 +1815,7 @@ export default function WhatsAppChat({
       <Dialog open={offerDetailOpen} onOpenChange={setOfferDetailOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Custom Offer Details</DialogTitle>
+            <DialogTitle>{t("web.messaging.whatsappChat.offerDetailsTitle")}</DialogTitle>
           </DialogHeader>
           {offerDetailLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -1825,18 +1832,18 @@ export default function WhatsAppChat({
             const isChangesRequestedDetail = rawStatus === "changes_requested";
             const isPaymentPendingDetail = rawStatus === "payment_pending";
             const statusLabel = isPaidDetail
-              ? "Booked ✓"
+              ? t("web.messaging.whatsappChat.statusBooked")
               : isWithdrawnDetail
-                ? "Withdrawn"
+                ? t("web.messaging.whatsappChat.statusWithdrawn")
                 : isDeclinedDetail
-                  ? "Declined"
+                  ? t("web.messaging.whatsappChat.statusDeclined")
                   : isExpiredDetail
-                    ? "Expired"
+                    ? t("web.messaging.whatsappChat.statusExpired")
                     : isPaymentPendingDetail
-                      ? "Payment in progress"
+                      ? t("web.messaging.whatsappChat.statusPaymentInProgress")
                       : isChangesRequestedDetail
-                        ? "Changes requested"
-                      : "Pending";
+                        ? t("web.messaging.whatsappChat.statusChangesRequested")
+                      : t("web.messaging.whatsappChat.statusPending");
             const statusClass = isPaidDetail
               ? "bg-emerald-100 text-emerald-700"
               : isWithdrawnDetail
@@ -1863,7 +1870,7 @@ export default function WhatsAppChat({
                 {/* Service */}
                 {(req.service_name || req.description) && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Service</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.messaging.whatsappChat.service")}</div>
                     <div className="font-semibold text-gray-900">{req.service_name || req.description}</div>
                   </div>
                 )}
@@ -1871,14 +1878,14 @@ export default function WhatsAppChat({
                 {/* Price */}
                 <div className="flex gap-6">
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Price</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.messaging.whatsappChat.price")}</div>
                     <div className="font-bold text-lg text-gray-900">{d.currency} {d.price}</div>
-                    {d.travel_fee ? <div className="text-xs text-gray-500">+ {d.currency} {d.travel_fee} travel fee</div> : null}
+                    {d.travel_fee ? <div className="text-xs text-gray-500">{t("web.messaging.whatsappChat.travelFeeExtra", { currency: d.currency, amount: d.travel_fee })}</div> : null}
                   </div>
                   {d.duration_minutes && (
                     <div>
-                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Duration</div>
-                      <div className="font-semibold text-gray-900">{d.duration_minutes} mins</div>
+                      <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.messaging.whatsappChat.duration")}</div>
+                      <div className="font-semibold text-gray-900">{t("web.messaging.whatsappChat.durationMins", { minutes: d.duration_minutes })}</div>
                     </div>
                   )}
                 </div>
@@ -1887,7 +1894,7 @@ export default function WhatsAppChat({
                 {(d.scheduled_at ?? req.preferred_start_at) && (
                   <div>
                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <Clock className="w-3 h-3" /> Preferred Time
+                      <Clock className="w-3 h-3" /> {t("web.messaging.whatsappChat.preferredTime")}
                     </div>
                     <div className="text-sm text-gray-800">
                       {clientMounted
@@ -1901,10 +1908,10 @@ export default function WhatsAppChat({
                 {(req.location_type || d.location?.name) && (
                   <div>
                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" /> Location
+                      <MapPin className="w-3 h-3" /> {t("web.messaging.whatsappChat.location")}
                     </div>
                     <div className="text-sm text-gray-800 capitalize">
-                      {d.location?.name || (req.location_type === "at_home" ? "At your home" : req.location_type === "at_salon" ? "At the salon" : req.location_type || "–")}
+                      {d.location?.name || (req.location_type === "at_home" ? t("web.messaging.whatsappChat.atYourHome") : req.location_type === "at_salon" ? t("web.messaging.whatsappChat.atTheSalon") : req.location_type || "–")}
                     </div>
                     {req.location_type === "at_home" && req.address_line1 && (
                       <div className="text-xs text-gray-500 mt-0.5">
@@ -1917,10 +1924,10 @@ export default function WhatsAppChat({
                 {/* Expiry */}
                 {d.expiration_at && (
                   <div>
-                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">Offer Expires</div>
+                    <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">{t("web.messaging.whatsappChat.offerExpires")}</div>
                     <div className={cn("text-sm", isExpiredDetail ? "text-amber-600 font-medium" : "text-gray-800")}>
                       {clientMounted ? format(new Date(d.expiration_at), "EEE, d MMM yyyy · HH:mm") : "–"}
-                      {isExpiredDetail && " (expired)"}
+                      {isExpiredDetail && t("web.messaging.whatsappChat.expiredSuffix")}
                     </div>
                   </div>
                 )}
@@ -1929,7 +1936,7 @@ export default function WhatsAppChat({
                 {d.notes && (
                   <div>
                     <div className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <FileText className="w-3 h-3" /> Notes
+                      <FileText className="w-3 h-3" /> {t("web.messaging.whatsappChat.notes")}
                     </div>
                     <div className="text-sm text-gray-800 bg-gray-50 rounded-lg p-2.5">{d.notes}</div>
                   </div>
@@ -1937,28 +1944,27 @@ export default function WhatsAppChat({
 
                 {isChangesRequestedDetail && d.change_request_note && (
                   <div className="text-sm text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-                    <span className="font-semibold">Requested changes: </span>
-                    {d.change_request_note}
+                    {t("web.messaging.whatsappChat.requestedChanges", { note: d.change_request_note })}
                   </div>
                 )}
 
                 {/* Expired hint */}
                 {isExpiredDetail && (
                   <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    This offer has expired. The provider may send a new one.
+                    {t("web.messaging.whatsappChat.expiredHint")}
                   </div>
                 )}
 
                 {/* Withdrawn hint */}
                 {isWithdrawnDetail && (
                   <div className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-3">
-                    This offer has been withdrawn. The provider may send a new one.
+                    {t("web.messaging.whatsappChat.withdrawnHint")}
                   </div>
                 )}
 
                 {isDeclinedDetail && (
                   <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">
-                    You declined this offer. The provider has been notified.
+                    {t("web.messaging.whatsappChat.declinedHint")}
                   </div>
                 )}
 
@@ -1981,7 +1987,7 @@ export default function WhatsAppChat({
                         void openPaymentDialog(d.id, d.currency);
                       }}
                     >
-                      Accept & Pay
+                      {t("web.messaging.whatsappChat.acceptAndPay")}
                     </Button>
                     {rawStatus === "pending" && (
                       <Button
@@ -1992,7 +1998,7 @@ export default function WhatsAppChat({
                           void handleRequestChanges(d.id);
                         }}
                       >
-                        Request changes
+                        {t("web.messaging.whatsappChat.requestChanges")}
                       </Button>
                     )}
                     </>
@@ -2013,7 +2019,7 @@ export default function WhatsAppChat({
                         {decliningOfferId === d.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          "Decline offer"
+                          t("web.messaging.whatsappChat.declineOffer")
                         )}
                       </Button>
                     )}
@@ -2026,8 +2032,8 @@ export default function WhatsAppChat({
                         window.location.href = `/account-settings/bookings/${d.booking_id}`;
                       }}
                     >
-                      <ExternalLink className="w-4 h-4 mr-2" />
-                      View Booking
+                      <ExternalLink className="w-4 h-4 me-2" />
+                      {t("web.messaging.whatsappChat.viewBooking")}
                     </Button>
                   )}
                   {/* Provider: Withdraw offer */}
@@ -2042,27 +2048,27 @@ export default function WhatsAppChat({
                           setShowCustomOfferModal(true);
                         }}
                       >
-                        Edit offer
+                        {t("web.messaging.whatsappChat.editOffer")}
                       </Button>
                     )}
                     <Button
                       variant="outline"
                       className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
                       onClick={async () => {
-                        if (!confirm("Are you sure you want to withdraw this offer?")) return;
+                        if (!confirm(t("web.messaging.whatsappChat.withdrawOfferConfirm"))) return;
                         try {
                           await fetcher.post(`/api/provider/custom-offers/${d.id}/retract`, {});
-                          toast.success("Offer withdrawn");
+                          toast.success(t("web.messaging.whatsappChat.offerWithdrawn"));
                           setOfferDetailOpen(false);
                           loadMessages();
                           onConversationUpdate?.();
                         } catch {
-                          toast.error("Failed to withdraw offer");
+                          toast.error(t("web.messaging.whatsappChat.withdrawOfferFailed"));
                         }
                       }}
                     >
-                      <Undo2 className="w-4 h-4 mr-2" />
-                      Withdraw Offer
+                      <Undo2 className="w-4 h-4 me-2" />
+                      {t("web.messaging.whatsappChat.withdrawOffer")}
                     </Button>
                     </>
                   )}
@@ -2070,7 +2076,7 @@ export default function WhatsAppChat({
               </div>
             );
           })() : (
-            <div className="text-sm text-gray-500 py-4 text-center">Could not load offer details.</div>
+            <div className="text-sm text-gray-500 py-4 text-center">{t("web.messaging.whatsappChat.couldNotLoadOfferDetails")}</div>
           )}
         </DialogContent>
       </Dialog>

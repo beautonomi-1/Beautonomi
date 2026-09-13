@@ -4,6 +4,7 @@
  */
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, ActivityIndicator } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -30,6 +31,12 @@ type AuthSecurityState = {
 };
 
 export default function SettingsDeactivateAccountScreen() {
+  const { t } = useTranslation();
+  const da = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.settingsDeactivateAccount.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { signOut } = useAuth();
   const [password, setPassword] = useState("");
@@ -55,7 +62,7 @@ export default function SettingsDeactivateAccountScreen() {
       .then((res) => {
         if (!alive) return;
         if (res.error) {
-          setProfileLoadError(res.error.message ?? "Could not load account settings.");
+          setProfileLoadError(res.error.message ?? da("loadFailed"));
           return;
         }
         setProfileLoadError(null);
@@ -65,7 +72,7 @@ export default function SettingsDeactivateAccountScreen() {
         setProfilePhone(data?.phone ?? null);
       })
       .catch((e) => {
-        if (alive) setProfileLoadError(getApiErrorMessage(e, "Could not load account settings."));
+        if (alive) setProfileLoadError(getApiErrorMessage(e, da("loadFailed")));
       });
     return () => {
       alive = false;
@@ -76,15 +83,15 @@ export default function SettingsDeactivateAccountScreen() {
     const pwd = password.trim();
     const nonce = verificationNonce.trim();
     if (!authSecurityLoaded) {
-      Alert.alert("Required", "Still loading account security settings. Please try again.");
+      Alert.alert(da("requiredTitle"), da("stillLoading"));
       return;
     }
     if (hasPassword && !pwd) {
-      Alert.alert("Required", "Please enter your password to deactivate.");
+      Alert.alert(da("requiredTitle"), da("enterPassword"));
       return;
     }
     if (!hasPassword && !nonce) {
-      Alert.alert("Required", "Enter the verification code to deactivate.");
+      Alert.alert(da("requiredTitle"), da("enterCode"));
       return;
     }
 
@@ -92,12 +99,12 @@ export default function SettingsDeactivateAccountScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     Alert.alert(
-      "Deactivate account",
-      "Your account will be disabled. You can reactivate anytime by logging in again or opening the reactivate page in the web app. Continue?",
+      da("confirmTitle"),
+      da("confirmBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: da("cancel"), style: "cancel" },
         {
-          text: "Deactivate",
+          text: da("deactivate"),
           style: "destructive",
           onPress: async () => {
             setLoading(true);
@@ -108,15 +115,15 @@ export default function SettingsDeactivateAccountScreen() {
                 reason: reason.trim() || null,
               }) as { data?: unknown; error?: { message?: string } };
               if (res.error) {
-                Alert.alert("Error", res.error.message ?? "Deactivation failed.");
+                Alert.alert(da("errorTitle"), res.error.message ?? da("deactivateFailed"));
                 setLoading(false);
                 return;
               }
               await signOut();
               router.replace("/(auth)/login?deactivated=1" as never);
             } catch (e) {
-              const msg = e instanceof Error ? e.message : "Deactivation failed. Please try again.";
-              Alert.alert("Error", msg);
+              const msg = e instanceof Error ? e.message : da("deactivateFailedRetry");
+              Alert.alert(da("errorTitle"), msg);
             } finally {
               setLoading(false);
             }
@@ -124,28 +131,28 @@ export default function SettingsDeactivateAccountScreen() {
         },
       ]
     );
-  }, [password, verificationNonce, hasPassword, authSecurityLoaded, reason, signOut, router]);
+  }, [password, verificationNonce, hasPassword, authSecurityLoaded, reason, signOut, router, da]);
 
   const requestVerificationCode = useCallback(async () => {
     if (!canVerifyWithCode) {
-      Alert.alert("Add contact method", otpDestination.codeSentMessage);
+      Alert.alert(da("addContactTitle"), otpDestination.codeSentMessage);
       return;
     }
     setRequestingNonce(true);
     try {
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      Alert.alert("Code sent", otpDestination.codeSentMessage);
+      Alert.alert(da("codeSentTitle"), otpDestination.codeSentMessage);
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification code."));
+      Alert.alert(da("errorTitle"), getApiErrorMessage(e, da("sendCodeFailed")));
     } finally {
       setRequestingNonce(false);
     }
-  }, [canVerifyWithCode, otpDestination.codeSentMessage]);
+  }, [canVerifyWithCode, otpDestination.codeSentMessage, da]);
 
   return (
     <ScreenContainer keyboardAvoiding={false}>
-      <ScreenHeader title="Deactivate account" subtitle="Temporarily disable your account" onBack={() => router.back()} />
+      <ScreenHeader title={da("title")} subtitle={da("subtitle")} onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior="padding"
@@ -162,7 +169,7 @@ export default function SettingsDeactivateAccountScreen() {
           <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
             <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#fcd34d", backgroundColor: "rgba(254,243,199,0.8)", padding: 12 }}>
               <Text style={{ fontSize: 14, color: "#92400e" }}>
-                Deactivating disables your account. Your data is kept. You can reactivate anytime by logging in again or opening the reactivate page in the web app.
+                {da("warning")}
               </Text>
             </View>
             {profileLoadError ? (
@@ -172,14 +179,14 @@ export default function SettingsDeactivateAccountScreen() {
               {!authSecurityLoaded ? (
                 <View style={{ alignItems: "center", paddingVertical: 12 }}>
                   <ActivityIndicator color={Colors.gray[600]} />
-                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>Loading verification options…</Text>
+                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>{da("loadingOptions")}</Text>
                 </View>
               ) : hasPassword ? (
                 <>
-                  <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Password</Text>
+                  <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{da("password")}</Text>
                   <TextInput
                     style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                    placeholder="Enter your password"
+                    placeholder={da("passwordPlaceholder")}
                     placeholderTextColor="#9ca3af"
                     value={password}
                     onChangeText={setPassword}
@@ -196,11 +203,11 @@ export default function SettingsDeactivateAccountScreen() {
                     disabled={requestingNonce || !canVerifyWithCode}
                     style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12, alignItems: "center", marginBottom: 10 }}
                   >
-                    <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? "Sending..." : "Send verification code"}</Text>
+                    <Text style={{ color: Colors.gray[900], fontWeight: "600" }}>{requestingNonce ? da("sending") : da("sendCode")}</Text>
                   </TouchableOpacity>
                   <TextInput
                     style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                    placeholder="Enter code"
+                    placeholder={da("codePlaceholder")}
                     placeholderTextColor="#9ca3af"
                     value={verificationNonce}
                     onChangeText={(value) => setVerificationNonce(value.replace(/\D/g, ""))}
@@ -212,10 +219,10 @@ export default function SettingsDeactivateAccountScreen() {
               )}
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Reason (optional)</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{da("reasonLabel")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                placeholder="e.g. Taking a break"
+                placeholder={da("reasonPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={reason}
                 onChangeText={setReason}
@@ -223,7 +230,7 @@ export default function SettingsDeactivateAccountScreen() {
             </View>
             <View style={{ marginTop: 16 }}>
               <ActionButton
-                label={loading ? "Deactivating…" : "Deactivate account"}
+                label={loading ? da("deactivating") : da("confirmTitle")}
                 onPress={handleDeactivate}
                 fullWidth
                 disabled={

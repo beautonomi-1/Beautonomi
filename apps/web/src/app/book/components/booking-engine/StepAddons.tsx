@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import type { BookingData, AddonOption } from "../../types/booking-engine";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   BOOKING_ACCENT,
   BOOKING_WAITLIST_BG,
@@ -35,6 +36,7 @@ interface StepAddonsProps {
 }
 
 export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsProps) {
+  const { t } = useTranslation();
   const subtotal = data.servicesSubtotal;
   const addonsTotal = data.addonsSubtotal;
   const total = subtotal + addonsTotal;
@@ -42,25 +44,25 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Add Extras
+          {t("web.book.engine.addExtras")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Optional treatments to enhance your visit
+          {t("web.book.engine.addExtrasSubtitle")}
         </p>
       </div>
 
       {addons.length === 0 ? (
         <div className="p-5 rounded-3xl" style={cardStyle}>
           <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-            No add-ons available for this selection. You can skip this step.
+            {t("web.book.engine.noAddonsSkip")}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           <p className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Boost Your Session
+            {t("web.book.engine.boostYourSession")}
           </p>
           <div className="space-y-2">
           {addons.map((addon) => {
@@ -71,7 +73,7 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
                 type="button"
                 onClick={() => onToggleAddon(addon.id, addon.price)}
                 className={cn(
-                  "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center justify-between gap-3",
+                  "w-full text-start rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center justify-between gap-3",
                   MIN_TAP,
                   BOOKING_ACTIVE_SCALE
                 )}
@@ -91,7 +93,7 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
                     </p>
                   )}
                   <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                    {addon.duration_minutes ? `+${addon.duration_minutes} min • ` : ""}
+                    {addon.duration_minutes ? t("web.book.engine.durationPlusMin", { minutes: addon.duration_minutes }) : ""}
                     <span style={{ color: BOOKING_ACCENT }}>+{formatCurrency(addon.price, addon.currency)}</span>
                   </p>
                 </div>
@@ -120,14 +122,14 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
 
       <div className="p-5 space-y-2 rounded-3xl" style={cardStyle}>
         <div className="flex justify-between text-sm">
-          <span style={{ color: BOOKING_TEXT_SECONDARY }}>Services</span>
+          <span style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.services")}</span>
           <span className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
             {formatCurrency(subtotal, currency)}
           </span>
         </div>
         {addonsTotal > 0 && (
           <div className="flex justify-between text-sm">
-            <span style={{ color: BOOKING_TEXT_SECONDARY }}>Add-ons</span>
+            <span style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.addons")}</span>
             <span className="font-medium" style={{ color: BOOKING_ACCENT }}>
               +{formatCurrency(addonsTotal, currency)}
             </span>
@@ -137,7 +139,7 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
           className="flex justify-between font-semibold text-base pt-3 border-t"
           style={{ borderColor: BOOKING_EDGE }}
         >
-          <span style={{ color: BOOKING_TEXT_PRIMARY }}>Total</span>
+          <span style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.engine.total")}</span>
           <span style={{ color: BOOKING_ACCENT }}>{formatCurrency(total, currency)}</span>
         </div>
       </div>
@@ -156,7 +158,7 @@ export function StepAddons({ data, addons, onToggleAddon, onNext }: StepAddonsPr
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

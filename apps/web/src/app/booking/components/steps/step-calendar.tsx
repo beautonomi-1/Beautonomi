@@ -9,7 +9,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { formatDate, formatTime } from "@/lib/utils";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 import AddToWaitlistButton from "@/components/booking/AddToWaitlistButton";
 import {
   coerceSelectedDate,
@@ -25,13 +25,6 @@ import {
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 
 const STRIP_DAYS = 21;
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d);
@@ -93,11 +86,16 @@ function isSlotTimeStillSelectable(
   return Number.isFinite(slotTime.getTime()) && slotTime.getTime() > Date.now();
 }
 
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes} min`;
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const MONTH_KEYS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"] as const;
+
+function formatDuration(minutes: number, t: TFunction): string {
+  if (minutes < 60) return t("booking.minutes", { count: minutes });
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  return m > 0
+    ? t("booking.durationHoursMinutes", { hours: h, minutes: m })
+    : t("booking.durationHoursOnly", { hours: h });
 }
 
 interface StepCalendarProps {
@@ -155,9 +153,9 @@ function SlotSkeleton() {
 }
 
 const PERIOD_CONFIG = {
-  morning:   { Icon: Sun,   label: "Morning",   gradient: "from-amber-400 to-orange-400" },
-  afternoon: { Icon: Cloud, label: "Afternoon",  gradient: "from-sky-400 to-blue-500" },
-  evening:   { Icon: Moon,  label: "Evening",    gradient: "from-indigo-500 to-purple-600" },
+  morning:   { Icon: Sun,   gradient: "from-amber-400 to-orange-400" },
+  afternoon: { Icon: Cloud, gradient: "from-sky-400 to-blue-500" },
+  evening:   { Icon: Moon,  gradient: "from-indigo-500 to-purple-600" },
 } as const;
 
 export default function StepCalendar({
@@ -357,7 +355,7 @@ export default function StepCalendar({
           ...slot,
           available: allSlotMaps.every((m) => m.get(slot.time) === true),
           ...(!allSlotMaps.every((m) => m.get(slot.time) === true) && slot.available
-            ? { reason: "Not all staff are available at this time" }
+            ? { reason: t("web.booking.stepCalendar.staffUnavailableReason") }
             : {}),
         }));
         // §Release-audit 2026-04: preserve the first staff's public_slots so
@@ -382,11 +380,11 @@ export default function StepCalendar({
         });
       }
     } catch (error) {
-      toast.error(error instanceof FetchError ? error.message : "Failed to load availability");
+      toast.error(error instanceof FetchError ? error.message : t("web.booking.stepCalendar.loadFailed"));
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, maxAdvanceDays, bookingState.providerTimezone]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId, maxAdvanceDays, bookingState.providerTimezone, t]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();
@@ -514,13 +512,13 @@ export default function StepCalendar({
             {t("booking.selectDateTime")}
           </h2>
         </div>
-        <p className="text-sm text-gray-500 ml-10">
-          Choose a date and time that works for you
+        <p className="text-sm text-gray-500 ms-10">
+          {t("web.booking.stepCalendar.subtitle")}
         </p>
         {totalDuration > 0 && (
-          <div className="ml-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/8 px-3 py-1 text-xs font-medium text-primary">
+          <div className="ms-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/8 px-3 py-1 text-xs font-medium text-primary">
             <Clock className="w-3 h-3" />
-            {formatDuration(totalDuration)} appointment
+            {t("web.booking.stepCalendar.appointmentDuration", { duration: formatDuration(totalDuration, t) })}
           </div>
         )}
         {bookingState.mode === "mobile" && (
@@ -531,9 +529,9 @@ export default function StepCalendar({
           >
             <MapPin className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-blue-900">House Call</p>
+              <p className="text-sm font-semibold text-blue-900">{t("web.booking.stepCalendar.houseCall")}</p>
               <p className="text-xs text-blue-600 mt-0.5">
-                A {travelBuffer}-minute travel buffer is included around your appointment
+                {t("web.booking.stepCalendar.houseCallBuffer", { minutes: travelBuffer })}
               </p>
             </div>
           </motion.div>
@@ -544,7 +542,7 @@ export default function StepCalendar({
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
-            Select a date
+            {t("booking.selectDate")}
           </h3>
           <button
             type="button"
@@ -556,7 +554,7 @@ export default function StepCalendar({
             className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors rounded-lg px-2 py-1.5 hover:bg-primary/6 min-h-[36px]"
           >
             <CalendarDays className="w-3.5 h-3.5" />
-            Full month
+            {t("web.booking.stepCalendar.fullMonth")}
           </button>
         </div>
 
@@ -587,7 +585,7 @@ export default function StepCalendar({
                         ? "border-primary/30 bg-primary/5 hover:border-primary/60"
                         : "border-gray-100 bg-white hover:border-gray-300 hover:shadow-sm"
                 }`}
-                aria-label={`Select ${formatDate(date)}`}
+                aria-label={t("web.booking.stepCalendar.selectDateAria", { date: formatDate(date) })}
                 aria-pressed={isSelected}
               >
                 <span
@@ -595,7 +593,7 @@ export default function StepCalendar({
                     isSelected ? "text-white/70" : isToday ? "text-primary" : "text-gray-400"
                   }`}
                 >
-                  {isToday ? "Today" : date.toLocaleDateString("en-US", { weekday: "short" })}
+                  {isToday ? t("web.booking.stepCalendar.today") : t(`web.booking.stepCalendar.weekday.${WEEKDAY_KEYS[date.getDay()]}`)}
                 </span>
                 <span
                   className={`text-xl font-bold leading-none ${
@@ -609,7 +607,7 @@ export default function StepCalendar({
                     isSelected ? "text-white/70" : "text-gray-400"
                   }`}
                 >
-                  {date.toLocaleDateString("en-US", { month: "short" })}
+                  {t(`web.booking.stepCalendar.monthShort.${MONTH_KEYS[date.getMonth()]}`)}
                 </span>
               </motion.button>
             );
@@ -642,19 +640,19 @@ export default function StepCalendar({
                   onClick={() => canPrevMonth && setMonthViewDate((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}
                   disabled={!canPrevMonth}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                  aria-label="Previous month"
+                  aria-label={t("web.a11y.previousMonth")}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <span className="font-bold text-gray-900 text-base">
-                  {MONTHS[month]} {year}
+                  {t(`web.booking.stepCalendar.month.${MONTH_KEYS[month]}`)} {year}
                 </span>
                 <button
                   type="button"
                   onClick={() => canNextMonth && setMonthViewDate((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}
                   disabled={!canNextMonth}
                   className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-                  aria-label="Next month"
+                  aria-label={t("web.a11y.nextMonth")}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>
@@ -662,9 +660,9 @@ export default function StepCalendar({
 
               {/* Weekday labels */}
               <div className="grid grid-cols-7 px-4 pb-2">
-                {WEEKDAYS.map((w) => (
+                {WEEKDAY_KEYS.map((w) => (
                   <div key={w} className="text-center text-[11px] font-semibold text-gray-400 py-1">
-                    {w}
+                    {t(`web.booking.stepCalendar.weekday.${w}`)}
                   </div>
                 ))}
               </div>
@@ -714,7 +712,7 @@ export default function StepCalendar({
                   onClick={() => setShowMonthCalendar(false)}
                   className="w-full py-3 rounded-2xl bg-gray-100 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition-colors"
                 >
-                  Close
+                  {t("common.close")}
                 </button>
               </div>
             </motion.div>
@@ -737,13 +735,17 @@ export default function StepCalendar({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-gray-900">
-                  {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                  {t("web.booking.stepCalendar.dateHeading", {
+                    weekday: t(`web.booking.stepCalendar.weekdayLong.${WEEKDAY_KEYS[selectedDay.getDay()]}`),
+                    month: t(`web.booking.stepCalendar.month.${MONTH_KEYS[selectedDay.getMonth()]}`),
+                    day: selectedDay.getDate(),
+                  })}
                 </h3>
                 {!isLoading && availability && (
                   <p className="text-xs text-gray-400 mt-0.5">
                     {availableCount === 0
-                      ? "No slots available"
-                      : `${availableCount} slot${availableCount !== 1 ? "s" : ""} available`}
+                      ? t("web.booking.stepCalendar.noSlotsAvailable")
+                      : t("web.booking.stepCalendar.slotsAvailable", { count: availableCount })}
                   </p>
                 )}
               </div>
@@ -752,11 +754,11 @@ export default function StepCalendar({
                 <div className="flex items-center gap-2 text-[11px] text-gray-400">
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-green-400" />
-                    Open
+                    {t("web.booking.stepCalendar.legendOpen")}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-red-300" />
-                    Taken
+                    {t("web.booking.stepCalendar.legendTaken")}
                   </span>
                 </div>
               )}
@@ -764,8 +766,8 @@ export default function StepCalendar({
 
             {isLoading ? (
               <div className="space-y-5">
-                {["Morning", "Afternoon"].map((label) => (
-                  <div key={label}>
+                {(["morning", "afternoon"] as const).map((period) => (
+                  <div key={period}>
                     <div className="h-4 w-20 rounded-full bg-gray-100 animate-pulse mb-3" />
                     <SlotSkeleton />
                   </div>
@@ -774,7 +776,7 @@ export default function StepCalendar({
             ) : selectableSlots.length > 0 ? (
               <div className="space-y-6">
                 {(["morning", "afternoon", "evening"] as const).map((period) => {
-                  const { Icon, label, gradient } = PERIOD_CONFIG[period];
+                  const { Icon, gradient } = PERIOD_CONFIG[period];
                   const groupSlots = selectableSlots.filter((s) => slotTimePeriod(s.time) === period);
                   if (groupSlots.length === 0) return null;
                   const groupAvailCount = groupSlots.filter((s) => s.available).length;
@@ -791,9 +793,9 @@ export default function StepCalendar({
                         <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
                           <Icon className="w-3.5 h-3.5 text-white" />
                         </div>
-                        <span className="text-xs font-bold uppercase tracking-wider text-gray-600">{label}</span>
-                        <span className="ml-auto text-xs text-gray-400 font-medium">
-                          {groupAvailCount} open
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-600">{t(`web.booking.stepCalendar.period.${period}`)}</span>
+                        <span className="ms-auto text-xs text-gray-400 font-medium">
+                          {t("web.booking.stepCalendar.openCount", { count: groupAvailCount })}
                         </span>
                       </div>
 
@@ -810,7 +812,7 @@ export default function StepCalendar({
                               disabled={isUnavailable}
                               whileTap={!isUnavailable ? { scale: 0.92 } : undefined}
                               title={isUnavailable && slot.reason ? slot.reason : undefined}
-                              aria-label={isUnavailable ? `${formatTime(slot.time)} — unavailable` : `Select ${formatTime(slot.time)}`}
+                              aria-label={isUnavailable ? t("web.booking.stepCalendar.slotUnavailableAria", { time: formatTime(slot.time) }) : t("web.booking.stepCalendar.selectTimeAria", { time: formatTime(slot.time) })}
                               aria-pressed={isSelected}
                               className={`relative h-10 px-4 rounded-full text-sm font-semibold border transition-all duration-150 select-none ${
                                 isSelected
@@ -847,9 +849,9 @@ export default function StepCalendar({
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
                   <CalendarDays className="w-8 h-8 text-gray-300" />
                 </div>
-                <p className="font-semibold text-gray-700">No slots for this day</p>
+                <p className="font-semibold text-gray-700">{t("web.booking.stepCalendar.noSlotsForDay")}</p>
                 <p className="text-sm text-gray-400 mt-1 max-w-[200px]">
-                  Try another date or join the waitlist to be notified.
+                  {t("web.booking.stepCalendar.noSlotsHint")}
                 </p>
                 {bookingState.providerId && bookingState.selectedServices.length > 0 && (
                   <div className="mt-5">
@@ -858,7 +860,7 @@ export default function StepCalendar({
                       serviceId={bookingState.selectedServices[0]?.id}
                       staffId={bookingState.selectedServices[0]?.staffId}
                       preferredDate={selectedDay}
-                      onSuccess={() => toast.success("Added to waitlist! We'll notify you when slots open up.")}
+                      onSuccess={() => toast.success(t("web.booking.stepCalendar.waitlistAdded"))}
                       variant="outline"
                       size="default"
                       className="mx-auto"
@@ -887,12 +889,16 @@ export default function StepCalendar({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-gray-900 truncate">
-                  {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                  {t("web.booking.stepCalendar.dateHeadingShort", {
+                    weekday: t(`web.booking.stepCalendar.weekdayLong.${WEEKDAY_KEYS[selectedDay.getDay()]}`),
+                    month: t(`web.booking.stepCalendar.monthShort.${MONTH_KEYS[selectedDay.getMonth()]}`),
+                    day: selectedDay.getDate(),
+                  })}
                   {" · "}
                   {formatTime(bookingState.selectedTimeSlot)}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {formatDuration(totalDuration)} · Tap &quot;Next&quot; to continue
+                  {t("web.booking.stepCalendar.nextToContinue", { duration: formatDuration(totalDuration, t) })}
                 </p>
               </div>
               <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />

@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
     // Get provider appointment settings
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("default_appointment_status, auto_confirm_appointments, require_confirmation_for_bookings, appointment_settings_updated_at")
+      .select("default_appointment_status, auto_confirm_appointments, require_confirmation_for_bookings, appointment_settings_updated_at, confirmation_sla_hours, unconfirmed_expire_hours_before_slot, closeout_grace_minutes_salon, closeout_grace_minutes_at_home, late_arrival_grace_minutes")
       .eq("id", providerId)
       .single();
 
@@ -44,6 +44,11 @@ export async function GET(request: NextRequest) {
       defaultAppointmentStatus: provider?.default_appointment_status || DEFAULT_APPOINTMENT_STATUS,
       autoConfirmAppointments: provider?.auto_confirm_appointments ?? false,
       requireConfirmationForBookings: provider?.require_confirmation_for_bookings ?? true,
+      confirmationSlaHours: provider?.confirmation_sla_hours ?? 2,
+      unconfirmedExpireHoursBeforeSlot: provider?.unconfirmed_expire_hours_before_slot ?? 2,
+      closeoutGraceMinutesSalon: provider?.closeout_grace_minutes_salon ?? 20,
+      closeoutGraceMinutesAtHome: provider?.closeout_grace_minutes_at_home ?? 30,
+      lateArrivalGraceMinutes: provider?.late_arrival_grace_minutes ?? 0,
       updatedAt: provider?.appointment_settings_updated_at || null,
       // Include available status options for UI
       availableStatuses: Object.values(APPOINTMENT_STATUS),
@@ -104,6 +109,21 @@ export async function PATCH(request: NextRequest) {
     if (body.requireConfirmationForBookings !== undefined) {
       updates.require_confirmation_for_bookings = body.requireConfirmationForBookings;
     }
+    if (body.confirmationSlaHours !== undefined) {
+      updates.confirmation_sla_hours = body.confirmationSlaHours;
+    }
+    if (body.unconfirmedExpireHoursBeforeSlot !== undefined) {
+      updates.unconfirmed_expire_hours_before_slot = body.unconfirmedExpireHoursBeforeSlot;
+    }
+    if (body.closeoutGraceMinutesSalon !== undefined) {
+      updates.closeout_grace_minutes_salon = body.closeoutGraceMinutesSalon;
+    }
+    if (body.closeoutGraceMinutesAtHome !== undefined) {
+      updates.closeout_grace_minutes_at_home = body.closeoutGraceMinutesAtHome;
+    }
+    if (body.lateArrivalGraceMinutes !== undefined) {
+      updates.late_arrival_grace_minutes = body.lateArrivalGraceMinutes;
+    }
 
     // Only update if there are changes
     if (Object.keys(updates).length === 0) {
@@ -114,7 +134,7 @@ export async function PATCH(request: NextRequest) {
       .from("providers")
       .update(updates)
       .eq("id", providerId)
-      .select("default_appointment_status, auto_confirm_appointments, require_confirmation_for_bookings, appointment_settings_updated_at")
+      .select("default_appointment_status, auto_confirm_appointments, require_confirmation_for_bookings, appointment_settings_updated_at, confirmation_sla_hours, unconfirmed_expire_hours_before_slot, closeout_grace_minutes_salon, closeout_grace_minutes_at_home, late_arrival_grace_minutes")
       .single();
 
     if (error) {
@@ -125,6 +145,11 @@ export async function PATCH(request: NextRequest) {
       defaultAppointmentStatus: provider.default_appointment_status || DEFAULT_APPOINTMENT_STATUS,
       autoConfirmAppointments: provider.auto_confirm_appointments ?? false,
       requireConfirmationForBookings: provider.require_confirmation_for_bookings ?? true,
+      confirmationSlaHours: provider.confirmation_sla_hours ?? 2,
+      unconfirmedExpireHoursBeforeSlot: provider.unconfirmed_expire_hours_before_slot ?? 2,
+      closeoutGraceMinutesSalon: provider.closeout_grace_minutes_salon ?? 20,
+      closeoutGraceMinutesAtHome: provider.closeout_grace_minutes_at_home ?? 30,
+      lateArrivalGraceMinutes: provider.late_arrival_grace_minutes ?? 0,
       updatedAt: provider.appointment_settings_updated_at,
     });
   } catch (error) {

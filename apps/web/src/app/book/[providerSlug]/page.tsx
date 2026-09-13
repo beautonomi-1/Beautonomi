@@ -2,6 +2,9 @@ import { permanentRedirect, redirect } from "next/navigation";
 import { Suspense } from "react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { bookingUrlNeedsOnlineBookingFlowNew } from "@/lib/booking/booking-url-needs-new-flow";
+import { getPublicProviderBookingSeed } from "@/lib/data/getPublicProviderDetail";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import BookProviderClient from "./book-provider-client";
 
@@ -64,15 +67,19 @@ export default async function BookProviderPage({ params, searchParams }: PagePro
     }
   }
 
+  const localeCtx = await resolveRequestLanguage();
+  const t = await getServerT(localeCtx.language);
+  const initialProvider = await getPublicProviderBookingSeed(providerSlug);
+
   return (
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center">
-          <LoadingTimeout loadingMessage="Loading..." />
+          <LoadingTimeout loadingMessage={t("web.book.providerClient.loadingBooking") as string} />
         </div>
       }
     >
-      <BookProviderClient providerSlug={providerSlug} />
+      <BookProviderClient providerSlug={providerSlug} initialProvider={initialProvider} />
     </Suspense>
   );
 }

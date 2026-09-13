@@ -162,7 +162,7 @@ export default function BlockedUsersScreen() {
                   {item.avatar_url ? (
                     <Image
                       source={{ uri: item.avatar_url }}
-                      style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }}
+                      style={{ width: 44, height: 44, borderRadius: 22, marginEnd: 12 }}
                     />
                   ) : (
                     <View
@@ -173,7 +173,7 @@ export default function BlockedUsersScreen() {
                         backgroundColor: Colors.gray[200],
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginEnd: 12,
                       }}
                     >
                       <Text style={{ fontWeight: "600", color: Colors.gray[600] }}>{initial}</Text>

@@ -27,3 +27,15 @@ describe("resolveAddonLines", () => {
     ).toEqual([{ addon_id: "addon-2", quantity: 2, price: 40, currency: null }]);
   });
 });
+
+describe("recurring instance status", () => {
+  it("materialises series bookings as confirmed", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, join } = await import("node:path");
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const source = await readFile(join(dir, "../create-booking-from-series.ts"), "utf8");
+    expect(source).toMatch(/const dbStatus = "confirmed"/);
+    expect(source).toMatch(/recurring_series_id: row\.id/);
+  });
+});

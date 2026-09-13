@@ -9,6 +9,9 @@ import EmptyState from "@/components/ui/empty-state";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import LoginModal from "@/components/global/login-modal";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
+import { ApproxMoneyLabel } from "@/components/i18n/ApproxMoneyLabel";
 
 function safeMoney(amount: unknown): string {
   const n = typeof amount === "number" ? amount : Number(amount);
@@ -38,6 +41,8 @@ export default function PartnerMemberships({
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [activeMembershipStatus, setActiveMembershipStatus] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
+  const { pp } = usePartnerProfileT();
   const { user, isLoading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -128,10 +133,10 @@ export default function PartnerMemberships({
         window.location.href = url;
         return;
       }
-      toast.success(tender === "wallet" ? "Membership paid from your wallet." : "Membership activated.");
+      toast.success(tender === "wallet" ? pp("membershipPaidWallet") : pp("membershipActivated"));
       setActivePlanId(planId);
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Failed to start membership purchase");
+      toast.error(e instanceof FetchError ? e.message : pp("failedMembershipPurchase"));
     } finally {
       setIsBuying(null);
     }
@@ -139,14 +144,14 @@ export default function PartnerMemberships({
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-      <h2 className="text-2xl font-semibold mb-6">Memberships</h2>
+      <h2 className="text-2xl font-semibold mb-6">{pp("tabMemberships")}</h2>
 
       {isLoading ? (
-        <LoadingTimeout loadingMessage="Loading memberships..." />
+        <LoadingTimeout loadingMessage={pp("loadingMemberships")} />
       ) : plans.length === 0 ? (
         <EmptyState
-          title="No memberships available"
-          description="This provider doesn't offer any membership plans at this time"
+          title={pp("noMembershipsAvailable")}
+          description={pp("noMembershipsHint")}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -155,22 +160,29 @@ export default function PartnerMemberships({
               <div className="font-semibold">{p.name}</div>
               {p.description && <div className="text-sm text-gray-600 mt-1">{p.description}</div>}
               <div className="text-sm text-gray-900 mt-3">
-                {p.currency ?? ""} {safeMoney(p.price_monthly ?? p.price)} / month
+                <ApproxMoneyLabel
+                  amount={Number(p.price_monthly ?? p.price)}
+                  chargeCurrency={p.currency ?? walletCurrency}
+                />{" "}
+                {t("web.partnerProfile.memberships.perMonth")}
               </div>
               <div className="text-sm text-gray-600">
-                {safeDiscountPct(p.discount_percent)}% off services
+                {pp("percentOffServices", { percent: safeDiscountPct(p.discount_percent) })}
               </div>
               {/* Recurring consent disclosure */}
               {activePlanId !== p.id && (
                 <p className="text-xs text-gray-400 mt-3">
-                  Auto-renews monthly at {p.currency ?? ""} {safeMoney(p.price_monthly ?? p.price)}. Cancel anytime from your account.
+                  {t("web.partnerProfile.memberships.autoRenews", {
+                    amount: safeMoney(p.price_monthly ?? p.price),
+                    currency: p.currency ?? walletCurrency,
+                  })}
                 </p>
               )}
               {activePlanId === p.id && (
                 <p className={`text-xs mt-3 font-medium ${activeMembershipStatus === "paused" ? "text-slate-600" : "text-green-600"}`}>
                   {activeMembershipStatus === "paused"
-                    ? "Paused — manage in account"
-                    : "✓ Active — auto-renews monthly"}
+                    ? pp("subscribedPaused")
+                    : pp("activeAutoRenews")}
                 </p>
               )}
               <Button
@@ -179,14 +191,14 @@ export default function PartnerMemberships({
                 disabled={authLoading || isBuying === p.id || activePlanId === p.id}
               >
                 {authLoading
-                  ? "Checking account..."
+                  ? pp("checkingAccount")
                   : isBuying === p.id
-                    ? "Redirecting..."
+                    ? pp("redirecting")
                     : activePlanId === p.id
                       ? activeMembershipStatus === "paused"
-                        ? "Paused — manage in account"
-                        : "Your current plan"
-                      : "Subscribe"}
+                        ? pp("subscribedPaused")
+                        : pp("yourCurrentPlan")
+                      : pp("subscribeCta")}
               </Button>
               {activePlanId !== p.id &&
               walletBalance != null &&
@@ -197,7 +209,7 @@ export default function PartnerMemberships({
                   onClick={() => void buy(p.id, "wallet")}
                   disabled={authLoading || isBuying === p.id}
                 >
-                  Pay with wallet ({walletCurrency} {safeMoney(walletBalance)})
+                  {pp("payWithWalletCta")} ({walletCurrency} {safeMoney(walletBalance)})
                 </Button>
               ) : null}
             </div>

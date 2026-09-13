@@ -4,13 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import GooglePlayIcon from "../../../public/images/playstore-svgrepo-com.svg";
-import LanguageModal from "../global/langauges-modal";
+import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
 import { Facebook, Linkedin, Instagram, ArrowRight } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicFooterInitial } from "@/types/public-footer-initial";
 import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
 import { MarketCountryFooterPicker } from "@/components/layout/market-country-footer-picker";
+import { useTranslation } from "@beautonomi/i18n";
+import { translateFooterLinkTitle } from "@/lib/i18n/translate-footer-link";
 
 interface FooterLink {
   id: string;
@@ -41,8 +43,9 @@ export default function Footer({
   /** When provided (e.g. home RSC), links/settings render immediately without client fetch */
   initialFooter?: PublicFooterInitial;
 }) {
+  const { t } = useTranslation();
+  const openPreferences = useOpenGlobalPreferences();
   const pathname = usePathname();
-  const [modalOpen, setModalOpen] = useState(false);
   const [footerLinks, setFooterLinks] = useState<FooterLink[]>(
     () => initialFooter?.links ?? [],
   );
@@ -58,10 +61,6 @@ export default function Footer({
 
   const isProviderPage = Boolean(pathname?.includes("/become-a-partner"));
   const appContext = isProviderPage ? "provider" : "customer";
-
-  const _handleOpenModal = () => {
-    setModalOpen(true);
-  };
 
   useEffect(() => {
     if (initialFooter !== undefined) return;
@@ -178,6 +177,7 @@ export default function Footer({
 
   // Helper to render a link
   const renderLink = (link: FooterLink) => {
+    const label = translateFooterLinkTitle(t, link.href, link.title);
     if (link.is_external) {
       return (
         <a
@@ -186,13 +186,13 @@ export default function Footer({
           rel="noopener noreferrer"
           className="hover:underline"
         >
-          {link.title}
+          {label}
         </a>
       );
     }
     return (
       <Link href={link.href} className="hover:underline">
-        {link.title}
+        {label}
       </Link>
     );
   };
@@ -230,7 +230,7 @@ export default function Footer({
                     className="h-5 w-5 shrink-0"
                     aria-hidden
                   />
-                  <span className="text-sm font-normal">{androidApp.title}</span>
+                  <span className="text-sm font-normal">{t("web.layout.footer.android")}</span>
                 </a>
               )}
               {iosApp && (
@@ -243,7 +243,7 @@ export default function Footer({
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
                   </svg>
-                  <span className="text-sm font-normal">{iosApp.title}</span>
+                  <span className="text-sm font-normal">{t("web.layout.footer.ios")}</span>
                 </a>
               )}
             </div>
@@ -263,10 +263,10 @@ export default function Footer({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-sm">
               <div>
-                <h4 className="font-semibold text-sm text-gray-900 mb-3">About Beautonomi</h4>
+                <h4 className="font-semibold text-sm text-gray-900 mb-3">{t("web.layout.footer.aboutBeautonomi")}</h4>
                 <ul className="space-y-2 text-sm font-light text-gray-600">
                   <li className="hover:underline">
-                    <Link href="/learn">Learning Center</Link>
+                    <Link href="/learn">{t("web.layout.footer.learningCenter")}</Link>
                   </li>
                   {(linksBySection.about ?? []).map((link) => (
                     <li key={link.id} className="hover:underline">
@@ -277,7 +277,7 @@ export default function Footer({
               </div>
               {businessLinks.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-900 mb-3">For Business</h4>
+                  <h4 className="font-semibold text-sm text-gray-900 mb-3">{t("web.layout.footer.forBusiness")}</h4>
                   <ul className="space-y-2 text-sm font-light text-gray-600">
                     {businessLinks.map((link) => (
                       <li key={link.id} className="hover:underline">
@@ -289,7 +289,7 @@ export default function Footer({
               )}
               {legalLinks.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-900 mb-3">Legal</h4>
+                  <h4 className="font-semibold text-sm text-gray-900 mb-3">{t("web.layout.footer.legal")}</h4>
                   <ul className="space-y-2 text-sm font-light text-gray-600">
                     {legalLinks.map((link) => (
                       <li key={link.id} className="hover:underline">
@@ -308,7 +308,7 @@ export default function Footer({
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">
-                {footerSettings.social_label || "Find us on social:"}
+                {footerSettings.social_label || t("web.layout.footer.findUsOnSocial")}
               </span>
               <div className="flex items-center gap-3">
                 {socialLinks.length > 0 ? (
@@ -381,26 +381,33 @@ export default function Footer({
                 )}
               </div>
             </div>
-            <div className="flex flex-col items-center gap-2 md:items-end md:text-right">
+            <div className="flex flex-col items-center gap-2 md:items-end md:text-end">
               <Suspense fallback={null}>
                 <MarketCountryFooterPicker />
               </Suspense>
               <div className="flex flex-wrap justify-center md:justify-end items-baseline gap-x-3 gap-y-1 text-[11px] leading-tight text-gray-500">
-              <span className="text-center md:text-right">
-                {footerSettings.copyright_text || "© 2024 Beautonomi. All rights reserved."}
+              <span className="text-center md:text-end">
+                {footerSettings.copyright_text || t("web.layout.footer.copyright")}
               </span>
               <span className="text-gray-400 hidden sm:inline">·</span>
-              <Link href="/sitemap.xml" className="hover:underline text-center md:text-right">Sitemap</Link>
+              <Link href="/sitemap.xml" className="hover:underline text-center md:text-end">{t("web.layout.footer.sitemap")}</Link>
               <span className="text-gray-400 hidden sm:inline">·</span>
-              <CookieSettingsFooterLink variant="footer" className="text-center md:text-right" showChevron />
+              <button
+                type="button"
+                onClick={() => openPreferences({ surface: "footer" })}
+                className="hover:underline text-center md:text-end min-h-[44px] inline-flex items-center"
+              >
+                {t("web.preferences.title")}
+              </button>
               <span className="text-gray-400 hidden sm:inline">·</span>
-              <Link href="/learn" className="hover:underline text-center md:text-right">Learning Center</Link>
+              <CookieSettingsFooterLink variant="footer" className="text-center md:text-end" showChevron />
+              <span className="text-gray-400 hidden sm:inline">·</span>
+              <Link href="/learn" className="hover:underline text-center md:text-end">{t("web.layout.footer.learningCenter")}</Link>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <LanguageModal open={modalOpen} onOpenChange={setModalOpen} />
     </footer>
   );
 }

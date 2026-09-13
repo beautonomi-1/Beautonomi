@@ -2,6 +2,7 @@ import { View, Text, ActivityIndicator } from "react-native";
 import { useApi } from "@/hooks/useApi";
 import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   getBookingPaymentChannelLabel,
   type BookingPaymentRow,
@@ -37,6 +38,9 @@ function formatWhen(iso?: string | null): string {
 }
 
 export function BookingPaymentTimeline({ bookingId, currency }: Props) {
+  const { t } = useTranslation();
+  const pt = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.components.bookingPaymentTimeline.${key}`, opts) as string;
   const { data, loading } = useApi<{
     payments?: BookingPaymentRow[];
     refunds?: BookingRefundRow[];
@@ -56,7 +60,7 @@ export function BookingPaymentTimeline({ bookingId, currency }: Props) {
   return (
     <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Payment timeline
+        {pt("title")}
       </Text>
       {payments.map((payment, index) => {
         const channel = getBookingPaymentChannelLabel(payment);
@@ -66,7 +70,7 @@ export function BookingPaymentTimeline({ bookingId, currency }: Props) {
             key={`pay-${index}`}
             style={twStyle("mb-2 flex-row items-start justify-between rounded-lg bg-gray-50 px-3 py-2")}
           >
-            <View style={twStyle("flex-1 pr-2")}>
+            <View style={twStyle("flex-1 pe-2")}>
               <View style={twStyle("flex-row flex-wrap items-center gap-1")}>
                 <View style={twStyle(`rounded-full px-2 py-0.5 ${toneClass.split(" ")[0]}`)}>
                   <Text style={twStyle(`text-[10px] font-semibold uppercase ${toneClass.split(" ")[1]}`)}>
@@ -92,9 +96,10 @@ export function BookingPaymentTimeline({ bookingId, currency }: Props) {
         >
           <View style={twStyle("flex-1")}>
             <Text style={twStyle("text-sm font-semibold text-orange-900")}>
-              Refund −{formatCurrency(Number(refund.amount ?? 0), currency)}
-              {(refund.refund_method ?? "").toLowerCase() === "cash" ? " (in person)" : " (wallet)"}
-              {(refund.status ?? "").toLowerCase() === "pending" ? " · awaiting confirmation" : ""}
+              {(refund.refund_method ?? "").toLowerCase() === "cash"
+                ? pt("refundInPerson", { amount: formatCurrency(Number(refund.amount ?? 0), currency) })
+                : pt("refundWallet", { amount: formatCurrency(Number(refund.amount ?? 0), currency) })}
+              {(refund.status ?? "").toLowerCase() === "pending" ? pt("awaitingConfirmation") : ""}
             </Text>
             <Text style={twStyle("mt-0.5 text-xs text-orange-800")}>
               {formatWhen(refund.created_at)}

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -56,6 +57,7 @@ export function ShiftCreateEditDialog({
   members,
   onSave,
 }: ShiftCreateEditDialogProps) {
+  const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<ShiftFormData>({
     teamMemberId: "",
@@ -126,33 +128,33 @@ export function ShiftCreateEditDialog({
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg font-semibold">
             {isLocationOverride
-              ? "Override Location Operating Hours"
+              ? t("web.provider.pages.team/shifts/dialog.overrideLocation")
               : isScheduleOverride
-              ? "Override Weekly Schedule"
+              ? t("web.provider.pages.team/shifts/dialog.overrideWeekly")
               : shift
-              ? "Edit Shift"
-              : "Add Shift"}
+              ? t("web.provider.pages.team/shifts/dialog.editShift")
+              : t("web.provider.pages.team/shifts/dialog.addShift")}
           </DialogTitle>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
             {isLocationOverride
-              ? "Create a date-specific shift that overrides the inherited location operating hours for this day"
+              ? t("web.provider.pages.team/shifts/dialog.overrideLocationHint")
               : isScheduleOverride
-              ? "Create a date-specific shift that overrides the weekly schedule for this day"
+              ? t("web.provider.pages.team/shifts/dialog.overrideWeeklyHint")
               : shift
-              ? "Update shift details and schedule"
-              : "Create a new shift or repeating schedule"}
+              ? t("web.provider.pages.team/shifts/dialog.editHint")
+              : t("web.provider.pages.team/shifts/dialog.createHint")}
           </p>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
           <div>
-            <Label htmlFor="teamMemberId" className="text-sm sm:text-base">Team Member *</Label>
+            <Label htmlFor="teamMemberId" className="text-sm sm:text-base">{t("web.provider.pages.team/shifts/dialog.teamMemberRequired")}</Label>
             <Select
               value={formData.teamMemberId}
               onValueChange={(value) => setFormData({ ...formData, teamMemberId: value })}
               required
             >
               <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
-                <SelectValue placeholder="Select team member" />
+                <SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectTeamMember")} />
               </SelectTrigger>
               <SelectContent>
                 {members.map((m) => (
@@ -165,7 +167,7 @@ export function ShiftCreateEditDialog({
           </div>
 
           <div>
-            <Label htmlFor="date" className="text-sm sm:text-base">Date *</Label>
+            <Label htmlFor="date" className="text-sm sm:text-base">{t("web.provider.pages.team/shifts/dialog.dateRequired")}</Label>
             <Input
               id="date"
               type="date"
@@ -178,7 +180,7 @@ export function ShiftCreateEditDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="startTime" className="text-sm sm:text-base">Start Time *</Label>
+              <Label htmlFor="startTime" className="text-sm sm:text-base">{t("web.provider.pages.team/shifts/dialog.startTimeRequired")}</Label>
               <Input
                 id="startTime"
                 type="time"
@@ -189,7 +191,7 @@ export function ShiftCreateEditDialog({
               />
             </div>
             <div>
-              <Label htmlFor="endTime" className="text-sm sm:text-base">End Time *</Label>
+              <Label htmlFor="endTime" className="text-sm sm:text-base">{t("web.provider.pages.team/shifts/dialog.endTimeRequired")}</Label>
               <Input
                 id="endTime"
                 type="time"
@@ -219,19 +221,19 @@ export function ShiftCreateEditDialog({
               <div className="flex-1">
                 <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                   <Repeat className="w-4 h-4" />
-                  Alternating Week Shift
+                  {t("web.provider.pages.team/shifts/dialog.alternating")}
                 </Label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Repeat this shift every other week from the selected date.
+                  {t("web.provider.pages.team/shifts/dialog.alternatingHint")}
                 </p>
               </div>
             </div>
 
             {formData.isAlternating && (
-              <div className="ml-0 sm:ml-12 space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="ms-0 sm:ms-12 space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div>
                   <Label htmlFor="alternatingWeek" className="text-sm font-medium">
-                    Starting Week
+                    {t("web.provider.pages.team/shifts/dialog.startingWeek")}
                   </Label>
                   <Select
                     value={formData.alternatingWeek}
@@ -241,12 +243,12 @@ export function ShiftCreateEditDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="week1">Week 1</SelectItem>
-                      <SelectItem value="week2">Week 2</SelectItem>
+                      <SelectItem value="week1">{t("web.provider.pages.team/shifts/dialog.week1")}</SelectItem>
+                      <SelectItem value="week2">{t("web.provider.pages.team/shifts/dialog.week2")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-gray-500 mt-1.5">
-                    Week 1 starts on the selected date. Week 2 starts one week later. Create a second alternating shift if the other week has different hours.
+                    {t("web.provider.pages.team/shifts/dialog.weekHint")}
                   </p>
                 </div>
               </div>
@@ -270,19 +272,19 @@ export function ShiftCreateEditDialog({
               <div className="flex-1">
                 <Label className="text-sm sm:text-base font-medium cursor-pointer flex items-center gap-2">
                   <Repeat className="w-4 h-4" />
-                  Repeating Shift
+                  {t("web.provider.pages.team/shifts/dialog.repeating")}
                 </Label>
                 <p className="text-xs text-gray-500 mt-1">
-                  Repeat this shift from the selected date using the pattern below.
+                  {t("web.provider.pages.team/shifts/dialog.repeatingHint")}
                 </p>
               </div>
             </div>
 
             {formData.isRepeating && (
-              <div className="ml-0 sm:ml-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="ms-0 sm:ms-12 space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <div>
                   <Label htmlFor="repeatPattern" className="text-sm font-medium">
-                    Repeat Pattern
+                    {t("web.provider.pages.team/shifts/dialog.repeatPattern")}
                   </Label>
                   <Select
                     value={formData.repeatPattern}
@@ -293,16 +295,16 @@ export function ShiftCreateEditDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="daily">Daily</SelectItem>
-                      <SelectItem value="weekly">Weekly</SelectItem>
-                      <SelectItem value="biweekly">Bi-weekly (Every 2 weeks)</SelectItem>
-                      <SelectItem value="monthly">Monthly</SelectItem>
+                      <SelectItem value="daily">{t("web.provider.pages.team/shifts/dialog.daily")}</SelectItem>
+                      <SelectItem value="weekly">{t("web.provider.pages.team/shifts/dialog.weekly")}</SelectItem>
+                      <SelectItem value="biweekly">{t("web.provider.pages.team/shifts/dialog.biweekly")}</SelectItem>
+                      <SelectItem value="monthly">{t("web.provider.pages.team/shifts/dialog.monthly")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium mb-2 block">Repeat Ends</Label>
+                  <Label className="text-sm font-medium mb-2 block">{t("web.provider.pages.team/shifts/dialog.repeatEnds")}</Label>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -314,7 +316,7 @@ export function ShiftCreateEditDialog({
                         className="w-4 h-4"
                       />
                       <Label htmlFor="repeatNever" className="text-sm cursor-pointer">
-                        Never
+                        {t("web.provider.common.never")}
                       </Label>
                     </div>
                     <div className="flex items-center gap-2">
@@ -327,14 +329,14 @@ export function ShiftCreateEditDialog({
                         className="w-4 h-4"
                       />
                       <Label htmlFor="repeatEndDate" className="text-sm cursor-pointer">
-                        On date
+                        {t("web.provider.pages.team/shifts/dialog.onDate")}
                       </Label>
                       {formData.repeatEndDate && (
                         <Input
                           type="date"
                           value={formData.repeatEndDate}
                           onChange={(e) => setFormData({ ...formData, repeatEndDate: e.target.value })}
-                          className="ml-2 flex-1 min-h-[44px] touch-manipulation"
+                          className="ms-2 flex-1 min-h-[44px] touch-manipulation"
                         />
                       )}
                     </div>
@@ -348,10 +350,10 @@ export function ShiftCreateEditDialog({
                         className="w-4 h-4"
                       />
                       <Label htmlFor="repeatEndsAfter" className="text-sm cursor-pointer">
-                        After
+                        {t("web.provider.pages.team/shifts/dialog.after")}
                       </Label>
                       {formData.repeatEndsAfter && (
-                        <div className="ml-2 flex items-center gap-2">
+                        <div className="ms-2 flex items-center gap-2">
                           <Input
                             type="number"
                             min={1}
@@ -359,7 +361,7 @@ export function ShiftCreateEditDialog({
                             onChange={(e) => setFormData({ ...formData, repeatEndsAfter: e.target.value })}
                             className="w-20 min-h-[44px] touch-manipulation"
                           />
-                          <span className="text-sm text-gray-600">occurrences</span>
+                          <span className="text-sm text-gray-600">{t("web.provider.pages.team/shifts/dialog.occurrences")}</span>
                         </div>
                       )}
                     </div>
@@ -377,7 +379,7 @@ export function ShiftCreateEditDialog({
               disabled={isSaving}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
@@ -385,12 +387,12 @@ export function ShiftCreateEditDialog({
               className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {isSaving
-                ? "Saving..."
+                ? t("web.provider.common.saving")
                 : isInheritedOverride
-                ? "Create Override"
+                ? t("web.provider.pages.team/shifts/dialog.createOverride")
                 : shift
-                ? "Update Shift"
-                : "Create Shift"}
+                ? t("web.provider.pages.team/shifts/dialog.updateShift")
+                : t("web.provider.pages.team/shifts/dialog.createShift")}
             </Button>
           </DialogFooter>
         </form>

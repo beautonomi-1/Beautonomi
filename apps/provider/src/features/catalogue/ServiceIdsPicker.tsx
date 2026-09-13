@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { twStyle } from "@/lib/twStyle";
 import type { CatalogueServiceItem } from "./types";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ServiceIdsPickerProps {
   visible: boolean;
@@ -26,6 +27,8 @@ export function ServiceIdsPicker({
   onClose,
   onChange,
 }: ServiceIdsPickerProps) {
+  const { t } = useTranslation();
+  const sip = (key: string) => t(`provider.mobile.components.serviceIdsPicker.${key}`) as string;
   const selectable = services.filter(
     (s) =>
       s.service_type !== "variant" &&
@@ -49,12 +52,12 @@ export function ServiceIdsPicker({
       ) : null}
       {selectable.length === 0 ? (
         <Text style={twStyle("py-4 text-center text-sm text-gray-500")}>
-          No services available to include — add a basic service first.
+          {sip("empty")}
         </Text>
       ) : (
         selectable.map((svc) => {
           const checked = selectedIds.includes(svc.id);
-          const label = svc.title ?? svc.name ?? "Service";
+          const label = svc.title ?? svc.name ?? sip("serviceFallback");
           return (
             <TouchableOpacity
               key={svc.id}
@@ -68,7 +71,7 @@ export function ServiceIdsPicker({
                 size={22}
                 color={checked ? "#4f46e5" : "#9ca3af"}
               />
-              <Text style={twStyle("ml-3 flex-1 text-base text-gray-900")}>{label}</Text>
+              <Text style={twStyle("ms-3 flex-1 text-base text-gray-900")}>{label}</Text>
             </TouchableOpacity>
           );
         })
@@ -77,7 +80,7 @@ export function ServiceIdsPicker({
         style={twStyle("mt-3 rounded-xl bg-indigo-600 py-3")}
         onPress={onClose}
       >
-        <Text style={twStyle("text-center font-semibold text-white")}>Done</Text>
+        <Text style={twStyle("text-center font-semibold text-white")}>{sip("done")}</Text>
       </TouchableOpacity>
     </BottomSheet>
   );
@@ -98,10 +101,12 @@ export function ServiceIdsChips({
   onPressEdit,
   emptyHint,
 }: ServiceIdsChipsProps) {
+  const { t } = useTranslation();
+  const sip = (key: string) => t(`provider.mobile.components.serviceIdsPicker.${key}`) as string;
   const names = selectedIds
     .map((id) => services.find((s) => s.id === id))
     .filter(Boolean)
-    .map((s) => s!.title ?? s!.name ?? "Service");
+    .map((s) => s!.title ?? s!.name ?? sip("serviceFallback"));
 
   return (
     <View style={twStyle("mb-3")}>
@@ -130,11 +135,13 @@ export function ServiceIdsChips({
 export function IncludedServicesPicker(
   props: Omit<ServiceIdsPickerProps, "title" | "description">,
 ) {
+  const { t } = useTranslation();
+  const sip = (key: string) => t(`provider.mobile.components.serviceIdsPicker.${key}`) as string;
   return (
     <ServiceIdsPicker
       {...props}
-      title="Included services"
-      description="Select services included in this package."
+      title={sip("includedTitle")}
+      description={sip("includedDescription")}
     />
   );
 }
@@ -143,11 +150,13 @@ export function IncludedServicesPicker(
 export function ApplicableServicesPicker(
   props: Omit<ServiceIdsPickerProps, "title" | "description">,
 ) {
+  const { t } = useTranslation();
+  const sip = (key: string) => t(`provider.mobile.components.serviceIdsPicker.${key}`) as string;
   return (
     <ServiceIdsPicker
       {...props}
-      title="Applicable services"
-      description="Leave empty to apply to all services, or restrict to specific ones."
+      title={sip("applicableTitle")}
+      description={sip("applicableDescription")}
     />
   );
 }

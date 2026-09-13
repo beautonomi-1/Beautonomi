@@ -10,7 +10,9 @@
  * the provider app. If APP_URL is missing we surface a clear config
  * error instead of silently dead-ending.
  */
+import { useCallback, useMemo } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -30,24 +32,33 @@ type Integration = {
   path: string;
 };
 
-const INTEGRATIONS: Integration[] = [
+function buildIntegrations(mi: (key: string) => string): Integration[] {
+  return [
   {
     id: "email",
-    title: "Email (SendGrid / Mailchimp)",
-    description: "Send transactional and marketing email to your clients.",
+    title: mi("emailTitle"),
+    description: mi("emailDesc"),
     icon: "mail-outline",
     path: "/provider/settings/integrations/email",
   },
   {
     id: "twilio",
-    title: "SMS & WhatsApp (Twilio)",
-    description: "Send SMS and WhatsApp reminders, confirmations, and campaigns.",
+    title: mi("twilioTitle"),
+    description: mi("twilioDesc"),
     icon: "chatbubbles-outline",
     path: "/provider/settings/integrations/twilio",
   },
 ];
+}
 
 export default function MarketingIntegrationsScreen() {
+  const { t } = useTranslation();
+  const mi = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.marketingIntegrationsScreen.${key}`, opts) as string,
+    [t],
+  );
+  const INTEGRATIONS = useMemo(() => buildIntegrations(mi), [mi]);
   const router = useRouter();
   const { screenPadding } = useResponsive();
 
@@ -55,8 +66,8 @@ export default function MarketingIntegrationsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!APP_URL) {
       Alert.alert(
-        "Setup unavailable",
-        "Marketing integrations are configured in your web dashboard, but the app can't reach it. Please sign in at your Beautonomi dashboard on the web."
+        mi("setupUnavailableTitle"),
+        mi("setupUnavailableBody")
       );
       return;
     }
@@ -64,8 +75,8 @@ export default function MarketingIntegrationsScreen() {
       pushInAppBrowser(router, `${APP_URL.replace(/\/$/, "")}${item.path}`, item.title);
     } catch (e) {
       Alert.alert(
-        "Couldn't open",
-        e instanceof Error ? e.message : "We couldn't open the integration setup. Please try again."
+        mi("openFailedTitle"),
+        e instanceof Error ? e.message : mi("openFailedBody")
       );
     }
   };
@@ -73,8 +84,8 @@ export default function MarketingIntegrationsScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Marketing integrations"
-        subtitle="Connect marketing tools"
+        title={mi("title")}
+        subtitle={mi("subtitle")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -84,8 +95,7 @@ export default function MarketingIntegrationsScreen() {
       >
         <View style={twStyle("rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4 mb-4")}>
           <Text style={twStyle("text-sm text-gray-700")}>
-            Connect third-party services to send email, SMS, and WhatsApp to your clients. Setup runs
-            in your secure Beautonomi dashboard and syncs back to the app automatically.
+            {mi("intro")}
           </Text>
         </View>
 
@@ -98,12 +108,12 @@ export default function MarketingIntegrationsScreen() {
             )}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={`${item.title} integration`}
-            accessibilityHint="Opens the integration setup in your browser"
+            accessibilityLabel={mi("integrationA11y", { title: item.title })}
+            accessibilityHint={mi("integrationHint")}
           >
             <View
               style={twStyle(
-                "mr-3 h-11 w-11 items-center justify-center rounded-full bg-indigo-50"
+                "me-3 h-11 w-11 items-center justify-center rounded-full bg-indigo-50"
               )}
             >
               <Ionicons name={item.icon} size={22} color="#4f46e5" />
@@ -117,7 +127,7 @@ export default function MarketingIntegrationsScreen() {
         ))}
 
         <Text style={twStyle("mt-2 text-xs text-gray-500 text-center")}>
-          More integrations are added in the web dashboard and appear here automatically.
+          {mi("footer")}
         </Text>
       </ScrollView>
     </ScreenContainer>

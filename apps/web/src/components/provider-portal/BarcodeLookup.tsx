@@ -131,7 +131,7 @@ export function BarcodeLookup({
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleLookup()}
             placeholder={placeholder}
-            className="pl-9 rounded-xl border border-gray-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-primary/20"
+            className="ps-9 rounded-xl border border-gray-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-primary/20"
             disabled={isLoading}
             autoComplete="off"
           />

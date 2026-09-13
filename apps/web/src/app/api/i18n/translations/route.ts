@@ -1,22 +1,22 @@
 import { NextRequest } from "next/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { translations, type SupportedLanguage, DEFAULT_LANGUAGE } from "@/lib/i18n/config";
+import { DEFAULT_LANGUAGE, normalizeLanguageCode, type SupportedLanguage } from "@/lib/i18n/config";
+import { resources } from "@beautonomi/i18n/resources";
 
 /**
- * GET /api/i18n/translations
- * 
- * Get translations for a specific language
+ * GET /api/i18n/translations?lang=fr
+ * Returns the bundled translation namespace for a language (legacy mobile/web clients).
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const lang = (searchParams.get("lang") || DEFAULT_LANGUAGE) as SupportedLanguage;
+    const lang = normalizeLanguageCode(searchParams.get("lang") || DEFAULT_LANGUAGE) as SupportedLanguage;
 
-    const langTranslations = translations[lang] || translations[DEFAULT_LANGUAGE];
+    const bundle = resources[lang as keyof typeof resources] ?? resources.en;
 
     return successResponse({
       language: lang,
-      translations: langTranslations,
+      translations: bundle.translation,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch translations");

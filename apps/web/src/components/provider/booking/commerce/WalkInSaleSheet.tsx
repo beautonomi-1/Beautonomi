@@ -10,6 +10,7 @@ import { percentOf, sumMoney } from "@beautonomi/utils";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import { Input } from "@/components/ui/input";
 import {
   BookingBottomSheet,
@@ -61,6 +62,7 @@ function cartTotals(cart: CartLine[], taxRate: number) {
 }
 
 export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleSheetProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { selectedLocationId } = useProviderPortal();
   const yocoEnabled = useFeatureFlag("payment_yoco");
@@ -90,11 +92,11 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
       );
       setProducts(res?.data?.products ?? []);
     } catch {
-      toast.error("Failed to load products");
+      toast.error(t("web.provider.bookings.walkInSale.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!open) return;
@@ -170,7 +172,7 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
       }),
     );
     if (res?.data?.order) {
-      toast.success(`Sale ${res.data.order.order_number} complete`);
+      toast.success(t("web.provider.bookings.walkInSale.saleComplete", { number: res.data.order.order_number }));
       setCart([]);
       onSuccess?.();
       onOpenChange(false);
@@ -179,7 +181,7 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
       }
       return true;
     }
-    toast.error(res?.error ?? "Sale failed");
+    toast.error(res?.error ?? t("web.provider.bookings.walkInSale.saleFailed"));
     return false;
   };
 
@@ -198,13 +200,13 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
         }>("/api/provider/product-sales", buildPayload({ payment_method: "paycloud" }));
         const id = res?.data?.order?.id;
         if (!id) {
-          toast.error(res?.error ?? "Failed to prepare card sale");
+          toast.error(res?.error ?? t("web.provider.bookings.walkInSale.prepareFailed"));
           return;
         }
         setPaycloudOrderId(id);
         setPaycloudOpen(true);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Failed to prepare card sale");
+        toast.error(err instanceof Error ? err.message : t("web.provider.bookings.walkInSale.prepareFailed"));
       } finally {
         setProcessing(false);
       }
@@ -221,14 +223,14 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
   const header = (
     <div className="flex items-center gap-2">
       <div className="flex-1 min-w-0">
-        <h2 className="text-lg font-semibold text-gray-900">Walk-in sale</h2>
-        <p className="text-xs text-gray-500">Quick in-store product checkout</p>
+        <h2 className="text-lg font-semibold text-gray-900">{t("web.provider.bookings.walkInSale.title")}</h2>
+        <p className="text-xs text-gray-500">{t("web.provider.bookings.walkInSale.subtitle")}</p>
       </div>
       <button
         type="button"
         onClick={() => onOpenChange(false)}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t("common.close")}
       >
         <X className="h-5 w-5" />
       </button>
@@ -244,8 +246,8 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products…"
-              className="pl-9 min-h-[44px]"
+              placeholder={t("web.provider.bookings.walkInSale.searchPlaceholder")}
+              className="ps-9 min-h-[44px]"
             />
           </div>
 
@@ -255,7 +257,7 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
             </div>
           ) : (
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Products</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t("web.provider.bookings.walkInSale.products")}</BookingSectionLabel>
               <ul className="space-y-2 max-h-40 overflow-y-auto">
                 {filtered.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-2 text-sm">
@@ -279,10 +281,10 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
           <BookingSectionCard>
             <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
               <ShoppingCart className="h-4 w-4" />
-              Cart ({cart.length})
+              {t("web.provider.bookings.walkInSale.cartCount", { count: cart.length })}
             </BookingSectionLabel>
             {cart.length === 0 ? (
-              <p className="text-sm text-gray-500">Add products to cart</p>
+              <p className="text-sm text-gray-500">{t("web.provider.bookings.walkInSale.addToCart")}</p>
             ) : (
               <ul className="space-y-2">
                 {cart.map((line) => (
@@ -303,29 +305,29 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
             )}
             {cart.length > 0 ? (
               <>
-                <BookingSummaryRow label="Subtotal" value={formatMoney(subtotal)} />
+                <BookingSummaryRow label={t("web.provider.bookings.walkInSale.subtotal")} value={formatMoney(subtotal)} />
                 {taxAmount > 0 ? (
-                  <BookingSummaryRow label="Tax" value={formatMoney(taxAmount)} />
+                  <BookingSummaryRow label={t("web.provider.bookings.walkInSale.tax")} value={formatMoney(taxAmount)} />
                 ) : null}
-                <BookingSummaryRow label="Total" value={formatMoney(grandTotal)} emphasize />
+                <BookingSummaryRow label={t("web.provider.bookings.walkInSale.total")} value={formatMoney(grandTotal)} emphasize />
               </>
             ) : null}
           </BookingSectionCard>
 
           {cart.length > 0 ? (
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Payment</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t("web.provider.bookings.walkInSale.payment")}</BookingSectionLabel>
               <div className="flex flex-wrap gap-2">
                 {(
                   [
-                    { id: "cash" as const, label: "Cash" },
-                    ...(manualCardEnabled ? [{ id: "card" as const, label: "Card taken" }] : []),
-                    { id: "eft" as const, label: "EFT" },
-                    { id: "other" as const, label: "Other" },
-                    ...(yocoEnabled ? [{ id: "yoco" as const, label: "Yoco" }] : []),
-                    ...(paycloudEnabled ? [{ id: "paycloud" as const, label: "Card machine" }] : []),
+                    { id: "cash" as const, label: t("web.provider.bookings.walkInSale.cash") },
+                    ...(manualCardEnabled ? [{ id: "card" as const, label: t("web.provider.bookings.walkInSale.cardTaken") }] : []),
+                    { id: "eft" as const, label: t("web.provider.bookings.walkInSale.eft") },
+                    { id: "other" as const, label: t("web.provider.bookings.walkInSale.other") },
+                    ...(yocoEnabled ? [{ id: "yoco" as const, label: t("web.provider.bookings.walkInSale.yoco") }] : []),
+                    ...(paycloudEnabled ? [{ id: "paycloud" as const, label: t("web.provider.bookings.walkInSale.cardMachine") }] : []),
                     ...(paystackTerminalEnabled
-                      ? [{ id: "paystack_terminal" as const, label: "Paystack Terminal" }]
+                      ? [{ id: "paystack_terminal" as const, label: t("web.provider.bookings.walkInSale.paystackTerminal") }]
                       : []),
                   ] as const
                 ).map((method) => (
@@ -348,7 +350,9 @@ export function WalkInSaleSheet({ open, onOpenChange, onSuccess }: WalkInSaleShe
                 disabled={processing}
                 onClick={() => void handleCheckout()}
               >
-                {processing ? "Processing…" : `Complete sale · ${formatMoney(grandTotal)}`}
+                {processing
+                  ? t("web.provider.bookings.walkInSale.processing")
+                  : t("web.provider.bookings.walkInSale.completeSale", { amount: formatMoney(grandTotal) })}
               </BookingActionButton>
             </BookingSectionCard>
           ) : null}

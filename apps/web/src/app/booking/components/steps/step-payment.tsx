@@ -144,6 +144,7 @@ function HoldCountdown({
   clockOffsetMs: number;
   onBackToCalendar: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
 
   useEffect(() => {
@@ -180,23 +181,23 @@ function HoldCountdown({
       >
         {tick.expired ? (
           <>
-            <p>Your reserved slot has expired. Go back and pick a new time to continue.</p>
+            <p>{t("web.booking.stepPayment.holdExpiredBody")}</p>
             <Button
               type="button"
               variant="outline"
               className="mt-3 w-full"
               onClick={onBackToCalendar}
             >
-              Back to calendar
+              {t("web.booking.stepPayment.backToCalendar")}
             </Button>
           </>
         ) : (
           <p>
-            Slot held for{" "}
+            {t("web.booking.stepPayment.slotHeldBefore")}
             <span className="tabular-nums">
               {tick.minutes}:{String(tick.seconds).padStart(2, "0")}
             </span>
-            . Complete checkout before the timer ends.
+            {t("web.booking.stepPayment.slotHeldAfter")}
           </p>
         )}
       </div>
@@ -339,8 +340,8 @@ export default function StepPayment({
 
   const saveCardInfo = useMemo(() => {
     const example = formatCurrency(1, tenantCurrency);
-    return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
-  }, [tenantCurrency]);
+    return t("web.booking.stepPayment.saveCardInfo", { example });
+  }, [tenantCurrency, t]);
 
   const returnToCalendarForHold = async () => {
     updateBookingState({
@@ -363,7 +364,7 @@ export default function StepPayment({
     if (!holdId) {
       setHoldExpiresAt(null);
       setIsHoldExpired(false);
-      setHoldLoadError("Missing hold ID");
+      setHoldLoadError(t("web.booking.stepPayment.missingHoldId"));
       setIsHoldLoading(false);
       return;
     }
@@ -403,10 +404,10 @@ export default function StepPayment({
         setIsHoldExpired(expired);
         setHoldLoadError(
           expired
-            ? "Hold expired"
+            ? t("web.booking.stepPayment.holdExpired")
             : inactive
-              ? "This slot is no longer available"
-              : error?.message || "Could not verify your slot hold"
+              ? t("web.booking.stepPayment.slotUnavailable")
+              : error?.message || t("web.booking.stepPayment.holdVerifyFailed")
         );
       })
       .finally(() => {
@@ -471,9 +472,9 @@ export default function StepPayment({
       const listRes = await fetcher.get<{ data: SavedCard[] }>("/api/me/payment-methods");
       const active = (listRes.data || []).filter((c) => c.is_active);
       setSavedCards(active);
-      toast.success("Default card updated");
+      toast.success(t("web.booking.stepPayment.defaultCardUpdated"));
     } catch {
-      toast.error("Failed to set default card");
+      toast.error(t("web.booking.stepPayment.setDefaultFailed"));
     } finally {
       setSettingDefaultId(null);
     }
@@ -486,7 +487,7 @@ export default function StepPayment({
   const handleRemoveSavedCard = async (cardId: string) => {
     if (typeof window !== "undefined") {
       const ok = window.confirm(
-        "Remove this card from your saved cards? You can always re-add it during your next payment."
+        t("web.booking.stepPayment.removeCardConfirm")
       );
       if (!ok) return;
     }
@@ -505,9 +506,9 @@ export default function StepPayment({
           setUseNewCard(true);
         }
       }
-      toast.success("Card removed");
+      toast.success(t("web.booking.stepPayment.cardRemoved"));
     } catch {
-      toast.error("Failed to remove card");
+      toast.error(t("web.booking.stepPayment.removeCardFailed"));
     } finally {
       setRemovingCardId(null);
     }
@@ -540,7 +541,7 @@ export default function StepPayment({
         // Set a default policy if fetch fails (canonical default: 24h cutoff, no refund on late cancel)
         setCancellationPolicy({
           policy_text:
-            "Cancellations must be made at least 24 hours before your appointment. Late cancellations are non-refundable.",
+            t("web.booking.stepPayment.defaultPolicyText"),
           hours_before_cutoff: 24,
           grace_window_minutes: 15,
           late_cancellation_type: "no_refund",
@@ -829,17 +830,17 @@ export default function StepPayment({
 
   const createBookingDraft = async () => {
     if (!bookingState.providerId || !bookingState.selectedDate || !bookingState.selectedTimeSlot) {
-      throw new Error("Missing required booking information");
+      throw new Error(t("web.booking.stepPayment.missingBookingInfo"));
     }
 
     // Validate salon bookings have location_id
     if (bookingState.mode === "salon" && !bookingState.selectedLocationId) {
-      throw new Error("Please select a location for your salon booking");
+      throw new Error(t("web.booking.stepPayment.selectSalonLocation"));
     }
 
     // Validate mobile bookings have address
     if (bookingState.mode === "mobile" && !bookingState.address) {
-      throw new Error("Please provide an address for your home service booking");
+      throw new Error(t("web.booking.stepPayment.provideHomeAddress"));
     }
 
     // Note: Minimum booking amount validation will be done server-side
@@ -1027,23 +1028,23 @@ export default function StepPayment({
     // Check authentication before proceeding
     if (!user && !authLoading) {
       setIsLoginModalOpen(true);
-      toast.info("Please sign in or create an account to complete your booking");
+      toast.info(t("web.booking.stepPayment.signInToComplete"));
       return;
     }
 
     // If still loading auth, wait a bit
     if (authLoading) {
-      toast.info("Verifying your account...");
+      toast.info(t("web.booking.stepPayment.verifyingAccount"));
       return;
     }
 
     if (!bookingState.clientInfo) {
-      toast.error("Please complete your information first");
+      toast.error(t("web.booking.stepPayment.completeInfoFirst"));
       return;
     }
 
     if (paymentMethod === "giftcard" && !bookingState.promotions.giftCardCode) {
-      toast.error("Please enter a gift card code in the promotions step");
+      toast.error(t("web.booking.stepPayment.enterGiftCardCode"));
       return;
     }
     if (paymentMethod === "giftcard") {
@@ -1051,7 +1052,7 @@ export default function StepPayment({
       const amountDueNow = paymentOption === "deposit" ? depositAmount : totals.total;
       if ((bookingState.promotions.giftCardAmount || 0) + 0.005 < amountDueNow) {
         toast.error(
-          "This gift card does not cover the full amount. Select Card, enter your gift card code on this step, and pay the remainder with your card or wallet."
+          t("web.booking.stepPayment.giftCardDoesNotCover")
         );
         return;
       }
@@ -1063,13 +1064,13 @@ export default function StepPayment({
     }
 
     if (!holdId) {
-      toast.error("Your time slot is not reserved yet. Please choose an available time.");
+      toast.error(t("web.booking.stepPayment.slotNotReserved"));
       await returnToCalendarForHold();
       return;
     }
 
     if (isHoldLoading) {
-      toast.info("Verifying your reserved time slot...");
+      toast.info(t("web.booking.stepPayment.verifyingSlot"));
       return;
     }
 
@@ -1077,13 +1078,13 @@ export default function StepPayment({
       isHoldExpired ||
       (holdExpiresAt && getHoldTimeRemaining(holdExpiresAt, serverClockOffsetMs).expired)
     ) {
-      toast.error("Your hold expired. Please select your time slot again.", { duration: 6000 });
+      toast.error(t("web.booking.stepPayment.holdExpiredSelectAgain"), { duration: 6000 });
       await returnToCalendarForHold();
       return;
     }
 
     if (holdLoadError && !holdExpiresAt) {
-      toast.error("Could not verify your reserved time slot. Please choose another time.");
+      toast.error(t("web.booking.stepPayment.couldNotVerifySlot"));
       await returnToCalendarForHold();
       return;
     }
@@ -1098,11 +1099,11 @@ export default function StepPayment({
       if (!bookingState.subscribeRecurring || !user) return;
       if (sub?.created) {
         toast.success(
-          "Repeating schedule saved. Manage it under Account settings → Recurring bookings."
+          t("web.booking.stepPayment.recurringSaved")
         );
       } else if (sub?.pending) {
         toast.info(
-          "Complete payment to save your repeating schedule. It will appear under Account settings → Recurring bookings after payment succeeds."
+          t("web.booking.stepPayment.recurringPending")
         );
       } else if (sub && sub.created === false && sub.message) {
         toast.error(sub.message);
@@ -1119,7 +1120,7 @@ export default function StepPayment({
 
         if (errCode === "HOLD_IN_FLIGHT" || (errStatus === 409 && errCode === "HOLD_IN_FLIGHT")) {
           toast.error(
-            "This booking is already being processed. Please wait a moment, then try again.",
+            t("web.booking.stepPayment.holdInFlight"),
             { duration: 6000 }
           );
           return;
@@ -1127,7 +1128,7 @@ export default function StepPayment({
 
         if (errCode === "HOLD_INACTIVE" || (errStatus === 410 && errCode === "HOLD_INACTIVE")) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error("This slot is no longer available. Please choose another time.", {
+          toast.error(t("web.booking.stepPayment.slotNoLongerAvailable"), {
             duration: 6000,
           });
           onNavigateToStep("calendar");
@@ -1140,7 +1141,7 @@ export default function StepPayment({
           (errStatus === 410 && (errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED"));
         if (isHoldExpired) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error("Your hold expired. Please select your time slot again.", { duration: 6000 });
+          toast.error(t("web.booking.stepPayment.holdExpiredSelectAgain"), { duration: 6000 });
           onNavigateToStep("calendar");
           return;
         }
@@ -1163,7 +1164,7 @@ export default function StepPayment({
           error.code !== "VALIDATION_ERROR";
         if (isAvailabilityConflict) {
           updateBookingState({ holdId: null, holdExpiresAt: null, selectedTimeSlot: null });
-          toast.error("That time slot was just taken. Please choose another time.", {
+          toast.error(t("web.booking.stepPayment.slotJustTaken"), {
             duration: 6000,
           });
           onNavigateToStep("calendar");
@@ -1174,7 +1175,7 @@ export default function StepPayment({
           getUserFacingMessage(
             extractErrorCode(error),
             error.message,
-            "Failed to create booking. Please try again.",
+            t("web.booking.stepPayment.createBookingFailed"),
           ),
         );
         return;
@@ -1196,8 +1197,8 @@ export default function StepPayment({
         // Cash payment - booking already created, just redirect
         const isAtHome = bookingState.mode === "mobile";
         const cashLocationMsg = isAtHome
-          ? "Booking confirmed! You'll pay when your provider arrives."
-          : "Booking confirmed! You'll pay at the salon.";
+          ? t("web.booking.stepPayment.cashConfirmedHome")
+          : t("web.booking.stepPayment.cashConfirmedSalon");
         toast.success(cashLocationMsg);
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
@@ -1206,7 +1207,7 @@ export default function StepPayment({
 
       if (paymentMethod === "giftcard") {
         // Gift card payment - booking already created, payment processed in backend
-        toast.success("Booking created! Payment processed from gift card.");
+        toast.success(t("web.booking.stepPayment.giftCardPaid"));
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
@@ -1221,7 +1222,7 @@ export default function StepPayment({
         (Number.isFinite(paystackRemainder) && paystackRemainder <= 0);
       // Wallet/gift covered full amount — server returned no Paystack URL
       if ((bookingState.useWallet ?? false) && noCardLeg) {
-        toast.success("Booking created! Payment processed from wallet and gift card.");
+        toast.success(t("web.booking.stepPayment.walletGiftPaid"));
         notifyRecurringFromResult(bookingResult.recurring_subscription);
         router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
@@ -1230,12 +1231,12 @@ export default function StepPayment({
       // Saved card: server charged it directly (payment_method_id was sent); payment_url will be null
       if (usingSavedCard) {
         if (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "") {
-          toast.success("Payment successful!");
+          toast.success(t("web.booking.stepPayment.paymentSuccessful"));
           notifyRecurringFromResult(bookingResult.recurring_subscription);
           router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         } else {
           // Server returned a URL despite saved card — unexpected; fall back to redirect
-          toast.info("Redirecting to complete payment…");
+          toast.info(t("web.booking.stepPayment.redirectingPayment"));
           notifyRecurringFromResult(bookingResult.recurring_subscription);
           window.location.href = draftWithUrl.payment_url;
         }
@@ -1291,22 +1292,22 @@ export default function StepPayment({
         );
         window.location.href = result.authorization_url;
       } else {
-        toast.error("Failed to initialize payment");
-        toast.info("Booking draft created. You can retry payment from your bookings page.");
+        toast.error(t("web.booking.stepPayment.initPaymentFailed"));
+        toast.info(t("web.booking.stepPayment.draftCreatedRetry"));
       }
     } catch (error: any) {
       const errorMessage = getUserFacingMessage(
         extractErrorCode(error),
         error.message,
-        "Payment initialization failed. Please try again.",
+        t("web.booking.stepPayment.paymentInitFailed"),
       );
       toast.error(errorMessage);
 
       // If booking draft was created but payment failed, provide retry option
       if (bookingResult) {
-        toast.info("Booking draft created. You can retry payment from your bookings page.", {
+        toast.info(t("web.booking.stepPayment.draftCreatedRetry"), {
           action: {
-            label: "View Booking",
+            label: t("web.booking.stepPayment.viewBooking"),
             onClick: () =>
               router.push(`/booking/confirmation?bookingId=${bookingResult!.booking_id}`),
           },
@@ -1333,9 +1334,9 @@ export default function StepPayment({
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex gap-3 items-start text-sm text-amber-900">
             <Clock className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
             <div>
-              <p className="font-medium">Your time slot still needs to be reserved.</p>
+              <p className="font-medium">{t("web.booking.stepPayment.slotNeedsReserve")}</p>
               <p className="mt-1">
-                Go back to the calendar and choose an available slot before checkout.
+                {t("web.booking.stepPayment.goBackToCalendar")}
               </p>
             </div>
           </div>
@@ -1345,14 +1346,14 @@ export default function StepPayment({
         <div className="p-4 bg-gray-50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-gray-900">
-              {bookingState.isGroupBooking ? "Group Booking" : "Services"}
+              {bookingState.isGroupBooking ? t("web.booking.stepPayment.groupBooking") : t("web.booking.actionBar.services")}
             </h3>
             <button
               type="button"
               onClick={() => onNavigateToStep("services")}
               className="text-sm font-medium text-primary hover:underline"
             >
-              Change
+              {t("web.booking.stepPayment.change")}
             </button>
           </div>
           {bookingState.isGroupBooking && bookingState.groupParticipants
@@ -1376,7 +1377,7 @@ export default function StepPayment({
                         at_home_price_adjustment: service.at_home_price_adjustment,
                       };
                       return (
-                        <div key={service.id} className="ml-4 mb-2">
+                        <div key={service.id} className="ms-4 mb-2">
                           <div className="flex justify-between gap-2 text-sm">
                             <span className="min-w-0 truncate text-gray-600">
                               {service.title}
@@ -1397,8 +1398,8 @@ export default function StepPayment({
                         </div>
                       );
                     })}
-                    <div className="flex justify-between text-sm font-medium mt-2 ml-4">
-                      <span>Subtotal</span>
+                    <div className="flex justify-between text-sm font-medium mt-2 ms-4">
+                      <span>{t("web.booking.actionBar.subtotal")}</span>
                       <span>{formatCurrency(participantTotal, totals.currency)}</span>
                     </div>
                   </div>
@@ -1459,14 +1460,14 @@ export default function StepPayment({
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600 flex items-center gap-1">
                   <MapPin className="w-3 h-3" />
-                  Travel Fee
+                  {t("web.booking.actionBar.travelFee")}
                 </span>
                 <span className="font-medium">
                   {formatCurrency(totals.travelFee, totals.currency)}
                 </span>
               </div>
               {totals.travelFeeBreakdown && totals.travelFeeBreakdown.length > 0 && (
-                <div className="pl-4 text-xs text-gray-500 space-y-0.5">
+                <div className="ps-4 text-xs text-gray-500 space-y-0.5">
                   {totals.travelFeeBreakdown.map((item, idx) => (
                     <div key={idx} className="flex justify-between">
                       <span>{item.label}:</span>
@@ -1476,10 +1477,10 @@ export default function StepPayment({
                 </div>
               )}
               {bookingState.address?.distanceKm && (
-                <div className="pl-4 text-xs text-gray-500">
-                  Distance: {bookingState.address.distanceKm.toFixed(1)}km
+                <div className="ps-4 text-xs text-gray-500">
+                  {t("web.booking.stepPayment.distanceTravel", { km: bookingState.address.distanceKm.toFixed(1) })}
                   {bookingState.address.travelTimeMinutes &&
-                    ` • Est. travel: ${bookingState.address.travelTimeMinutes} min`}
+                    t("web.booking.stepPayment.estTravel", { minutes: bookingState.address.travelTimeMinutes })}
                 </div>
               )}
             </div>
@@ -1503,7 +1504,7 @@ export default function StepPayment({
               onClick={() => onNavigateToStep("calendar")}
               className="text-sm font-medium text-primary hover:underline shrink-0"
             >
-              Change
+              {t("web.booking.stepPayment.change")}
             </button>
           </div>
         )}
@@ -1513,7 +1514,7 @@ export default function StepPayment({
           <div className="p-4 bg-gray-50 rounded-lg flex items-center gap-3">
             <MapPin className="w-5 h-5 text-gray-400" />
             <div>
-              <p className="text-sm font-medium text-gray-900">At the Salon</p>
+              <p className="text-sm font-medium text-gray-900">{t("web.booking.confirmation.atTheSalon")}</p>
             </div>
           </div>
         ) : (
@@ -1521,7 +1522,7 @@ export default function StepPayment({
             <div className="p-4 bg-gray-50 rounded-lg flex items-center gap-3">
               <MapPin className="w-5 h-5 text-gray-400" />
               <div>
-                <p className="text-sm font-medium text-gray-900">House Call</p>
+                <p className="text-sm font-medium text-gray-900">{t("web.booking.confirmation.houseCall")}</p>
                 <p className="text-xs text-gray-600">{bookingState.address.fullAddress}</p>
               </div>
             </div>
@@ -1536,17 +1537,16 @@ export default function StepPayment({
               <div>
                 <p className="text-sm font-medium text-gray-900">
                   {bookingState.selectedPackage?.id
-                    ? "Package applied"
-                    : "Redeem a prepaid package (optional)"}
+                    ? t("web.booking.stepPayment.packageApplied")
+                    : t("web.booking.stepPayment.redeemPackage")}
                 </p>
                 <p className="text-xs text-gray-600">
-                  Only packages that include your selected service(s) are shown. Bundle pricing
-                  applies when you pick one.
+                  {t("web.booking.stepPayment.packageHint")}
                 </p>
               </div>
             </div>
             {packageCatalogLoading ? (
-              <p className="text-sm text-gray-500">Loading packages…</p>
+              <p className="text-sm text-gray-500">{t("web.booking.stepPayment.loadingPackages")}</p>
             ) : (
               <div className="space-y-2">
                 {packagesRelevantToBooking.map((pkg) => {
@@ -1574,7 +1574,7 @@ export default function StepPayment({
                         }
                       }}
                       className={cn(
-                        "w-full text-left flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                        "w-full text-start flex items-start gap-3 rounded-lg border p-3 transition-colors",
                         selected
                           ? "border-violet-500 bg-white ring-1 ring-violet-300"
                           : "border-gray-200 bg-white hover:border-violet-300"
@@ -1602,8 +1602,8 @@ export default function StepPayment({
                       <span className="text-sm font-semibold text-gray-900 shrink-0">
                         {formatCurrency(pkg.price, pkg.currency)}
                         {pkg.discount_percentage != null && pkg.discount_percentage > 0 ? (
-                          <span className="ml-1 text-xs font-medium text-emerald-600">
-                            ·Save {pkg.discount_percentage}%
+                          <span className="ms-1 text-xs font-medium text-emerald-600">
+                            {t("web.booking.stepPayment.savePercent", { percent: pkg.discount_percentage })}
                           </span>
                         ) : null}
                       </span>
@@ -1621,7 +1621,7 @@ export default function StepPayment({
                     }
                     className="text-xs font-medium text-violet-700 hover:text-violet-900"
                   >
-                    Remove package
+                    {t("web.booking.stepPayment.removePackage")}
                   </button>
                 )}
               </div>
@@ -1634,19 +1634,18 @@ export default function StepPayment({
             <div className="flex items-center gap-2">
               <Gift className="w-5 h-5 text-amber-700 shrink-0" />
               <div>
-                <p className="text-sm font-medium text-gray-900">Package credit</p>
+                <p className="text-sm font-medium text-gray-900">{t("web.booking.stepPayment.packageCredit")}</p>
                 <p className="text-xs text-gray-600">
-                  If you bought this package online and have prepaid sessions left, apply one to
-                  this booking.
+                  {t("web.booking.stepPayment.packageCreditHint")}
                 </p>
               </div>
             </div>
             {packageEntitlementsLoading ? (
-              <p className="text-sm text-gray-500">Loading credits…</p>
+              <p className="text-sm text-gray-500">{t("web.booking.stepPayment.loadingCredits")}</p>
             ) : packageEntitlements.length > 0 ? (
               <div className="space-y-1">
                 <Label htmlFor="package-entitlement" className="text-xs text-gray-600">
-                  Use prepaid session
+                  {t("web.booking.stepPayment.usePrepaidSession")}
                 </Label>
                 <select
                   id="package-entitlement"
@@ -1658,19 +1657,19 @@ export default function StepPayment({
                     })
                   }
                 >
-                  <option value="">No — pay with the method below</option>
+                  <option value="">{t("web.booking.stepPayment.payWithMethodBelow")}</option>
                   {packageEntitlements.map((e) => (
                     <option key={e.id} value={e.id}>
-                      Use credit — {e.sessions_remaining} session(s) left
+                      {t("web.booking.stepPayment.useCreditSessions", { count: e.sessions_remaining })}
                       {e.valid_until
-                        ? ` (until ${new Date(e.valid_until).toLocaleDateString()})`
+                        ? t("web.booking.stepPayment.useCreditUntil", { date: new Date(e.valid_until).toLocaleDateString() })
                         : ""}
                     </option>
                   ))}
                 </select>
               </div>
             ) : (
-              <p className="text-xs text-gray-500">No prepaid sessions found for this package.</p>
+              <p className="text-xs text-gray-500">{t("web.booking.stepPayment.noPrepaidSessions")}</p>
             )}
           </div>
         )}
@@ -1678,19 +1677,19 @@ export default function StepPayment({
         {/* Totals */}
         <div className="p-4 bg-gray-50 rounded-lg space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Services, add-ons &amp; products</span>
+            <span className="text-gray-600">{t("web.booking.stepPayment.servicesAddonsProducts")}</span>
             <span className="font-medium">
               {formatCurrency(totals.services + totals.addons + totals.products, totals.currency)}
             </span>
           </div>
           {totals.travelFee > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Travel fee</span>
+              <span>{t("web.booking.actionBar.travelFee")}</span>
               <span>{formatCurrency(totals.travelFee, totals.currency)}</span>
             </div>
           )}
           <div className="flex justify-between text-xs text-gray-500 border-b border-gray-200/80 pb-2">
-            <span>Booking subtotal (before discounts)</span>
+            <span>{t("web.booking.stepPayment.bookingSubtotalBeforeDiscounts")}</span>
             <span>{formatCurrency(totals.subtotal, totals.currency)}</span>
           </div>
           {bookingState.promotions.couponDiscount > 0 && (
@@ -1703,7 +1702,7 @@ export default function StepPayment({
           )}
           {bookingState.promotions.loyaltyDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>Loyalty Points</span>
+              <span>{t("web.booking.actionBar.loyaltyPoints")}</span>
               <span>
                 -{formatCurrency(bookingState.promotions.loyaltyDiscount, totals.currency)}
               </span>
@@ -1711,7 +1710,7 @@ export default function StepPayment({
           )}
           {bookingState.promotions.membershipDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
-              <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
+              <span>{bookingState.promotions.membershipPlanName || t("web.booking.actionBar.membershipFallback")}</span>
               <span>
                 -{formatCurrency(bookingState.promotions.membershipDiscount, totals.currency)}
               </span>
@@ -1719,22 +1718,23 @@ export default function StepPayment({
           )}
           {totals.subtotalAfterDiscounts !== totals.subtotal && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Subtotal</span>
+              <span>{t("web.booking.actionBar.subtotal")}</span>
               <span>{formatCurrency(totals.subtotalAfterDiscounts, totals.currency)}</span>
             </div>
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
               <span>
-                Platform Fee
-                {totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ""}
+                {totals.serviceFeePercentage > 0
+                  ? t("web.booking.actionBar.platformFeeWithPct", { pct: totals.serviceFeePercentage })
+                  : t("web.booking.actionBar.platformFee")}
               </span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}
           {totals.taxAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Tax{totals.taxRate > 0 ? ` (${Number(totals.taxRate).toFixed(2)}%)` : ""}</span>
+              <span>{totals.taxRate > 0 ? t("web.booking.actionBar.taxWithRate", { rate: Number(totals.taxRate).toFixed(2) }) : t("web.booking.actionBar.tax")}</span>
               <span>{formatCurrency(totals.taxAmount, totals.currency)}</span>
             </div>
           )}
@@ -1742,7 +1742,7 @@ export default function StepPayment({
             <div className="flex justify-between text-sm text-gray-700">
               <span className="flex items-center gap-1.5">
                 <Heart className="w-3.5 h-3.5 text-primary shrink-0" />
-                Tip
+                {t("web.booking.actionBar.tip")}
               </span>
               <span className="font-medium">{formatCurrency(tipAmount, totals.currency)}</span>
             </div>
@@ -1762,7 +1762,7 @@ export default function StepPayment({
               );
               return (
                 <div className="flex justify-between text-sm text-blue-700">
-                  <span>Gift card tender</span>
+                  <span>{t("web.booking.actionBar.giftCardTender")}</span>
                   <span>−{formatCurrency(giftCardApplied, totals.currency)}</span>
                 </div>
               );
@@ -1789,14 +1789,14 @@ export default function StepPayment({
                   <div className="flex justify-between text-sm text-green-700">
                     <span className="flex items-center gap-1.5">
                       <Wallet className="w-3.5 h-3.5" />
-                      Wallet credit applied
+                      {t("web.booking.stepPayment.walletCreditApplied")}
                     </span>
                     <span className="font-medium">
                       −{formatCurrency(walletApplied, walletCurrency)}
                     </span>
                   </div>
                   <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
-                    <span>You pay via Paystack</span>
+                    <span>{t("web.booking.stepPayment.youPayViaPaystack")}</span>
                     <span>
                       {paystackRemainder <= 0
                         ? formatCurrency(0, totals.currency)
@@ -1806,7 +1806,7 @@ export default function StepPayment({
                   {paystackRemainder <= 0 && (
                     <p className="text-xs text-green-700 flex items-center gap-1">
                       <CheckCircle className="w-3.5 h-3.5" />
-                      Wallet fully covers this booking — no card charge needed
+                      {t("web.booking.stepPayment.walletCoversAll")}
                     </p>
                   )}
                 </div>
@@ -1820,16 +1820,16 @@ export default function StepPayment({
         <div className="p-4 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-white to-pink-50/40 shadow-sm space-y-5">
           <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <Heart className="w-5 h-5 text-primary shrink-0" />
-            Add a tip (optional)
+            {t("web.booking.stepPayment.addTipOptional")}
           </h3>
           <p className="text-xs text-gray-600 leading-relaxed">
-            Percentages apply to your <strong>service subtotal after discounts</strong> (before tax
-            and platform fees). They update automatically if your booking total changes. 100% of
-            tips go to your provider and are charged with your booking total.
+            {t("web.booking.stepPayment.tipPercentHintBefore")}
+            <strong>{t("web.booking.stepPayment.tipPercentHintStrong")}</strong>
+            {t("web.booking.stepPayment.tipPercentHintAfter")}
           </p>
 
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-900">Tip by percentage</p>
+            <p className="text-sm font-semibold text-gray-900">{t("web.booking.stepPayment.tipByPercentage")}</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1844,7 +1844,7 @@ export default function StepPayment({
                     : "bg-white text-gray-800 border-gray-200 hover:border-primary/50"
                 )}
               >
-                <span>No tip</span>
+                <span>{t("web.booking.stepPayment.noTip")}</span>
               </button>
               {TIP_PERCENT_PRESETS.map((p) => {
                 const computed =
@@ -1858,8 +1858,8 @@ export default function StepPayment({
                     onClick={() => setTipPercentSelection(p)}
                     title={
                       tipPercentageBase <= 0
-                        ? "Add services to use percentage tips"
-                        : `${p}% of ${formatCurrency(tipPercentageBase, totals.currency)}`
+                        ? t("web.booking.stepPayment.addServicesForPercentTips")
+                        : t("web.booking.stepPayment.percentOfBase", { percent: p, amount: formatCurrency(tipPercentageBase, totals.currency) })
                     }
                     className={cn(
                       "rounded-xl px-3 py-2.5 text-sm min-h-[48px] min-w-[76px] transition-colors border-2 flex flex-col items-center justify-center gap-0.5",
@@ -1884,16 +1884,16 @@ export default function StepPayment({
             </div>
             {tipPercentageBase <= 0 && (
               <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Add at least one service to enable percentage-based tips.
+                {t("web.booking.stepPayment.enablePercentTips")}
               </p>
             )}
           </div>
 
           {tipSuggestions.some((n) => n > 0) && (
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-gray-900">Or choose a set amount</p>
+              <p className="text-sm font-semibold text-gray-900">{t("web.booking.stepPayment.orChooseSetAmount")}</p>
               <p className="text-xs text-gray-500">
-                Quick amounts from this provider (fixed currency).
+                {t("web.booking.stepPayment.quickAmountsHint")}
               </p>
               <div className="flex flex-wrap gap-2">
                 {tipSuggestions
@@ -1926,7 +1926,7 @@ export default function StepPayment({
 
           <div className="flex flex-wrap items-center gap-2">
             <Label htmlFor="booking-tip-custom" className="text-sm font-medium text-gray-700">
-              Custom amount
+              {t("web.booking.stepPayment.customAmount")}
             </Label>
             <Input
               id="booking-tip-custom"
@@ -1953,7 +1953,7 @@ export default function StepPayment({
 
       {/* Payment Method Selection */}
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900">Payment Method</h3>
+        <h3 className="text-lg font-semibold text-gray-900">{t("web.booking.stepPayment.paymentMethod")}</h3>
 
         {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
         <div
@@ -1975,7 +1975,7 @@ export default function StepPayment({
               <span
                 className={`text-sm font-medium ${paymentMethod === "card" ? "text-primary" : "text-gray-700"}`}
               >
-                Card
+                {t("web.booking.stepPayment.card")}
               </span>
               {paymentMethod === "card" && <Check className="w-4 h-4 text-primary" />}
             </button>
@@ -1996,7 +1996,7 @@ export default function StepPayment({
               <span
                 className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}
               >
-                Cash
+                {t("web.booking.stepPayment.cash")}
               </span>
               {paymentMethod === "cash" && <Check className="w-4 h-4 text-primary" />}
             </button>
@@ -2017,7 +2017,7 @@ export default function StepPayment({
               <span
                 className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-700"}`}
               >
-                Gift Card
+                {t("web.booking.stepPayment.giftCard")}
               </span>
               {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-primary" />}
             </button>
@@ -2035,11 +2035,11 @@ export default function StepPayment({
             />
             <label htmlFor="use-wallet" className="flex-1 cursor-pointer text-sm text-gray-700">
               {walletLoading ? (
-                "Loading wallet..."
+                t("web.booking.stepPayment.loadingWallet")
               ) : walletBalance > 0 ? (
-                <>Use wallet balance — {formatCurrency(walletBalance, walletCurrency)} available</>
+                <>{t("web.booking.stepPayment.useWalletBalance", { amount: formatCurrency(walletBalance, walletCurrency) })}</>
               ) : (
-                "Use wallet balance (no balance)"
+                t("web.booking.stepPayment.useWalletNoBalance")
               )}
             </label>
             {useWallet && walletBalance > 0 && <Wallet className="w-4 h-4 text-primary shrink-0" />}
@@ -2062,7 +2062,7 @@ export default function StepPayment({
               <span
                 className={`text-sm font-medium ${paymentOption === "full" ? "text-primary" : "text-gray-700"}`}
               >
-                Pay in Full
+                {t("web.booking.stepPayment.payInFull")}
               </span>
             </button>
             <button
@@ -2078,7 +2078,7 @@ export default function StepPayment({
               <span
                 className={`text-sm font-medium ${paymentOption === "deposit" ? "text-primary" : "text-gray-700"}`}
               >
-                Deposit ({depositPercentage}%)
+                {t("web.booking.stepPayment.depositPercent", { percent: depositPercentage })}
               </span>
             </button>
           </div>
@@ -2100,13 +2100,13 @@ export default function StepPayment({
                 </div>
               ) : savedCards.length > 0 && !useNewCard ? (
                 <>
-                  <p className="text-sm font-medium text-gray-700">Your saved cards</p>
+                  <p className="text-sm font-medium text-gray-700">{t("web.booking.stepPayment.yourSavedCards")}</p>
                   <div className="space-y-2">
                     {savedCards.map((card) => {
                       const active = selectedCardId === card.id;
                       const brand = card.card_type
                         ? card.card_type.charAt(0).toUpperCase() + card.card_type.slice(1)
-                        : "Card";
+                        : t("web.booking.stepPayment.card");
                       const expiry =
                         card.expiry_label ??
                         (card.expiry_month && card.expiry_year
@@ -2132,7 +2132,7 @@ export default function StepPayment({
                               selectCard();
                             }
                           }}
-                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
+                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-start cursor-pointer ${
                             active
                               ? "border-primary bg-pink-50"
                               : "border-gray-200 hover:border-gray-300 bg-white"
@@ -2157,7 +2157,7 @@ export default function StepPayment({
                               </span>
                               {card.is_default ? (
                                 <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-semibold rounded-full">
-                                  Default
+                                  {t("web.booking.stepPayment.default")}
                                 </span>
                               ) : (
                                 <button
@@ -2169,12 +2169,12 @@ export default function StepPayment({
                                   disabled={settingDefaultId === card.id}
                                   className="text-[10px] font-semibold text-primary hover:text-primary-hover underline disabled:opacity-50"
                                 >
-                                  {settingDefaultId === card.id ? "Updating..." : "Set default"}
+                                  {settingDefaultId === card.id ? t("web.booking.stepPayment.updating") : t("web.booking.stepPayment.setDefault")}
                                 </button>
                               )}
                             </div>
                             {expiry && (
-                              <span className="text-xs text-gray-500">Expires {expiry}</span>
+                              <span className="text-xs text-gray-500">{t("web.booking.stepPayment.expires", { expiry })}</span>
                             )}
                           </div>
                           {active && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
@@ -2185,9 +2185,9 @@ export default function StepPayment({
                               handleRemoveSavedCard(card.id);
                             }}
                             disabled={removingCardId === card.id}
-                            aria-label={`Remove card ending in ${card.last4 ?? "****"}`}
-                            title="Remove this card"
-                            className="ml-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                            aria-label={t("web.booking.stepPayment.removeCardEnding", { last4: card.last4 ?? "****" })}
+                            title={t("web.booking.stepPayment.removeThisCard")}
+                            className="ms-1 p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2204,7 +2204,7 @@ export default function StepPayment({
                     className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 text-gray-600 hover:text-gray-800 transition-all"
                   >
                     <Plus className="w-4 h-4" />
-                    <span className="text-sm font-medium">Use a new card</span>
+                    <span className="text-sm font-medium">{t("web.booking.stepPayment.useNewCard")}</span>
                   </button>
                 </>
               ) : null}
@@ -2221,7 +2221,7 @@ export default function StepPayment({
                   className="flex items-center gap-2 text-sm text-primary hover:text-primary-hover font-medium transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  Use a saved card instead
+                  {t("web.booking.stepPayment.useSavedCardInstead")}
                 </button>
               )}
 
@@ -2232,17 +2232,17 @@ export default function StepPayment({
                     <Lock className="w-4 h-4 text-gray-400" />
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-gray-900">Save this card</p>
+                        <p className="text-sm font-medium text-gray-900">{t("web.booking.stepPayment.saveThisCard")}</p>
                         <button
                           type="button"
                           onClick={() => toast.info(saveCardInfo, { duration: 8000 })}
                           className="p-0.5 rounded-full hover:bg-gray-200 text-primary"
-                          aria-label="Info about saving card"
+                          aria-label={t("web.booking.stepPayment.saveCardInfoAria")}
                         >
                           <Info className="w-4 h-4" />
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500">For faster checkout next time</p>
+                      <p className="text-xs text-gray-500">{t("web.booking.stepPayment.fasterCheckout")}</p>
                     </div>
                   </div>
                   <Switch
@@ -2258,7 +2258,7 @@ export default function StepPayment({
               {/* Set as default toggle (only when saving a new card and already has cards) */}
               {saveCard && (savedCards.length === 0 || useNewCard) && savedCards.length > 0 && (
                 <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                  <span className="text-sm text-gray-700">Set as default payment method</span>
+                  <span className="text-sm text-gray-700">{t("web.booking.stepPayment.setAsDefaultMethod")}</span>
                   <Switch checked={setAsDefault} onCheckedChange={setSetAsDefault} />
                 </div>
               )}
@@ -2355,12 +2355,10 @@ export default function StepPayment({
           <div className="rounded-xl p-5 border border-gray-200 space-y-3 bg-gray-50/80">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <Repeat className="w-4 h-4 text-primary" />
-              Repeat this booking
+              {t("web.booking.stepPayment.repeatThisBooking")}
             </h3>
             <p className="text-sm text-gray-600">
-              Save the same services on a repeating schedule. If you pay online, the schedule is
-              created after payment succeeds. Manage repeats under Account settings → Recurring
-              bookings.
+              {t("web.booking.stepPayment.repeatHint")}
             </p>
             <div className="flex items-start gap-3">
               <Checkbox
@@ -2374,12 +2372,12 @@ export default function StepPayment({
                   htmlFor="booking-flow-subscribe-recurring"
                   className="text-sm font-medium text-gray-900 cursor-pointer"
                 >
-                  Turn on repeating visits
+                  {t("web.booking.stepPayment.turnOnRepeating")}
                 </Label>
                 {bookingState.subscribeRecurring === true && (
                   <div className="space-y-1">
                     <Label htmlFor="booking-flow-recurring-freq" className="text-xs text-gray-500">
-                      How often
+                      {t("web.booking.stepPayment.howOften")}
                     </Label>
                     <select
                       id="booking-flow-recurring-freq"
@@ -2391,9 +2389,9 @@ export default function StepPayment({
                       }
                       className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm min-h-[44px]"
                     >
-                      <option value="weekly">Every week</option>
-                      <option value="biweekly">Every 2 weeks</option>
-                      <option value="monthly">Every month</option>
+                      <option value="weekly">{t("web.booking.stepPayment.everyWeek")}</option>
+                      <option value="biweekly">{t("web.booking.stepPayment.everyTwoWeeks")}</option>
+                      <option value="monthly">{t("web.booking.stepPayment.everyMonth")}</option>
                     </select>
                   </div>
                 )}
@@ -2442,7 +2440,7 @@ export default function StepPayment({
               {isProcessing || isChargingCard ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  {isChargingCard ? "Charging card..." : "Processing..."}
+                  {isChargingCard ? t("web.booking.stepPayment.chargingCard") : t("web.booking.stepPayment.processing")}
                 </>
               ) : paymentMethod === "cash" ? (
                 <>
@@ -2452,24 +2450,24 @@ export default function StepPayment({
               ) : paymentMethod === "giftcard" ? (
                 <>
                   <Gift className="w-5 h-5" />
-                  Pay {formatCurrency(amountDueNow, totals.currency)} with Gift Card
+                  {t("web.booking.stepPayment.payWithGiftCard", { amount: formatCurrency(amountDueNow, totals.currency) })}
                 </>
               ) : usingSavedCard && selectedCard ? (
                 <>
                   <Shield className="w-5 h-5" />
-                  Pay {formatCurrency(chargeAmount, totals.currency)} with •••• {selectedCard.last4}
+                  {t("web.booking.stepPayment.payWithCardEnding", { amount: formatCurrency(chargeAmount, totals.currency), last4: selectedCard.last4 })}
                 </>
               ) : paymentOption === "deposit" ? (
                 <>
                   <CreditCard className="w-5 h-5" />
-                  Pay Deposit {formatCurrency(chargeAmount, totals.currency)}
+                  {t("web.booking.stepPayment.payDeposit", { amount: formatCurrency(chargeAmount, totals.currency) })}
                 </>
               ) : (
                 <>
                   <CreditCard className="w-5 h-5" />
                   {chargeAmount <= 0
-                    ? "Complete booking"
-                    : `Pay ${formatCurrency(chargeAmount, totals.currency)}`}
+                    ? t("web.booking.stepPayment.completeBooking")
+                    : t("web.booking.stepPayment.payAmount", { amount: formatCurrency(chargeAmount, totals.currency) })}
                 </>
               )}
             </Button>

@@ -22,6 +22,7 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PayoutAccount {
   id: string;
@@ -52,6 +53,9 @@ const SUPPORTED_COUNTRIES = [
 ];
 
 export default function PayoutAccountsScreen() {
+  const { t } = useTranslation();
+  const pa = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.payoutAccounts.${key}`, opts) as string;
   const [refreshing, setRefreshing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showBankPicker, setShowBankPicker] = useState(false);
@@ -112,11 +116,11 @@ export default function PayoutAccountsScreen() {
     const accountNumber = form.account_number.trim();
     const bankCode = form.bank_code.trim();
     if (accountNumber.length < 8 || accountNumber.length > 20) {
-      Alert.alert("Invalid", "Account number must be 8–20 digits");
+      Alert.alert(pa("invalidTitle"), pa("invalidAccountLength"));
       return;
     }
     if (!bankCode) {
-      Alert.alert("Invalid", "Please select a bank");
+      Alert.alert(pa("invalidTitle"), pa("selectBankRequired"));
       return;
     }
     setVerifyError(null);
@@ -180,15 +184,15 @@ export default function PayoutAccountsScreen() {
       !form.account_name.trim()
     ) {
       Alert.alert(
-        "Required",
+        pa("requiredTitle"),
         showVerifyAccountButton
-          ? "Please fill in all fields. You can verify the account first to auto-fill the name."
-          : "Please fill in all fields, including the account holder name.",
+          ? pa("requiredBodyVerify")
+          : pa("requiredBodyManual"),
       );
       return;
     }
     if (accountNumber.length < 8 || accountNumber.length > 20 || !/^\d+$/.test(accountNumber)) {
-      Alert.alert("Invalid", "Account number must be 8-20 digits.");
+      Alert.alert(pa("invalidTitle"), pa("invalidAccountDigits"));
       return;
     }
     const selectedBank = banks.find((b) => b.code === form.bank_code);
@@ -221,25 +225,25 @@ export default function PayoutAccountsScreen() {
     if (alreadySaved) {
       await finishAddSuccess();
       Alert.alert(
-        "Account saved",
-        "Your bank account is already on file. We refreshed your payout accounts.",
+        pa("accountSavedTitle"),
+        pa("accountSavedBody"),
       );
       return;
     }
 
     if (errorCode === "PAYOUT_ACCOUNT_ALREADY_EXISTS") {
       Alert.alert(
-        "Already saved",
+        pa("alreadySavedTitle"),
         error ||
-          "This payout account is already linked. Pull down to refresh your list.",
+          pa("alreadySavedBody"),
       );
       return;
     }
 
     Alert.alert(
-      "Could not save account",
+      pa("couldNotSaveTitle"),
       error ||
-        "We could not save your bank account locally. Pull down to refresh, then try again or contact support.",
+        pa("couldNotSaveBody"),
     );
   }
 
@@ -249,7 +253,7 @@ export default function PayoutAccountsScreen() {
       `/api/provider/payout-accounts/${account.id}`,
       { is_primary: true }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(pa("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refresh();
@@ -261,7 +265,7 @@ export default function PayoutAccountsScreen() {
       `/api/provider/payout-accounts/${account.id}`,
       { active: !account.active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(pa("errorTitle"), error);
     else refresh();
   }
 
@@ -270,24 +274,24 @@ export default function PayoutAccountsScreen() {
       accounts?.filter((candidate) => candidate.id !== account.id && candidate.active).length ?? 0;
     if (primaryAccount?.id === account.id && otherActiveCount === 0) {
       Alert.alert(
-        "Cannot Delete",
-        "Add or activate another payout account before deleting the current primary account."
+        pa("cannotDeleteTitle"),
+        pa("cannotDeleteBody")
       );
       return;
     }
     Alert.alert(
-      "Remove Account",
-      `Remove account ending in ${account.account_number_last4}?`,
+      pa("removeTitle"),
+      pa("removeBody", { last4: account.account_number_last4 }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: pa("cancel"), style: "cancel" },
         {
-          text: "Remove",
+          text: pa("remove"),
           style: "destructive",
           onPress: async () => {
             const { error } = await deleteAccount(
               `/api/provider/payout-accounts/${account.id}`
             );
-            if (error) Alert.alert("Error", error);
+            if (error) Alert.alert(pa("errorTitle"), error);
             else refresh();
           },
         },
@@ -322,7 +326,7 @@ export default function PayoutAccountsScreen() {
   if (accountsError && !accounts) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Payout Accounts" showBack subtitle="Bank accounts for payouts" />
+        <ScreenHeader title={pa("title")} showBack subtitle={pa("subtitle")} />
         <ErrorState message={accountsError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -331,9 +335,9 @@ export default function PayoutAccountsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Payout Accounts"
+        title={pa("title")}
         showBack
-        subtitle="Bank accounts for payouts"
+        subtitle={pa("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -356,9 +360,9 @@ onPress={() => {
 
       {accounts && accounts.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Total"
+              title={pa("statTotal")}
               value={String(accounts.length)}
               icon="wallet-outline"
               iconColor="#6366f1"
@@ -368,7 +372,7 @@ onPress={() => {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Active"
+              title={pa("statActive")}
               value={String(activeCount)}
               icon="checkmark-circle-outline"
               iconColor="#22c55e"
@@ -383,11 +387,13 @@ onPress={() => {
       {primaryAccount && (
         <View style={twStyle("mb-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3")}>
           <View style={twStyle("flex-row items-center")}>
-            <Ionicons name="star" size={14} color="#6366f1" style={{ marginRight: 8 }} />
+            <Ionicons name="star" size={14} color="#6366f1" style={{ marginEnd: 8 }} />
             <Text style={twStyle("text-xs font-medium text-indigo-700")}>
-              Primary: {primaryAccount.account_name} (
-              {primaryAccount.bank_name ?? "Bank"} ····{" "}
-              {primaryAccount.account_number_last4})
+              {pa("primaryBanner", {
+                name: primaryAccount.account_name,
+                bank: primaryAccount.bank_name ?? pa("bankFallback"),
+                last4: primaryAccount.account_number_last4,
+              })}
             </Text>
           </View>
         </View>
@@ -399,12 +405,12 @@ onPress={() => {
             <Ionicons name="shield-checkmark-outline" size={34} color="#6366f1" />
           </View>
           <Text style={twStyle("text-center text-lg font-bold text-gray-900")}>
-            Add your payout account
+            {pa("emptyTitle")}
           </Text>
           <Text style={twStyle("mt-2 text-center text-sm leading-5 text-gray-500")}>
             {showVerifyAccountButton
-              ? "Add your bank account so finance can pay platform-held earnings to the right account. You can verify with Paystack or enter the account name manually."
-              : "Add your bank account so finance can pay platform-held earnings to the right account. Enter the account holder name as on your statement."}
+              ? pa("emptyBodyVerify")
+              : pa("emptyBodyManual")}
           </Text>
           <TouchableOpacity
             style={twStyle("mt-6 flex-row items-center justify-center rounded-2xl bg-gray-900 px-6 py-3")}
@@ -421,10 +427,10 @@ onPress={() => {
             }}
           >
             <Ionicons name="add-circle-outline" size={20} color="#fff" />
-            <Text style={twStyle("ml-2 font-semibold text-white")}>Add bank account</Text>
+            <Text style={twStyle("ms-2 font-semibold text-white")}>{pa("addBankAccount")}</Text>
           </TouchableOpacity>
           <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
-            Your full account number is never shown after setup.
+            {pa("neverShownHint")}
           </Text>
         </View>
       ) : (
@@ -462,41 +468,43 @@ onPress={() => {
                     color={isPrimary ? "#6366f1" : "#6b7280"}
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row items-center flex-wrap")}>
-                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>
                       {account.account_name}
                     </Text>
                     {isPrimary && (
-                      <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                      <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-0.5"), { marginEnd: 8 }]}>
                         <Text style={twStyle("text-[9px] font-bold text-indigo-700")}>
-                          PRIMARY
+                          {pa("primaryBadge")}
                         </Text>
                       </View>
                     )}
                   </View>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    {account.bank_name ?? "Bank"} ····{" "}
-                    {account.account_number_last4}
+                    {pa("bankLast4", {
+                      bank: account.bank_name ?? pa("bankFallback"),
+                      last4: account.account_number_last4,
+                    })}
                   </Text>
                 </View>
                 <View style={twStyle("flex-row items-center")}>
                   <View
                     style={[twStyle(`rounded-full px-2 py-0.5 ${
                       account.active ? "bg-green-50" : "bg-gray-100"
-                    }`), { marginRight: 8 }]}
+                    }`), { marginEnd: 8 }]}
                   >
                     <Text
                       style={twStyle(`text-[10px] font-medium ${
                         account.active ? "text-green-700" : "text-gray-500"
                       }`)}
                     >
-                      {account.active ? "Active" : "Inactive"}
+                      {account.active ? pa("active") : pa("inactive")}
                     </Text>
                   </View>
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={`Remove ${account.account_name}`}
+                    accessibilityLabel={pa("removeA11y", { name: account.account_name })}
                     onPress={() => handleDelete(account)}
                     hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                   >
@@ -514,27 +522,27 @@ onPress={() => {
                 {!isPrimary && account.active && (
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel="Set as primary payout account"
+                    accessibilityLabel={pa("setPrimaryA11y")}
                     style={twStyle(
                       "flex-1 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2"
                     )}
                     onPress={() => handleSetPrimary(account)}
                   >
                     <Text style={twStyle("text-xs font-semibold text-indigo-700")}>
-                      Set as primary
+                      {pa("setPrimary")}
                     </Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
                   accessibilityRole="button"
-                  accessibilityLabel={account.active ? "Deactivate account" : "Activate account"}
+                  accessibilityLabel={account.active ? pa("deactivateA11y") : pa("activateA11y")}
                   style={twStyle(
                     "flex-1 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-2"
                   )}
                   onPress={() => handleToggleActive(account)}
                 >
                   <Text style={twStyle("text-xs font-semibold text-gray-700")}>
-                    {account.active ? "Deactivate" : "Activate"}
+                    {account.active ? pa("deactivate") : pa("activate")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -548,11 +556,11 @@ onPress={() => {
       <BottomSheet
         visible={showAdd}
         onClose={() => setShowAdd(false)}
-        title="Add Bank Account"
+        title={pa("addSheetTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Country *
+            {pa("countryRequired")}
           </Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {SUPPORTED_COUNTRIES.map((c) => (
@@ -562,7 +570,7 @@ onPress={() => {
                   form.country === c.code
                     ? "border-indigo-300 bg-indigo-50"
                     : "border-gray-200 bg-white"
-                }`), { marginRight: 8, marginBottom: 8 }]}
+                }`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() => selectCountry(c.code)}
               >
                 <Text
@@ -570,14 +578,14 @@ onPress={() => {
                     form.country === c.code ? "text-indigo-700" : "text-gray-600"
                   }`)}
                 >
-                  {c.label}
+{pa(`country${c.code}`)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Bank * (Paystack)
+            {pa("bankPaystack")}
           </Text>
           <TouchableOpacity
             style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
@@ -590,8 +598,8 @@ onPress={() => {
               }`)}
             >
               {banksLoading
-                ? "Loading banks…"
-                : form.bank_name || "Select your bank"}
+                ? pa("loadingBanks")
+                : form.bank_name || pa("selectBank")}
             </Text>
             <Ionicons name="chevron-down" size={16} color="#9ca3af" />
           </TouchableOpacity>
@@ -601,7 +609,7 @@ onPress={() => {
               {banks.length === 0 && !banksLoading ? (
                 <View style={twStyle("p-4")}>
                   <Text style={twStyle("text-sm text-gray-500")}>
-                    No banks returned for this country. Check your Paystack setup.
+                    {pa("noBanks")}
                   </Text>
                 </View>
               ) : (
@@ -624,7 +632,7 @@ onPress={() => {
           )}
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Account Number * (8–20 digits)
+            {pa("accountNumberRequired")}
           </Text>
           <TextInput
             style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -633,7 +641,7 @@ onPress={() => {
               setForm((p) => ({ ...p, account_number: t.replace(/\D/g, "").slice(0, 20) }));
               resetVerifyState();
             }}
-            placeholder="Digits only"
+            placeholder={pa("digitsOnly")}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />
@@ -649,34 +657,34 @@ onPress={() => {
                 }
               >
                 {verifying ? (
-                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>Verifying…</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>{pa("verifying")}</Text>
                 ) : (
                   <>
                     <Ionicons name="shield-checkmark-outline" size={18} color="#6366f1" />
-                    <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
-                      Verify account (optional — auto-fills name)
+                    <Text style={twStyle("ms-2 text-sm font-medium text-indigo-700")}>
+                      {pa("verifyOptional")}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
               {verifiedName && (
                 <View style={twStyle("mb-3 rounded-xl border border-green-200 bg-green-50 p-3")}>
-                  <Text style={twStyle("text-xs font-medium text-green-800")}>Verified account name</Text>
+                  <Text style={twStyle("text-xs font-medium text-green-800")}>{pa("verifiedName")}</Text>
                   <Text style={twStyle("text-sm font-medium text-green-900")}>{verifiedName}</Text>
                 </View>
               )}
               {verifyError && (
                 <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
-                  <Text style={twStyle("text-xs font-semibold text-amber-800 mb-0.5")}>Verification unavailable</Text>
+                  <Text style={twStyle("text-xs font-semibold text-amber-800 mb-0.5")}>{pa("verificationUnavailable")}</Text>
                   <Text style={twStyle("text-sm text-amber-700")}>{verifyError}</Text>
-                  <Text style={twStyle("text-xs text-amber-600 mt-1")}>You can still enter your account name manually below.</Text>
+                  <Text style={twStyle("text-xs text-amber-600 mt-1")}>{pa("enterNameManually")}</Text>
                 </View>
               )}
             </>
           ) : null}
 
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Account Holder Name *
+            {pa("accountHolderRequired")}
           </Text>
           <TextInput
             style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -687,12 +695,12 @@ onPress={() => {
                 setVerifiedName(null);
               }
             }}
-            placeholder="Full name as on account"
+            placeholder={pa("accountHolderPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
 
           <ActionButton
-            label="Add Account"
+            label={pa("addAccount")}
             onPress={handleAdd}
             loading={adding}
             fullWidth
@@ -700,8 +708,8 @@ onPress={() => {
 
           <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
             {showVerifyAccountButton
-              ? "Verification is optional — you can enter your account name manually. Account details are stored securely."
-              : "Enter your account holder name as it appears on your bank statement. Account details are stored securely."}
+              ? pa("footerVerify")
+              : pa("footerManual")}
           </Text>
         </View>
       </BottomSheet>

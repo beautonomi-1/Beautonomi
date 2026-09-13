@@ -31,7 +31,7 @@ export function ProviderPageHeader({
         {actions}
         {primaryAction && (
           <Button onClick={primaryAction.onClick} className="bg-primary hover:bg-primary-hover">
-            {primaryAction.icon || <Plus className="w-4 h-4 mr-2" />}
+            {primaryAction.icon || <Plus className="w-4 h-4 me-2" />}
             {primaryAction.label}
           </Button>
         )}

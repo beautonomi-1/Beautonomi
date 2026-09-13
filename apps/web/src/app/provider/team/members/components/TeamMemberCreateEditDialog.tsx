@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -41,6 +43,7 @@ export function TeamMemberCreateEditDialog({
   onSave,
 }: TeamMemberCreateEditDialogProps) {
   const { getOptions } = useReferenceData(["team_role", "commission_type", "working_day"]);
+  const { t } = useTranslation();
   const { salons, selectedLocationId } = useProviderPortal();
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
@@ -229,7 +232,7 @@ export function TeamMemberCreateEditDialog({
             "/api/provider/services",
           );
           const rows = Array.isArray(svcRes.data) ? svcRes.data : [];
-          setOfferings(rows.map((r) => ({ id: r.id, title: r.title || r.name || "Service" })));
+          setOfferings(rows.map((r) => ({ id: r.id, title: r.title || r.name || t("web.provider.teamMemberDialog.serviceFallback") })));
         } catch {
           setOfferings([]);
         }
@@ -304,7 +307,7 @@ export function TeamMemberCreateEditDialog({
             (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT")
           ) {
             const proceed = window.confirm(
-              `${formData.name} has upcoming bookings. Reassign those bookings to any available staff and deactivate?`,
+              t("web.provider.teamMemberDialog.deactivateConfirm", { name: formData.name }),
             );
             if (!proceed) throw activeErr;
             await fetcher.patch(`/api/provider/staff/${member.id}`, {
@@ -343,10 +346,10 @@ export function TeamMemberCreateEditDialog({
         } catch (error) {
           console.error("Failed to update settings:", error);
           // Don't fail the whole operation if settings update fails
-          toast.warning("Staff member updated but some settings may not have been saved");
+          toast.warning(t("web.provider.teamMemberDialog.settingsNotSavedUpdate"));
         }
         
-        toast.success("Team member updated successfully");
+        toast.success(t("web.provider.teamMemberDialog.updated"));
       } else {
         // Create staff member first
         const createdMember = await providerApi.createTeamMember({
@@ -354,7 +357,7 @@ export function TeamMemberCreateEditDialog({
           location_ids: locationIds,
         });
         createdStaffId = createdMember.id;
-        toast.success("Team member created successfully");
+        toast.success(t("web.provider.teamMemberDialog.created"));
         
         // Save settings after creation
         if (createdMember.id) {
@@ -396,7 +399,7 @@ export function TeamMemberCreateEditDialog({
           } catch (error) {
             console.error("Failed to save settings:", error);
             // Don't fail the whole operation if settings save fails
-            toast.warning("Staff member created but some settings may not have been saved");
+            toast.warning(t("web.provider.teamMemberDialog.settingsNotSavedCreate"));
           }
         }
         
@@ -411,23 +414,23 @@ export function TeamMemberCreateEditDialog({
             });
             const joinUrl = res.data?.join_url;
             if (joinUrl && !res.data?.channels?.email) {
-              toast.success("Team member created — share invite link if email did not send", {
+              toast.success(t("web.provider.teamMemberDialog.createdShareInvite"), {
                 description: joinUrl,
                 duration: 8000,
               });
             } else {
-              toast.success(`Team member created — invite sent to ${formData.email}`);
+              toast.success(t("web.provider.teamMemberDialog.createdInviteSent", { email: formData.email }));
             }
           } catch (error: any) {
             console.error("Failed to send invitation:", error);
             const joinUrl = error?.details?.join_url;
             if (joinUrl) {
-              toast.warning("Team member created but email could not be sent", {
-                description: `Share this link: ${joinUrl}`,
+              toast.warning(t("web.provider.teamMemberDialog.createdEmailFailed"), {
+                description: t("web.provider.teamMemberDialog.shareThisLink", { url: joinUrl }),
                 duration: 10000,
               });
             } else {
-              toast.warning("Team member created but invite email failed to send");
+              toast.warning(t("web.provider.teamMemberDialog.createdInviteFailed"));
             }
           }
         }
@@ -444,7 +447,7 @@ export function TeamMemberCreateEditDialog({
           const fetchErr = locErr as FetchError;
           if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
             const proceed = window.confirm(
-              "Upcoming bookings are at a location being removed. Save the new locations anyway?",
+              t("web.provider.teamMemberDialog.locationsConflictConfirm"),
             );
             if (proceed) {
               const { fetcher } = await import("@/lib/http/fetcher");
@@ -454,11 +457,11 @@ export function TeamMemberCreateEditDialog({
                 force: true,
               });
             } else {
-              toast.warning("Locations not updated because of upcoming bookings");
+              toast.warning(t("web.provider.teamMemberDialog.locationsNotUpdated"));
             }
           } else {
             console.error("Failed to save staff locations:", locErr);
-            toast.warning("Staff saved but location assignments may not have been updated");
+            toast.warning(t("web.provider.teamMemberDialog.locationsMayNotUpdate"));
           }
         }
       }
@@ -472,7 +475,7 @@ export function TeamMemberCreateEditDialog({
           const fetchErr = svcErr as FetchError;
           if (fetchErr?.status === 409 || fetchErr?.code === "FUTURE_BOOKINGS_CONFLICT") {
             const proceed = window.confirm(
-              "Upcoming bookings use a service being removed. Save the new service list anyway?",
+              t("web.provider.teamMemberDialog.servicesConflictConfirm"),
             );
             if (proceed) {
               const { fetcher } = await import("@/lib/http/fetcher");
@@ -481,11 +484,11 @@ export function TeamMemberCreateEditDialog({
                 force: true,
               });
             } else {
-              toast.warning("Services not updated because of upcoming bookings");
+              toast.warning(t("web.provider.teamMemberDialog.servicesNotUpdated"));
             }
           } else {
             console.error("Failed to save staff services:", svcErr);
-            toast.warning("Staff saved but service assignments may not have been updated");
+            toast.warning(t("web.provider.teamMemberDialog.servicesMayNotUpdate"));
           }
         }
       }
@@ -494,7 +497,7 @@ export function TeamMemberCreateEditDialog({
       onOpenChange(false);
     } catch (error: unknown) {
       console.error("Failed to save team member:", error);
-      toastPlanGateError(error, "Failed to save team member");
+      toastPlanGateError(error, t("web.provider.teamMemberDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -502,7 +505,7 @@ export function TeamMemberCreateEditDialog({
 
   const handleSendInvite = async () => {
     if (!formData.email || !member) {
-      toast.error("Email and team member are required to send invitation");
+      toast.error(t("web.provider.teamMemberDialog.inviteRequired"));
       return;
     }
 
@@ -515,23 +518,23 @@ export function TeamMemberCreateEditDialog({
       });
       const joinUrl = res.data?.join_url;
       if (joinUrl && !res.data?.channels?.email) {
-        toast.success(`Invite link ready — copy and share if email did not send`, {
+        toast.success(t("web.provider.teamMemberDialog.inviteLinkReady"), {
           description: joinUrl,
           duration: 8000,
         });
       } else {
-        toast.success(`Invitation sent to ${formData.email}`);
+        toast.success(t("web.provider.teamMemberDialog.invitationSent", { email: formData.email }));
       }
     } catch (error: any) {
       console.error("Failed to send invitation:", error);
       const joinUrl = error?.details?.join_url;
       if (joinUrl) {
-        toast.error(error?.message || "Email not configured", {
-          description: `Share this link: ${joinUrl}`,
+        toast.error(error?.message || t("web.provider.teamMemberDialog.emailNotConfigured"), {
+          description: t("web.provider.teamMemberDialog.shareThisLink", { url: joinUrl }),
           duration: 10000,
         });
       } else {
-        toast.error(error?.message || "Failed to send invitation");
+        toast.error(error?.message || t("web.provider.teamMemberDialog.inviteFailed"));
       }
     }
   };
@@ -540,15 +543,15 @@ export function TeamMemberCreateEditDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-4xl max-h-[calc(100vh-4rem)] sm:max-h-[90vh] overflow-hidden p-0 bg-white rounded-lg sm:rounded-xl w-full m-4 sm:m-0 flex flex-col gap-0">
         <DialogHeader className="px-4 sm:px-6 py-4 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-start justify-between pr-8">
+          <div className="flex items-start justify-between pe-8">
             <div className="flex-1 min-w-0">
               <DialogTitle className="text-lg sm:text-2xl font-bold text-gray-900 mb-1 sm:mb-2 truncate">
-                {member ? "Edit Staff Member" : "Add Staff Member"}
+                {member ? t("web.provider.teamMemberDialog.editTitle") : t("web.provider.teamMemberDialog.addTitle")}
               </DialogTitle>
               <DialogDescription className="text-xs sm:text-base text-gray-600 leading-relaxed line-clamp-2">
                 {member 
-                  ? "Update staff member details and settings"
-                  : "Add a team member. They'll receive an email to join in the Provider app (download link included)."}
+                  ? t("web.provider.teamMemberDialog.editSubtitle")
+                  : t("web.provider.teamMemberDialog.addSubtitle")}
               </DialogDescription>
             </div>
           </div>
@@ -564,37 +567,37 @@ export function TeamMemberCreateEditDialog({
                     value="basic" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Basic Info
+                    {t("web.provider.teamMemberDialog.tabBasic")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="service" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Service Provider
+                    {t("web.provider.teamMemberDialog.tabService")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="permissions" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Permissions
+                    {t("web.provider.teamMemberDialog.tabPermissions")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="notifications" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Notifications
+                    {t("web.provider.teamMemberDialog.tabNotifications")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="compensation" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Compensation
+                    {t("web.provider.teamMemberDialog.tabCompensation")}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="settings" 
                     className="px-3 py-1.5 text-xs sm:text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-sm rounded-md transition-all"
                   >
-                    Settings
+                    {t("web.provider.teamMemberDialog.tabSettings")}
                   </TabsTrigger>
                 </TabsList>
               </div>
@@ -605,14 +608,14 @@ export function TeamMemberCreateEditDialog({
               <div className="p-4 sm:p-6 pb-24">
                 <TabsContent value="basic" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">Profile Information</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">{t("web.provider.teamMemberDialog.profileInformation")}</h3>
                 
                 {/* Avatar Upload - Mobile optimized */}
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6 mb-6 sm:mb-8 p-4 sm:p-6 bg-gradient-to-br from-pink-50 to-rose-50 rounded-xl border border-pink-100">
                   <div className="relative flex-shrink-0">
                     <Avatar className="w-24 h-24 sm:w-28 sm:h-28 ring-4 ring-white shadow-lg">
                       {avatarPreview ? (
-                        <AvatarImage src={avatarPreview} alt={formData.name || "Staff member"} className="object-cover" />
+                        <AvatarImage src={avatarPreview} alt={formData.name || t("web.provider.teamMemberDialog.staffMemberAlt")} className="object-cover" />
                       ) : (
                         <AvatarFallback className="bg-gradient-to-br from-primary to-primary-hover text-white text-3xl sm:text-4xl font-bold">
                           {formData.name.charAt(0).toUpperCase() || "?"}
@@ -633,10 +636,10 @@ export function TeamMemberCreateEditDialog({
                       />
                     </label>
                   </div>
-                  <div className="flex-1 text-center sm:text-left">
-                    <p className="text-sm sm:text-base font-semibold text-gray-900 mb-1.5">Profile Photo</p>
+                  <div className="flex-1 text-center sm:text-start">
+                    <p className="text-sm sm:text-base font-semibold text-gray-900 mb-1.5">{t("web.provider.teamMemberDialog.profilePhoto")}</p>
                     <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-                      Click the camera icon to upload a photo. This will appear in online booking.
+                      {t("web.provider.teamMemberDialog.profilePhotoHint")}
                     </p>
                   </div>
                 </div>
@@ -644,7 +647,7 @@ export function TeamMemberCreateEditDialog({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="name" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Full Name <span className="text-primary">*</span>
+                      {t("web.provider.teamMemberDialog.fullName")} <span className="text-primary">*</span>
                     </Label>
                     <Input
                       id="name"
@@ -652,12 +655,12 @@ export function TeamMemberCreateEditDialog({
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
                       className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder="Enter full name"
+                      placeholder={t("web.provider.teamMemberDialog.enterFullName")}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Email <span className="text-primary">*</span>
+                      {t("web.provider.common.email")} <span className="text-primary">*</span>
                     </Label>
                     <Input
                       id="email"
@@ -666,30 +669,30 @@ export function TeamMemberCreateEditDialog({
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       required
                       className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder="email@example.com"
+                      placeholder={t("web.provider.teamMemberDialog.emailPlaceholder")}
                     />
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
                       <Mail className="w-3 h-3" />
-                      Used for login and notifications
+                      {t("web.provider.teamMemberDialog.emailLoginHint")}
                     </p>
                   </div>
                   <div className="space-y-2">
                     <PhoneInput
                       value={formData.mobile}
                       onChange={(value) => setFormData({ ...formData, mobile: value })}
-                      label="Mobile Number"
+                      label={t("web.provider.teamMemberDialog.mobileNumber")}
                       required
-                      placeholder="82 123 4567"
+                      placeholder={t("web.provider.teamMemberDialog.mobilePlaceholder")}
                       className="mt-1.5"
                     />
                     <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
                       <Phone className="w-3 h-3" />
-                      Used for SMS notifications
+                      {t("web.provider.teamMemberDialog.smsHint")}
                     </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="role" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Role <span className="text-primary">*</span>
+                      {t("web.provider.common.role")} <span className="text-primary">*</span>
                     </Label>
                     <Select
                       value={formData.role}
@@ -708,8 +711,8 @@ export function TeamMemberCreateEditDialog({
                     </Select>
                     <p className="text-xs text-gray-500 mt-1.5">
                       {formData.role === "owner" || formData.role === "manager" 
-                        ? "Admin users have all permissions enabled"
-                        : "Normal users have limited permissions"}
+                        ? t("web.provider.teamMemberDialog.adminRoleHint")
+                        : t("web.provider.teamMemberDialog.normalRoleHint")}
                     </p>
                   </div>
                 </div>
@@ -718,10 +721,10 @@ export function TeamMemberCreateEditDialog({
                   <div className="mt-6 space-y-3">
                     <Label className="text-sm sm:text-base font-semibold text-gray-900 flex items-center gap-2">
                       <MapPin className="w-4 h-4" />
-                      Assign locations
+                      {t("web.provider.teamMemberDialog.assignLocations")}
                     </Label>
                     <p className="text-xs text-gray-500">
-                      This person only appears on the calendar and booking roster for the branches you select.
+                      {t("web.provider.teamMemberDialog.assignLocationsHint")}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {salons.map((salon) => {
@@ -756,10 +759,10 @@ export function TeamMemberCreateEditDialog({
                   <div className="mt-6 space-y-3">
                     <Label className="text-sm sm:text-base font-semibold text-gray-900 flex items-center gap-2">
                       <Scissors className="w-4 h-4" />
-                      Assign services
+                      {t("web.provider.teamMemberDialog.assignServices")}
                     </Label>
                     <p className="text-xs text-gray-500">
-                      This person can only be booked for the services you select.
+                      {t("web.provider.teamMemberDialog.assignServicesHint")}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {offerings.map((offering) => {
@@ -795,11 +798,10 @@ export function TeamMemberCreateEditDialog({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm sm:text-base font-semibold text-blue-900 mb-1.5">
-                          Invite to the Provider app
+                          {t("web.provider.teamMemberDialog.inviteToApp")}
                         </p>
                         <p className="text-xs sm:text-sm text-blue-700 leading-relaxed">
-                          When you save, we email them a join link with App Store / Play download links.
-                          They set a password and land in the Provider app — not the owner onboarding wizard.
+                          {t("web.provider.teamMemberDialog.inviteToAppBody")}
                         </p>
                       </div>
                     </div>
@@ -812,11 +814,10 @@ export function TeamMemberCreateEditDialog({
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm sm:text-base font-semibold text-blue-900 mb-1.5">
-                          Resend invite
+                          {t("web.provider.teamMemberDialog.resendInvite")}
                         </p>
                         <p className="text-xs sm:text-sm text-blue-700 mb-4 leading-relaxed">
-                          Send a fresh join link to {formData.email || "this team member"}. If email is not
-                          configured, you will get a copyable link to share manually.
+                          {t("web.provider.teamMemberDialog.resendInviteBody", { email: formData.email || t("web.provider.teamMemberDialog.thisTeamMember") })}
                         </p>
                         <Button
                           type="button"
@@ -826,8 +827,8 @@ export function TeamMemberCreateEditDialog({
                           disabled={!formData.email}
                           className="min-h-[44px] touch-manipulation border-blue-300 text-blue-700 hover:bg-blue-100 hover:border-blue-400 w-full sm:w-auto"
                         >
-                          <Send className="w-4 h-4 mr-2" />
-                          Resend invitation
+                          <Send className="w-4 h-4 me-2" />
+                          {t("web.provider.teamMemberDialog.resendInvitation")}
                         </Button>
                       </div>
                     </div>
@@ -838,7 +839,7 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="service" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">Service Provider Settings</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 sm:mb-6">{t("web.provider.teamMemberDialog.serviceProviderSettings")}</h3>
                 
                 <div className="space-y-4 sm:space-y-5">
                   <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
@@ -849,16 +850,16 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                        Is service provider
+                        {t("web.provider.teamMemberDialog.isServiceProvider")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Enable this to assign services to this staff member. Required for service providers.
+                        {t("web.provider.teamMemberDialog.isServiceProviderHint")}
                       </p>
                     </div>
                   </div>
 
                   {formData.is_service_provider && (
-                    <div className="ml-0 sm:ml-4 space-y-4 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    <div className="ms-0 sm:ms-4 space-y-4 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
                       <div className="flex items-start gap-4 p-3 sm:p-4 bg-white rounded-lg border border-blue-100">
                         <Switch
                           checked={formData.enable_in_online_booking}
@@ -867,10 +868,10 @@ export function TeamMemberCreateEditDialog({
                         />
                         <div className="flex-1 min-w-0">
                           <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                            Enable in online booking
+                            {t("web.provider.teamMemberDialog.enableInOnlineBooking")}
                           </Label>
                           <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                            Allow clients to select this staff member when booking online
+                            {t("web.provider.teamMemberDialog.enableInOnlineBookingHint")}
                           </p>
                         </div>
                       </div>
@@ -883,10 +884,10 @@ export function TeamMemberCreateEditDialog({
                         />
                         <div className="flex-1 min-w-0">
                           <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                            Mobile Ready
+                            {t("web.provider.teamMemberDialog.mobileReady")}
                           </Label>
                           <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                            Can perform at-home/mobile services. Required for mobile appointments.
+                            {t("web.provider.teamMemberDialog.mobileReadyHint")}
                           </p>
                         </div>
                       </div>
@@ -901,10 +902,10 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                        Can be assigned to product sales
+                        {t("web.provider.teamMemberDialog.canAssignProductSales")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Allow this staff member to be assigned to product sales even if they're not a service provider (e.g., front desk staff)
+                        {t("web.provider.teamMemberDialog.canAssignProductSalesHint")}
                       </p>
                     </div>
                   </div>
@@ -914,9 +915,9 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="permissions" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">Permissions</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{t("web.provider.teamMemberDialog.permissions")}</h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-5 sm:mb-6 leading-relaxed">
-                  Configure what this staff member can access and manage
+                  {t("web.provider.teamMemberDialog.permissionsHint")}
                 </p>
                 
                 <div className="space-y-4 sm:space-y-5">
@@ -930,41 +931,41 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block flex items-center gap-2">
                         <Shield className="w-4 h-4" />
-                        Admin User
+                        {t("web.provider.teamMemberDialog.adminUser")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
                         {formData.role === "owner" 
-                          ? "Owners automatically have all permissions"
-                          : "Admin users have full access to all features and settings"}
+                          ? t("web.provider.teamMemberDialog.ownersAllPermissions")
+                          : t("web.provider.teamMemberDialog.adminFullAccess")}
                       </p>
                     </div>
                   </div>
 
                   {!formData.is_admin && (
-                    <div className="ml-0 sm:ml-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    <div className="ms-0 sm:ms-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
                       <p className="text-sm font-semibold text-blue-900 mb-3">
-                        Normal users typically have access to:
+                        {t("web.provider.teamMemberDialog.normalUsersAccess")}
                       </p>
                       <ul className="text-xs sm:text-sm text-blue-700 space-y-2 list-none">
                         <li className="flex items-start gap-2">
                           <span className="text-blue-500 mt-1">•</span>
-                          <span>View and manage their own appointments</span>
+                          <span>{t("web.provider.teamMemberDialog.accessOwnAppointments")}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span className="text-blue-500 mt-1">•</span>
-                          <span>Check in/out clients</span>
+                          <span>{t("web.provider.teamMemberDialog.accessCheckInOut")}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span className="text-blue-500 mt-1">•</span>
-                          <span>Process sales and payments</span>
+                          <span>{t("web.provider.teamMemberDialog.accessSales")}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span className="text-blue-500 mt-1">•</span>
-                          <span>View their own schedule and shifts</span>
+                          <span>{t("web.provider.teamMemberDialog.accessSchedule")}</span>
                         </li>
                       </ul>
                       <p className="text-xs sm:text-sm text-blue-700 mt-4 leading-relaxed">
-                        Detailed permissions can be configured in Settings → Team → Permissions
+                        {t("web.provider.teamMemberDialog.detailedPermissions")}
                       </p>
                     </div>
                   )}
@@ -974,9 +975,9 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="notifications" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">Notification Preferences</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{t("web.provider.teamMemberDialog.notificationPreferences")}</h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-5 sm:mb-6 leading-relaxed">
-                  Configure how this staff member receives notifications
+                  {t("web.provider.teamMemberDialog.notificationPreferencesHint")}
                 </p>
                 
                 <div className="space-y-4 sm:space-y-5">
@@ -989,10 +990,10 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Email Notifications
+                        {t("web.provider.teamMemberDialog.emailNotifications")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Receive notifications via email at {formData.email || "their email address"}
+                        {t("web.provider.teamMemberDialog.emailNotificationsAt", { email: formData.email || t("web.provider.teamMemberDialog.theirEmailAddress") })}
                       </p>
                     </div>
                   </div>
@@ -1009,12 +1010,12 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        SMS Notifications
+                        {t("web.provider.teamMemberDialog.smsNotifications")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
                         {formData.sms_plan_allowed
-                          ? `Receive notifications via SMS at ${formData.mobile || "their mobile number"}`
-                          : "Staff SMS is available on subscription plans that include it. Upgrade to enable."}
+                          ? t("web.provider.teamMemberDialog.smsNotificationsAt", { mobile: formData.mobile || t("web.provider.teamMemberDialog.theirMobileNumber") })
+                          : t("web.provider.teamMemberDialog.smsPlanLocked")}
                       </p>
                     </div>
                   </div>
@@ -1028,10 +1029,10 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Desktop Notifications
+                        {t("web.provider.teamMemberDialog.desktopNotifications")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Show browser desktop notifications for appointments and updates
+                        {t("web.provider.teamMemberDialog.desktopNotificationsHint")}
                       </p>
                     </div>
                   </div>
@@ -1041,9 +1042,9 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="compensation" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">Compensation Settings</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{t("web.provider.teamMemberDialog.compensationSettings")}</h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-5 sm:mb-6 leading-relaxed">
-                  Configure how this staff member is compensated
+                  {t("web.provider.teamMemberDialog.compensationHint")}
                 </p>
                 
                 <div className="space-y-5 sm:space-y-6">
@@ -1056,19 +1057,19 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Service and Product Commission
+                        {t("web.provider.teamMemberDialog.serviceProductCommission")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Enable commission-based compensation for services and products sold
+                        {t("web.provider.teamMemberDialog.commissionHint")}
                       </p>
                     </div>
                   </div>
 
                   {formData.commission_enabled && (
-                    <div className="ml-0 sm:ml-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    <div className="ms-0 sm:ms-4 space-y-3 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
                       <div className="space-y-2">
                         <Label htmlFor="commission_rate" className="text-sm sm:text-base font-semibold text-gray-900">
-                          Commission Rate (%)
+                          {t("web.provider.teamMemberDialog.commissionRate")}
                         </Label>
                         <Input
                           id="commission_rate"
@@ -1079,10 +1080,10 @@ export function TeamMemberCreateEditDialog({
                           value={formData.commission_rate}
                           onChange={(e) => setFormData({ ...formData, commission_rate: parseFloat(e.target.value) || 0 })}
                           className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                          placeholder="e.g., 50"
+                          placeholder={t("web.provider.teamMemberDialog.commissionRatePlaceholder")}
                         />
                         <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                          Percentage of service/product price paid as commission
+                          {t("web.provider.teamMemberDialog.commissionRateHint")}
                         </p>
                       </div>
                     </div>
@@ -1092,7 +1093,7 @@ export function TeamMemberCreateEditDialog({
 
                   <div className="space-y-2">
                     <Label htmlFor="hourly_rate" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Hourly Rate (R)
+                      {t("web.provider.teamMemberDialog.hourlyRate")}
                     </Label>
                     <Input
                       id="hourly_rate"
@@ -1102,16 +1103,16 @@ export function TeamMemberCreateEditDialog({
                       value={formData.hourly_rate}
                       onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 0 })}
                       className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder="0.00"
+                      placeholder={t("web.provider.teamMemberDialog.moneyPlaceholder")}
                     />
                     <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Hourly wage for hourly-based compensation
+                      {t("web.provider.teamMemberDialog.hourlyRateHint")}
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="salary" className="text-sm sm:text-base font-semibold text-gray-900">
-                      Salary (R)
+                      {t("web.provider.teamMemberDialog.salary")}
                     </Label>
                     <Input
                       id="salary"
@@ -1121,10 +1122,10 @@ export function TeamMemberCreateEditDialog({
                       value={formData.salary}
                       onChange={(e) => setFormData({ ...formData, salary: parseFloat(e.target.value) || 0 })}
                       className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                      placeholder="0.00"
+                      placeholder={t("web.provider.teamMemberDialog.moneyPlaceholder")}
                     />
                     <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                      Monthly salary for salaried staff members
+                      {t("web.provider.teamMemberDialog.salaryHint")}
                     </p>
                   </div>
 
@@ -1138,10 +1139,10 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                        Tips Enabled
+                        {t("web.provider.teamMemberDialog.tipsEnabled")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Allow this staff member to receive tips from clients
+                        {t("web.provider.teamMemberDialog.tipsEnabledHint")}
                       </p>
                     </div>
                   </div>
@@ -1151,7 +1152,7 @@ export function TeamMemberCreateEditDialog({
 
                 <TabsContent value="settings" className="mt-0 space-y-6">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-5 sm:mb-6">Additional Settings</h3>
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-5 sm:mb-6">{t("web.provider.teamMemberDialog.additionalSettings")}</h3>
                 
                 <div className="space-y-4 sm:space-y-5">
                   <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
@@ -1163,12 +1164,12 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Custom Work Hours
+                        {t("web.provider.teamMemberDialog.customWorkHours")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
                         {formData.work_hours_enabled
-                          ? "This staff member uses their own custom schedule. Availability is based on their shifts and working hours."
-                          : "This staff member follows the location\u2019s operating hours. Toggle on to set a custom schedule."}
+                          ? t("web.provider.teamMemberDialog.customWorkHoursOn")
+                          : t("web.provider.teamMemberDialog.customWorkHoursOff")}
                       </p>
                     </div>
                   </div>
@@ -1182,19 +1183,19 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Time Clock Enabled
+                        {t("web.provider.teamMemberDialog.timeClockEnabled")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Allow this staff member to clock in and out using the time clock
+                        {t("web.provider.teamMemberDialog.timeClockEnabledHint")}
                       </p>
                     </div>
                   </div>
 
                   {formData.time_clock_enabled && (
-                    <div className="ml-0 sm:ml-4 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
+                    <div className="ms-0 sm:ms-4 p-4 sm:p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 shadow-sm">
                       <div className="space-y-2">
                         <Label htmlFor="time_clock_pin" className="text-sm sm:text-base font-semibold text-gray-900">
-                          Time Clock PIN
+                          {t("web.provider.teamMemberDialog.timeClockPin")}
                         </Label>
                         <Input
                           id="time_clock_pin"
@@ -1202,11 +1203,11 @@ export function TeamMemberCreateEditDialog({
                           value={formData.time_clock_pin}
                           onChange={(e) => setFormData({ ...formData, time_clock_pin: e.target.value })}
                           className="mt-1.5 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-                          placeholder="Enter 4-digit PIN"
+                          placeholder={t("web.provider.teamMemberDialog.timeClockPinPlaceholder")}
                           maxLength={4}
                         />
                         <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                          PIN for clocking in/out on front desk devices
+                          {t("web.provider.teamMemberDialog.timeClockPinHint")}
                         </p>
                       </div>
                     </div>
@@ -1221,10 +1222,10 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Phone className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-                        Phone Call Availability
+                        {t("web.provider.teamMemberDialog.phoneCallAvailability")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Enable phone call availability for this staff member
+                        {t("web.provider.teamMemberDialog.phoneCallAvailabilityHint")}
                       </p>
                     </div>
                   </div>
@@ -1239,12 +1240,12 @@ export function TeamMemberCreateEditDialog({
                     />
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer block">
-                        Active
+                        {t("web.provider.common.active")}
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
                         {formData.is_active 
-                          ? "This staff member is active and can be assigned to appointments"
-                          : "This staff member is inactive and will not appear in booking options"}
+                          ? t("web.provider.teamMemberDialog.staffActiveHint")
+                          : t("web.provider.teamMemberDialog.staffInactiveHint")}
                       </p>
                     </div>
                   </div>
@@ -1263,14 +1264,14 @@ export function TeamMemberCreateEditDialog({
               disabled={isLoading}
               className="w-full sm:w-auto min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm font-semibold border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-lg"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-[#B80452] min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm font-semibold text-white shadow-lg hover:shadow-xl transition-all rounded-lg"
             >
-              {isLoading ? "Saving..." : member ? "Update Staff Member" : "Create Staff Member"}
+              {isLoading ? t("web.provider.common.saving") : member ? t("web.provider.teamMemberDialog.updateStaffMember") : t("web.provider.teamMemberDialog.createStaffMember")}
             </Button>
           </DialogFooter>
         </form>

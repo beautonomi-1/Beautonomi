@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 import { LayoutGrid, AlertCircle, Users, Scissors, CreditCard, CheckCircle2 } from "lucide-react";
 import type { FrontDeskMetricRange } from "@/lib/front-desk/types";
@@ -13,23 +14,6 @@ interface CommandCenterProps {
   onMetricRangeChange: (range: FrontDeskMetricRange) => void;
 }
 
-const STATS = [
-  { id: "all", label: "All", icon: LayoutGrid },
-  { id: "needs_confirmation", label: "To confirm", icon: AlertCircle },
-  { id: "arrivals", label: "Arrivals", icon: Users },
-  { id: "in_service", label: "In Service", icon: Scissors },
-  { id: "ready_to_pay", label: "Ready to Pay", icon: CreditCard },
-  { id: "completed", label: "Completed", icon: CheckCircle2 },
-] as const;
-
-const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "today", label: "Today" },
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "year", label: "Year" },
-];
-
 export function CommandCenter({
   counts,
   activeFilter,
@@ -37,11 +21,28 @@ export function CommandCenter({
   metricRange,
   onMetricRangeChange,
 }: CommandCenterProps) {
+  const { t } = useTranslation();
+  const STATS = [
+    { id: "all", label: t("web.ui.filterBar.all"), icon: LayoutGrid },
+    { id: "needs_confirmation", label: t("web.provider.frontDesk.toConfirm"), icon: AlertCircle },
+    { id: "arrivals", label: t("web.provider.frontDesk.arrivals"), icon: Users },
+    { id: "in_service", label: t("web.provider.calendarMobile.statusInService"), icon: Scissors },
+    { id: "ready_to_pay", label: t("web.provider.frontDesk.readyToPayLabel"), icon: CreditCard },
+    { id: "completed", label: t("web.provider.calendarMobile.statusCompleted"), icon: CheckCircle2 },
+  ] as const;
+  const METRIC_RANGES: Array<{ id: FrontDeskMetricRange; label: string }> = [
+    { id: "all", label: t("provider.mobile.screens.waitingRoom.metricRangeAll") },
+    { id: "today", label: t("time.today") },
+    { id: "week", label: t("provider.mobile.screens.waitingRoom.metricRangeWeek") },
+    { id: "month", label: t("provider.mobile.screens.waitingRoom.metricRangeMonth") },
+    { id: "year", label: t("provider.mobile.screens.waitingRoom.metricRangeYear") },
+  ];
+
   return (
     <div className="w-full min-w-0 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-[#0F172A]/50">
-          Metrics
+          {t("web.provider.frontDesk.metrics")}
         </span>
         {METRIC_RANGES.map((range) => {
           const isActive = metricRange === range.id;
@@ -92,7 +93,7 @@ export function CommandCenter({
                 >
                   <Icon className="w-5 h-5" />
                 </div>
-                <div className="text-left">
+                <div className="text-start">
                   <p
                     className={cn(
                       "text-[9px] font-black tracking-widest uppercase",

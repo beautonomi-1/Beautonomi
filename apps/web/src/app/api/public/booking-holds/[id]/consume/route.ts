@@ -170,20 +170,6 @@ async function handlePost(
       }
     }
 
-    const adminSupabaseForOnboarding = getSupabaseAdmin();
-    const { data: onboardingUser } = await adminSupabaseForOnboarding
-      .from("users")
-      .select("customer_onboarding_completed_at")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (!onboardingUser?.customer_onboarding_completed_at) {
-      return errorResponse(
-        "Please complete your profile before booking.",
-        "ONBOARDING_REQUIRED",
-        403,
-      );
-    }
-
     const body = await request.json();
     const parsed = consumeBodySchema.safeParse(body);
     if (!parsed.success) {
@@ -194,6 +180,36 @@ async function handlePost(
       );
     }
     const clientInfo = parsed.data.client_info;
+
+    const adminSupabaseForOnboarding = getSupabaseAdmin();
+    const { data: onboardingUser } = await adminSupabaseForOnboarding
+      .from("users")
+      .select("customer_onboarding_completed_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!onboardingUser?.customer_onboarding_completed_at) {
+      const hasBookingProfile =
+        Boolean(clientInfo?.firstName?.trim()) || Boolean(clientInfo?.email?.trim());
+      if (!hasBookingProfile) {
+        return errorResponse(
+          "Please complete your profile before booking.",
+          "ONBOARDING_REQUIRED",
+          403,
+        );
+      }
+      const { error: onboardErr } = await adminSupabaseForOnboarding
+        .from("users")
+        .update({ customer_onboarding_completed_at: new Date().toISOString() })
+        .eq("id", user.id)
+        .is("customer_onboarding_completed_at", null);
+      if (onboardErr) {
+        return errorResponse(
+          "Please complete your profile before booking.",
+          "ONBOARDING_REQUIRED",
+          403,
+        );
+      }
+    }
     const guestFingerprint = parsed.data.guest_fingerprint_hash;
     const paymentMethod = parsed.data.payment_method;
     const paymentMethodId = parsed.data.payment_method_id;

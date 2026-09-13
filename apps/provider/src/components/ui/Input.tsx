@@ -90,7 +90,7 @@ export function Input({
         ]}
       >
         {leftIcon && (
-          <View style={{ paddingLeft: 12 }}>
+          <View style={{ paddingStart: 12 }}>
             <Ionicons
               name={leftIcon}
               size={18}

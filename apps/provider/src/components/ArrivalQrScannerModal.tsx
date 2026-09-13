@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { twStyle } from "@/lib/twStyle";
 import { isArrivalQrPayloadString } from "@/lib/arrival-qr-payload";
 import { openAppSettings } from "@/lib/native-permissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 /** Pause before accepting another scan after a failed verify (camera keeps seeing the same QR). */
 const RESCAN_COOLDOWN_MS = 2500;
@@ -34,6 +35,8 @@ export function ArrivalQrScannerModal({
   busy = false,
   errorMessage = null,
 }: Props) {
+  const { t } = useTranslation();
+  const qr = (key: string) => t(`provider.mobile.components.arrivalQrScanner.${key}`) as string;
   const [permission, requestPermission, getPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -118,17 +121,17 @@ export function ArrivalQrScannerModal({
       <Modal visible={visible} animationType="fade" transparent>
         <View style={twStyle("flex-1 bg-black/70 justify-center px-6")}>
           <View style={twStyle("bg-white rounded-2xl p-5")}>
-            <Text style={twStyle("text-base font-semibold text-gray-900 mb-2")}>QR scan</Text>
+            <Text style={twStyle("text-base font-semibold text-gray-900 mb-2")}>{qr("webTitle")}</Text>
             <Text style={twStyle("text-sm text-gray-600 mb-4")}>
-              Camera QR scanning runs in the mobile app. On web, use the provider website booking page with your browser camera, or enter the code manually.
+              {qr("webBody")}
             </Text>
             <TouchableOpacity
               onPress={onClose}
               style={twStyle("bg-primary py-3 rounded-xl items-center")}
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel={qr("closeA11y")}
             >
-              <Text style={twStyle("text-white font-semibold")}>Close</Text>
+              <Text style={twStyle("text-white font-semibold")}>{qr("close")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -140,12 +143,12 @@ export function ArrivalQrScannerModal({
     <Modal visible={visible} animationType="slide">
       <View style={twStyle("flex-1 bg-black")}>
         <View style={twStyle("flex-row items-center justify-between px-4 pt-12 pb-3 bg-black")}>
-          <Text style={twStyle("text-white text-lg font-semibold")}>Scan arrival QR</Text>
+          <Text style={twStyle("text-white text-lg font-semibold")}>{qr("title")}</Text>
           <TouchableOpacity
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Close scanner"
+            accessibilityLabel={qr("closeScannerA11y")}
           >
             <Ionicons name="close" size={28} color="#fff" />
           </TouchableOpacity>
@@ -154,8 +157,7 @@ export function ArrivalQrScannerModal({
         {!permission?.granted ? (
           <View style={twStyle("flex-1 justify-center px-6")}>
             <Text style={twStyle("text-white text-center mb-4")}>
-              Camera access is needed to scan the customer&apos;s arrival QR code.
-              You can close this scanner and enter the arrival code manually.
+              {qr("cameraNeeded")}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -167,10 +169,10 @@ export function ArrivalQrScannerModal({
               }}
               style={twStyle("bg-primary py-3 rounded-xl items-center")}
               accessibilityRole="button"
-              accessibilityLabel={permission?.canAskAgain === false ? "Open settings for camera access" : "Continue"}
+              accessibilityLabel={permission?.canAskAgain === false ? qr("openSettingsA11y") : qr("continueA11y")}
             >
               <Text style={twStyle("text-white font-semibold")}>
-                {permission?.canAskAgain === false ? "Open Settings" : "Continue"}
+                {permission?.canAskAgain === false ? qr("openSettings") : qr("continue")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -195,7 +197,7 @@ export function ArrivalQrScannerModal({
               <View style={twStyle("absolute inset-0 items-center justify-center bg-black/50")}>
                 <ActivityIndicator size="large" color="#fff" />
                 <Text style={twStyle("text-white text-sm mt-3 px-6 text-center")}>
-                  {busy ? "Verifying arrival…" : "Hold steady…"}
+                  {busy ? qr("verifying") : qr("holdSteady")}
                 </Text>
               </View>
             ) : null}
@@ -209,7 +211,7 @@ export function ArrivalQrScannerModal({
               pointerEvents="none"
             >
               <Text style={twStyle("text-white text-center text-sm")}>
-                Point the camera at the QR on the customer&apos;s booking screen.
+                {qr("pointCamera")}
               </Text>
             </View>
           </View>

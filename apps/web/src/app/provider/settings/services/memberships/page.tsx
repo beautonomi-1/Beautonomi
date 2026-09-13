@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -37,6 +38,7 @@ interface MembershipPlan {
 }
 
 export default function MembershipsSettings() {
+  const { t } = useTranslation();
   const locale = useTenantLocaleTag();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,7 +70,7 @@ export default function MembershipsSettings() {
       console.error("Error loading membership plans:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load membership plans";
+        : error?.error?.message || t("web.provider.settings.pages.services/memberships.failedToLoad");
       toast.error(errorMessage);
       setPlans([]);
     } finally {
@@ -99,20 +101,20 @@ export default function MembershipsSettings() {
   }, []);
 
   const extendSubscription = async (id: string) => {
-    const daysRaw = window.prompt("Extend this membership by how many days? (1–365)", "30");
+    const daysRaw = window.prompt(t("web.provider.settings.pages.services/memberships.extendPrompt"), "30");
     if (!daysRaw) return;
     const days = Number(daysRaw);
     if (!Number.isInteger(days) || days < 1 || days > 365) {
-      toast.error("Enter a whole number of days between 1 and 365");
+      toast.error(t("web.provider.settings.pages.services/memberships.enterAWholeNumberOfDays"));
       return;
     }
     setExtendingId(id);
     try {
       await fetcher.post(`/api/provider/membership-subscriptions/${id}/extend`, { days });
-      toast.success(`Extended by ${days} day${days === 1 ? "" : "s"}`);
+      toast.success(t("web.provider.settings.pages.services/memberships.extendedBy", { count: days }));
       await loadSubscribers();
     } catch (error) {
-      toast.error(error instanceof FetchError ? error.message : "Failed to extend membership");
+      toast.error(error instanceof FetchError ? error.message : t("web.provider.settings.pages.services/memberships.failedToExtend"));
     } finally {
       setExtendingId(null);
     }
@@ -143,16 +145,16 @@ export default function MembershipsSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this membership plan? This action cannot be undone.")) return;
+    if (!confirm(t("web.provider.settings.pages.services/memberships.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/membership-plans/${id}`);
-      toast.success("Membership plan deleted successfully");
+      toast.success(t("web.provider.settings.pages.services/memberships.membershipPlanDeletedSuccessfully"));
       await loadPlans();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to delete membership plan";
+        : error?.error?.message || t("web.provider.settings.pages.services/memberships.failedToDelete");
       toast.error(errorMessage);
       console.error("Error deleting membership plan:", error);
     }
@@ -161,19 +163,19 @@ export default function MembershipsSettings() {
   const handleSave = async () => {
     try {
       if (!formData.name.trim()) {
-        toast.error("Plan name is required");
+        toast.error(t("web.provider.settings.pages.services/memberships.planNameIsRequired"));
         return;
       }
 
       const priceNum = Number(formData.price_monthly);
       if (!Number.isFinite(priceNum) || priceNum < 0) {
-        toast.error("Please enter a valid price (0 or greater)");
+        toast.error(t("web.provider.settings.pages.services/memberships.pleaseEnterAValidPrice0"));
         return;
       }
 
       const discountNum = formData.discount_percent ? Number(formData.discount_percent) : 0;
       if (!Number.isFinite(discountNum) || discountNum < 0 || discountNum > 100) {
-        toast.error("Discount must be between 0 and 100");
+        toast.error(t("web.provider.settings.pages.services/memberships.discountMustBeBetween0And"));
         return;
       }
 
@@ -187,7 +189,7 @@ export default function MembershipsSettings() {
           discount_percent: discountNum,
           is_active: formData.is_active,
         });
-        toast.success("Membership plan updated successfully");
+        toast.success(t("web.provider.settings.pages.services/memberships.membershipPlanUpdatedSuccessfully"));
       } else {
         await fetcher.post(`/api/provider/membership-plans`, {
           name: formData.name.trim(),
@@ -196,7 +198,7 @@ export default function MembershipsSettings() {
           discount_percent: discountNum,
           is_active: formData.is_active,
         });
-        toast.success("Membership plan created successfully");
+        toast.success(t("web.provider.settings.pages.services/memberships.membershipPlanCreatedSuccessfully"));
       }
 
       setIsDialogOpen(false);
@@ -204,7 +206,7 @@ export default function MembershipsSettings() {
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save membership plan";
+        : error?.error?.message || t("web.provider.settings.pages.services/memberships.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving membership plan:", error);
     } finally {
@@ -221,43 +223,43 @@ export default function MembershipsSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Memberships"
-      subtitle="Set up membership plans for your clients"
+      title={t("web.provider.settings.categories.services.items.memberships.title")}
+      subtitle={t("web.provider.settings.categories.services.items.memberships.description")}
       onSave={() => loadPlans()}
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Memberships" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.services/memberships.memberships") },
       ]}
     >
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
-              Create membership plans that offer recurring services and discounts to your clients
+              {t("web.provider.settings.pages.services/memberships.createPlansHint")}
             </p>
           </div>
           <Button
             onClick={handleCreate}
             className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Plan
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.services/memberships.addPlan")}
           </Button>
         </div>
 
         {isLoading ? (
           <SectionCard>
-            <LoadingTimeout loadingMessage="Loading membership plans..." />
+            <LoadingTimeout loadingMessage={t("web.provider.settings.pages.services/memberships.loadingMembershipPlans")} />
           </SectionCard>
         ) : plans.length === 0 ? (
           <SectionCard className="p-8 sm:p-12">
             <EmptyState
-              title="No membership plans yet"
-              description="Create membership plans to offer recurring services and discounts to your clients"
+              title={t("web.provider.settings.pages.services/memberships.noMembershipPlansYet")}
+              description={t("web.provider.settings.pages.services/memberships.emptyDescription")}
               action={{
-                label: "Add Plan",
+                label: t("web.provider.settings.pages.services/memberships.addPlan"),
                 onClick: handleCreate,
               }}
             />
@@ -274,18 +276,18 @@ export default function MembershipsSettings() {
                     )}
                     <div className="space-y-1 mb-2">
                       <p className="text-sm font-medium text-gray-900">
-                        {formatCurrency(plan.price_monthly, plan.currency)}/month
+                        {t("web.provider.settings.pages.services/memberships.perMonth", { amount: formatCurrency(plan.price_monthly, plan.currency) })}
                       </p>
                       {plan.discount_percent > 0 && (
                         <p className="text-sm text-gray-600">
-                          {plan.discount_percent}% discount on services
+                          {t("web.provider.settings.pages.services/memberships.discountOnServices", { pct: plan.discount_percent })}
                         </p>
                       )}
                     </div>
                     <Badge
                       className={plan.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
                     >
-                      {plan.is_active ? "Active" : "Inactive"}
+                      {plan.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                     </Badge>
                   </div>
                 </div>
@@ -296,8 +298,8 @@ export default function MembershipsSettings() {
                     onClick={() => handleEdit(plan)}
                     className="flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
+                    <Edit className="w-3 h-3 me-1" />
+                    {t("web.provider.common.edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -305,8 +307,8 @@ export default function MembershipsSettings() {
                     onClick={() => handleDelete(plan.id)}
                     className="text-red-600 hover:text-red-700 flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Delete
+                    <Trash2 className="w-3 h-3 me-1" />
+                    {t("web.provider.common.delete")}
                   </Button>
                 </div>
               </SectionCard>
@@ -316,10 +318,10 @@ export default function MembershipsSettings() {
       </div>
 
       <div className="mt-8">
-        <h2 className="text-lg font-semibold mb-3">Subscribers</h2>
+        <h2 className="text-lg font-semibold mb-3">{t("web.provider.settings.pages.services/memberships.subscribers")}</h2>
         {subscribers.length === 0 ? (
           <SectionCard>
-            <p className="text-sm text-gray-600">No members yet.</p>
+            <p className="text-sm text-gray-600">{t("web.provider.settings.pages.services/memberships.noMembersYet")}</p>
           </SectionCard>
         ) : (
           <div className="space-y-2">
@@ -328,12 +330,12 @@ export default function MembershipsSettings() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-medium text-gray-900">
-                      {row.user.full_name || row.user.email || "Member"}
+                      {row.user.full_name || row.user.email || t("web.provider.settings.pages.services/memberships.member")}
                     </p>
                     <p className="text-sm text-gray-600">
                       {row.plan.name} · {row.subscription.status}
                       {row.subscription.expires_at
-                        ? ` · expires ${new Date(row.subscription.expires_at).toLocaleDateString()}`
+                        ? t("web.provider.settings.pages.services/memberships.expiresOn", { date: new Date(row.subscription.expires_at).toLocaleDateString() })
                         : ""}
                     </p>
                   </div>
@@ -343,7 +345,7 @@ export default function MembershipsSettings() {
                     disabled={extendingId === row.subscription.id}
                     onClick={() => void extendSubscription(row.subscription.id)}
                   >
-                    {extendingId === row.subscription.id ? "Extending…" : "Extend period"}
+                    {extendingId === row.subscription.id ? t("web.provider.settings.pages.services/memberships.extending") : t("web.provider.settings.pages.services/memberships.extendPeriod")}
                   </Button>
                 </div>
               </SectionCard>
@@ -356,39 +358,39 @@ export default function MembershipsSettings() {
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>
-              {editingPlan ? "Edit Membership Plan" : "Add Membership Plan"}
+              {editingPlan ? t("web.provider.settings.pages.services/memberships.editPlan") : t("web.provider.settings.pages.services/memberships.addPlanTitle")}
             </DialogTitle>
             <DialogDescription>
               {editingPlan
-                ? "Update membership plan information"
-                : "Create a new membership plan for your clients"}
+                ? t("web.provider.settings.pages.services/memberships.updatePlanHint")
+                : t("web.provider.settings.pages.services/memberships.createPlanHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Plan Name *</Label>
+              <Label htmlFor="name">{t("web.provider.settings.pages.services/memberships.planName")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Premium Membership"
+                placeholder={t("web.provider.settings.pages.services/memberships.eGPremiumMembership")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("web.provider.common.description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description of the plan benefits"
+                placeholder={t("web.provider.settings.pages.services/memberships.optionalDescriptionOfThePlanBenefits")}
                 rows={3}
                 className="mt-1.5"
               />
             </div>
             <div>
-              <Label htmlFor="price_monthly">Monthly Price *</Label>
+              <Label htmlFor="price_monthly">{t("web.provider.settings.pages.services/memberships.monthlyPrice")}</Label>
               <Input
                 id="price_monthly"
                 type="number"
@@ -396,13 +398,13 @@ export default function MembershipsSettings() {
                 min="0"
                 value={formData.price_monthly}
                 onChange={(e) => setFormData({ ...formData, price_monthly: e.target.value })}
-                placeholder="0.00"
+                placeholder={t("web.provider.settings.pages.services/memberships.n000")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="discount_percent">Discount Percentage</Label>
+              <Label htmlFor="discount_percent">{t("web.provider.settings.pages.services/memberships.discountPercentage")}</Label>
               <Input
                 id="discount_percent"
                 type="number"
@@ -414,7 +416,7 @@ export default function MembershipsSettings() {
                 placeholder="0"
                 className="mt-1.5 min-h-[44px] touch-manipulation"
               />
-              <p className="text-xs text-gray-500 mt-1">Discount percentage (0-100) applied to services</p>
+              <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.services/memberships.discountHint")}</p>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -425,7 +427,7 @@ export default function MembershipsSettings() {
                 className="w-4 h-4"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active
+                {t("web.provider.common.active")}
               </Label>
             </div>
           </div>
@@ -435,14 +437,14 @@ export default function MembershipsSettings() {
               onClick={() => setIsDialogOpen(false)}
               className="min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
               disabled={isSubmitting}
               className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {isSubmitting ? "Saving..." : editingPlan ? "Update" : "Create"}
+              {isSubmitting ? t("web.provider.common.saving") : editingPlan ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

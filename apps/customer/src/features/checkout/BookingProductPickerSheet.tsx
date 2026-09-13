@@ -13,6 +13,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   bookingCheckoutLineDisplayName,
   findSelectedLine,
@@ -120,8 +121,8 @@ function ProductVariantEditor({
         accessibilityRole="button"
         accessibilityLabel={t("common.back")}
       >
-        <Ionicons name="chevron-back" size={20} color={Colors.primary} />
-        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, marginLeft: 2 }}>
+        <DirectionalIcon name="chevron-back" size={20} color={Colors.primary} />
+        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, marginStart: 2 }}>
           {t("common.back")}
         </Text>
       </TouchableOpacity>
@@ -198,7 +199,7 @@ function ProductVariantEditor({
                           borderWidth: 1,
                           borderColor: isChosen ? Colors.primary : "#E5E7EB",
                           backgroundColor: isChosen ? Colors.primaryLight : "#FFF",
-                          marginRight: 8,
+                          marginEnd: 8,
                           marginBottom: 8,
                           opacity: variantOos ? 0.4 : 1,
                         }}
@@ -248,7 +249,7 @@ function ProductVariantEditor({
                       borderWidth: 1,
                       borderColor: isChosen ? Colors.primary : "#E5E7EB",
                       backgroundColor: isChosen ? Colors.primaryLight : "#FFF",
-                      marginRight: 8,
+                      marginEnd: 8,
                       opacity: variantOos ? 0.4 : 1,
                     }}
                   >
@@ -586,7 +587,7 @@ export function BookingProductPickerSheet({
                         paddingHorizontal: 16,
                         paddingVertical: 8,
                         borderRadius: 999,
-                        marginRight: 8,
+                        marginEnd: 8,
                         backgroundColor: active ? Colors.primary : "#FFF",
                         borderWidth: 1,
                         borderColor: active ? Colors.primary : "#E5E7EB",
@@ -770,7 +771,7 @@ export function BookingProductPickerSheet({
                               </TouchableOpacity>
                             )}
                             {prod.hasVariants && (
-                              <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+                              <DirectionalIcon name="chevron-forward" size={16} color="#9CA3AF" />
                             )}
                           </View>
                         </View>

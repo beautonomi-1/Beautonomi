@@ -247,7 +247,7 @@ export default function ProfileDataCollector() {
           onClick={() => router.back()}
           className="text-gray-600"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="w-4 h-4 me-2" />
           Back
         </Button>
       </div>
@@ -295,7 +295,7 @@ export default function ProfileDataCollector() {
                 onClick={handleAvatarClick}
                 className="mb-2"
               >
-                <CameraIcon className="w-4 h-4 mr-2" />
+                <CameraIcon className="w-4 h-4 me-2" />
                 {avatarImage ? "Change Photo" : "Add Photo"}
               </Button>
               <p className="text-sm text-gray-500">
@@ -424,12 +424,12 @@ export default function ProfileDataCollector() {
           >
             {isSaving ? (
               <>
-                <Save className="w-4 h-4 mr-2 animate-spin" />
+                <Save className="w-4 h-4 me-2 animate-spin" />
                 Saving...
               </>
             ) : (
               <>
-                <Save className="w-4 h-4 mr-2" />
+                <Save className="w-4 h-4 me-2" />
                 Save Profile
               </>
             )}

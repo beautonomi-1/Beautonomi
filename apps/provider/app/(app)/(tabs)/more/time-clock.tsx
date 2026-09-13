@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -80,18 +81,32 @@ function localHhMmToIso(hhmm: string, dateYmd: string): string | null {
   return d.toISOString();
 }
 
-const TAB_OPTIONS = [
-  { label: "Clock In/Out", value: "clock" },
-  { label: "Time Cards", value: "cards" },
-];
+const TAB_OPTION_KEYS = [
+  { labelKey: "tabClock", value: "clock" },
+  { labelKey: "tabCards", value: "cards" },
+] as const;
 
-const CARD_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "clocked_in" },
-  { label: "Completed", value: "clocked_out" },
-];
+const CARD_FILTER_KEYS = [
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "filterActive", value: "clocked_in" },
+  { labelKey: "filterCompleted", value: "clocked_out" },
+] as const;
 
 export default function TimeClockScreen() {
+  const { t } = useTranslation();
+  const tc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.timeClock.${key}`, opts) as string,
+    [t],
+  );
+  const tabOptions = useMemo(
+    () => TAB_OPTION_KEYS.map((o) => ({ label: tc(o.labelKey), value: o.value })),
+    [tc],
+  );
+  const cardFilters = useMemo(
+    () => CARD_FILTER_KEYS.map((o) => ({ label: tc(o.labelKey), value: o.value })),
+    [tc],
+  );
   useResponsive();
   const [tab, setTab] = useState("clock");
   const [refreshing, setRefreshing] = useState(false);
@@ -135,13 +150,13 @@ export default function TimeClockScreen() {
       );
       return {
         ...s,
-        name: s.name ?? "Staff",
+        name: s.name ?? tc("staffFallback"),
         isClockedIn: !!card,
         currentCard: card ?? null,
         clockInTime: card?.clock_in_time ?? null,
       };
     });
-  }, [staff, timeCards]);
+  }, [staff, timeCards, tc]);
 
   const filteredCards = useMemo(() => {
     if (!timeCards) return [];
@@ -168,11 +183,11 @@ export default function TimeClockScreen() {
 
   async function handlePinClock() {
     if (pin.length !== 4) {
-      Alert.alert("Invalid PIN", "Enter your 4-digit PIN");
+      Alert.alert(tc("invalidPinTitle"), tc("invalidPinBody"));
       return;
     }
     const { error } = await clockAction("/api/provider/time-clock", { pin });
-    if (error) { Alert.alert("Error", error); return; }
+    if (error) { Alert.alert(tc("errorTitle"), error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowPinClock(false);
     setPin("");
@@ -185,7 +200,7 @@ export default function TimeClockScreen() {
       ? `/api/provider/staff/${staffId}/time-clock/clock-in`
       : `/api/provider/staff/${staffId}/time-clock/clock-out`;
     const { error } = await clockAction(path, {});
-    if (error) { Alert.alert("Error", error); return; }
+    if (error) { Alert.alert(tc("errorTitle"), error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     void Promise.all([refreshStaff(), refreshTimeCards()]);
   }
@@ -213,7 +228,7 @@ export default function TimeClockScreen() {
     if (trimmedIn) {
       const iso = localHhMmToIso(trimmedIn, editingCard.date);
       if (!iso) {
-        Alert.alert("Invalid clock-in", "Enter a time as HH:MM (24-hour, e.g. 09:30).");
+        Alert.alert(tc("invalidClockInTitle"), tc("invalidClockInBody"));
         return;
       }
       body.clock_in_time = iso;
@@ -221,7 +236,7 @@ export default function TimeClockScreen() {
     if (trimmedOut) {
       const iso = localHhMmToIso(trimmedOut, editingCard.date);
       if (!iso) {
-        Alert.alert("Invalid clock-out", "Enter a time as HH:MM (24-hour, e.g. 17:15).");
+        Alert.alert(tc("invalidClockOutTitle"), tc("invalidClockOutBody"));
         return;
       }
       body.clock_out_time = iso;
@@ -231,12 +246,12 @@ export default function TimeClockScreen() {
     if (editForm.notes.trim()) body.notes = editForm.notes.trim();
 
     if (!editingCard.team_member_id) {
-      Alert.alert("Error", "Missing staff reference for this card.");
+      Alert.alert(tc("errorTitle"), tc("missingStaffRef"));
       return;
     }
     const url = `/api/provider/staff/${editingCard.team_member_id}/time-clock/${editingCard.id}`;
     const { error } = await updateCard(url, body);
-    if (error) { Alert.alert("Error", error); return; }
+    if (error) { Alert.alert(tc("errorTitle"), error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setEditingCard(null);
     void Promise.all([refreshStaff(), refreshTimeCards()]);
@@ -245,9 +260,9 @@ export default function TimeClockScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Time Clock"
+        title={tc("title")}
         showBack
-        subtitle={`${stats.active} of ${stats.totalStaff} clocked in`}
+        subtitle={tc("subtitle", { active: stats.active, total: stats.totalStaff })}
         rightAction={
           <TouchableOpacity
             style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
@@ -257,25 +272,25 @@ export default function TimeClockScreen() {
             }}
           >
             <Ionicons name="finger-print-outline" size={18} color="#fff" />
-            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>PIN Clock</Text>
+            <Text style={twStyle("ms-1.5 text-sm font-semibold text-white")}>{tc("pinClock")}</Text>
           </TouchableOpacity>
         }
       />
 
       <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="Active" value={String(stats.active)} icon="radio-button-on" iconColor="#22c55e" iconBg="bg-green-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+          <StatCard title={tc("statActive")} value={String(stats.active)} icon="radio-button-on" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-          <StatCard title="Total Staff" value={String(stats.totalStaff)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+          <StatCard title={tc("statTotalStaff")} value={String(stats.totalStaff)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
         <View style={twStyle("flex-1")}>
-          <StatCard title="Hours Today" value={stats.totalHours.toFixed(1)} icon="time-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+          <StatCard title={tc("statHoursToday")} value={stats.totalHours.toFixed(1)} icon="time-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={TAB_OPTIONS} selected={tab} onSelect={setTab} />
+        <FilterChipGroup options={tabOptions} selected={tab} onSelect={setTab} />
       </View>
 
       {tab === "clock" ? (
@@ -287,7 +302,7 @@ export default function TimeClockScreen() {
           ) : (staffLoading && !staff && !staffLoadError) || (timeCardsLoading && !staff && !staffLoadError && !timeCardsLoadError) ? (
             <SkeletonList rows={4} />
           ) : allStaffWithStatus.length === 0 ? (
-            <EmptyState icon="people-outline" title="No staff" description="Add team members to use the time clock" />
+            <EmptyState icon="people-outline" title={tc("emptyStaffTitle")} description={tc("emptyStaffDesc")} />
           ) : (
             <FlatList
               {...verticalFlatListPerf}
@@ -309,14 +324,14 @@ export default function TimeClockScreen() {
                         <View style={twStyle("absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-green-500")} />
                       )}
                     </View>
-                    <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("ms-3 flex-1")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{member.name}</Text>
                       {member.isClockedIn ? (
                         <Text style={twStyle("text-xs text-green-600")}>
-                          Clocked in at {member.clockInTime}
+                          {tc("clockedInAt", { time: member.clockInTime })}
                         </Text>
                       ) : (
-                        <Text style={twStyle("text-xs text-gray-400")}>Not clocked in</Text>
+                        <Text style={twStyle("text-xs text-gray-400")}>{tc("notClockedIn")}</Text>
                       )}
                     </View>
                     {member.isClockedIn ? (
@@ -325,7 +340,7 @@ export default function TimeClockScreen() {
                         onPress={() => handleDirectClock(member.id, "clock_out")}
                         disabled={clocking}
                       >
-                        <Text style={twStyle("text-sm font-medium text-red-700")}>Clock Out</Text>
+                        <Text style={twStyle("text-sm font-medium text-red-700")}>{tc("clockOut")}</Text>
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity
@@ -333,7 +348,7 @@ export default function TimeClockScreen() {
                         onPress={() => handleDirectClock(member.id, "clock_in")}
                         disabled={clocking}
                       >
-                        <Text style={twStyle("text-sm font-medium text-green-700")}>Clock In</Text>
+                        <Text style={twStyle("text-sm font-medium text-green-700")}>{tc("clockIn")}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -345,7 +360,7 @@ export default function TimeClockScreen() {
       ) : (
         <>
           <View style={twStyle("mb-3")}>
-            <FilterChipGroup options={CARD_FILTERS} selected={cardFilter} onSelect={setCardFilter} />
+            <FilterChipGroup options={cardFilters} selected={cardFilter} onSelect={setCardFilter} />
           </View>
 
           {timeCardsLoadError && !timeCards ? (
@@ -353,7 +368,7 @@ export default function TimeClockScreen() {
           ) : timeCardsLoading && !timeCards && !timeCardsLoadError ? (
             <SkeletonList rows={5} />
           ) : filteredCards.length === 0 ? (
-            <EmptyState icon="time-outline" title="No time cards" description="Time entries will appear here" />
+            <EmptyState icon="time-outline" title={tc("emptyCardsTitle")} description={tc("emptyCardsDesc")} />
           ) : (
             <FlatList
               {...verticalFlatListPerf}
@@ -372,22 +387,22 @@ export default function TimeClockScreen() {
                 >
                   <View style={twStyle("flex-row items-center")}>
                     <Avatar name={card.team_member_name} size="sm" />
-                    <View style={twStyle("ml-2.5 flex-1")}>
+                    <View style={twStyle("ms-2.5 flex-1")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{card.team_member_name}</Text>
                       <Text style={twStyle("text-xs text-gray-500")}>{formatDate(card.date)}</Text>
                     </View>
                     <View style={twStyle("items-end")}>
                       <View style={twStyle("flex-row items-center")}>
                         {card.clock_in_time && (
-                          <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                          <View style={[twStyle("flex-row items-center"), { marginEnd: 12 }]}>
                             <Ionicons name="log-in-outline" size={12} color="#22c55e" />
-                            <Text style={twStyle("ml-0.5 text-xs text-green-600")}>{card.clock_in_time}</Text>
+                            <Text style={twStyle("ms-0.5 text-xs text-green-600")}>{card.clock_in_time}</Text>
                           </View>
                         )}
                         {card.clock_out_time && (
                           <View style={twStyle("flex-row items-center")}>
                             <Ionicons name="log-out-outline" size={12} color="#ef4444" />
-                            <Text style={twStyle("ml-0.5 text-xs text-red-600")}>{card.clock_out_time}</Text>
+                            <Text style={twStyle("ms-0.5 text-xs text-red-600")}>{card.clock_out_time}</Text>
                           </View>
                         )}
                       </View>
@@ -398,10 +413,10 @@ export default function TimeClockScreen() {
                           card.status === "clocked_in" ? "text-green-700" : "text-gray-500"
                         }`)}>
                           {card.status === "clocked_in"
-                            ? "Active"
+                            ? tc("statusActive")
                             : card.total_hours
-                              ? `${card.total_hours.toFixed(1)}h`
-                              : "Done"}
+                              ? tc("hoursShort", { hours: card.total_hours.toFixed(1) })
+                              : tc("statusDone")}
                         </Text>
                       </View>
                     </View>
@@ -419,13 +434,13 @@ export default function TimeClockScreen() {
       )}
 
       {/* PIN Clock modal */}
-      <BottomSheet visible={showPinClock} onClose={() => setShowPinClock(false)} title="PIN Clock In/Out">
+      <BottomSheet visible={showPinClock} onClose={() => setShowPinClock(false)} title={tc("pinSheetTitle")}>
         <View style={twStyle("items-center")}>
           <View style={twStyle("mb-4 h-20 w-20 items-center justify-center rounded-full bg-indigo-50")}>
             <Ionicons name="finger-print" size={40} color="#6366f1" />
           </View>
           <Text style={twStyle("mb-4 text-center text-sm text-gray-500")}>
-            Enter your 4-digit PIN to clock in or out
+            {tc("pinSheetHint")}
           </Text>
           <TextInput
             style={twStyle("mb-4 w-48 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-2xl font-bold tracking-[12px] text-gray-900")}
@@ -434,10 +449,10 @@ export default function TimeClockScreen() {
             keyboardType="number-pad"
             maxLength={4}
             secureTextEntry
-            placeholder="••••"
+            placeholder={tc("pinPlaceholder")}
             placeholderTextColor="#d1d5db"
           />
-          <ActionButton label="Submit" onPress={handlePinClock} loading={clocking} fullWidth />
+          <ActionButton label={tc("submit")} onPress={handlePinClock} loading={clocking} fullWidth />
         </View>
       </BottomSheet>
 
@@ -445,45 +460,45 @@ export default function TimeClockScreen() {
       <BottomSheet
         visible={!!editingCard}
         onClose={() => setEditingCard(null)}
-        title={`Edit Time Card — ${editingCard?.team_member_name ?? ""}`}
+        title={tc("editCardTitle", { name: editingCard?.team_member_name ?? "" })}
       >
         {editingCard && (
           <View>
             <Text style={twStyle("mb-3 text-sm text-gray-500")}>{formatDate(editingCard.date)}</Text>
 
             <View style={twStyle("mb-3 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Clock In</Text>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{tc("clockInLabel")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={editForm.clockIn}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, clockIn: t }))}
-                  placeholder="HH:MM"
+                  placeholder={tc("timePlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Clock Out</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{tc("clockOutLabel")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={editForm.clockOut}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, clockOut: t }))}
-                  placeholder="HH:MM"
+                  placeholder={tc("timePlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
             </View>
 
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{tc("notes")}</Text>
             <TextInput
               style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={editForm.notes}
               onChangeText={(t) => setEditForm((p) => ({ ...p, notes: t }))}
-              placeholder="Optional notes..."
+              placeholder={tc("notesPlaceholder")}
               placeholderTextColor="#9ca3af"
             />
 
-            <ActionButton label="Save Changes" onPress={handleSaveCard} loading={updatingCard} fullWidth />
+            <ActionButton label={tc("saveChanges")} onPress={handleSaveCard} loading={updatingCard} fullWidth />
           </View>
         )}
       </BottomSheet>

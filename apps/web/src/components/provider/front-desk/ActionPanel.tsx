@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
@@ -8,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import type { FrontDeskBooking } from "@/lib/front-desk/types";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
@@ -34,8 +36,16 @@ const BADGE_PILLS: Record<string, string> = {
   confirmed: "bg-slate-100/80 text-slate-700",
 };
 
-const BADGE_DISPLAY: Record<string, string> = {
-  needs_confirmation: "Confirm first",
+const BADGE_KEY: Record<string, string> = {
+  needs_confirmation: "web.provider.frontDesk.confirmFirst",
+  late: "web.provider.frontDesk.badgeLate",
+  arriving: "web.provider.frontDesk.badgeArriving",
+  checked_in: "web.provider.frontDesk.badgeCheckedIn",
+  in_service: "web.provider.frontDesk.badgeInService",
+  ready_to_pay: "web.provider.frontDesk.badgeReadyToPay",
+  completed: "web.provider.frontDesk.badgeCompleted",
+  cancelled: "web.provider.frontDesk.badgeCancelled",
+  confirmed: "web.provider.frontDesk.badgeConfirmed",
 };
 
 export interface CompleteRequestRatingPayload {
@@ -55,6 +65,7 @@ interface ActionPanelProps {
 
 export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequestRating }: ActionPanelProps) {
   const { bundle } = useConfigBundle();
+  const { t } = useTranslation();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const customer = (booking as any).customers || {};
   const phone = customer.phone || customer.phone_number || "";
@@ -81,10 +92,10 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
     if (phone) {
       const copied = await copyTextToClipboard(phone);
       if (copied) {
-        toast.success("Phone copied");
+        toast.success(t("web.provider.frontDesk.phoneCopied"));
         return;
       }
-      toast.error("Unable to copy phone on this browser");
+      toast.error(t("web.provider.frontDesk.copyFailed"));
     }
   };
 
@@ -108,15 +119,15 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
 
     if (badge === "confirmed") {
       if (isAtHome) {
-        return { label: "I've Arrived", onClick: () => runAction(() => arriveAtHome(booking.id)) };
+        return { label: t("web.provider.frontDesk.iveArrived"), onClick: () => runAction(() => arriveAtHome(booking.id)) };
       }
-      return { label: "Check in", onClick: () => runAction(() => checkInBooking(booking.id, (booking as any).version)) };
+      return { label: t("web.provider.frontDesk.checkIn"), onClick: () => runAction(() => checkInBooking(booking.id, (booking as any).version)) };
     }
     if (["checked_in", "arriving", "late"].includes(badge)) {
-      return { label: "Start service", onClick: () => runAction(() => startService(booking.id)) };
+      return { label: t("web.provider.frontDesk.startService"), onClick: () => runAction(() => startService(booking.id)) };
     }
     if (badge === "in_service") {
-      return { label: "Ready to pay", onClick: () => runAction(() => markReadyToPay(booking.id)) };
+      return { label: t("web.provider.frontDesk.readyToPay"), onClick: () => runAction(() => markReadyToPay(booking.id)) };
     }
     return null;
   };
@@ -128,7 +139,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
       {/* Header - Guest Folio */}
       <div className="p-8 pb-6 border-b border-[#0F172A]/[0.06] flex items-center justify-between shrink-0">
         <h3 className="font-semibold text-xl text-[#0F172A] truncate">
-          {booking.customer_name || "Guest"}
+          {booking.customer_name || t("web.provider.frontDesk.guest")}
         </h3>
         <Button
           variant="ghost"
@@ -157,7 +168,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                 BADGE_PILLS[badge] || BADGE_PILLS.confirmed
               )}
             >
-              {BADGE_DISPLAY[badge] ?? badge.replace(/_/g, " ")}
+              {BADGE_KEY[badge] ? t(BADGE_KEY[badge]) : badge.replace(/_/g, " ")}
             </span>
           </div>
 
@@ -166,21 +177,21 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
           {/* Guest Folio - Receipt-style transaction summary */}
           <div className="rounded-[2.5rem] border border-[#0F172A]/[0.08] bg-white/80 p-6 space-y-4 shadow-sm">
             <p className="text-[9px] font-black tracking-widest uppercase text-[#0F172A]/50">
-              Guest Folio
+              {t("web.provider.frontDesk.guestFolio")}
             </p>
             <div className="space-y-3">
               {(booking.services || []).map((s: any, i: number) => (
                 <div key={i} className="flex justify-between text-sm">
                   <span className="text-[#0F172A]/80">
-                    {s.offering_name || s.service_name || "Service"}
+                    {s.offering_name || s.service_name || t("web.provider.common.service")}
                     {s.staff_name && ` · ${s.staff_name}`}
-                    {s.duration_minutes && ` · ${s.duration_minutes} min`}
+                    {s.duration_minutes && ` · ${t("web.provider.frontDesk.durationMin", { minutes: s.duration_minutes })}`}
                   </span>
                 </div>
               ))}
             </div>
             <p className="text-sm text-[#0F172A]/60">
-              {new Date(booking.scheduled_at).toLocaleString("en-US", {
+              {new Date(booking.scheduled_at).toLocaleString(getDefaultMoneyLocale(), {
                 weekday: "short",
                 month: "short",
                 day: "numeric",
@@ -194,7 +205,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
             <div className="pt-4 border-t border-[#0F172A]/[0.08]">
               <div className="flex justify-between items-baseline">
                 <span className="text-sm text-[#0F172A]/60">
-                  {unpaidAdditionalCharges > 0 ? "Total incl. open charges" : "Total"}
+                  {unpaidAdditionalCharges > 0 ? t("web.provider.frontDesk.totalInclCharges") : t("web.provider.frontDesk.total")}
                 </span>
                 <span className="text-lg font-semibold text-[#0F172A]">
                   {booking.currency} {folioTotal.toFixed(2)}
@@ -206,7 +217,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
           {/* Quick actions */}
           <div>
             <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50 mb-3">
-              Quick actions
+              {t("web.provider.frontDesk.quickActions")}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -216,7 +227,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                 onClick={handleMessage}
               >
                 <MessageCircle className="h-4 w-4" />
-                Message
+                {t("web.provider.frontDesk.message")}
               </Button>
               {phone && (
                 <Button
@@ -226,7 +237,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   onClick={handleCopyPhone}
                 >
                   <Copy className="h-4 w-4" />
-                  Copy phone
+                  {t("web.provider.frontDesk.copyPhone")}
                 </Button>
               )}
             </div>
@@ -235,7 +246,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
           {/* Payment Footer or Next Step */}
           <div>
             <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50 mb-4">
-              {isReadyToPay ? "Payment" : "Workflow"}
+              {isReadyToPay ? t("web.provider.frontDesk.payment") : t("web.provider.frontDesk.workflow")}
             </p>
 
             {isReadyToPay ? (
@@ -264,18 +275,18 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                       afterComplete: () =>
                         onCompleteRequestRating?.({
                           bookingId: booking.id,
-                          customerName: booking.customer_name || "Customer",
+                          customerName: booking.customer_name || t("web.provider.common.customer"),
                           locationId: (booking as any).location_id ?? null,
                           locationName: (booking as any).location_name ?? null,
                         }),
                     })
                   }
                 >
-                  {outstandingBalance > 0 ? "Complete without recording payment" : "Mark completed"}
+                  {outstandingBalance > 0 ? t("web.provider.frontDesk.completeWithoutPayment") : t("web.provider.frontDesk.markCompleted")}
                 </Button>
                 {outstandingBalance > 0 ? (
                   <p className="text-[11px] font-medium leading-4 text-amber-700">
-                    This only changes booking status. Use the payment buttons above to record cash, card, or offline payment.
+                    {t("web.provider.frontDesk.completeWithoutPaymentHint")}
                   </p>
                 ) : null}
               </div>
@@ -298,7 +309,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
               className="w-full rounded-2xl border-red-200 text-red-800 hover:bg-red-50 font-medium"
               onClick={() => runAction(() => cancelBooking(booking.id, undefined, (booking as any).version))}
             >
-              Cancel booking
+              {t("web.provider.frontDesk.cancelBooking")}
             </Button>
           )}
         </div>

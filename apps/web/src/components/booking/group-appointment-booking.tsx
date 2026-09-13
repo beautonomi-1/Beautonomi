@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,11 +32,12 @@ export default function GroupAppointmentBooking({
   availableServices,
   maxGuests = 10,
 }: GroupAppointmentBookingProps) {
+  const { t } = useTranslation();
   const { format: fmt } = useReportCurrency();
   const [guests, setGuests] = useState<GroupGuest[]>([
     {
       id: "1",
-      name: "You",
+      name: t("web.booking.groupAppointment.you"),
       services: [],
     },
   ]);
@@ -50,7 +53,7 @@ export default function GroupAppointmentBooking({
 
   const handleAddGuest = () => {
     if (guests.length >= maxGuests) {
-      alert(`Maximum ${maxGuests} guests allowed per group booking`);
+      alert(t("web.booking.groupAppointment.maxGuests", { count: maxGuests }));
       return;
     }
     setEditingGuest(null);
@@ -78,7 +81,7 @@ export default function GroupAppointmentBooking({
 
   const handleSaveGuest = () => {
     if (!guestForm.name.trim()) {
-      alert("Please enter a name for the guest");
+      alert(t("web.booking.groupAppointment.enterName"));
       return;
     }
 
@@ -106,7 +109,7 @@ export default function GroupAppointmentBooking({
 
   const handleRemoveGuest = (id: string) => {
     if (guests.length === 1) {
-      alert("At least one guest is required");
+      alert(t("web.booking.groupAppointment.atLeastOne"));
       return;
     }
     const updated = guests.filter((g) => g.id !== id);
@@ -144,9 +147,9 @@ export default function GroupAppointmentBooking({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Group Appointment</h2>
+          <h2 className="text-xl font-semibold">{t("web.booking.groupAppointment.title")}</h2>
           <p className="text-sm text-gray-600">
-            Add multiple guests for this booking
+            {t("web.booking.groupAppointment.subtitle")}
           </p>
         </div>
         <Button
@@ -154,8 +157,8 @@ export default function GroupAppointmentBooking({
           disabled={guests.length >= maxGuests}
           variant="outline"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Guest
+          <Plus className="w-4 h-4 me-2" />
+          {t("web.booking.groupAppointment.addGuest")}
         </Button>
       </div>
 
@@ -187,14 +190,14 @@ export default function GroupAppointmentBooking({
               </div>
 
               <div>
-                <Label className="text-sm">Services for {guest.name}</Label>
+                <Label className="text-sm">{t("web.booking.groupAppointment.servicesFor", { name: guest.name })}</Label>
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {availableServices.map((service) => (
                     <button
                       key={service.id}
                       type="button"
                       onClick={() => toggleServiceForGuest(guest.id, service.id)}
-                      className={`p-3 border rounded-lg text-left transition-colors ${
+                      className={`p-3 border rounded-lg text-start transition-colors ${
                         guest.services.includes(service.id)
                           ? "border-[#FF0077] bg-pink-50"
                           : "border-gray-200 hover:border-gray-300"
@@ -204,7 +207,7 @@ export default function GroupAppointmentBooking({
                         <div>
                           <p className="font-medium text-sm">{service.name}</p>
                           <p className="text-xs text-gray-600">
-                            {service.duration} min • {fmt(service.price)}
+                            {t("web.booking.groupAppointment.durationPrice", { duration: service.duration, price: fmt(service.price) })}
                           </p>
                         </div>
                         {guest.services.includes(service.id) && (
@@ -220,8 +223,7 @@ export default function GroupAppointmentBooking({
 
               {guest.services.length > 0 && (
                 <div className="text-sm text-gray-600">
-                  {guest.services.length} service
-                  {guest.services.length !== 1 ? "s" : ""} selected
+                  {t("web.booking.groupAppointment.servicesSelected", { count: guest.services.length })}
                 </div>
               )}
 
@@ -231,7 +233,7 @@ export default function GroupAppointmentBooking({
                 onClick={() => handleEditGuest(guest)}
                 className="w-full"
               >
-                Edit Guest Details
+                {t("web.booking.groupAppointment.editGuestDetails")}
               </Button>
             </CardContent>
           </Card>
@@ -243,15 +245,15 @@ export default function GroupAppointmentBooking({
         <CardContent className="pt-6">
           <div className="flex justify-between items-center">
             <div>
-              <p className="text-sm text-gray-600">Total Guests</p>
+              <p className="text-sm text-gray-600">{t("web.booking.groupAppointment.totalGuests")}</p>
               <p className="text-xl font-semibold">{guests.length}</p>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Total Services</p>
+            <div className="text-end">
+              <p className="text-sm text-gray-600">{t("web.booking.groupAppointment.totalServices")}</p>
               <p className="text-xl font-semibold">{totalServices}</p>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-600">Total Price</p>
+            <div className="text-end">
+              <p className="text-sm text-gray-600">{t("web.booking.groupAppointment.totalPrice")}</p>
               <p className="text-xl font-semibold">{fmt(totalPrice)}</p>
             </div>
           </div>
@@ -263,28 +265,28 @@ export default function GroupAppointmentBooking({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingGuest ? "Edit Guest" : "Add Guest"}
+              {editingGuest ? t("web.booking.groupAppointment.editGuest") : t("web.booking.groupAppointment.addGuestTitle")}
             </DialogTitle>
             <DialogDescription>
-              Enter guest information for the group booking
+              {t("web.booking.groupAppointment.dialogDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="guest-name">Name *</Label>
+              <Label htmlFor="guest-name">{t("web.booking.groupAppointment.nameRequired")}</Label>
               <Input
                 id="guest-name"
                 value={guestForm.name}
                 onChange={(e) =>
                   setGuestForm({ ...guestForm, name: e.target.value })
                 }
-                placeholder="Guest name"
+                placeholder={t("web.booking.groupAppointment.guestNamePlaceholder")}
                 required
               />
             </div>
 
             <div>
-              <Label htmlFor="guest-email">Email (Optional)</Label>
+              <Label htmlFor="guest-email">{t("web.booking.groupAppointment.emailOptional")}</Label>
               <Input
                 id="guest-email"
                 type="email"
@@ -292,29 +294,29 @@ export default function GroupAppointmentBooking({
                 onChange={(e) =>
                   setGuestForm({ ...guestForm, email: e.target.value })
                 }
-                placeholder="guest@example.com"
+                placeholder={t("web.booking.groupAppointment.emailPlaceholder")}
               />
             </div>
 
             <div>
               <PhoneInput
                 inputId="group-appointment-guest-phone"
-                label="Phone (Optional)"
+                label={t("web.booking.groupAppointment.phoneOptional")}
                 value={guestForm.phone}
                 onChange={(e164) => setGuestForm({ ...guestForm, phone: e164 })}
-                placeholder="Phone number"
+                placeholder={t("web.booking.groupAppointment.phonePlaceholder")}
               />
             </div>
 
             <div>
-              <Label htmlFor="guest-notes">Special Notes (Optional)</Label>
+              <Label htmlFor="guest-notes">{t("web.booking.groupAppointment.notesOptional")}</Label>
               <textarea
                 id="guest-notes"
                 value={guestForm.notes}
                 onChange={(e) =>
                   setGuestForm({ ...guestForm, notes: e.target.value })
                 }
-                placeholder="Any special requirements or notes..."
+                placeholder={t("web.booking.groupAppointment.notesPlaceholder")}
                 className="w-full p-2 border rounded-md"
                 rows={3}
               />
@@ -322,10 +324,10 @@ export default function GroupAppointmentBooking({
 
             <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" onClick={() => setShowGuestDialog(false)}>
-                Cancel
+                {t("web.booking.groupAppointment.cancel")}
               </Button>
               <Button onClick={handleSaveGuest}>
-                {editingGuest ? "Update" : "Add"} Guest
+                {editingGuest ? t("web.booking.groupAppointment.updateGuest") : t("web.booking.groupAppointment.addGuestSubmit")}
               </Button>
             </div>
           </div>

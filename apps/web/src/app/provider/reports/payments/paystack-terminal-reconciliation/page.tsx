@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
@@ -41,6 +43,7 @@ type PaystackReconciliationData = {
 };
 
 export default function PaystackTerminalReconciliationPage() {
+  const { t } = useTranslation();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -64,7 +67,7 @@ export default function PaystackTerminalReconciliationPage() {
       );
       setData(response.data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load report");
+      setError(err instanceof Error ? err.message : t("web.provider.common.failedToLoadReport"));
       setData(null);
     } finally {
       setIsLoading(false);
@@ -91,19 +94,19 @@ export default function PaystackTerminalReconciliationPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Reports", href: "/provider/reports" },
-    { label: "Payments", href: "/provider/reports/payments/summary" },
-    { label: "Paystack Terminal reconciliation" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+    { label: t("web.provider.reports.hub.paymentsTitle"), href: "/provider/reports/payments/summary" },
+    { label: t("web.provider.reports.hub.report.paystack-terminal-reconciliation") },
   ];
 
   if (!paystackTerminalEnabled) {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <EmptyReportState
-          title="Paystack Terminal unavailable"
-          description="Paystack Terminal is not enabled for your account, so this report is unavailable."
+          title={t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.unavailableTitle")}
+          description={t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.unavailableDesc")}
         />
       </SettingsDetailLayout>
     );
@@ -121,9 +124,9 @@ export default function PaystackTerminalReconciliationPage() {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <EmptyReportState
-          title="Failed to load report"
+          title={t("web.provider.common.failedToLoadReport")}
           description={error}
-          action={{ label: "Try again", onClick: () => void loadReport() }}
+          action={{ label: t("web.provider.common.tryAgain"), onClick: () => void loadReport() }}
         />
       </SettingsDetailLayout>
     );
@@ -135,17 +138,17 @@ export default function PaystackTerminalReconciliationPage() {
   return (
     <SettingsDetailLayout breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Paystack Terminal reconciliation"
-        subtitle="Received terminal payments, allocations, holds, and payout readiness"
+        title={t("web.provider.reports.hub.report.paystack-terminal-reconciliation")}
+        subtitle={t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.subtitle")}
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => void loadReport()} disabled={isLoading}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
+              <RefreshCw className="me-2 h-4 w-4" />
+              {t("web.provider.common.refresh")}
             </Button>
             <Button variant="outline" onClick={handleExport} disabled={!rows.length}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              <Download className="me-2 h-4 w-4" />
+              {t("web.provider.common.exportCsv")}
             </Button>
           </div>
         }
@@ -168,13 +171,13 @@ export default function PaystackTerminalReconciliationPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Payments ({rows.length})</CardTitle>
+          <CardTitle>{t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.paymentsCount", { count: rows.length })}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {rows.length === 0 ? (
             <EmptyReportState
-              title="No Paystack Terminal payments"
-              description="No terminal payments were captured in the selected date range."
+              title={t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.emptyTitle")}
+              description={t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.emptyDesc")}
             />
           ) : (
             rows.map((row) => (
@@ -184,7 +187,7 @@ export default function PaystackTerminalReconciliationPage() {
                     <p className="font-medium tabular-nums">{fmt(Number(row.paid_amount ?? 0))}</p>
                     <p className="font-mono text-xs text-gray-500">{row.paystack_reference}</p>
                     <p className="text-xs text-gray-500">
-                      {row.terminal?.name ?? "Terminal"} · {row.terminal?.terminal_code ?? ""}
+                      {row.terminal?.name ?? t("web.provider.reports.pages.payments/paystack-terminal-reconciliation.terminalFallback")} · {row.terminal?.terminal_code ?? ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">

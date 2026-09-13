@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React, { useState, useEffect } from "react";
@@ -53,6 +54,7 @@ interface ServiceAddon {
 }
 
 export default function ProviderAddons() {
+  const { t } = useTranslation();
   const [addons, setAddons] = useState<ServiceAddon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -73,7 +75,7 @@ export default function ProviderAddons() {
       setAddons(response.data || []);
     } catch (error) {
       console.error("Error loading addons:", error);
-      toast.error("Failed to load addons");
+      toast.error(t("web.provider.settings.pages.addons.failedToLoadAddons"));
     } finally {
       setIsLoading(false);
     }
@@ -106,14 +108,14 @@ export default function ProviderAddons() {
   };
 
   const handleDelete = async (addon: ServiceAddon) => {
-    if (!confirm(`Are you sure you want to delete "${addon.name}"?`)) return;
+    if (!confirm(t("web.provider.settings.pages.addons.deleteConfirm", { name: addon.name }))) return;
 
     try {
       await fetcher.delete(`/api/provider/addons/${addon.id}`);
-      toast.success("Addon deleted");
+      toast.success(t("web.provider.settings.pages.addons.addonDeleted"));
       loadAddons();
     } catch {
-      toast.error("Failed to delete addon");
+      toast.error(t("web.provider.settings.pages.addons.failedToDeleteAddon"));
     }
   };
 
@@ -121,21 +123,21 @@ export default function ProviderAddons() {
     try {
       if (editingAddon) {
         await fetcher.put(`/api/provider/addons/${editingAddon.id}`, addonData);
-        toast.success("Addon updated");
+        toast.success(t("web.provider.settings.pages.addons.addonUpdated"));
       } else {
         await fetcher.post("/api/provider/addons", addonData);
-        toast.success("Addon created");
+        toast.success(t("web.provider.settings.pages.addons.addonCreated"));
       }
       setShowDialog(false);
       setEditingAddon(null);
       loadAddons();
     } catch (error: any) {
-      toast.error(error.message || "Failed to save addon");
+      toast.error(error.message || t("web.provider.settings.pages.addons.failedToSave"));
     }
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading addons..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.addons.loadingAddons")} />;
   }
 
   const filteredAddons = filterType === "all" ? addons : addons.filter((a) => a.type === filterType);
@@ -143,49 +145,49 @@ export default function ProviderAddons() {
   return (
     <RoleGuard allowedRoles={["provider_owner"]}>
       <SettingsDetailLayout
-        title="Service Addons"
-        subtitle="Manage addons, products, and upgrades for your services"
+        title={t("web.provider.settings.categories.services.items.addons.title")}
+        subtitle={t("web.provider.settings.categories.services.items.addons.description")}
         backHref="/provider/settings"
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Service Addons" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.addons.serviceAddons") },
         ]}
       >
         <SectionCard>
           <div className="mb-6 flex justify-between items-center">
             <div className="flex-1">
               <p className="text-sm text-gray-600 mb-4">
-                Create addons that customers can add to their bookings to increase revenue and enhance their experience.
+                {t("web.provider.settings.pages.addons.intro")}
               </p>
             </div>
             <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Addon
+              <Plus className="w-4 h-4 me-2" />
+              {t("web.provider.settings.pages.addons.addAddon")}
             </Button>
           </div>
 
           <div className="mb-4">
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter by type" />
+                <SelectValue placeholder={t("web.provider.settings.pages.addons.filterByType")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="service">Services</SelectItem>
-                <SelectItem value="product">Products</SelectItem>
-                <SelectItem value="upgrade">Upgrades</SelectItem>
+                <SelectItem value="all">{t("web.provider.settings.pages.addons.allTypes")}</SelectItem>
+                <SelectItem value="service">{t("web.provider.settings.pages.addons.services")}</SelectItem>
+                <SelectItem value="product">{t("web.provider.settings.pages.addons.products")}</SelectItem>
+                <SelectItem value="upgrade">{t("web.provider.settings.pages.addons.upgrades")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {filteredAddons.length === 0 ? (
             <EmptyState
-              title="No addons"
-              description="Create addons to offer additional services, products, or upgrades"
+              title={t("web.provider.settings.categories.services.items.addons.title")}
+              description={t("web.provider.settings.pages.addons.emptyDescription")}
               action={{
-                label: "Add Addon",
+                label: t("web.provider.settings.pages.addons.addAddon"),
                 onClick: handleCreate,
               }}
             />
@@ -194,12 +196,12 @@ export default function ProviderAddons() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Duration</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.name")}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.type")}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.price")}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.duration")}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.status")}</th>
+                    <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{t("web.provider.settings.pages.addons.actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -210,7 +212,7 @@ export default function ProviderAddons() {
                           <span className="font-medium">{addon.name}</span>
                           {addon.is_recommended && (
                             <Badge variant="default" className="bg-pink-100 text-pink-800">
-                              Recommended
+                              {t("web.provider.settings.pages.addons.recommended")}
                             </Badge>
                           )}
                         </div>
@@ -224,11 +226,11 @@ export default function ProviderAddons() {
                         {addon.currency} {addon.price.toFixed(2)}
                       </td>
                       <td className="px-6 py-4">
-                        {addon.duration_minutes ? `${addon.duration_minutes} mins` : "-"}
+                        {addon.duration_minutes ? t("web.provider.settings.pages.addons.mins", { count: addon.duration_minutes }) : t("web.provider.common.emDash")}
                       </td>
                       <td className="px-6 py-4">
                         <Badge className={addon.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                          {addon.is_active ? "Active" : "Inactive"}
+                          {addon.is_active ? t("web.provider.settings.pages.addons.active") : t("web.provider.settings.pages.addons.inactive")}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
@@ -276,6 +278,7 @@ function AddonDialog({
   onClose: () => void;
   onSave: (data: any) => void;
 }) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [formData, setFormData] = useState({
@@ -319,14 +322,14 @@ function AddonDialog({
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{addon ? "Edit Addon" : "Add Addon"}</DialogTitle>
+          <DialogTitle>{addon ? t("web.provider.settings.pages.addons.editAddon") : t("web.provider.settings.pages.addons.addAddon")}</DialogTitle>
           <DialogDescription>
-            Create addons that customers can add to their bookings
+            {t("web.provider.settings.pages.addons.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t("web.provider.settings.pages.addons.nameRequired")}</Label>
             <Input
               id="name"
               value={formData.name}
@@ -336,7 +339,7 @@ function AddonDialog({
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("web.provider.settings.pages.addons.description")}</Label>
             <textarea
               id="description"
               value={formData.description}
@@ -347,7 +350,7 @@ function AddonDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="type">Type *</Label>
+              <Label htmlFor="type">{t("web.provider.settings.pages.addons.typeRequired")}</Label>
               <Select
                 value={formData.type}
                 onValueChange={(value) => setFormData({ ...formData, type: value as any })}
@@ -356,15 +359,15 @@ function AddonDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="service">Service</SelectItem>
-                  <SelectItem value="product">Product</SelectItem>
-                  <SelectItem value="upgrade">Upgrade</SelectItem>
+                  <SelectItem value="service">{t("web.provider.settings.pages.addons.service")}</SelectItem>
+                  <SelectItem value="product">{t("web.provider.settings.pages.addons.product")}</SelectItem>
+                  <SelectItem value="upgrade">{t("web.provider.settings.pages.addons.upgrade")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             <div>
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="category">{t("web.provider.settings.pages.addons.category")}</Label>
               <Input
                 id="category"
                 value={formData.category}
@@ -375,7 +378,7 @@ function AddonDialog({
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="price">Price *</Label>
+              <Label htmlFor="price">{t("web.provider.settings.pages.addons.priceRequired")}</Label>
               <Input
                 id="price"
                 type="number"
@@ -388,7 +391,7 @@ function AddonDialog({
             </div>
 
             <div>
-              <Label htmlFor="currency">Currency *</Label>
+              <Label htmlFor="currency">{t("web.provider.settings.pages.addons.currencyRequired")}</Label>
               <Input
                 id="currency"
                 value={formData.currency}
@@ -399,7 +402,7 @@ function AddonDialog({
             </div>
 
             <div>
-              <Label htmlFor="duration_minutes">Duration (mins)</Label>
+              <Label htmlFor="duration_minutes">{t("web.provider.settings.pages.addons.durationMins")}</Label>
               <Input
                 id="duration_minutes"
                 type="number"
@@ -416,7 +419,7 @@ function AddonDialog({
           </div>
 
           <div>
-            <Label htmlFor="image_url">Image URL</Label>
+            <Label htmlFor="image_url">{t("web.provider.settings.pages.addons.imageUrl")}</Label>
             <Input
               id="image_url"
               type="url"
@@ -426,10 +429,10 @@ function AddonDialog({
           </div>
 
           <div>
-            <Label>Associated Services</Label>
+            <Label>{t("web.provider.settings.pages.addons.associatedServices")}</Label>
             <div className="mt-2 max-h-40 overflow-y-auto border rounded-md p-2">
               {services.length === 0 ? (
-                <p className="text-sm text-gray-500">No services available</p>
+                <p className="text-sm text-gray-500">{t("web.provider.settings.pages.addons.noServicesAvailable")}</p>
               ) : (
                 <div className="space-y-2">
                   {services.map((service) => (
@@ -446,13 +449,13 @@ function AddonDialog({
               )}
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Select services this addon can be added to. Leave empty to allow with any service.
+              {t("web.provider.settings.pages.addons.associatedServicesHint")}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="max_quantity">Max Quantity</Label>
+              <Label htmlFor="max_quantity">{t("web.provider.settings.pages.addons.maxQuantity")}</Label>
               <Input
                 id="max_quantity"
                 type="number"
@@ -468,7 +471,7 @@ function AddonDialog({
             </div>
 
             <div>
-              <Label htmlFor="sort_order">Sort Order</Label>
+              <Label htmlFor="sort_order">{t("web.provider.settings.pages.addons.sortOrder")}</Label>
               <Input
                 id="sort_order"
                 type="number"
@@ -487,7 +490,7 @@ function AddonDialog({
                 checked={formData.is_active}
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
               />
-              <span>Active</span>
+              <span>{t("web.provider.settings.pages.addons.active")}</span>
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -495,7 +498,7 @@ function AddonDialog({
                 checked={formData.is_recommended}
                 onChange={(e) => setFormData({ ...formData, is_recommended: e.target.checked })}
               />
-              <span>Recommended</span>
+              <span>{t("web.provider.settings.pages.addons.recommended")}</span>
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -503,16 +506,16 @@ function AddonDialog({
                 checked={formData.requires_service}
                 onChange={(e) => setFormData({ ...formData, requires_service: e.target.checked })}
               />
-              <span>Requires Service</span>
+              <span>{t("web.provider.settings.pages.addons.requiresService")}</span>
             </label>
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" className="bg-primary hover:bg-primary-hover">
-              {addon ? "Update" : "Create"}
+              {addon ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </form>

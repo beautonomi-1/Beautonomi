@@ -104,14 +104,14 @@ export function PhoneInputWithCountry({
               alignItems: "center",
               paddingHorizontal: 12,
               paddingVertical: 12,
-              borderRightWidth: 1,
-              borderRightColor: Colors.gray[200],
+              borderEndWidth: 1,
+              borderEndColor: Colors.gray[200],
               backgroundColor: Colors.gray[50],
             }}
             accessibilityRole="button"
             accessibilityLabel={`Country code: ${selectedCountry?.label ?? countryCode}`}
           >
-            <Text style={{ fontSize: 18, marginRight: 4 }}>
+            <Text style={{ fontSize: 18, marginEnd: 4 }}>
               {selectedCountry?.flag ?? "🌍"}
             </Text>
             <Text
@@ -119,7 +119,7 @@ export function PhoneInputWithCountry({
                 fontSize: 15,
                 fontWeight: "600",
                 color: Colors.gray[900],
-                marginRight: 4,
+                marginEnd: 4,
               }}
             >
               {countryCode}
@@ -263,7 +263,7 @@ export function PhoneInputWithCountry({
                     borderColor: Colors.gray[50],
                   }}
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,

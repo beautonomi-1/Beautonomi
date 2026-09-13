@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -33,6 +34,7 @@ interface Resource {
 }
 
 export default function ResourcesSettings() {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -57,7 +59,7 @@ export default function ResourcesSettings() {
       console.error("Error loading resources:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load resources";
+        : error?.error?.message || t("web.provider.settings.pages.appointment-activity/resources.failedToLoad");
       toast.error(errorMessage);
       setResources([]);
     } finally {
@@ -88,16 +90,16 @@ export default function ResourcesSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this resource? This action cannot be undone.")) return;
+    if (!confirm(t("web.provider.settings.pages.appointment-activity/resources.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/resources/${id}`);
-      toast.success("Resource deleted successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/resources.resourceDeletedSuccessfully"));
       await loadResources();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to delete resource";
+        : error?.error?.message || t("web.provider.settings.pages.appointment-activity/resources.failedToDelete");
       toast.error(errorMessage);
       console.error("Error deleting resource:", error);
     }
@@ -106,12 +108,12 @@ export default function ResourcesSettings() {
   const handleSave = async () => {
     try {
       if (!formData.name.trim()) {
-        toast.error("Resource name is required");
+        toast.error(t("web.provider.settings.pages.appointment-activity/resources.resourceNameIsRequired"));
         return;
       }
 
       if (formData.capacity && formData.capacity < 1) {
-        toast.error("Capacity must be at least 1");
+        toast.error(t("web.provider.settings.pages.appointment-activity/resources.capacityMustBeAtLeast1"));
         return;
       }
 
@@ -122,7 +124,7 @@ export default function ResourcesSettings() {
           capacity: formData.capacity || 1,
           is_active: formData.is_active,
         });
-        toast.success("Resource updated successfully");
+        toast.success(t("web.provider.settings.pages.appointment-activity/resources.resourceUpdatedSuccessfully"));
       } else {
         await fetcher.post("/api/provider/resources", {
           name: formData.name.trim(),
@@ -130,35 +132,35 @@ export default function ResourcesSettings() {
           capacity: formData.capacity || 1,
           is_active: formData.is_active,
         });
-        toast.success("Resource created successfully");
+        toast.success(t("web.provider.settings.pages.appointment-activity/resources.resourceCreatedSuccessfully"));
       }
       setIsDialogOpen(false);
       await loadResources();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save resource";
+        : error?.error?.message || t("web.provider.settings.pages.appointment-activity/resources.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving resource:", error);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Resources" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.appointment-activity/resources.resources") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Resources"
-        subtitle="Manage resources and equipment"
+        title={t("web.provider.settings.categories.appointmentActivity.items.resources.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.resources.description")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading resources..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.appointment-activity/resources.loadingResources")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -166,33 +168,33 @@ export default function ResourcesSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Resources"
-      subtitle="Manage resources and equipment"
+      title={t("web.provider.settings.categories.appointmentActivity.items.resources.title")}
+      subtitle={t("web.provider.settings.categories.appointmentActivity.items.resources.description")}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-4 sm:space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
-              Add resources like treatment rooms, equipment, or tools that need to be booked
+              {t("web.provider.settings.pages.appointment-activity/resources.emptyHint")}
             </p>
           </div>
           <Button
             onClick={handleCreate}
             className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Resource
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.appointment-activity/resources.addResource")}
           </Button>
         </div>
 
         {resources.length === 0 ? (
           <SectionCard className="p-8 sm:p-12">
             <EmptyState
-              title="No resources yet"
-              description="Add resources like treatment rooms, equipment, or tools that need to be booked"
+              title={t("web.provider.settings.pages.appointment-activity/resources.noResourcesYet")}
+              description={t("web.provider.settings.pages.appointment-activity/resources.emptyHint")}
               action={{
-                label: "Add Resource",
+                label: t("web.provider.settings.pages.appointment-activity/resources.addResource"),
                 onClick: handleCreate,
               }}
             />
@@ -210,13 +212,13 @@ export default function ResourcesSettings() {
                     <div className="flex flex-wrap gap-2">
                       {resource.capacity && (
                         <Badge variant="outline" className="text-xs">
-                          Capacity: {resource.capacity}
+                          {t("web.provider.settings.pages.appointment-activity/resources.capacityValue", { count: resource.capacity })}
                         </Badge>
                       )}
                       <Badge
                         className={resource.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
                       >
-                        {resource.is_active ? "Active" : "Inactive"}
+                        {resource.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                       </Badge>
                     </div>
                   </div>
@@ -228,8 +230,8 @@ export default function ResourcesSettings() {
                     onClick={() => handleEdit(resource)}
                     className="flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
+                    <Edit className="w-3 h-3 me-1" />
+                    {t("web.provider.common.edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -237,8 +239,8 @@ export default function ResourcesSettings() {
                     onClick={() => handleDelete(resource.id)}
                     className="text-red-600 hover:text-red-700 flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Delete
+                    <Trash2 className="w-3 h-3 me-1" />
+                    {t("web.provider.common.delete")}
                   </Button>
                 </div>
               </SectionCard>
@@ -250,38 +252,38 @@ export default function ResourcesSettings() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle>{editingResource ? "Edit Resource" : "Add Resource"}</DialogTitle>
+            <DialogTitle>{editingResource ? t("web.provider.settings.pages.appointment-activity/resources.editResource") : t("web.provider.settings.pages.appointment-activity/resources.addResource")}</DialogTitle>
             <DialogDescription>
               {editingResource
-                ? "Update resource information"
-                : "Add a new resource that can be booked for appointments"}
+                ? t("web.provider.settings.pages.appointment-activity/resources.updateHint")
+                : t("web.provider.settings.pages.appointment-activity/resources.addHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Name *</Label>
+              <Label htmlFor="name">{t("web.provider.settings.pages.appointment-activity/resources.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Treatment Room 1"
+                placeholder={t("web.provider.settings.pages.appointment-activity/resources.eGTreatmentRoom1")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("web.provider.common.description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description"
+                placeholder={t("web.provider.settings.pages.appointment-activity/resources.optionalDescription")}
                 rows={3}
                 className="mt-1.5"
               />
             </div>
             <div>
-              <Label htmlFor="capacity">Capacity</Label>
+              <Label htmlFor="capacity">{t("web.provider.settings.pages.appointment-activity/resources.capacity")}</Label>
               <Input
                 id="capacity"
                 type="number"
@@ -290,7 +292,7 @@ export default function ResourcesSettings() {
                 onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 1 })}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
               />
-              <p className="text-xs text-gray-500 mt-1">Number of people this resource can accommodate</p>
+              <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.appointment-activity/resources.capacityHint")}</p>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -301,19 +303,19 @@ export default function ResourcesSettings() {
                 className="w-4 h-4"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active
+                {t("web.provider.common.active")}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="min-h-[44px] touch-manipulation">
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
               className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {editingResource ? "Update" : "Create"}
+              {editingResource ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

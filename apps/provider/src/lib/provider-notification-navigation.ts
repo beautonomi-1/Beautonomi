@@ -1,7 +1,9 @@
 import type { Router } from "expo-router";
 import {
   applyProviderNotificationRoute,
+  isProviderCloseOutNotification,
   notificationPayloadToRouteData,
+  PROVIDER_CLOSEOUT_BOOKINGS_ROUTE,
 } from "@/lib/resolveProviderNotificationRoute";
 
 /** Minimal notification shape for navigation (dropdown + legacy root screen). */
@@ -59,6 +61,14 @@ export function navigateFromProviderNotification(router: Router, n: ProviderNoti
   const nTypeLc = (n.type ?? "").toLowerCase();
   const templateKey =
     typeof data.template_key === "string" ? data.template_key.toLowerCase() : "";
+
+  if (
+    isProviderCloseOutNotification(templateKey, link) ||
+    nTypeLc === "provider_closeout_reminder"
+  ) {
+    router.push(PROVIDER_CLOSEOUT_BOOKINGS_ROUTE as never);
+    return true;
+  }
 
   if (
     nTypeLc === "identity_verification_approved" ||

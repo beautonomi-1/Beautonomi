@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
       emergency_contact: {
         name: (userData as any).emergency_contact_name || "",
         relationship: (userData as any).emergency_contact_relationship || "",
-        language: (userData as any).preferred_language || "",
+        language: (userData as any).emergency_contact_language || "",
         email: (userData as any).emergency_contact_email ?? "",
         country_code: (userData as any).emergency_contact_country_code ?? "",
         phone: (userData as any).emergency_contact_phone || "",

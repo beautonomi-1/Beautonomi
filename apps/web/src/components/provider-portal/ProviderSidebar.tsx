@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 /**
  * @deprecated Use `@/components/provider/ProviderSidebar` from the main provider shell instead.
  * This alternate layout is not mounted by `ProviderShell`; kept only for reference or legacy experiments.
@@ -35,19 +37,19 @@ import {
 import { ProviderRewardsTeaser } from "./ProviderRewardsTeaser";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
-  { icon: Calendar, label: "Calendar", href: "/provider/calendar" },
-  { icon: ListChecks, label: "Waitlist", href: "/provider/waitlist" },
-  { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments" },
-  { icon: Tag, label: "Sales", href: "/provider/sales" },
-  { icon: Smile, label: "Clients", href: "/provider/clients" },
-  { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue/products" },
-  { icon: Package, label: "Resources", href: "/provider/resources" },
-  { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations" },
-  { icon: LinkIcon, label: "Booking Links", href: "/provider/express-booking" },
-  { icon: Users, label: "Team", href: "/provider/team/members" },
-  { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification" },
-  { icon: Settings, label: "Settings", href: "/provider/settings" },
+  { icon: LayoutDashboard, labelKey: "web.provider.sidebar.items.dashboard", href: "/provider/dashboard" },
+  { icon: Calendar, labelKey: "web.provider.sidebar.items.calendar", href: "/provider/calendar" },
+  { icon: ListChecks, labelKey: "web.provider.sidebar.items.waitlist", href: "/provider/waitlist" },
+  { icon: Repeat, labelKey: "web.provider.sidebar.items.recurring", href: "/provider/recurring-appointments" },
+  { icon: Tag, labelKey: "web.provider.sidebar.items.sales", href: "/provider/sales" },
+  { icon: Smile, labelKey: "web.provider.sidebar.items.clients", href: "/provider/clients" },
+  { icon: Grid3x3, labelKey: "web.provider.sidebar.items.catalogue", href: "/provider/catalogue/products" },
+  { icon: Package, labelKey: "web.provider.sidebar.items.resources", href: "/provider/resources" },
+  { icon: Megaphone, labelKey: "web.provider.sidebar.items.marketing", href: "/provider/marketing/automations" },
+  { icon: LinkIcon, labelKey: "web.provider.sidebar.items.bookingLinks", href: "/provider/express-booking" },
+  { icon: Users, labelKey: "web.provider.sidebar.items.team", href: "/provider/team/members" },
+  { icon: Trophy, labelKey: "web.provider.sidebar.items.rewardsBadges", href: "/provider/gamification" },
+  { icon: Settings, labelKey: "web.provider.sidebar.items.settings", href: "/provider/settings" },
 ];
 
 // Match routes including sub-routes
@@ -83,13 +85,14 @@ const isActiveRoute = (pathname: string, href: string) => {
 };
 
 export function ProviderSidebar() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const { sidebarCollapsed, setSidebarCollapsed: _setSidebarCollapsed } = useProviderPortal();
 
   return (
     <div
       className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-white border-r border-gray-200 transition-all duration-300 hidden md:block",
+        "fixed left-0 top-0 z-40 h-screen bg-white border-e border-gray-200 transition-all duration-300 hidden md:block",
         sidebarCollapsed ? "w-16" : "w-64"
       )}
     >
@@ -125,7 +128,7 @@ export function ProviderSidebar() {
                       <Icon className="w-5 h-5 flex-shrink-0" />
                       {!sidebarCollapsed && (
                         <span className="flex-1 min-w-0 flex flex-col items-start">
-                          <span>{item.label}</span>
+                          <span>{t(item.labelKey)}</span>
                           {item.href === "/provider/gamification" && (
                             <ProviderRewardsTeaser />
                           )}
@@ -135,7 +138,7 @@ export function ProviderSidebar() {
                   </TooltipTrigger>
                   {sidebarCollapsed && (
                     <TooltipContent side="right">
-                      <p>{item.label}</p>
+                      <p>{t(item.labelKey)}</p>
                     </TooltipContent>
                   )}
                 </Tooltip>
@@ -155,12 +158,12 @@ export function ProviderSidebar() {
                   )}
                 >
                   <LogOut className="w-5 h-5 flex-shrink-0" />
-                  {!sidebarCollapsed && <span>Logout</span>}
+                  {!sidebarCollapsed && <span>{t("web.provider.topbar.logout")}</span>}
                 </button>
               </TooltipTrigger>
               {sidebarCollapsed && (
                 <TooltipContent side="right">
-                  <p>Logout</p>
+                  <p>{t("web.provider.topbar.logout")}</p>
                 </TooltipContent>
               )}
             </Tooltip>

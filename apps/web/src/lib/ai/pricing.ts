@@ -10,6 +10,7 @@
  * missing row never zeroes out spend tracking.
  */
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { fetchLiveGatewayModels, gatewayPricingPer1k } from "@/lib/ai/gateway-models";
 
 export interface ModelPricing {
   model: string;
@@ -27,6 +28,17 @@ export const DEFAULT_MODEL_PRICING: Record<string, Omit<ModelPricing, "model">> 
   "gemini-2.5-flash": { inputUsdPer1k: 0.0003, outputUsdPer1k: 0.0025 },
   "gemini-2.5-pro": { inputUsdPer1k: 0.00125, outputUsdPer1k: 0.01 },
   "gemini-2.0-flash": { inputUsdPer1k: 0.0001, outputUsdPer1k: 0.0004 },
+  "google/gemini-2.5-flash-lite": { inputUsdPer1k: 0.0001, outputUsdPer1k: 0.0004 },
+  "google/gemini-2.5-flash": { inputUsdPer1k: 0.0003, outputUsdPer1k: 0.0025 },
+  "openai/gpt-4.1-mini": { inputUsdPer1k: 0.0004, outputUsdPer1k: 0.0016 },
+  "anthropic/claude-sonnet-4.5": { inputUsdPer1k: 0.003, outputUsdPer1k: 0.015 },
+  "openai/text-embedding-3-small": { inputUsdPer1k: 0.00002, outputUsdPer1k: 0 },
+};
+
+/** Map Gateway IDs to bare Gemini IDs for pricing lookup. */
+const GATEWAY_ALIASES: Record<string, string> = {
+  "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
+  "google/gemini-2.5-flash": "gemini-2.5-flash",
 };
 
 /** Used when the model is unknown to both the table and the defaults (priced like flash). */
@@ -110,6 +122,23 @@ export async function getModelPricing(model: string): Promise<ModelPricing> {
   const byModel = await loadModelPricing();
   const hit = byModel.get(model);
   if (hit) return hit;
+  const alias = GATEWAY_ALIASES[model];
+  if (alias) {
+    const aliased = byModel.get(alias);
+    if (aliased) return { ...aliased, model };
+  }
+  if (model.includes("/")) {
+    try {
+      const live = await fetchLiveGatewayModels();
+      const gw = live.find((m) => m.id === model);
+      if (gw) {
+        const p = gatewayPricingPer1k(gw);
+        return { model, inputUsdPer1k: p.inputUsdPer1k, outputUsdPer1k: p.outputUsdPer1k };
+      }
+    } catch {
+      // Gateway unreachable — fall through.
+    }
+  }
   return { model, ...UNKNOWN_MODEL_PRICING };
 }
 

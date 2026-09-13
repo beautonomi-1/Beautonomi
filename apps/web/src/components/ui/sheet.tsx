@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useTranslation } from "@beautonomi/i18n"
 
 const Sheet = SheetPrimitive.Root
 
@@ -41,6 +42,13 @@ const sheetVariants = cva(
         left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm p-6",
         right:
           "inset-y-0 right-0 h-full w-3/4  border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm p-6",
+        // Direction-aware variants: `start` hugs the inline-start edge (left in LTR, right in RTL)
+        // and `end` hugs the inline-end edge. tailwindcss-animate slide utilities are physical,
+        // so they are swapped under the `rtl:` variant to keep the motion coming from the same edge.
+        start:
+          "inset-y-0 start-0 h-full w-3/4 border-e data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left rtl:data-[state=closed]:slide-out-to-right rtl:data-[state=open]:slide-in-from-right sm:max-w-sm p-6",
+        end:
+          "inset-y-0 end-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right rtl:data-[state=closed]:slide-out-to-left rtl:data-[state=open]:slide-in-from-left sm:max-w-sm p-6",
       },
     },
     defaultVariants: {
@@ -56,7 +64,9 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, "aria-describedby": ariaDescribedby, ...props }, ref) => (
+>(({ side = "right", className, children, "aria-describedby": ariaDescribedby, ...props }, ref) => {
+  const { t } = useTranslation();
+  return (
   <SheetPortal>
     <SheetOverlay />
       <SheetPrimitive.Content
@@ -65,17 +75,18 @@ const SheetContent = React.forwardRef<
         className={cn(sheetVariants({ side }), side === "bottom" ? "" : "overflow-y-auto max-h-screen", className)}
         {...props}
       >
-        <SheetPrimitive.Title className="sr-only">Menu</SheetPrimitive.Title>
+        <SheetPrimitive.Title className="sr-only">{t("web.layout.navbar.menu")}</SheetPrimitive.Title>
         {children}
         {side !== "bottom" && (
-          <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation">
+          <SheetPrimitive.Close className="absolute end-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation">
             <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common.close")}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
   </SheetPortal>
-))
+  );
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({
@@ -84,7 +95,7 @@ const SheetHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex flex-col space-y-2 text-center sm:text-left",
+      "flex flex-col space-y-2 text-center sm:text-start",
       className
     )}
     {...props}

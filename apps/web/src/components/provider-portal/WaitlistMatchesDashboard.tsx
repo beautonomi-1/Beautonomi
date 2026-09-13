@@ -15,6 +15,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import QuickBookingModal from "./QuickBookingModal";
 
 interface WaitlistMatch {
@@ -42,6 +43,7 @@ interface WaitlistMatchesDashboardProps {
 }
 
 export default function WaitlistMatchesDashboard({ providerId: _providerId }: WaitlistMatchesDashboardProps) {
+  const { t } = useTranslation();
   const [matches, setMatches] = useState<WaitlistMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -61,7 +63,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
       );
       setMatches(response.matches || []);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to load waitlist matches");
+      toast.error(error instanceof Error ? error.message : t("web.provider.waitlistMatches.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -80,7 +82,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
     setIsQuickBookingOpen(false);
     setSelectedMatch(null);
     loadMatches();
-    toast.success("Booking created successfully!");
+    toast.success(t("web.provider.waitlistMatches.bookingCreated"));
   };
 
   const getScoreColor = (score: number) => {
@@ -94,20 +96,20 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Waitlist Matches</h2>
+          <h2 className="text-2xl font-bold">{t("web.provider.waitlistMatches.title")}</h2>
           <p className="text-gray-600 mt-1">
-            Find waitlist entries that match available slots
+            {t("web.provider.waitlistMatches.subtitle")}
           </p>
         </div>
         <Button onClick={loadMatches} variant="outline">
-          Refresh
+          {t("web.provider.waitlistMatches.refresh")}
         </Button>
       </div>
 
       {/* Filters */}
       <div className="flex gap-4">
         <div className="flex-1">
-          <label className="text-sm font-medium mb-2 block">Date</label>
+          <label className="text-sm font-medium mb-2 block">{t("web.provider.waitlistMatches.date")}</label>
           <input
             type="date"
             value={selectedDate}
@@ -117,13 +119,13 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
           />
         </div>
         <div className="flex-1">
-          <label className="text-sm font-medium mb-2 block">Staff</label>
+          <label className="text-sm font-medium mb-2 block">{t("web.provider.waitlistMatches.staff")}</label>
           <Select value={selectedStaff} onValueChange={setSelectedStaff}>
             <SelectTrigger>
-              <SelectValue placeholder="All staff" />
+              <SelectValue placeholder={t("web.provider.waitlistMatches.allStaff")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All staff</SelectItem>
+              <SelectItem value="all">{t("web.provider.waitlistMatches.allStaff")}</SelectItem>
               {/* Staff options would be loaded from API */}
             </SelectContent>
           </Select>
@@ -133,15 +135,15 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
       {/* Matches List */}
       {isLoading ? (
         <div className="text-center py-12">
-          <p className="text-gray-500">Loading matches...</p>
+          <p className="text-gray-500">{t("web.provider.waitlistMatches.loading")}</p>
         </div>
       ) : matches.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No matches found</h3>
+            <h3 className="text-lg font-semibold mb-2">{t("web.provider.waitlistMatches.noMatches")}</h3>
             <p className="text-gray-500">
-              No waitlist entries match available slots for the selected criteria.
+              {t("web.provider.waitlistMatches.noMatchesHint")}
             </p>
           </CardContent>
         </Card>
@@ -155,7 +157,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
                     <div className="flex items-center gap-3 mb-2">
                       <CardTitle className="text-lg">{match.client_name}</CardTitle>
                       <Badge className={getScoreColor(match.match_score)}>
-                        Score: {match.match_score}
+                        {t("web.provider.waitlistMatches.score", { score: match.match_score })}
                       </Badge>
                     </div>
                     <CardDescription>{match.service_name}</CardDescription>
@@ -164,7 +166,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
                     onClick={() => handleQuickBook(match)}
                     className="bg-primary hover:bg-primary-hover"
                   >
-                    Quick Book
+                    {t("web.provider.waitlistMatches.quickBook")}
                   </Button>
                 </div>
               </CardHeader>
@@ -172,7 +174,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Preferences */}
                   <div className="space-y-2">
-                    <h4 className="text-sm font-semibold text-gray-700">Preferences</h4>
+                    <h4 className="text-sm font-semibold text-gray-700">{t("web.provider.waitlistMatches.preferences")}</h4>
                     {match.preferred_date && (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
@@ -198,7 +200,7 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
                   {/* Available Slots */}
                   <div className="space-y-2">
                     <h4 className="text-sm font-semibold text-gray-700">
-                      Available Slots ({match.available_slots.length})
+                      {t("web.provider.waitlistMatches.availableSlots", { count: match.available_slots.length })}
                     </h4>
                     {match.available_slots.length > 0 ? (
                       <div className="space-y-1">
@@ -209,19 +211,18 @@ export default function WaitlistMatchesDashboard({ providerId: _providerId }: Wa
                           >
                             <CheckCircle2 className="w-4 h-4 text-green-600" />
                             <span>
-                              {format(parseISO(slot.date), "MMM d")} at {slot.time} with{" "}
-                              {slot.staff_name}
+                              {t("web.provider.waitlistMatches.slotWith", { date: format(parseISO(slot.date), "MMM d"), time: slot.time, staff: slot.staff_name })}
                             </span>
                           </div>
                         ))}
                         {match.available_slots.length > 3 && (
                           <p className="text-xs text-gray-500">
-                            +{match.available_slots.length - 3} more slots
+                            {t("web.provider.waitlistMatches.moreSlots", { count: match.available_slots.length - 3 })}
                           </p>
                         )}
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500">No available slots</p>
+                      <p className="text-sm text-gray-500">{t("web.provider.waitlistMatches.noSlots")}</p>
                     )}
                   </div>
                 </div>

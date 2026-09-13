@@ -16,6 +16,8 @@ import { insertNotification } from '@/lib/notifications/insert-notification';
 import { getGroupBooking } from './group-booking';
 import { resolveTwilioCredentials, sendTwilioSMS } from '@/lib/integrations/twilio';
 import { sendResendEmail } from '@/lib/integrations/resend';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { getTenantLocaleTagFromRegionConfig } from '@/lib/locale/tenant-locale';
 
 type GroupNotificationParticipant = {
   participant_name: string;
@@ -72,6 +74,11 @@ export async function sendGroupBookingNotifications(
 
   if (!booking) return;
 
+  const tenantRegion = await getTenantRegionConfig(
+    (booking as { tenant_id?: string | null }).tenant_id ?? null,
+  );
+  const formatLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+
   const { data: provider } = await supabase
     .from('providers')
     .select('business_name, slug')
@@ -97,6 +104,7 @@ export async function sendGroupBookingNotifications(
         booking,
         provider,
         participant.is_primary_contact,
+        formatLocale,
         groupBookingId,
       );
       continue;
@@ -108,6 +116,7 @@ export async function sendGroupBookingNotifications(
       booking,
       provider,
       walkInChannels,
+      formatLocale,
     );
   }
 }
@@ -152,15 +161,16 @@ function buildGroupConfirmationCopy(
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
+  formatLocale: string,
 ): { title: string; message: string; pushMessage: string } {
   const scheduledDate = new Date(booking.scheduled_at || Date.now());
-  const dateStr = scheduledDate.toLocaleDateString('en-US', {
+  const dateStr = scheduledDate.toLocaleDateString(formatLocale, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
-  const timeStr = scheduledDate.toLocaleTimeString('en-US', {
+  const timeStr = scheduledDate.toLocaleTimeString(formatLocale, {
     hour: 'numeric',
     minute: '2-digit',
   });
@@ -240,12 +250,14 @@ async function sendWalkInGroupBookingConfirmation(
   },
   provider: { business_name?: string | null } | null,
   channels: { email: boolean; sms: boolean },
+  formatLocale: string,
 ): Promise<void> {
   const { title, message } = buildGroupConfirmationCopy(
     participant.participant_name,
     booking,
     provider,
     participant.is_primary_contact,
+    formatLocale,
   );
 
   if (channels.email && participant.participant_email) {
@@ -301,6 +313,7 @@ async function sendGroupBookingConfirmation(
   },
   provider: { business_name?: string | null } | null,
   isPrimary: boolean,
+  formatLocale: string,
   groupBookingId?: string | null,
 ): Promise<void> {
   const { title, message, pushMessage } = buildGroupConfirmationCopy(
@@ -308,6 +321,7 @@ async function sendGroupBookingConfirmation(
     booking,
     provider,
     isPrimary,
+    formatLocale,
   );
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com';
   const tenantId = booking.tenant_id ?? null;

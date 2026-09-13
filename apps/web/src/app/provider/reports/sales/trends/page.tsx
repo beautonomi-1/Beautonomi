@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -16,6 +17,7 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { RevenueChart } from "../../components/RevenueChart";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface RevenueTrendsData {
   period: string;
@@ -42,14 +44,17 @@ interface RevenueTrendsData {
   reportBasis?: string;
 }
 
-const PERIOD_HELP: Record<string, string> = {
-  day: "Each point is a calendar day. Ledger uses recognition date; visits use appointment date.",
-  week: "Each point is a week (week starts Monday).",
-  month: "Each point is a calendar month.",
-  year: "Each point is a calendar year.",
-};
+function periodHelp(t: (k: string) => string): Record<string, string> {
+  return {
+    day: t("web.provider.reports.pages.sales/trends.helpDay"),
+    week: t("web.provider.reports.pages.sales/trends.helpWeek"),
+    month: t("web.provider.reports.pages.sales/trends.helpMonth"),
+    year: t("web.provider.reports.pages.sales/trends.helpYear"),
+  };
+}
 
 export default function RevenueTrendsReport() {
+  const { t } = useTranslation();
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
@@ -102,17 +107,17 @@ export default function RevenueTrendsReport() {
     if (gran === "day") {
       const d = new Date(periodStr + (periodStr.length <= 10 ? "T12:00:00.000Z" : ""));
       return Number.isFinite(d.getTime())
-        ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        ? d.toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric", year: "numeric" })
         : periodStr;
     }
     if (gran === "week" && /^\d{4}-\d{2}-\d{2}$/.test(periodStr)) {
-      return `Week of ${new Date(periodStr + "T12:00:00.000Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      return t("web.provider.reports.pages.sales/trends.weekOf", { date: new Date(periodStr + "T12:00:00.000Z").toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric", year: "numeric" }) });
     }
     if (gran === "month" && /^\d{4}-\d{2}$/.test(periodStr)) {
       const [y, m] = periodStr.split("-");
       const mi = parseInt(m, 10);
       if (!Number.isFinite(mi) || mi < 1 || mi > 12) return periodStr;
-      return new Date(parseInt(y, 10), mi - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      return new Date(parseInt(y, 10), mi - 1).toLocaleDateString(getDefaultMoneyLocale(), { month: "long", year: "numeric" });
     }
     if (gran === "year") return periodStr.length >= 4 ? periodStr.slice(0, 4) : periodStr;
     return periodStr;
@@ -122,10 +127,10 @@ export default function RevenueTrendsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Revenue trends" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/trends.title") },
         ]}
       >
         <ReportSkeleton />
@@ -137,15 +142,15 @@ export default function RevenueTrendsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Revenue trends" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/trends.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Revenue trends" />
-          <ReportSubscriptionRequired feature="Revenue trends" />
+          <PageHeader title={t("web.provider.reports.pages.sales/trends.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.sales/trends.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -155,15 +160,15 @@ export default function RevenueTrendsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Revenue trends" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/trends.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load revenue trends data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.sales/trends.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -177,41 +182,41 @@ export default function RevenueTrendsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Revenue trends" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.sales/trends.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="revenue-trends-report">
         <PageHeader
-          title="Revenue trends"
-          subtitle="Ledger net over time vs scheduled visits — facts from finance_transactions and bookings"
+          title={t("web.provider.reports.pages.sales/trends.title")}
+          subtitle={t("web.provider.reports.pages.sales/trends.subtitle")}
           actions={
             <Button variant="outline" className="min-h-[44px] touch-manipulation gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" />
-              Export CSV
+              {t("web.provider.common.exportCsv")}
             </Button>
           }
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Bucket size</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.reports.pages.sales/trends.bucketSize")}</p>
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[200px] border-gray-200 shadow-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="day">Daily (~31 days)</SelectItem>
-                <SelectItem value="week">Weekly (~12 weeks)</SelectItem>
-                <SelectItem value="month">Monthly (12 months)</SelectItem>
-                <SelectItem value="year">Yearly (4 years)</SelectItem>
+                <SelectItem value="day">{t("web.provider.reports.pages.sales/trends.daily")}</SelectItem>
+                <SelectItem value="week">{t("web.provider.reports.pages.sales/trends.weekly")}</SelectItem>
+                <SelectItem value="month">{t("web.provider.reports.pages.sales/trends.monthly")}</SelectItem>
+                <SelectItem value="year">{t("web.provider.reports.pages.sales/trends.yearly")}</SelectItem>
               </SelectContent>
             </Select>
             {rangeCaption ? <p className="text-xs text-gray-500">{rangeCaption}</p> : null}
-            <p className="max-w-xl text-xs text-gray-600">{PERIOD_HELP[data.period] ?? ""}</p>
+            <p className="max-w-xl text-xs text-gray-600">{periodHelp(t)[data.period] ?? ""}</p>
           </div>
         </div>
 
@@ -219,14 +224,14 @@ export default function RevenueTrendsReport() {
           <div className="flex gap-3 rounded-xl border border-indigo-200/90 bg-indigo-50/95 px-4 py-3 text-sm leading-relaxed text-indigo-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" aria-hidden />
             <div>
-              <p className="font-medium text-indigo-900">How to read this report</p>
+              <p className="font-medium text-indigo-900">{t("web.provider.reports.pages.sales/trends.howToRead")}</p>
               <p className="mt-1">{data.basisNote}</p>
               {data.reportBasis ? (
                 <p className="mt-2 text-xs font-medium text-indigo-900/95">{data.reportBasis}</p>
               ) : null}
               {data.ledgerTransactionTypes?.length ? (
                 <p className="mt-2 text-xs text-indigo-900/90">
-                  Ledger types included: {data.ledgerTransactionTypes.join(", ")}
+                  {t("web.provider.reports.pages.sales/trends.ledgerTypes", { types: data.ledgerTransactionTypes.join(", ") })}
                 </p>
               ) : null}
             </div>
@@ -239,15 +244,15 @@ export default function RevenueTrendsReport() {
               <div key={key}>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {key === "ledger"
-                    ? "Ledger buckets"
+                    ? t("web.provider.reports.pages.sales/trends.ledgerBuckets")
                     : key === "visits"
-                      ? "Visit counts"
+                      ? t("web.provider.reports.pages.sales/trends.visitCounts")
                       : key === "retail"
-                        ? "Retail / products"
+                        ? t("web.provider.reports.pages.sales/trends.retailProducts")
                         : key === "growth"
-                          ? "Growth %"
+                          ? t("web.provider.reports.pages.sales/trends.growthPct")
                           : key === "averageRevenue"
-                            ? "Average shown"
+                            ? t("web.provider.reports.pages.sales/trends.averageShown")
                             : key}
                 </p>
                 <p className="mt-1 text-sm leading-snug text-gray-800">{text}</p>
@@ -259,8 +264,8 @@ export default function RevenueTrendsReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Ledger net (window)</CardTitle>
-              <p className="text-xs text-gray-500">Sum of buckets — platform economics</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/trends.ledgerNetWindow")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/trends.ledgerNetHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -276,8 +281,8 @@ export default function RevenueTrendsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Scheduled visits</CardTitle>
-              <p className="text-xs text-gray-500">Excl. cancelled & no-show</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/trends.scheduledVisits")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/trends.scheduledHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -291,8 +296,8 @@ export default function RevenueTrendsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg ledger / bucket</CardTitle>
-              <p className="text-xs text-gray-500">Not per visit</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/trends.avgLedger")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/trends.avgHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -306,8 +311,8 @@ export default function RevenueTrendsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Change vs prior bucket</CardTitle>
-              <p className="text-xs text-gray-500">Last vs previous period only</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/trends.changePrior")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/trends.changeHint")}</p>
             </CardHeader>
             <CardContent>
               {prior ? (
@@ -331,12 +336,11 @@ export default function RevenueTrendsReport() {
                     </p>
                   </div>
                   <p className="text-xs text-gray-500">
-                    Visits: {data.bookingsGrowth >= 0 ? "+" : ""}
-                    {data.bookingsGrowth.toFixed(1)}%
+                    {t("web.provider.reports.pages.sales/trends.visitsChange", { sign: data.bookingsGrowth >= 0 ? "+" : "", pct: data.bookingsGrowth.toFixed(1) })}
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">Need at least two buckets to compare.</p>
+                <p className="text-sm text-gray-500">{t("web.provider.reports.pages.sales/trends.needTwoBuckets")}</p>
               )}
             </CardContent>
           </Card>
@@ -344,14 +348,14 @@ export default function RevenueTrendsReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Ledger net & visits</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.sales/trends.ledgerAndVisits")}</CardTitle>
             <p className="text-sm font-normal text-gray-500">
-              Purple / violet = ledger net (left axis). Teal = scheduled visits (right axis). Scales are independent.
+              {t("web.provider.reports.pages.sales/trends.chartHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.trends.length === 0 ? (
-              <EmptyReportState title="No data" description="No ledger or booking activity in this window." />
+              <EmptyReportState title={t("web.provider.reports.pages.sales/trends.noData")} description={t("web.provider.reports.pages.sales/trends.noDataDesc")} />
             ) : (
               <RevenueChart
                 data={data.trends.map((t) => ({
@@ -369,11 +373,11 @@ export default function RevenueTrendsReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Bucket breakdown</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.sales/trends.bucketBreakdown")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.trends.length === 0 ? (
-              <EmptyReportState title="No rows" description="No trend rows." />
+              <EmptyReportState title={t("web.provider.reports.pages.sales/trends.noRows")} description={t("web.provider.reports.pages.sales/trends.noRowsDesc")} />
             ) : (
               <div className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100">
                 {data.trends.map((trend) => (
@@ -384,7 +388,7 @@ export default function RevenueTrendsReport() {
                     <div>
                       <p className="font-medium text-gray-900">{formatBucketLabel(trend.period, data.period)}</p>
                       <p className="text-sm tabular-nums text-gray-600">
-                        {trend.bookings} visit{trend.bookings !== 1 ? "s" : ""}
+                        {t("web.provider.reports.pages.sales/trends.visits", { count: trend.bookings })}
                       </p>
                     </div>
                     <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(trend.revenue)}</p>

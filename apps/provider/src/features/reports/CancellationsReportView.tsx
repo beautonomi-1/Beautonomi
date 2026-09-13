@@ -2,6 +2,7 @@
  * Cancellations: counts, rate, ledger net in window, reasons, daily buckets, recent sample.
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -32,6 +33,10 @@ function isCancellationsPayload(data: unknown): data is {
 }
 
 export function CancellationsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const cr = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.cancellationsReport.${key}`, opts) as string;
+
   if (!isCancellationsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -63,44 +68,44 @@ export function CancellationsReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {cr("factsDefinitions")}
       </Text>
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-sky-950")}>{basis}</Text>
           {types.length > 0 ? (
             <Text style={twStyle("mt-2 text-xs leading-5 text-sky-900/90")}>
-              Ledger types: {types.join(", ")}
+              {cr("ledgerTypes", { types: types.join(", ") })}
             </Text>
           ) : null}
           {data.timezone ? (
-            <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Timezone: {data.timezone}</Text>
+            <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{cr("timezone", { timezone: data.timezone })}</Text>
           ) : null}
         </View>
       ) : null}
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-red-100 bg-red-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-red-900")}>Cancelled</Text>
+          <Text style={twStyle("text-xs font-medium text-red-900")}>{cr("cancelled")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-red-950")}>{totalCancelled}</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-red-900/85")}>Scheduled in window</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-red-900/85")}>{cr("scheduledInWindow")}</Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-orange-100 bg-orange-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-orange-900")}>Rate</Text>
+          <Text style={twStyle("text-xs font-medium text-orange-900")}>{cr("rate")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-orange-950")}>{rate.toFixed(1)}%</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-orange-900/85")}>Of {totalBookings} appointments</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-orange-900/85")}>{cr("ofAppointments", { count: totalBookings })}</Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-rose-100 bg-rose-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-rose-900")}>Ledger net</Text>
+          <Text style={twStyle("text-xs font-medium text-rose-900")}>{cr("ledgerNet")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-rose-950")}>{formatCurrency(lost)}</Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-rose-900/85")}>Posted in window</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-rose-900/85")}>{cr("postedInWindow")}</Text>
         </View>
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>By day</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{cr("byDay")}</Text>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {daily.length === 0 ? (
-          <Text style={twStyle("px-4 py-6 text-center text-sm text-gray-500")}>No daily rows.</Text>
+          <Text style={twStyle("px-4 py-6 text-center text-sm text-gray-500")}>{cr("noDailyRows")}</Text>
         ) : (
           daily.map((d) => (
             <View
@@ -114,10 +119,10 @@ export function CancellationsReportView({ data }: { data: unknown }) {
         )}
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Reasons</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{cr("reasons")}</Text>
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         {reasons.length === 0 ? (
-          <Text style={twStyle("px-4 py-6 text-center text-sm text-gray-500")}>No reasons.</Text>
+          <Text style={twStyle("px-4 py-6 text-center text-sm text-gray-500")}>{cr("noReasons")}</Text>
         ) : (
           reasons.map((r) => (
             <View
@@ -126,17 +131,17 @@ export function CancellationsReportView({ data }: { data: unknown }) {
             >
               <Text style={twStyle("text-sm font-medium text-gray-900")}>{r.reason}</Text>
               <Text style={twStyle("text-xs text-gray-600")}>
-                {r.count} · {r.percentage.toFixed(1)}%
+                {cr("reasonLine", { count: r.count, percent: r.percentage.toFixed(1) })}
               </Text>
             </View>
           ))
         )}
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Recent</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{cr("recent")}</Text>
       <View style={twStyle("gap-2")}>
         {recent.length === 0 ? (
-          <Text style={twStyle("text-sm text-gray-500")}>No recent rows.</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>{cr("noRecentRows")}</Text>
         ) : (
           recent.map((row, i) => {
             const b = row as {
@@ -151,7 +156,7 @@ export function CancellationsReportView({ data }: { data: unknown }) {
                 style={twStyle("rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3")}
               >
                 <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                  {b.users?.full_name ?? "Unknown client"}
+                  {b.users?.full_name ?? cr("unknownClient")}
                 </Text>
                 {b.cancellation_reason ? (
                   <Text style={twStyle("text-xs text-gray-600")}>{b.cancellation_reason}</Text>
@@ -166,7 +171,7 @@ export function CancellationsReportView({ data }: { data: unknown }) {
       </View>
 
       {Object.keys(detailPayload).length > 0 ? (
-        <ReportPayloadView data={detailPayload} title="Extra fields" />
+        <ReportPayloadView data={detailPayload} title={cr("extraFields")} />
       ) : null}
     </View>
   );

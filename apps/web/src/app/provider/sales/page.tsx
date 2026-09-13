@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -26,8 +27,10 @@ import { ProtectedPage } from "@/components/provider/ProtectedPage";
 import { useConfigBundle, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 function ProviderSalesContent() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { currencyCode } = useReportCurrency();
   const { isLoading: configLoading } = useConfigBundle();
@@ -102,7 +105,7 @@ function ProviderSalesContent() {
       setTotalPages(response.total_pages);
     } catch (error) {
       console.error("Failed to load sales:", error);
-      toast.error("Failed to load sales. Please try again.");
+      toast.error(t("web.provider.pages.sales.failedToLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -145,11 +148,11 @@ function ProviderSalesContent() {
   };
 
   if (configLoading || !unifiedPosEnabled) {
-    return <LoadingTimeout loadingMessage="Loading sales..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.pages.sales.loading")} />;
   }
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading sales..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.pages.sales.loading")} />;
   }
 
   return (
@@ -158,15 +161,15 @@ function ProviderSalesContent() {
       <div className="sticky top-0 z-10 bg-white border-b md:border-none md:bg-transparent mb-4 md:mb-6">
         <div className="flex items-center justify-between p-4 md:p-0">
           <div>
-            <h1 className="text-2xl font-bold md:hidden">Sales</h1>
+            <h1 className="text-2xl font-bold md:hidden">{t("web.provider.sidebar.items.sales")}</h1>
             <div className="hidden md:block">
               <PageHeader
-                title="Sales"
-                subtitle="Track your sales and transactions"
+                title={t("web.provider.sidebar.items.sales")}
+                subtitle={t("web.provider.pages.sales.subtitle")}
                 primaryAction={{
-                label: "New Sale",
+                label: t("web.provider.sidebar.items.newSale"),
                 onClick: handleCreateSale,
-                icon: <Plus className="w-4 h-4 mr-2" />,
+                icon: <Plus className="w-4 h-4 me-2" />,
               }}
               />
             </div>
@@ -176,8 +179,8 @@ function ProviderSalesContent() {
             className="md:hidden bg-primary hover:bg-primary-hover h-11 px-4 rounded-full shadow-lg active:scale-95 transition-transform"
             size="lg"
           >
-            <Plus className="w-5 h-5 mr-2" />
-            New Sale
+            <Plus className="w-5 h-5 me-2" />
+            {t("web.provider.sidebar.items.newSale")}
           </Button>
         </div>
       </div>
@@ -187,23 +190,23 @@ function ProviderSalesContent() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <Input
-            placeholder="Search sales..."
+            placeholder={t("web.provider.pages.sales.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-11 h-12 text-base md:pl-10 md:h-10 md:text-sm"
+            className="ps-11 h-12 text-base md:ps-10 md:h-10 md:text-sm"
           />
         </div>
         <div className="flex gap-2 md:block">
           <Select value={dateRange} onValueChange={setDateRange}>
             <SelectTrigger className="w-full h-12 text-base md:h-10 md:w-48 md:text-sm">
-              <Calendar className="w-4 h-4 mr-2" />
+              <Calendar className="w-4 h-4 me-2" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">This Month</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
+              <SelectItem value="today">{t("web.provider.common.statsRange.today")}</SelectItem>
+              <SelectItem value="week">{t("web.provider.common.statsRange.thisWeek")}</SelectItem>
+              <SelectItem value="month">{t("web.provider.common.statsRange.thisMonth")}</SelectItem>
+              <SelectItem value="all">{t("web.provider.common.statsRange.allTime")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -213,10 +216,10 @@ function ProviderSalesContent() {
       {sales.length === 0 ? (
         <SectionCard className="p-8 md:p-12 text-center mx-4 md:mx-0">
           <EmptyState
-            title="No Sales yet"
-            description="Click here to make a new sale"
+            title={t("web.provider.pages.sales.emptyTitle")}
+            description={t("web.provider.pages.sales.emptyDesc")}
             action={{
-              label: "New Sale",
+              label: t("web.provider.sidebar.items.newSale"),
               onClick: handleCreateSale,
             }}
           />
@@ -237,15 +240,15 @@ function ProviderSalesContent() {
                         {sale.ref_number}
                       </span>
                       <span className="text-xs text-gray-500">
-                        {new Date(sale.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {new Date(sale.date).toLocaleDateString(getDefaultMoneyLocale(), { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <User className="w-4 h-4 text-gray-400" />
-                      <span className="font-medium text-sm">{sale.client_name || "Walk-in"}</span>
+                      <span className="font-medium text-sm">{sale.client_name || t("web.provider.pages.sales.walkIn")}</span>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-end">
                     <div className="text-lg font-bold text-primary">
                       <Money amount={sale.total} />
                     </div>
@@ -257,7 +260,7 @@ function ProviderSalesContent() {
                   <div className="flex items-center gap-4 text-xs text-gray-600">
                     <div className="flex items-center gap-1">
                       <ShoppingBag className="w-3 h-3" />
-                      <span>{sale.items.length} items</span>
+                      <span>{t("web.provider.pages.sales.itemsCount", { count: sale.items.length })}</span>
                     </div>
                     {sale.team_member_name && (
                       <span className="text-gray-500">{sale.team_member_name}</span>
@@ -269,8 +272,8 @@ function ProviderSalesContent() {
                     onClick={() => handleYocoPayment(sale)}
                     className="h-8 px-3 text-xs active:scale-95 transition-transform"
                   >
-                    <CreditCard className="w-3 h-3 mr-1" />
-                    Pay
+                    <CreditCard className="w-3 h-3 me-1" />
+                    {t("web.provider.pages.sales.pay")}
                   </Button>
                 </div>
               </div>
@@ -282,25 +285,25 @@ function ProviderSalesContent() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ref #</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Items</TableHead>
-                  <TableHead>Subtotal</TableHead>
-                  <TableHead>Tax</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Payment Method</TableHead>
-                  <TableHead>Team Member</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.ref")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.client")}</TableHead>
+                  <TableHead>{t("web.provider.common.date")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.items")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.subtotal")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.tax")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.total")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.paymentMethod")}</TableHead>
+                  <TableHead>{t("web.provider.pages.sales.teamMember")}</TableHead>
+                  <TableHead className="text-end">{t("web.provider.common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sales.map((sale) => (
                   <TableRow key={sale.id} className="hover:bg-gray-50 transition-colors">
                     <TableCell className="font-medium">{sale.ref_number}</TableCell>
-                    <TableCell>{sale.client_name || "Walk-in"}</TableCell>
+                    <TableCell>{sale.client_name || t("web.provider.pages.sales.walkIn")}</TableCell>
                     <TableCell>{new Date(sale.date).toLocaleDateString()}</TableCell>
-                    <TableCell>{sale.items.length} items</TableCell>
+                    <TableCell>{t("web.provider.pages.sales.itemsCount", { count: sale.items.length })}</TableCell>
                     <TableCell>
                       <Money amount={sale.subtotal} />
                     </TableCell>
@@ -311,8 +314,8 @@ function ProviderSalesContent() {
                       <Money amount={sale.total} />
                     </TableCell>
                     <TableCell>{sale.payment_method}</TableCell>
-                    <TableCell>{sale.team_member_name || "-"}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>{sale.team_member_name || t("web.provider.common.hyphen")}</TableCell>
+                    <TableCell className="text-end">
                       {isSaleCollectable(sale) ? (
                         <>
                           <PaycloudCollectButton
@@ -330,13 +333,13 @@ function ProviderSalesContent() {
                               className="gap-2"
                             >
                               <CreditCard className="w-3 h-3" />
-                              Pay
+                              {t("web.provider.pages.sales.pay")}
                             </Button>
                           )}
                         </>
                       ) : (
                         <span className="text-xs text-gray-400 capitalize">
-                          {sale.payment_status || "completed"}
+                          {sale.payment_status || t("web.provider.common.status.completed")}
                         </span>
                       )}
                     </TableCell>
@@ -394,10 +397,11 @@ function ProviderSalesContent() {
 }
 
 export default function ProviderSales() {
+  const { t } = useTranslation();
   return (
     <ProtectedPage
       permission="view_sales"
-      message="You don't have permission to view sales. Contact your administrator to request access."
+      message={t("web.provider.pages.sales.permission")}
     >
       <ProviderSalesContent />
     </ProtectedPage>

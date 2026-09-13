@@ -20,6 +20,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import type { CustomerReviewListItem } from "./review-list-types";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Review = CustomerReviewListItem;
 
@@ -28,6 +29,7 @@ export default function ReviewsPage({
 }: {
   initialReviews: CustomerReviewListItem[] | null;
 }) {
+  const { t } = useTranslation();
   const initialSnapshot = useRef(initialReviews);
   const [reviews, setReviews] = useState<Review[]>(() => initialReviews ?? []);
   const [isLoading, setIsLoading] = useState(() => initialReviews === null);
@@ -56,7 +58,7 @@ export default function ReviewsPage({
       setReviews(response.data.reviews);
     } catch (error) {
       console.error("Failed to load reviews:", error);
-      toast.error("Failed to load reviews");
+      toast.error(t("web.accountSettings.myReviews.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -70,7 +72,7 @@ export default function ReviewsPage({
 
   const handleSaveEdit = async () => {
     if (!editingReview || editRating === 0) {
-      toast.error("Please select a rating");
+      toast.error(t("web.accountSettings.myReviews.selectRating"));
       return;
     }
 
@@ -81,30 +83,30 @@ export default function ReviewsPage({
         comment: editComment.trim() || null,
       });
 
-      toast.success("Review updated successfully");
+      toast.success(t("web.accountSettings.myReviews.updated"));
       setEditingReview(null);
       loadReviews();
     } catch (error) {
       console.error("Failed to update review:", error);
-      toast.error("Failed to update review");
+      toast.error(t("web.accountSettings.myReviews.updateFailed"));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (reviewId: string, bookingId: string) => {
-    if (!confirm("Are you sure you want to delete this review?")) {
+    if (!confirm(t("web.accountSettings.myReviews.deleteConfirm"))) {
       return;
     }
 
     try {
       // Note: Delete endpoint would need to be created
       await fetcher.delete(`/api/bookings/${bookingId}/review`);
-      toast.success("Review deleted successfully");
+      toast.success(t("web.accountSettings.myReviews.deleted"));
       loadReviews();
     } catch (error) {
       console.error("Failed to delete review:", error);
-      toast.error("Failed to delete review");
+      toast.error(t("web.accountSettings.myReviews.deleteFailed"));
     }
   };
 
@@ -114,9 +116,9 @@ export default function ReviewsPage({
           <BackButton href="/account-settings" />
           <Breadcrumb
             items={[
-              { label: "Home", href: "/" },
-              { label: "Account Settings", href: "/account-settings" },
-              { label: "My Reviews" },
+              { label: t("web.accountSettings.myReviews.breadcrumbHome"), href: "/" },
+              { label: t("web.accountSettings.myReviews.breadcrumbAccount"), href: "/account-settings" },
+              { label: t("web.accountSettings.myReviews.breadcrumbTitle") },
             ]}
           />
 
@@ -124,18 +126,18 @@ export default function ReviewsPage({
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
-              My Reviews
+              {t("web.accountSettings.myReviews.title")}
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-gray-500">Loading…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.loading.loading")}</p>
               </div>
             ) : reviews.length === 0 ? (
               <EmptyState
                 icon={MessageSquare}
-                title="No reviews yet"
-                description="Your reviews will appear here once you submit them for completed bookings."
+                title={t("web.accountSettings.myReviews.emptyTitle")}
+                description={t("web.accountSettings.myReviews.emptyDesc")}
               />
             ) : (
               <div className="space-y-4">
@@ -148,7 +150,7 @@ export default function ReviewsPage({
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-semibold text-gray-900">
-                            {review.providers?.business_name || "Provider"}
+                            {review.providers?.business_name || t("web.accountSettings.myReviews.providerFallback")}
                           </h3>
                           <div className="flex items-center gap-1">
                             {[1, 2, 3, 4, 5].map((star) => (
@@ -165,8 +167,10 @@ export default function ReviewsPage({
                         </div>
                         {review.bookings && (
                           <p className="text-sm text-gray-600">
-                            Booking #{review.bookings.booking_number} •{" "}
-                            {new Date(review.bookings.scheduled_at).toLocaleDateString()}
+                            {t("web.accountSettings.myReviews.bookingNumber", {
+                              number: review.bookings.booking_number,
+                              date: new Date(review.bookings.scheduled_at).toLocaleDateString(),
+                            })}
                           </p>
                         )}
                         <p className="text-xs text-gray-500 mt-1">
@@ -186,14 +190,14 @@ export default function ReviewsPage({
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
-                              <DialogTitle>Edit Review</DialogTitle>
+                              <DialogTitle>{t("web.accountSettings.myReviews.editTitle")}</DialogTitle>
                               <DialogDescription>
-                                Update your review for {review.providers?.business_name}
+                                {t("web.accountSettings.myReviews.editDesc", { name: review.providers?.business_name })}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4 py-4">
                               <div>
-                                <Label>Rating</Label>
+                                <Label>{t("web.accountSettings.myReviews.rating")}</Label>
                                 <div className="flex gap-2 mt-2">
                                   {[1, 2, 3, 4, 5].map((star) => (
                                     <button
@@ -214,7 +218,7 @@ export default function ReviewsPage({
                                 </div>
                               </div>
                               <div>
-                                <Label htmlFor="edit-comment">Comment</Label>
+                                <Label htmlFor="edit-comment">{t("web.accountSettings.myReviews.comment")}</Label>
                                 <Textarea
                                   id="edit-comment"
                                   value={editComment}
@@ -223,7 +227,7 @@ export default function ReviewsPage({
                                   maxLength={1000}
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
-                                  {editComment.length}/1000 characters
+                                  {t("web.accountSettings.myReviews.charactersCount", { count: editComment.length })}
                                 </p>
                               </div>
                               <div className="flex gap-2">
@@ -232,14 +236,14 @@ export default function ReviewsPage({
                                   onClick={() => setEditingReview(null)}
                                   className="flex-1"
                                 >
-                                  Cancel
+                                  {t("common.cancel")}
                                 </Button>
                                 <Button
                                   onClick={handleSaveEdit}
                                   disabled={isSubmitting || editRating === 0}
                                   className="flex-1"
                                 >
-                                  {isSubmitting ? "Saving..." : "Save Changes"}
+                                  {isSubmitting ? t("web.accountSettings.myReviews.saving") : t("web.accountSettings.myReviews.saveChanges")}
                                 </Button>
                               </div>
                             </div>
@@ -258,8 +262,8 @@ export default function ReviewsPage({
                       <p className="text-gray-700 mt-4">{review.comment}</p>
                     )}
                     {review.provider_response && (
-                      <div className="mt-4 rounded-xl border-l-4 border-pink-400 bg-pink-50/50 p-4">
-                        <p className="text-xs font-semibold text-pink-600 mb-1">Provider reply</p>
+                      <div className="mt-4 rounded-xl border-s-4 border-pink-400 bg-pink-50/50 p-4">
+                        <p className="text-xs font-semibold text-pink-600 mb-1">{t("web.accountSettings.myReviews.providerReply")}</p>
                         <p className="text-sm text-gray-700 leading-relaxed">{review.provider_response}</p>
                         {review.provider_response_at && (
                           <p className="text-xs text-gray-400 mt-2">

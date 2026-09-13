@@ -73,7 +73,7 @@ export default function CTABanner({ content }: CTABannerProps) {
                 className="bg-white px-8 text-[#FF0077] shadow-lg shadow-black/10 transition-transform hover:scale-[1.02] hover:bg-white"
               >
                 {ctaButtonText}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ms-2 h-4 w-4" />
               </Button>
             </Link>
           </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -40,6 +42,7 @@ interface WaitlistEntry {
 }
 
 export default function ProviderWaitlistPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { provider, selectedLocationId } = useProviderPortal();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
@@ -63,7 +66,7 @@ export default function ProviderWaitlistPage() {
       );
       setEntries(response.data.entries || []);
     } catch (err) {
-      setError(err instanceof FetchError ? err.message : "Failed to load waitlist");
+      setError(err instanceof FetchError ? err.message : t("web.provider.waitlistPage.loadFailed"));
       console.error("Error loading waitlist:", err);
       setEntries([]); // Set empty array on error
     } finally {
@@ -83,10 +86,10 @@ export default function ProviderWaitlistPage() {
     setNotifyingId(entry.id);
     try {
       await fetcher.post(`/api/provider/waitlist/${entry.id}/notify`, {});
-      toast.success(`Notification sent to ${entry.customer_name}`);
+      toast.success(t("web.provider.waitlistPage.notificationSent", { name: entry.customer_name }));
       loadWaitlist();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to send notification");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.waitlistPage.notifyFailed"));
     } finally {
       setNotifyingId(null);
     }
@@ -114,7 +117,7 @@ export default function ProviderWaitlistPage() {
     };
     return (
       <Badge variant={variants[status] || "default"}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+{t(`web.provider.waitlistPage.status.${status}`, { defaultValue: status })}
       </Badge>
     );
   };
@@ -124,12 +127,12 @@ export default function ProviderWaitlistPage() {
       <AuthGuard>
         <SettingsDetailLayout
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Waitlist" },
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.waitlistPage.title") },
           ]}
         >
-          <LoadingTimeout loadingMessage="Loading waitlist..." />
+<LoadingTimeout loadingMessage={t("web.provider.waitlistPage.loading")} />
         </SettingsDetailLayout>
       </AuthGuard>
     );
@@ -139,41 +142,41 @@ export default function ProviderWaitlistPage() {
     <AuthGuard>
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Waitlist" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.waitlistPage.title") },
         ]}
         showCloseButton={true}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Waitlist"
-            subtitle="Manage customer waitlist entries and convert them to bookings"
+            title={t("web.provider.waitlistPage.title")}
+            subtitle={t("web.provider.waitlistPage.subtitle")}
           />
           <div className="flex gap-2">
             <Button
               variant={statusFilter === "all" ? "default" : "outline"}
               onClick={() => setStatusFilter("all")}
             >
-              All
+{t("web.provider.common.all")}
             </Button>
             <Button
               variant={statusFilter === "waiting" ? "default" : "outline"}
               onClick={() => setStatusFilter("waiting")}
             >
-              Waiting
+{t("web.provider.waitlistPage.status.waiting")}
             </Button>
             <Button
               variant={statusFilter === "contacted" ? "default" : "outline"}
               onClick={() => setStatusFilter("contacted")}
             >
-              Contacted
+{t("web.provider.waitlistPage.status.contacted")}
             </Button>
             <Button
               variant={statusFilter === "booked" ? "default" : "outline"}
               onClick={() => setStatusFilter("booked")}
             >
-              Booked
+{t("web.provider.waitlistPage.status.booked")}
             </Button>
           </div>
 
@@ -187,7 +190,7 @@ export default function ProviderWaitlistPage() {
           {entries.length === 0 ? (
             <Card>
               <CardContent className="py-8 text-center">
-                <p className="text-gray-600">No waitlist entries found</p>
+<p className="text-gray-600">{t("web.provider.waitlistPage.empty")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -222,13 +225,13 @@ export default function ProviderWaitlistPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     {entry.service && (
                       <div>
-                        <p className="text-sm font-semibold mb-1">Service</p>
+<p className="text-sm font-semibold mb-1">{t("web.provider.common.service")}</p>
                         <p className="text-sm text-gray-600">{entry.service.title}</p>
                       </div>
                     )}
                     {entry.staff && (
                       <div>
-                        <p className="text-sm font-semibold mb-1">Preferred Staff</p>
+<p className="text-sm font-semibold mb-1">{t("web.provider.waitlistPage.preferredStaff")}</p>
                         <p className="text-sm text-gray-600">{entry.staff.name}</p>
                       </div>
                     )}
@@ -236,7 +239,7 @@ export default function ProviderWaitlistPage() {
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div>
-                          <p className="text-sm font-semibold">Preferred Date</p>
+<p className="text-sm font-semibold">{t("web.provider.waitlistPage.preferredDate")}</p>
                           <p className="text-sm text-gray-600">
                             {new Date(entry.preferred_date).toLocaleDateString()}
                           </p>
@@ -247,9 +250,9 @@ export default function ProviderWaitlistPage() {
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4 text-gray-400" />
                         <div>
-                          <p className="text-sm font-semibold">Preferred Time</p>
+<p className="text-sm font-semibold">{t("web.provider.waitlistPage.preferredTime")}</p>
                           <p className="text-sm text-gray-600">
-                            {entry.preferred_time_start || "Any"} - {entry.preferred_time_end || "Any"}
+{entry.preferred_time_start || t("web.provider.common.any")} - {entry.preferred_time_end || t("web.provider.common.any")}
                           </p>
                         </div>
                       </div>
@@ -261,7 +264,7 @@ export default function ProviderWaitlistPage() {
                       <div className="flex items-start gap-2">
                         <MessageSquare className="w-4 h-4 text-gray-400 mt-0.5" />
                         <div>
-                          <p className="text-sm font-semibold mb-1">Notes</p>
+<p className="text-sm font-semibold mb-1">{t("web.provider.common.notes")}</p>
                           <p className="text-sm text-gray-600">{entry.notes}</p>
                         </div>
                       </div>
@@ -276,11 +279,11 @@ export default function ProviderWaitlistPage() {
                       disabled={notifyingId === entry.id || entry.status === "contacted" || entry.status === "booked"}
                     >
                       {notifyingId === entry.id ? (
-                        <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                        <Loader2 className="w-3 h-3 me-1.5 animate-spin" />
                       ) : (
-                        <Bell className="w-3 h-3 mr-1.5" />
+                        <Bell className="w-3 h-3 me-1.5" />
                       )}
-                      {entry.status === "contacted" ? "Notified" : "Notify Customer"}
+{entry.status === "contacted" ? t("web.provider.waitlistPage.notified") : t("web.provider.waitlistPage.notifyCustomer")}
                     </Button>
                     {(entry.customer_email || entry.customer_phone) && (
                       <Button
@@ -289,8 +292,8 @@ export default function ProviderWaitlistPage() {
                         asChild
                       >
                         <a href={entry.customer_email ? `mailto:${entry.customer_email}` : `tel:${entry.customer_phone}`}>
-                          <Mail className="w-3 h-3 mr-1.5" />
-                          {entry.customer_email ? "Email" : "Call"}
+                          <Mail className="w-3 h-3 me-1.5" />
+{entry.customer_email ? t("web.provider.common.email") : t("web.provider.waitlistPage.call")}
                         </a>
                       </Button>
                     )}
@@ -300,14 +303,14 @@ export default function ProviderWaitlistPage() {
                         size="sm"
                         onClick={() => handleCreateBooking(entry)}
                       >
-                        <CalendarPlus className="w-3 h-3 mr-1.5" />
-                        Create Booking
+                        <CalendarPlus className="w-3 h-3 me-1.5" />
+{t("web.provider.waitlistPage.createBooking")}
                       </Button>
                     )}
                   </div>
 
                   <p className="text-xs text-gray-500 mt-2">
-                    Added {new Date(entry.created_at).toLocaleDateString()} • Priority: {entry.priority}
+{t("web.provider.waitlistPage.addedPriority", { date: new Date(entry.created_at).toLocaleDateString(), priority: entry.priority })}
                   </p>
                 </CardContent>
               </Card>

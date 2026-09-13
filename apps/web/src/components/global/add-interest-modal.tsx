@@ -2,6 +2,7 @@ import { useState } from 'react'
 import React from 'react'
 import { X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
+import { useTranslation } from "@beautonomi/i18n"
 import Image from 'next/image'
 import Pedicure from './../../../public/images/pedicure.png'
 import Manicure from './../../../public/images/manicure (1).png'
@@ -9,10 +10,10 @@ import HairDye from './../../../public/images/hair-dye (1).png'
 import Facial from './../../../public/images/facial.svg'
 
 const interests = [
-  { name: 'Pedicure', icon: Pedicure },
-  { name: 'Manicure', icon: Manicure },
-  { name: 'HairDye', icon: HairDye },
-  { name: 'Facial', icon: Facial },
+  { name: 'Pedicure', icon: Pedicure, labelKey: 'web.global.addInterestModal.pedicure' },
+  { name: 'Manicure', icon: Manicure, labelKey: 'web.global.addInterestModal.manicure' },
+  { name: 'HairDye', icon: HairDye, labelKey: 'web.global.addInterestModal.hairDye' },
+  { name: 'Facial', icon: Facial, labelKey: 'web.global.addInterestModal.facial' },
 ]
 
 interface InterestModalProps {
@@ -23,6 +24,7 @@ interface InterestModalProps {
 }
 
 export default function InterestModal({ isOpen, onClose, onSave, defaultSelectedInterests = [] }: InterestModalProps) {
+  const { t } = useTranslation()
   const [selectedInterests, setSelectedInterests] = useState<string[]>(defaultSelectedInterests)
   const [showAll, setShowAll] = useState(false)
 
@@ -54,11 +56,11 @@ export default function InterestModal({ isOpen, onClose, onSave, defaultSelected
     <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
       <div className="w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg p-6 relative">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-[22px] font-medium text-secondary">What are you into?</h2>
+          <h2 className="text-[22px] font-medium text-secondary">{t("web.global.addInterestModal.title")}</h2>
           <X className="h-6 w-6 text-gray-500 cursor-pointer" onClick={onClose} />
         </div>
         <p className="text-base font-light text-destructive mb-4">
-          Pick some interests you enjoy that you want to show on your profile.
+          {t("web.global.addInterestModal.subtitle")}
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
           {displayedInterests.map((interest) => (
@@ -73,12 +75,12 @@ export default function InterestModal({ isOpen, onClose, onSave, defaultSelected
             >
               <Image
                 src={interest.icon}
-                alt={interest.name}
+                alt={t(interest.labelKey)}
                 width={24}
                 height={24}
                 className="w-6 h-6"
               />
-              <span>{interest.name}</span>
+              <span>{t(interest.labelKey)}</span>
             </button>
           ))}
         </div>
@@ -87,19 +89,19 @@ export default function InterestModal({ isOpen, onClose, onSave, defaultSelected
             onClick={() => setShowAll(true)}
             className="text-black tex-base font-light underline mb-4"
           >
-            Show all
+            {t("web.global.addInterestModal.showAll")}
           </button>
         )}
         <div className="flex justify-between items-center">
           <span className="text-gray-600">
-            {selectedInterests.length} selected
+            {t("web.global.addInterestModal.selectedCount", { count: selectedInterests.length })}
           </span>
           <Button
             disabled={selectedInterests.length === 0}
             onClick={handleSave}
             variant="default"
           >
-            Save
+            {t("common.save")}
           </Button>
         </div>
       </div>

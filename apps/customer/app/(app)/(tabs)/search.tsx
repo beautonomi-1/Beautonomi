@@ -15,9 +15,10 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ProviderCard } from "@/components/ProviderCard";
 import type { SearchResult, Category, PublicProviderCard } from "@/types/api";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
-import { useTranslation } from "@beautonomi/i18n";
+import { translatePublicCategoryLabel, useTranslation } from "@beautonomi/i18n";
 import { captureError } from "@/lib/sentry";
 import { trackSearch } from "@/lib/analytics";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Suggestion = {
   type: "service" | "provider" | "category";
@@ -44,7 +45,7 @@ export default function SearchScreen() {
   useScreenTracking("Search");
   const { contentPadding } = useResponsive();
   const listPaddingBottom = useTabContentPaddingBottom();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const params = useLocalSearchParams<{ q?: string; category?: string }>();
   const [query, setQuery] = useState(params.q ?? "");
   const [category, setCategory] = useState<string>(params.category ?? "");
@@ -306,14 +307,14 @@ export default function SearchScreen() {
         <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
           <TouchableOpacity
             onPress={() => router.back()}
-            style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginLeft: -4 }}
+            style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginStart: -4 }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
             accessibilityHint="Navigate to the previous screen"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.gray[700]} />
-            <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>{t("common.back")}</Text>
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.gray[700]} />
+            <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginStart: 8 }}>{t("common.back")}</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>{t("customer.searchScreen.title")}</Text>
           <TextInput
@@ -391,7 +392,7 @@ export default function SearchScreen() {
                       s.image_url ? (
                         <Image
                           source={{ uri: s.image_url }}
-                          style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: Colors.gray[100], borderWidth: 1, borderColor: Colors.gray[200] }}
+                          style={{ width: 40, height: 40, borderRadius: 20, marginEnd: 12, backgroundColor: Colors.gray[100], borderWidth: 1, borderColor: Colors.gray[200] }}
                           contentFit="cover"
                           cachePolicy="memory-disk"
                         />
@@ -401,7 +402,7 @@ export default function SearchScreen() {
                             width: 40,
                             height: 40,
                             borderRadius: 20,
-                            marginRight: 12,
+                            marginEnd: 12,
                             backgroundColor: "#FDF2F8", // pink-50 to match web
                             alignItems: "center",
                             justifyContent: "center",
@@ -420,7 +421,7 @@ export default function SearchScreen() {
                           width: 40,
                           height: 40,
                           borderRadius: 20,
-                          marginRight: 12,
+                          marginEnd: 12,
                           backgroundColor: Colors.gray[100],
                           alignItems: "center",
                           justifyContent: "center",
@@ -441,11 +442,13 @@ export default function SearchScreen() {
                     )}
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ color: Colors.gray[800], fontSize: 14, fontWeight: "500" }} numberOfLines={1}>
-                        {s.name}
+                        {s.type === "category"
+                          ? translatePublicCategoryLabel(t, s.slug ?? s.name, s.name, { language: i18n.language })
+                          : s.name}
                       </Text>
                       {s.type === "service" && s.category ? (
                         <Text style={{ color: Colors.gray[500], fontSize: 12 }} numberOfLines={1}>
-                          {s.category}
+                          {translatePublicCategoryLabel(t, s.category, s.category, { language: i18n.language })}
                         </Text>
                       ) : null}
                       {s.type === "provider" && s.distance_km != null ? (
@@ -472,31 +475,37 @@ export default function SearchScreen() {
           style={{ marginTop: 12, marginHorizontal: -16, paddingHorizontal: 16 }}
           contentContainerStyle={{}}
           accessibilityRole="list"
-          accessibilityLabel="Category filters"
+          accessibilityLabel={t("customer.searchScreen.categoryFiltersA11y")}
         >
           <TouchableOpacity
             onPress={() => setCategory("")}
-            style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: !category ? Colors.primary : Colors.gray[100] }}
+            style={{ marginEnd: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: !category ? Colors.primary : Colors.gray[100] }}
             accessibilityRole="button"
             accessibilityLabel={t("customer.searchScreen.allCategories")}
             accessibilityState={{ selected: !category }}
-            accessibilityHint="Show providers from all categories"
+            accessibilityHint={t("customer.searchScreen.allCategoriesHint")}
           >
             <Text style={{ fontWeight: "500", color: !category ? Colors.white : Colors.gray[700] }}>{t("customer.searchScreen.allCategories")}</Text>
           </TouchableOpacity>
-          {categories.map((c) => (
+          {categories.map((c) => {
+            const label = translatePublicCategoryLabel(t, c.slug, c.name, {
+              language: i18n.language,
+              nameI18n: c.name_i18n,
+            });
+            return (
             <TouchableOpacity
               key={c.id}
               onPress={() => setCategory(c.slug)}
-              style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: category === c.slug ? Colors.primary : Colors.gray[100] }}
+              style={{ marginEnd: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: category === c.slug ? Colors.primary : Colors.gray[100] }}
               accessibilityRole="button"
-              accessibilityLabel={`${c.name} category`}
+              accessibilityLabel={t("customer.searchScreen.filterByCategoryA11y", { name: label })}
               accessibilityState={{ selected: category === c.slug }}
-              accessibilityHint={`Filter by ${c.name} category`}
+              accessibilityHint={t("customer.searchScreen.filterByCategoryHint", { name: label })}
             >
-              <Text style={{ fontWeight: "500", color: category === c.slug ? Colors.white : Colors.gray[700] }}>{c.name}</Text>
+              <Text style={{ fontWeight: "500", color: category === c.slug ? Colors.white : Colors.gray[700] }}>{label}</Text>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </ScrollView>
         <TouchableOpacity
           onPress={() => {
@@ -508,7 +517,7 @@ export default function SearchScreen() {
           accessibilityRole="button"
           accessibilityLabel={loading ? t("customer.searchScreen.searching") : t("common.search")}
           accessibilityState={{ disabled: loading }}
-          accessibilityHint="Search for providers matching your query and filters"
+          accessibilityHint={t("customer.searchScreen.searchHint")}
         >
           {loading ? (
             <ActivityIndicator color="white" size="small" />

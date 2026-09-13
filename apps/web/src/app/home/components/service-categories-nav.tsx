@@ -5,6 +5,8 @@ import { ChevronRight } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { isGlobalCategoryIconImageUrl } from "@/lib/icons/global-category-lucide";
+import { useTranslation } from "@beautonomi/i18n";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 
 interface GlobalCategory {
   id: string;
@@ -14,6 +16,7 @@ interface GlobalCategory {
   display_order: number;
   is_featured: boolean;
   provider_count?: number;
+  name_i18n?: Record<string, string> | null;
 }
 
 const FALLBACK_CATEGORIES: GlobalCategory[] = [
@@ -33,6 +36,7 @@ const FALLBACK_CATEGORIES: GlobalCategory[] = [
 ];
 
 const ServiceCategoriesNav = () => {
+  const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("");
@@ -99,7 +103,7 @@ const ServiceCategoriesNav = () => {
           >
             {isLoading ? (
               <div className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-3">
-                <span className="text-xs md:text-sm text-gray-500">Loading categories...</span>
+                <span className="text-xs md:text-sm text-gray-500">{t("web.home.loadingCategories")}</span>
               </div>
             ) : (
               categories.map((category) => (
@@ -124,11 +128,16 @@ const ServiceCategoriesNav = () => {
                     }
                     isActive={activeCategory === category.slug}
                   />
-                  <span>{category.name}</span>
+                  <span>
+                    {translatePublicCategory(t, category.slug, category.name, {
+                      language: i18n.language,
+                      nameI18n: category.name_i18n,
+                    })}
+                  </span>
                 </Link>
               ))
             )}
-            <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 md:hidden" />
+            <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 ms-2 md:hidden" />
           </div>
         </div>
       </div>

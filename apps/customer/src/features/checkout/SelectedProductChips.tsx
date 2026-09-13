@@ -38,8 +38,8 @@ export function SelectedProductChips({
               flexDirection: "row",
               alignItems: "center",
               maxWidth: 220,
-              paddingLeft: 12,
-              paddingRight: 6,
+              paddingStart: 12,
+              paddingEnd: 6,
               paddingVertical: 8,
               borderRadius: 999,
               backgroundColor: Colors.primaryLight,
@@ -49,7 +49,7 @@ export function SelectedProductChips({
           >
             <Pressable
               onPress={() => onEdit(item.productId, item.productVariantId)}
-              style={{ flex: 1, minWidth: 0, marginRight: 4 }}
+              style={{ flex: 1, minWidth: 0, marginEnd: 4 }}
               accessibilityRole="button"
               accessibilityLabel={editLabel(item.name, item.quantity)}
             >

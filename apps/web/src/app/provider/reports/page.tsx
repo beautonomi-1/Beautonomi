@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -27,116 +28,98 @@ import { ActiveLocationChip } from "@/components/provider/ActiveLocationChip";
 const reportCategories = [
   {
     id: "sales",
-    title: "Sales & revenue",
-    description: "Track revenue, bookings, and service performance",
     icon: DollarSign,
     color: "text-green-600 bg-green-50",
     reports: [
-      { id: "sales-summary", name: "Sales Summary", href: "/provider/reports/sales/summary" },
-      { id: "service-performance", name: "Sales by service", href: "/provider/reports/sales/services" },
-      { id: "revenue-trends", name: "Revenue trends", href: "/provider/reports/sales/trends" },
+      { id: "sales-summary", href: "/provider/reports/sales/summary" },
+      { id: "service-performance", href: "/provider/reports/sales/services" },
+      { id: "revenue-trends", href: "/provider/reports/sales/trends" },
     ],
   },
   {
     id: "staff",
-    title: "Staff Reports",
-    description: "Monitor team member performance and productivity",
     icon: Users,
     color: "text-blue-600 bg-blue-50",
     reports: [
-      { id: "staff-performance", name: "Staff Performance", href: "/provider/reports/staff/performance" },
-      { id: "staff-commission", name: "Commission Reports", href: "/provider/reports/staff/commission" },
-      { id: "staff-hours", name: "Hours & Attendance", href: "/provider/reports/staff/hours" },
+      { id: "staff-performance", href: "/provider/reports/staff/performance" },
+      { id: "staff-commission", href: "/provider/reports/staff/commission" },
+      { id: "staff-hours", href: "/provider/reports/staff/hours" },
     ],
   },
   {
     id: "bookings",
-    title: "Booking Reports",
-    description: "Analyze booking patterns and client behavior",
     icon: Calendar,
     color: "text-purple-600 bg-purple-50",
     reports: [
-      { id: "booking-summary", name: "Booking Summary", href: "/provider/reports/bookings/summary" },
-      { id: "booking-status", name: "Booking Status", href: "/provider/reports/bookings/status" },
-      { id: "occupancy", name: "Occupancy", href: "/provider/reports/occupancy" },
-      { id: "cancellations", name: "Cancellations", href: "/provider/reports/bookings/cancellations" },
-      { id: "no-shows", name: "No-Shows", href: "/provider/reports/bookings/no-shows" },
+      { id: "booking-summary", href: "/provider/reports/bookings/summary" },
+      { id: "booking-status", href: "/provider/reports/bookings/status" },
+      { id: "occupancy", href: "/provider/reports/occupancy" },
+      { id: "cancellations", href: "/provider/reports/bookings/cancellations" },
+      { id: "no-shows", href: "/provider/reports/bookings/no-shows" },
     ],
   },
   {
     id: "clients",
-    title: "Client Reports",
-    description: "Understand your client base and retention",
     icon: Users,
     color: "text-pink-600 bg-pink-50",
     reports: [
-      { id: "client-summary", name: "Client Summary", href: "/provider/reports/clients/summary" },
-      { id: "client-retention", name: "Client Retention", href: "/provider/reports/clients/retention" },
-      { id: "new-clients", name: "New Clients", href: "/provider/reports/clients/new" },
-      { id: "client-lifetime-value", name: "Lifetime Value", href: "/provider/reports/clients/lifetime-value" },
+      { id: "client-summary", href: "/provider/reports/clients/summary" },
+      { id: "client-retention", href: "/provider/reports/clients/retention" },
+      { id: "new-clients", href: "/provider/reports/clients/new" },
+      { id: "client-lifetime-value", href: "/provider/reports/clients/lifetime-value" },
     ],
   },
   {
     id: "payments",
-    title: "Payments",
-    description: "Payments, refunds, end-of-day cash-up, and ledger payout earnings",
     icon: CreditCard,
     color: "text-orange-600 bg-orange-50",
     reports: [
-      { id: "payment-summary", name: "Payment Summary", href: "/provider/reports/payments/summary" },
-      { id: "end-of-day", name: "End of day", href: "/provider/reports/end-of-day" },
-      { id: "refunds", name: "Refunds", href: "/provider/reports/payments/refunds" },
-      { id: "payment-methods", name: "Payment Methods", href: "/provider/reports/payments/methods" },
-      { id: "payouts", name: "Payout earnings (ledger)", href: "/provider/reports/payments/payouts" },
-      { id: "yoco-reconciliation", name: "Yoco reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
-      { id: "paystack-terminal-reconciliation", name: "Paystack Terminal reconciliation", href: "/provider/reports/payments/paystack-terminal-reconciliation" },
+      { id: "payment-summary", href: "/provider/reports/payments/summary" },
+      { id: "end-of-day", href: "/provider/reports/end-of-day" },
+      { id: "refunds", href: "/provider/reports/payments/refunds" },
+      { id: "payment-methods", href: "/provider/reports/payments/methods" },
+      { id: "payouts", href: "/provider/reports/payments/payouts" },
+      { id: "yoco-reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
+      { id: "paystack-terminal-reconciliation", href: "/provider/reports/payments/paystack-terminal-reconciliation" },
     ],
   },
   {
     id: "products",
-    title: "Product & inventory",
-    description: "Product sales, stock levels, and top sellers",
     icon: ShoppingBag,
     color: "text-indigo-600 bg-indigo-50",
     reports: [
-      { id: "product-sales", name: "Product Sales", href: "/provider/reports/products/sales" },
-      { id: "inventory", name: "Product & inventory", href: "/provider/reports/products/inventory" },
-      { id: "top-products", name: "Top Products", href: "/provider/reports/products/top" },
+      { id: "product-sales", href: "/provider/reports/products/sales" },
+      { id: "inventory", href: "/provider/reports/products/inventory" },
+      { id: "top-products", href: "/provider/reports/products/top" },
     ],
   },
   {
     id: "gift-cards",
-    title: "Gift Card Reports",
-    description: "Platform gift cards redeemed at your locations (capture-time facts)",
     icon: Gift,
     color: "text-rose-600 bg-rose-50",
     reports: [
-      { id: "gift-card-sales", name: "Redemption summary", href: "/provider/reports/gift-cards/sales" },
-      { id: "gift-card-redemptions", name: "Recent captures", href: "/provider/reports/gift-cards/redemptions" },
+      { id: "gift-card-sales", href: "/provider/reports/gift-cards/sales" },
+      { id: "gift-card-redemptions", href: "/provider/reports/gift-cards/redemptions" },
     ],
   },
   {
     id: "packages",
-    title: "Packages & memberships",
-    description: "Package sales and redemption usage",
     icon: Package,
     color: "text-cyan-600 bg-cyan-50",
     reports: [
-      { id: "packages-overview", name: "Packages Overview", href: "/provider/reports/packages" },
-      { id: "package-sales", name: "Package Sales", href: "/provider/reports/packages/sales" },
-      { id: "package-usage", name: "Package Usage", href: "/provider/reports/packages/usage" },
+      { id: "packages-overview", href: "/provider/reports/packages" },
+      { id: "package-sales", href: "/provider/reports/packages/sales" },
+      { id: "package-usage", href: "/provider/reports/packages/usage" },
     ],
   },
   {
     id: "business",
-    title: "Business overview",
-    description: "Ledger-based overview, performance dashboard, and period comparison",
     icon: BarChart3,
     color: "text-violet-600 bg-violet-50",
     reports: [
-      { id: "business-overview", name: "Business Overview", href: "/provider/reports/business/overview" },
-      { id: "performance-dashboard", name: "Performance Dashboard", href: "/provider/reports/business/dashboard" },
-      { id: "comparison", name: "Period Comparison", href: "/provider/reports/business/comparison" },
+      { id: "business-overview", href: "/provider/reports/business/overview" },
+      { id: "performance-dashboard", href: "/provider/reports/business/dashboard" },
+      { id: "comparison", href: "/provider/reports/business/comparison" },
     ],
   },
 ];
@@ -149,6 +132,7 @@ interface QuickStats {
 }
 
 export default function ReportsPage() {
+  const { t } = useTranslation();
   const { format: fmt } = useReportCurrency();
   const { selectedLocationId } = useReportLocationQuery();
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
@@ -205,14 +189,14 @@ export default function ReportsPage() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Dashboard", href: "/provider/dashboard" },
-        { label: "Reports" },
+        { label: t("web.provider.common.breadcrumbDashboard"), href: "/provider/dashboard" },
+        { label: t("web.provider.sidebar.items.reports") },
       ]}
       showCloseButton={false}
     >
       <PageHeader
-        title="Reports"
-        subtitle="Comprehensive insights into your business performance"
+        title={t("web.provider.sidebar.items.reports")}
+        subtitle={t("web.provider.reports.hub.subtitle")}
       />
 
       <ActiveLocationChip className="mb-4" />
@@ -223,14 +207,14 @@ export default function ReportsPage() {
           <Card className="border-amber-200 bg-amber-50">
             <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-amber-900">
-                We couldn&apos;t load this month&apos;s summary right now. Your detailed reports below are still available.
+                {t("web.provider.reports.hub.statsError")}
               </p>
               <button
                 type="button"
                 onClick={loadQuickStats}
                 className="inline-flex h-9 items-center justify-center rounded-md border border-amber-300 bg-white px-4 text-sm font-medium text-amber-900 hover:bg-amber-100"
               >
-                Try again
+                {t("web.provider.common.tryAgain")}
               </button>
             </CardContent>
           </Card>
@@ -240,10 +224,10 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1" title={REVENUE_GLOSSARY.recognizedRevenue.definition}>Ledger earnings (MTD)</p>
+                  <p className="text-sm text-gray-600 mb-1" title={REVENUE_GLOSSARY.recognizedRevenue.definition}>{t("web.provider.reports.hub.ledgerEarningsMtd")}</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
-                      <span className="text-gray-400">Loading...</span>
+                      <span className="text-gray-400">{t("web.provider.reports.hub.loading")}</span>
                     ) : (
                       fmt(quickStats?.totalRevenue || 0)
                     )}
@@ -259,10 +243,10 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Scheduled bookings (MTD)</p>
+                  <p className="text-sm text-gray-600 mb-1">{t("web.provider.reports.hub.scheduledBookingsMtd")}</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
-                      <span className="text-gray-400">Loading...</span>
+                      <span className="text-gray-400">{t("web.provider.reports.hub.loading")}</span>
                     ) : (
                       (quickStats?.totalBookings || 0).toLocaleString()
                     )}
@@ -278,10 +262,10 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Distinct clients (MTD)</p>
+                  <p className="text-sm text-gray-600 mb-1">{t("web.provider.reports.hub.distinctClientsMtd")}</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
-                      <span className="text-gray-400">Loading...</span>
+                      <span className="text-gray-400">{t("web.provider.reports.hub.loading")}</span>
                     ) : (
                       (quickStats?.activeClients || 0).toLocaleString()
                     )}
@@ -297,10 +281,10 @@ export default function ReportsPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Ledger growth vs prior</p>
+                  <p className="text-sm text-gray-600 mb-1">{t("web.provider.reports.hub.ledgerGrowth")}</p>
                   <p className="text-2xl font-semibold text-gray-900">
                     {isLoadingStats ? (
-                      <span className="text-gray-400">Loading...</span>
+                      <span className="text-gray-400">{t("web.provider.reports.hub.loading")}</span>
                     ) : (
                       `${(quickStats?.growthRate || 0) > 0 ? "+" : ""}${(quickStats?.growthRate || 0).toFixed(1)}%`
                     )}
@@ -329,10 +313,10 @@ export default function ReportsPage() {
                       </div>
                       <div>
                         <CardTitle className="text-lg font-semibold text-gray-900">
-                          {category.title}
+                          {t(`web.provider.reports.hub.${category.id}Title`)}
                         </CardTitle>
                         <CardDescription className="text-sm text-gray-600 mt-1">
-                          {category.description}
+                          {t(`web.provider.reports.hub.${category.id}Desc`)}
                         </CardDescription>
                       </div>
                     </div>
@@ -348,7 +332,7 @@ export default function ReportsPage() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-gray-700 group-hover:text-primary">
-                            {report.name}
+                            {t(`web.provider.reports.hub.report.${report.id}`)}
                           </span>
                           <FileText className="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
                         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -36,6 +37,7 @@ function isPayrollOwnerRole(role: string | null | undefined): boolean {
 }
 
 export default function PayrollPage() {
+  const { t } = useTranslation();
   const { role } = useAuth();
   const isOwner = useMemo(() => isPayrollOwnerRole(role), [role]);
   const [payRuns, setPayRuns] = useState<PayRun[]>([]);
@@ -61,7 +63,7 @@ export default function PayrollPage() {
       setPayRuns(response?.data ?? []);
     } catch (err) {
       console.error("Failed to load pay runs:", err);
-      toast.error("Failed to load pay runs");
+      toast.error(t("web.provider.pages.team/payroll.failedToLoad"));
       setPayRuns([]);
     } finally {
       setIsLoading(false);
@@ -77,12 +79,12 @@ export default function PayrollPage() {
         period_type: periodType,
       });
       const id = (res as any)?.data?.id ?? (res as any)?.id;
-      toast.success("Pay run created");
+      toast.success(t("web.provider.pages.team/payroll.created"));
       setIsCreateOpen(false);
       if (id) window.location.href = `/provider/team/payroll/${id}`;
       else loadPayRuns();
     } catch (err: any) {
-      toast.error(err?.message || "Failed to create pay run");
+      toast.error(err?.message || t("web.provider.pages.team/payroll.failedToCreate"));
     } finally {
       setIsCreating(false);
     }
@@ -98,14 +100,14 @@ export default function PayrollPage() {
   return (
     <div className="w-full max-w-full space-y-4 sm:space-y-6">
       <PageHeader
-        title="Payroll"
-        subtitle="Manage pay runs and staff payments"
+        title={t("web.provider.sidebar.items.payroll")}
+        subtitle={t("web.provider.pages.team/payroll.subtitle")}
         primaryAction={
           isOwner
             ? {
-                label: "New Pay Run",
+                label: t("web.provider.pages.team/payroll.newPayRun"),
                 onClick: () => setIsCreateOpen(true),
-                icon: <Plus className="w-4 h-4 mr-2" />,
+                icon: <Plus className="w-4 h-4 me-2" />,
               }
             : undefined
         }
@@ -118,15 +120,15 @@ export default function PayrollPage() {
       ) : payRuns.length === 0 ? (
         <SectionCard className="p-8 text-center">
           <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="font-medium text-gray-900 mb-2">No pay runs yet</h3>
+          <h3 className="font-medium text-gray-900 mb-2">{t("web.provider.pages.team/payroll.emptyTitle")}</h3>
           <p className="text-sm text-gray-600 mb-4">
             {isOwner
-              ? "Create your first pay run to get started"
-              : "No pay runs yet. Your business owner can create one from Payroll."}
+              ? t("web.provider.pages.team/payroll.emptyOwner")
+              : t("web.provider.pages.team/payroll.emptyStaff")}
           </p>
           {isOwner && (
             <Button onClick={() => setIsCreateOpen(true)} className="bg-primary hover:bg-primary-hover">
-              Create Pay Run
+              {t("web.provider.pages.team/payroll.createPayRun")}
             </Button>
           )}
         </SectionCard>
@@ -145,7 +147,7 @@ export default function PayrollPage() {
                     <p className="font-medium">
                       {format(new Date(pr.pay_period_start), "MMM d")} – {format(new Date(pr.pay_period_end), "MMM d, yyyy")}
                     </p>
-                    <p className="text-xs text-gray-500">Created {format(new Date(pr.created_at), "MMM d, yyyy")}</p>
+                    <p className="text-xs text-gray-500">{t("web.provider.pages.team/payroll.createdOn", { date: format(new Date(pr.created_at), "MMM d, yyyy") })}</p>
                   </div>
                   <Badge className={statusColor(pr.status)}>{pr.status}</Badge>
                 </div>
@@ -159,11 +161,11 @@ export default function PayrollPage() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Pay Run</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.team/payroll.createPayRun")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label>Period Start</Label>
+              <Label>{t("web.provider.pages.team/payroll.periodStart")}</Label>
               <Input
                 type="date"
                 value={periodStart}
@@ -172,7 +174,7 @@ export default function PayrollPage() {
               />
             </div>
             <div>
-              <Label>Period End</Label>
+              <Label>{t("web.provider.pages.team/payroll.periodEnd")}</Label>
               <Input
                 type="date"
                 value={periodEnd}
@@ -181,21 +183,21 @@ export default function PayrollPage() {
               />
             </div>
             <div>
-              <Label>Period Type</Label>
+              <Label>{t("web.provider.pages.team/payroll.periodType")}</Label>
               <select
                 value={periodType}
                 onChange={(e) => setPeriodType(e.target.value as "weekly" | "monthly")}
                 className="w-full mt-1 h-10 rounded-md border border-input bg-background px-3 py-2"
               >
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
+                <option value="weekly">{t("web.provider.pages.team/payroll.weekly")}</option>
+                <option value="monthly">{t("web.provider.pages.team/payroll.monthly")}</option>
               </select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>{t("web.provider.common.cancel")}</Button>
             <Button onClick={handleCreate} disabled={isCreating} className="bg-primary hover:bg-primary-hover">
-              {isCreating ? "Creating..." : "Create"}
+              {isCreating ? t("web.provider.pages.team/payroll.creating") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -30,6 +31,7 @@ interface ReferralSource {
 }
 
 export default function ReferralSourcesSettings() {
+  const { t } = useTranslation();
   const [sources, setSources] = useState<ReferralSource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -55,7 +57,7 @@ export default function ReferralSourcesSettings() {
       console.error("Error loading referral sources:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load referral sources";
+        : error?.error?.message || t("web.provider.settings.pages.clients/referrals.failedToLoad");
       toast.error(errorMessage);
       setSources([]);
     } finally {
@@ -84,16 +86,16 @@ export default function ReferralSourcesSettings() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this referral source? This action cannot be undone.")) return;
+    if (!confirm(t("web.provider.settings.pages.clients/referrals.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/referral-sources/${id}`);
-      toast.success("Referral source deleted successfully");
+      toast.success(t("web.provider.settings.pages.clients/referrals.referralSourceDeletedSuccessfully"));
       await loadSources();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to delete referral source";
+        : error?.error?.message || t("web.provider.settings.pages.clients/referrals.failedToDelete");
       toast.error(errorMessage);
       console.error("Error deleting referral source:", error);
     }
@@ -102,7 +104,7 @@ export default function ReferralSourcesSettings() {
   const handleSave = async () => {
     try {
       if (!formData.name.trim()) {
-        toast.error("Referral source name is required");
+        toast.error(t("web.provider.settings.pages.clients/referrals.referralSourceNameIsRequired"));
         return;
       }
 
@@ -112,43 +114,43 @@ export default function ReferralSourcesSettings() {
           description: formData.description.trim() || null,
           is_active: formData.is_active,
         });
-        toast.success("Referral source updated successfully");
+        toast.success(t("web.provider.settings.pages.clients/referrals.referralSourceUpdatedSuccessfully"));
       } else {
         await fetcher.post("/api/provider/referral-sources", {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           is_active: formData.is_active,
         });
-        toast.success("Referral source created successfully");
+        toast.success(t("web.provider.settings.pages.clients/referrals.referralSourceCreatedSuccessfully"));
       }
       setIsDialogOpen(false);
       await loadSources();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save referral source";
+        : error?.error?.message || t("web.provider.settings.pages.clients/referrals.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving referral source:", error);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Clients", href: "/provider/settings/clients/list" },
-    { label: "Referral Sources" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.clients/referrals.clients"), href: "/provider/settings/clients/list" },
+    { label: t("web.provider.settings.pages.clients/referrals.referralSources") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Referral Sources"
-        subtitle="Track where your clients come from"
+        title={t("web.provider.settings.categories.clients.items.referrals.title")}
+        subtitle={t("web.provider.settings.categories.clients.items.referrals.description")}
         breadcrumbs={breadcrumbs}
       >
         <SectionCard>
-          <LoadingTimeout loadingMessage="Loading referral sources..." />
+          <LoadingTimeout loadingMessage={t("web.provider.settings.pages.clients/referrals.loadingReferralSources")} />
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -156,36 +158,36 @@ export default function ReferralSourcesSettings() {
 
   return (
     <SettingsDetailLayout
-      title="Referral Sources"
-      subtitle="Track where your clients come from"
+      title={t("web.provider.settings.categories.clients.items.referrals.title")}
+      subtitle={t("web.provider.settings.categories.clients.items.referrals.description")}
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-4 sm:space-y-6">
         <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-800">
-          <strong>Provider attribution only.</strong> These sources (e.g. Instagram, Friend, Walk-in) are for tracking where <em>your</em> clients come from. They are separate from the platform referral program (invite friends → wallet reward), which is configured under Admin → Settings → Referrals. Assign a source when creating or editing a booking to trigger the &quot;Referral received&quot; automation.
+          <strong>{t("web.provider.settings.pages.clients/referrals.attributionOnlyStrong")}</strong>{t("web.provider.settings.pages.clients/referrals.attributionOnlyBody")}
         </div>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
-              Add referral sources to track where your clients come from
+              {t("web.provider.settings.pages.clients/referrals.emptyHint")}
             </p>
           </div>
           <Button
             onClick={handleCreate}
             className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Source
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.clients/referrals.addSource")}
           </Button>
         </div>
 
         {sources.length === 0 ? (
           <SectionCard className="p-8 sm:p-12">
             <EmptyState
-              title="No referral sources yet"
-              description="Add referral sources to track where your clients come from"
+              title={t("web.provider.settings.pages.clients/referrals.noReferralSourcesYet")}
+              description={t("web.provider.settings.pages.clients/referrals.emptyHint")}
               action={{
-                label: "Add Source",
+                label: t("web.provider.settings.pages.clients/referrals.addSource"),
                 onClick: handleCreate,
               }}
             />
@@ -203,7 +205,7 @@ export default function ReferralSourcesSettings() {
                     <Badge
                       className={source.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}
                     >
-                      {source.is_active ? "Active" : "Inactive"}
+                      {source.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                     </Badge>
                   </div>
                 </div>
@@ -214,8 +216,8 @@ export default function ReferralSourcesSettings() {
                     onClick={() => handleEdit(source)}
                     className="flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
+                    <Edit className="w-3 h-3 me-1" />
+                    {t("web.provider.common.edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -223,8 +225,8 @@ export default function ReferralSourcesSettings() {
                     onClick={() => handleDelete(source.id)}
                     className="text-red-600 hover:text-red-700 flex-1 min-h-[36px] touch-manipulation"
                   >
-                    <Trash2 className="w-3 h-3 mr-1" />
-                    Delete
+                    <Trash2 className="w-3 h-3 me-1" />
+                    {t("web.provider.common.delete")}
                   </Button>
                 </div>
               </SectionCard>
@@ -237,33 +239,33 @@ export default function ReferralSourcesSettings() {
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>
-              {editingSource ? "Edit Referral Source" : "Add Referral Source"}
+              {editingSource ? t("web.provider.settings.pages.clients/referrals.editSource") : t("web.provider.settings.pages.clients/referrals.addSourceTitle")}
             </DialogTitle>
             <DialogDescription>
               {editingSource
-                ? "Update referral source information"
-                : "Add a new referral source to track where clients come from"}
+                ? t("web.provider.settings.pages.clients/referrals.updateHint")
+                : t("web.provider.settings.pages.clients/referrals.addHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="name">Name *</Label>
+              <Label htmlFor="name">{t("web.provider.settings.pages.clients/referrals.nameRequired")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Google, Facebook, Referral"
+                placeholder={t("web.provider.settings.pages.clients/referrals.eGGoogleFacebookReferral")}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t("web.provider.common.description")}</Label>
               <Textarea
                 id="description"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description"
+                placeholder={t("web.provider.settings.pages.clients/referrals.optionalDescription")}
                 rows={3}
                 className="mt-1.5"
               />
@@ -277,7 +279,7 @@ export default function ReferralSourcesSettings() {
                 className="w-4 h-4"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active
+                {t("web.provider.common.active")}
               </Label>
             </div>
           </div>
@@ -287,13 +289,13 @@ export default function ReferralSourcesSettings() {
               onClick={() => setIsDialogOpen(false)}
               className="min-h-[44px] touch-manipulation"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleSave}
               className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
-              {editingSource ? "Update" : "Create"}
+              {editingSource ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -32,6 +32,8 @@ import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   canLaunchPaycloudSameTerminal,
   getPaycloudDeviceInfo,
@@ -42,6 +44,8 @@ import {
   type PaycloudDeviceInfo,
   type PaycloudIntentResult,
 } from "@/lib/paycloud-same-terminal";
+
+type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
 
 const SAME_TERMINAL_POLL_INTERVAL_MS = 3000;
 const SAME_TERMINAL_POLL_TIMEOUT_MS = 2 * 60 * 1000;
@@ -107,19 +111,19 @@ async function pollSameTerminalSettlement(
   return null;
 }
 
-function formatLastUsed(iso: string): string {
+function formatLastUsed(iso: string, pc: TranslateFn): string {
   const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "recently";
+  if (!Number.isFinite(ms)) return pc("lastUsedRecent");
   const diff = Math.max(0, Date.now() - ms);
   const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return pc("lastUsedJustNow");
+  if (mins < 60) return pc("lastUsedMinutes", { count: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return pc("lastUsedHours", { count: hours });
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return pc("lastUsedDays", { count: days });
   const months = Math.round(days / 30);
-  return `${months}mo ago`;
+  return pc("lastUsedMonths", { count: months });
 }
 
 interface PayCloudPaymentSheetProps {
@@ -156,10 +160,16 @@ export function PayCloudPaymentSheet({
   tipIncludedInAmount = false,
   onPaymentSuccess,
 }: PayCloudPaymentSheetProps) {
+  const { t } = useTranslation();
+  const pc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.payCloudPaymentSheet.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { width: windowWidth } = useWindowDimensions();
   const isCompactLayout = windowWidth < 400;
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
   const sameTerminalFlag = useFeatureFlag("payment_paycloud_same_terminal");
   const qrFlagEnabled = useFeatureFlag("payment_paycloud_qr");
   const cashbackFlagEnabled = useFeatureFlag("payment_paycloud_cashback");
@@ -396,8 +406,8 @@ export function PayCloudPaymentSheet({
           } else {
             setInFlightPaymentId(null);
             Alert.alert(
-              "Payment failed",
-              polled.error_message || "The card payment didn't go through. Please try again.",
+              pc("paymentFailedTitle"),
+              polled.error_message || pc("paymentFailedBody"),
             );
           }
           return;
@@ -407,13 +417,13 @@ export function PayCloudPaymentSheet({
       await setKeepAwake(false);
       if (!cancelled) {
         Alert.alert(
-          "Still waiting on card machine",
-          "The payment did not finish in time. Tap Resume to keep checking, or cancel the charge and try again.",
+          pc("stillWaitingTitle"),
+          pc("stillWaitingBody"),
           [
-            { text: "Keep waiting", style: "cancel" },
-            { text: "Resume", onPress: () => void handleResumeInFlightRef.current?.() },
+            { text: pc("keepWaiting"), style: "cancel" },
+            { text: pc("resume"), onPress: () => void handleResumeInFlightRef.current?.() },
             {
-              text: "Cancel charge",
+              text: pc("cancelCharge"),
               style: "destructive",
               onPress: () => {
                 if (paymentId) void closePayment(paymentId);
@@ -461,14 +471,14 @@ export function PayCloudPaymentSheet({
       if (settled?.status === "failed" || settled?.status === "cancelled" || settled?.status === "closed") {
         setInFlightPaymentId(null);
         Alert.alert(
-          "Payment not completed",
-          settled.error_message || "The in-progress payment did not complete. You can start a new charge.",
+          pc("paymentNotCompletedTitle"),
+          settled.error_message || pc("paymentNotCompletedBody"),
         );
         return;
       }
       Alert.alert(
-        "Still waiting",
-        "The payment is still processing. Try again in a moment or cancel and start fresh.",
+        pc("stillWaitingShortTitle"),
+        pc("stillWaitingShortBody"),
       );
     } finally {
       setResumingInFlight(false);
@@ -523,12 +533,12 @@ export function PayCloudPaymentSheet({
     // hasn't confirmed yet), so it must be an explicit choice.
     if (stillOpenPaymentId) {
       Alert.alert(
-        "Charge still open",
-        "A charge is still open on the card machine. Keep it open to finish or resume it, or cancel it now.",
+        pc("chargeStillOpenTitle"),
+        pc("chargeStillOpenBody"),
         [
-          { text: "Keep it open", style: "cancel" },
+          { text: pc("keepItOpen"), style: "cancel" },
           {
-            text: "Cancel the charge",
+            text: pc("cancelTheCharge"),
             style: "destructive",
             onPress: () => {
               void closePayment(stillOpenPaymentId);
@@ -549,8 +559,8 @@ export function PayCloudPaymentSheet({
       const voidRow = await voidPayment(paymentId);
       if (voidRow && (voidRow.status === "processing" || voidRow.status === "successful")) {
         Alert.alert(
-          "Cancel sent to card machine",
-          "Follow the prompts on the card machine. The full amount will return to the customer's card if the bank has not settled the batch yet.",
+          pc("voidSentTitle"),
+          pc("voidSentBody"),
         );
       }
     } finally {
@@ -560,7 +570,7 @@ export function PayCloudPaymentSheet({
 
   const handleProcess = useCallback(async () => {
     if (!selectedTerminal) {
-      Alert.alert("Select a card machine", "Choose which card machine should take this payment.");
+      Alert.alert(pc("selectMachineTitle"), pc("selectMachineBody"));
       return;
     }
 
@@ -573,17 +583,17 @@ export function PayCloudPaymentSheet({
 
     if (trySameDevice && !info?.serial) {
       Alert.alert(
-        "Device not linked",
-        "Could not read this device's ID. Open Card machines and tap Link this device, or choose Send to card machine.",
+        pc("deviceNotLinkedTitle"),
+        pc("deviceNotLinkedBody"),
         [
           {
-            text: "Open Card machines",
+            text: pc("openCardMachines"),
             onPress: () => {
               void handleClose();
               router.push("/(app)/(tabs)/more/card-machines" as never);
             },
           },
-          { text: "Use card machine", onPress: () => setPayOnThisDevice(false) },
+          { text: pc("useCardMachine"), onPress: () => setPayOnThisDevice(false) },
         ],
       );
       return;
@@ -601,12 +611,12 @@ export function PayCloudPaymentSheet({
           createResult.existingPaymentId
         ) {
           Alert.alert(
-            "Payment already in progress",
+            pc("paymentInProgressTitle"),
             createResult.message,
             [
-              { text: "Cancel", style: "cancel" },
+              { text: pc("cancel"), style: "cancel" },
               {
-                text: "Resume",
+                text: pc("resume"),
                 onPress: () => {
                   setInFlightPaymentId(createResult.existingPaymentId!);
                   void handleResumeInFlight();
@@ -619,11 +629,11 @@ export function PayCloudPaymentSheet({
         if (createResult.code === "POLL_TIMEOUT" && createResult.existingPaymentId) {
           setInFlightPaymentId(createResult.existingPaymentId);
           Alert.alert(
-            "Still waiting on card machine",
+            pc("stillWaitingTitle"),
             createResult.message,
             [
-              { text: "Cancel charge", style: "destructive", onPress: () => void closePayment(createResult.existingPaymentId!) },
-              { text: "Resume", onPress: () => void handleResumeInFlight() },
+              { text: pc("cancelCharge"), style: "destructive", onPress: () => void closePayment(createResult.existingPaymentId!) },
+              { text: pc("resume"), onPress: () => void handleResumeInFlight() },
             ],
           );
           return false;
@@ -647,15 +657,15 @@ export function PayCloudPaymentSheet({
       if (payment.status === "failed") {
         setInFlightPaymentId(null);
         Alert.alert(
-          "Payment failed",
-          payment.error_message || "The card payment didn't go through. Please try again.",
+          pc("paymentFailedTitle"),
+          payment.error_message || pc("paymentFailedBody"),
         );
         return false;
       }
 
       Alert.alert(
-        "Waiting on card machine",
-        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+        pc("waitingOnMachineTitle"),
+        pc("waitingOnMachineBody", { name: selectedTerminal.name }),
       );
       return true;
     };
@@ -690,14 +700,14 @@ export function PayCloudPaymentSheet({
       if (retryPayment.status === "failed") {
         setInFlightPaymentId(null);
         Alert.alert(
-          "Payment failed",
-          retryPayment.error_message || "The card payment didn't go through. Please try again.",
+          pc("paymentFailedTitle"),
+          retryPayment.error_message || pc("paymentFailedBody"),
         );
         return;
       }
       Alert.alert(
-        "Waiting on card machine",
-        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+        pc("waitingOnMachineTitle"),
+        pc("waitingOnMachineBody", { name: selectedTerminal.name }),
       );
     };
 
@@ -748,10 +758,10 @@ export function PayCloudPaymentSheet({
         const friendly =
           intentResult.message ??
           humanizePaycloudIntentResult(intentResult.result, intentResult.resultMsg);
-        Alert.alert("Payment not completed", friendly, [
-          { text: "Cancel", style: "cancel" },
-          { text: "Send to card machine", onPress: () => void runCloudFallback() },
-          { text: "Try again", onPress: () => void handleProcessRef.current?.() },
+        Alert.alert(pc("paymentNotCompletedTitle"), friendly, [
+          { text: pc("cancel"), style: "cancel" },
+          { text: pc("sendToCardMachine"), onPress: () => void runCloudFallback() },
+          { text: pc("tryAgain"), onPress: () => void handleProcessRef.current?.() },
         ]);
         return;
       }
@@ -774,15 +784,15 @@ export function PayCloudPaymentSheet({
         if (settled?.status === "failed" || settled?.status === "cancelled") {
           setInFlightPaymentId(null);
           Alert.alert(
-            "Payment failed",
-            settled.error_message || "The card payment didn't go through on this device.",
+            pc("paymentFailedTitle"),
+            settled.error_message || pc("paymentFailedOnDevice"),
           );
           return;
         }
       }
       Alert.alert(
-        "Waiting for confirmation",
-        "Payment started on this device. Tap Resume if it doesn't update automatically.",
+        pc("waitingConfirmationTitle"),
+        pc("waitingConfirmationBody"),
       );
       return;
     }
@@ -795,13 +805,13 @@ export function PayCloudPaymentSheet({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setInFlightPaymentId(null);
       Alert.alert(
-        "Payment failed",
-        payment.error_message || "The card payment didn't go through. Please try again.",
+        pc("paymentFailedTitle"),
+        payment.error_message || pc("paymentFailedBody"),
       );
     } else if (payment.status === "pending" || payment.status === "processing") {
       Alert.alert(
-        "Waiting on card machine",
-        `Ask the customer to complete payment on ${selectedTerminal.name}.`,
+        pc("waitingOnMachineTitle"),
+        pc("waitingOnMachineBody", { name: selectedTerminal.name }),
       );
     }
   }, [
@@ -840,8 +850,8 @@ export function PayCloudPaymentSheet({
     <BottomSheet
       visible={visible}
       onClose={handleClose}
-      title="Beautonomi card machine"
-      subtitle={`Charge ${displayAmount} on your card machine`}
+      title={pc("title")}
+      subtitle={pc("subtitle", { amount: displayAmount })}
       snapHeight="half"
     >
       {successResult ? (
@@ -849,24 +859,24 @@ export function PayCloudPaymentSheet({
           <View style={twStyle("mb-4 items-center rounded-2xl border border-emerald-200 bg-emerald-50 py-6")}>
             <Ionicons name="checkmark-circle" size={40} color="#059669" />
             <Text style={twStyle("mt-2 text-base font-semibold text-emerald-900")}>
-              Payment successful
+              {pc("paymentSuccessful")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
-              {formatCurrency(Number(successResult.amount ?? amount), currency)} received
+              {pc("amountReceived", { amount: formatCurrency(Number(successResult.amount ?? amount), currency) })}
             </Text>
             {maskedCard ? (
-              <Text style={twStyle("mt-1 text-xs text-emerald-700")}>Card {maskedCard}</Text>
+              <Text style={twStyle("mt-1 text-xs text-emerald-700")}>{pc("cardMasked", { card: maskedCard })}</Text>
             ) : null}
           </View>
           <ActionButton
-            label={voiding ? "Sending void…" : "Void on card machine"}
+            label={voiding ? pc("sendingVoid") : pc("voidOnMachine")}
             onPress={() => void handleVoidOnTerminal()}
             loading={voiding}
             variant="outline"
             fullWidth
           />
           <View style={twStyle("mt-2")}>
-            <ActionButton label="Done" onPress={() => void handleClose()} fullWidth />
+            <ActionButton label={pc("done")} onPress={() => void handleClose()} fullWidth />
           </View>
         </View>
       ) : reviewResult ? (
@@ -874,22 +884,20 @@ export function PayCloudPaymentSheet({
           <View style={twStyle("mb-4 items-center rounded-2xl border border-amber-200 bg-amber-50 py-6 px-4")}>
             <Ionicons name="alert-circle" size={40} color="#d97706" />
             <Text style={twStyle("mt-2 text-base font-semibold text-amber-900")}>
-              Payment needs review
+              {pc("needsReview")}
             </Text>
             <Text style={twStyle("mt-1 text-sm text-amber-800")}>
-              {formatCurrency(Number(reviewResult.amount ?? 0), currency)} captured
+              {pc("amountCaptured", { amount: formatCurrency(Number(reviewResult.amount ?? 0), currency) })}
               {typeof reviewResult.expected_amount === "number"
-                ? ` · ${formatCurrency(reviewResult.expected_amount, currency)} was due`
+                ? pc("amountDue", { amount: formatCurrency(reviewResult.expected_amount, currency) })
                 : ""}
             </Text>
             <Text style={twStyle("mt-2 text-xs text-center text-amber-800")}>
-              The card machine took a different amount than the balance due, so it was
-              not applied to this charge automatically. It has been flagged for
-              review — the balance still shows as owing until it is resolved.
+              {pc("reviewHint")}
             </Text>
           </View>
           <ActionButton
-            label={voiding ? "Sending void…" : "Void on card machine"}
+            label={voiding ? pc("sendingVoid") : pc("voidOnMachine")}
             onPress={() => void handleVoidOnTerminal()}
             loading={voiding}
             variant="outline"
@@ -903,15 +911,15 @@ export function PayCloudPaymentSheet({
               }}
               style={twStyle("items-center rounded-xl border border-amber-300 bg-white py-3")}
               accessibilityRole="button"
-              accessibilityLabel="Open card machines to review"
+              accessibilityLabel={pc("reviewInCardMachinesA11y")}
             >
               <Text style={twStyle("text-sm font-semibold text-amber-800")}>
-                Review in Card machines
+                {pc("reviewInCardMachines")}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={twStyle("mt-2")}>
-            <ActionButton label="Done" onPress={() => void handleClose()} fullWidth />
+            <ActionButton label={pc("done")} onPress={() => void handleClose()} fullWidth />
           </View>
         </View>
       ) : (
@@ -920,23 +928,23 @@ export function PayCloudPaymentSheet({
         <View style={twStyle("mb-4 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3")}>
           <Text style={twStyle("text-sm font-medium text-indigo-900")}>
             {sameTerminalStep === "opening"
-              ? "Opening card app…"
+              ? pc("openingCardApp")
               : sameTerminalStep === "on_device"
-                ? "Hand the terminal to your client"
-                : "Confirming payment…"}
+                ? pc("handTerminal")
+                : pc("confirmingPayment")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-indigo-800")}>
             {sameTerminalStep === "on_device"
-              ? "Complete the payment in WiseCashier, then return here."
-              : "Keep this screen open until the payment finishes."}
+              ? pc("completeInWiseCashier")
+              : pc("keepScreenOpen")}
           </Text>
         </View>
       ) : null}
 
       <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-100 bg-gray-50 px-3 py-2")}>
-        <Text style={twStyle("text-xs text-gray-600")}>Payment mode</Text>
+        <Text style={twStyle("text-xs text-gray-600")}>{pc("paymentMode")}</Text>
         <Text style={twStyle("text-xs font-semibold text-gray-900")}>
-          {isSameDeviceMode ? "Pay on this device" : "Send to card machine (Cloud)"}
+          {isSameDeviceMode ? pc("modeThisDevice") : pc("modeCloud")}
         </Text>
       </View>
 
@@ -948,24 +956,29 @@ export function PayCloudPaymentSheet({
 
       {isSandboxMachine ? (
         <View style={twStyle("mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
-          <Text style={twStyle("text-xs font-semibold text-amber-900")}>Test machine</Text>
+          <Text style={twStyle("text-xs font-semibold text-amber-900")}>{pc("testMachine")}</Text>
           <Text style={twStyle("mt-1 text-xs text-amber-800")}>
-            This still marks the booking paid, so void it when you are done testing.
+            {pc("testMachineHint")}
           </Text>
         </View>
       ) : null}
 
       <View style={twStyle(`mb-4 items-center rounded-2xl bg-gray-50 py-6 ${isCompactLayout ? "px-3" : ""}`)}>
-        <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>{pc("amountToCharge")}</Text>
         <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
         {parsedTip > 0 ? (
           <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-            {baseDisplay} + {formatCurrency(parsedTip, currency)} tip
-            {parsedCashback > 0 ? ` + ${formatCurrency(parsedCashback, currency)} cashback` : ""}
+            {parsedCashback > 0
+              ? pc("tipLineWithCashback", {
+                  base: baseDisplay,
+                  tip: formatCurrency(parsedTip, currency),
+                  cashback: formatCurrency(parsedCashback, currency),
+                })
+              : pc("tipLine", { base: baseDisplay, tip: formatCurrency(parsedTip, currency) })}
           </Text>
         ) : parsedCashback > 0 ? (
           <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-            {baseDisplay} + {formatCurrency(parsedCashback, currency)} cashback
+            {pc("cashbackLine", { base: baseDisplay, cashback: formatCurrency(parsedCashback, currency) })}
           </Text>
         ) : null}
       </View>
@@ -973,22 +986,22 @@ export function PayCloudPaymentSheet({
       {tipIncludedInAmount ? (
         <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2")}>
           <Text style={twStyle("text-xs text-gray-600")}>
-            Any tip entered at checkout is already included in this amount.
+            {pc("tipIncluded")}
           </Text>
         </View>
       ) : (
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-            Tip (optional)
+            {pc("tipOptional")}
           </Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={tipAmount}
             onChangeText={setTipAmount}
-            placeholder="0.00"
+            placeholder={pc("amountPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
-            accessibilityLabel="Tip amount"
+            accessibilityLabel={pc("tipA11y")}
           />
         </View>
       )}
@@ -996,28 +1009,28 @@ export function PayCloudPaymentSheet({
       {cashbackOn ? (
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-            Cashback (optional)
+            {pc("cashbackOptional")}
           </Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={cashbackAmount}
             onChangeText={setCashbackAmount}
-            placeholder="0.00"
+            placeholder={pc("amountPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
-            accessibilityLabel="Cashback amount"
+            accessibilityLabel={pc("cashbackA11y")}
           />
         </View>
       ) : null}
 
       {qrEnabled ? (
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Payment method</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{pc("paymentMethod")}</Text>
           <View style={twStyle("flex-row")}>
             {(
               [
-                { value: "card" as const, label: "Card", icon: "card-outline" as const },
-                { value: "qr" as const, label: "Wallet QR", icon: "qr-code-outline" as const },
+                { value: "card" as const, label: pc("methodCard"), icon: "card-outline" as const },
+                { value: "qr" as const, label: pc("methodWalletQr"), icon: "qr-code-outline" as const },
               ] as const
             ).map((option) => {
               const selected = payMethod === option.value;
@@ -1026,7 +1039,7 @@ export function PayCloudPaymentSheet({
                   key={option.value}
                   onPress={() => setPayMethod(option.value)}
                   style={[
-                    twStyle(`mr-2 flex-1 flex-row items-center justify-center rounded-xl border py-2.5 ${
+                    twStyle(`me-2 flex-1 flex-row items-center justify-center rounded-xl border py-2.5 ${
                       selected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
                     }`),
                   ]}
@@ -1039,7 +1052,7 @@ export function PayCloudPaymentSheet({
                     color={selected ? "#6366f1" : "#6b7280"}
                   />
                   <Text
-                    style={twStyle(`ml-2 text-sm font-medium ${
+                    style={twStyle(`ms-2 text-sm font-medium ${
                       selected ? "text-indigo-700" : "text-gray-600"
                     }`)}
                   >
@@ -1054,12 +1067,12 @@ export function PayCloudPaymentSheet({
 
       {sameDeviceAvailable && payMethod === "card" ? (
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Where to pay</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{pc("whereToPay")}</Text>
           <View style={twStyle("flex-row")}>
             {(
               [
-                { value: true, label: "Pay on this device" },
-                { value: false, label: "Send to card machine" },
+                { value: true, label: pc("payOnThisDevice") },
+                { value: false, label: pc("sendToCardMachineLabel") },
               ] as const
             ).map((option) => {
               const selected = payOnThisDevice === option.value;
@@ -1067,7 +1080,7 @@ export function PayCloudPaymentSheet({
                 <TouchableOpacity
                   key={option.label}
                   onPress={() => setPayOnThisDevice(option.value)}
-                  style={twStyle(`mr-2 flex-1 rounded-xl border py-2.5 ${
+                  style={twStyle(`me-2 flex-1 rounded-xl border py-2.5 ${
                     selected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
                   }`)}
                   accessibilityRole="radio"
@@ -1089,21 +1102,21 @@ export function PayCloudPaymentSheet({
       ) : null}
 
       <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>
-        {isSameDeviceMode ? "Linked card machine" : "Select card machine"}
+        {isSameDeviceMode ? pc("linkedMachine") : pc("selectMachine")}
       </Text>
       {loading ? (
         <View style={twStyle("items-center py-8")}>
           <ActivityIndicator size="small" color="#6366f1" />
-          <Text style={twStyle("mt-2 text-xs text-gray-500")}>Loading…</Text>
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>{pc("loading")}</Text>
         </View>
       ) : !isReady ? (
         <View style={twStyle("items-center rounded-2xl border border-amber-200 bg-amber-50 py-8 px-4")}>
           <Ionicons name="link-outline" size={32} color="#d97706" />
           <Text style={twStyle("mt-2 text-sm font-medium text-amber-800")}>
-            In-person card payments are off
+            {pc("inPersonOffTitle")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-center text-amber-700")}>
-            Turn on Accept in-person card payments in Card machines settings.
+            {pc("inPersonOffBody")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -1112,19 +1125,19 @@ export function PayCloudPaymentSheet({
             }}
             style={twStyle("mt-3 rounded-xl bg-amber-600 px-4 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Open card machines settings"
+            accessibilityLabel={pc("openCardMachinesSettingsA11y")}
           >
-            <Text style={twStyle("text-xs font-semibold text-white")}>Open Card machines</Text>
+            <Text style={twStyle("text-xs font-semibold text-white")}>{pc("openCardMachines")}</Text>
           </TouchableOpacity>
         </View>
       ) : activeTerminals.length === 0 ? (
         <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 py-8 px-4")}>
           <Ionicons name="hardware-chip-outline" size={32} color="#9ca3af" />
           <Text style={twStyle("mt-2 text-sm text-gray-500")}>
-            {terminals.length > 0 ? "No active card machines" : "No card machines set up yet"}
+            {terminals.length > 0 ? pc("noActiveMachines") : pc("noMachinesYet")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400 text-center")}>
-            Add a machine in Card machines settings.
+            {pc("addMachineHint")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -1133,9 +1146,9 @@ export function PayCloudPaymentSheet({
             }}
             style={twStyle("mt-3 rounded-xl bg-indigo-600 px-4 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Manage card machines"
+            accessibilityLabel={pc("manageMachinesA11y")}
           >
-            <Text style={twStyle("text-xs font-semibold text-white")}>Add a card machine</Text>
+            <Text style={twStyle("text-xs font-semibold text-white")}>{pc("addACardMachine")}</Text>
           </TouchableOpacity>
           {terminalsError ? (
             <Text style={twStyle("mt-2 text-center text-xs text-rose-600")}>{terminalsError}</Text>
@@ -1146,10 +1159,10 @@ export function PayCloudPaymentSheet({
           {(inFlightPaymentId || selectedTerminal?.in_flight_payment_id) && !successResult ? (
             <View style={twStyle("mb-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-3")}>
               <Text style={twStyle("text-sm font-medium text-indigo-900")}>
-                Payment in progress on this card machine
+                {pc("inProgressTitle")}
               </Text>
               <Text style={twStyle("mt-1 text-xs text-indigo-800")}>
-                A charge may still be completing. Resume to check status without starting a duplicate.
+                {pc("inProgressBody")}
               </Text>
               <TouchableOpacity
                 onPress={() => void handleResumeInFlight()}
@@ -1157,10 +1170,10 @@ export function PayCloudPaymentSheet({
                 disabled={resumingInFlight}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: resumingInFlight, busy: resumingInFlight }}
-                accessibilityLabel="Resume the payment in progress and check its status"
+                accessibilityLabel={pc("resumePaymentA11y")}
               >
                 <Text style={twStyle("text-xs font-semibold text-white")}>
-                  {resumingInFlight ? "Checking…" : "Resume payment"}
+                  {resumingInFlight ? pc("checking") : pc("resumePayment")}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1169,12 +1182,12 @@ export function PayCloudPaymentSheet({
                     inFlightPaymentId ?? selectedTerminal?.in_flight_payment_id ?? null;
                   if (!paymentId) return;
                   Alert.alert(
-                    "Cancel charge?",
-                    "This tries to cancel the open charge on the card machine.",
+                    pc("cancelChargeTitle"),
+                    pc("cancelChargeBody"),
                     [
-                      { text: "Keep open", style: "cancel" },
+                      { text: pc("keepOpen"), style: "cancel" },
                       {
-                        text: "Cancel charge",
+                        text: pc("cancelCharge"),
                         style: "destructive",
                         onPress: () => {
                           void (async () => {
@@ -1183,8 +1196,8 @@ export function PayCloudPaymentSheet({
                               setInFlightPaymentId(null);
                             } catch {
                               Alert.alert(
-                                "Could not cancel",
-                                "Check the card machine — the charge may still be open.",
+                                pc("couldNotCancelTitle"),
+                                pc("couldNotCancelBody"),
                               );
                             }
                           })();
@@ -1195,9 +1208,9 @@ export function PayCloudPaymentSheet({
                 }}
                 style={twStyle("mt-2 self-start rounded-lg border border-indigo-300 px-3 py-2")}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel the payment in progress on the card machine"
+                accessibilityLabel={pc("cancelInProgressA11y")}
               >
-                <Text style={twStyle("text-xs font-semibold text-indigo-900")}>Cancel charge</Text>
+                <Text style={twStyle("text-xs font-semibold text-indigo-900")}>{pc("cancelCharge")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -1211,7 +1224,7 @@ export function PayCloudPaymentSheet({
                 return (
                   <View style={twStyle("mb-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2")}>
                     <Text style={twStyle("text-xs text-emerald-800")}>
-                      Mobile booking · using your portable card machine.
+                      {pc("mobileUsingPortable")}
                     </Text>
                   </View>
                 );
@@ -1219,7 +1232,7 @@ export function PayCloudPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-amber-800")}>
-                    Mobile booking · set a machine to &quot;All Locations&quot; for on-site work.
+                    {pc("mobileSetAllLocations")}
                   </Text>
                 </View>
               );
@@ -1228,7 +1241,7 @@ export function PayCloudPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-amber-800")}>
-                    No active machine is assigned to this location. The selected card machine will still take the payment.
+                    {pc("noMachineAssigned")}
                   </Text>
                 </View>
               );
@@ -1237,7 +1250,7 @@ export function PayCloudPaymentSheet({
               return (
                 <View style={twStyle("mb-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2")}>
                   <Text style={twStyle("text-xs text-indigo-800")}>
-                    Using your portable machine — none assigned to this salon yet.
+                    {pc("usingPortable")}
                   </Text>
                 </View>
               );
@@ -1247,11 +1260,10 @@ export function PayCloudPaymentSheet({
           {isSameDeviceMode && !deviceMatchedTerminal ? (
             <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3")}>
               <Text style={twStyle("text-sm font-medium text-amber-900")}>
-                This device isn&apos;t linked to a card machine yet
+                {pc("deviceNotLinkedYet")}
               </Text>
               <Text style={twStyle("mt-1 text-xs text-amber-800")}>
-                Link it once in Card machines to take payments right here, or send this
-                charge to another machine instead.
+                {pc("deviceNotLinkedHint")}
               </Text>
               <View style={twStyle("mt-2 flex-row")}>
                 <TouchableOpacity
@@ -1259,20 +1271,20 @@ export function PayCloudPaymentSheet({
                     void handleClose();
                     router.push("/(app)/(tabs)/more/card-machines" as never);
                   }}
-                  style={twStyle("mr-2 rounded-lg bg-amber-600 px-3 py-2")}
+                  style={twStyle("me-2 rounded-lg bg-amber-600 px-3 py-2")}
                   accessibilityRole="button"
-                  accessibilityLabel="Link this device in Card machines"
+                  accessibilityLabel={pc("linkThisDeviceA11y")}
                 >
-                  <Text style={twStyle("text-xs font-semibold text-white")}>Link this device</Text>
+                  <Text style={twStyle("text-xs font-semibold text-white")}>{pc("linkThisDevice")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setPayOnThisDevice(false)}
                   style={twStyle("rounded-lg border border-amber-300 bg-white px-3 py-2")}
                   accessibilityRole="button"
-                  accessibilityLabel="Send this payment to a card machine instead"
+                  accessibilityLabel={pc("sendToMachineA11y")}
                 >
                   <Text style={twStyle("text-xs font-semibold text-amber-800")}>
-                    Send to card machine
+                    {pc("sendToCardMachineLabel")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1290,8 +1302,8 @@ export function PayCloudPaymentSheet({
               !!bookingLocationId && terminal.location_id === bookingLocationId;
             const isPortable = terminal.location_id == null;
             const lastUsedLabel = terminal.last_used
-              ? `Last used ${formatLastUsed(terminal.last_used)}`
-              : "Never used yet";
+              ? pc("lastUsed", { when: formatLastUsed(terminal.last_used, pc) })
+              : pc("neverUsed");
             return (
               <TouchableOpacity
                 key={terminal.id}
@@ -1308,10 +1320,10 @@ export function PayCloudPaymentSheet({
                 accessibilityState={{ selected: isSelected, disabled: notChargeable }}
                 accessibilityLabel={
                   merchantPending
-                    ? `${terminal.name} card machine — setup pending`
+                    ? pc("machineSetupPendingA11y", { name: terminal.name })
                     : unusableOnThisDevice
-                    ? `${terminal.name} card machine — not available while paying on this device`
-                    : `${terminal.name} card machine`
+                    ? pc("machineUnavailableA11y", { name: terminal.name })
+                    : pc("machineA11y", { name: terminal.name })
                 }
               >
                 <View
@@ -1325,7 +1337,7 @@ export function PayCloudPaymentSheet({
                     color={isSelected ? "#6366f1" : "#6b7280"}
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row flex-wrap items-center")}>
                     <Text
                       style={twStyle(`text-sm font-medium ${
@@ -1335,51 +1347,51 @@ export function PayCloudPaymentSheet({
                       {terminal.name}
                     </Text>
                     {matchesBookingLocation ? (
-                      <View style={twStyle("ml-2 rounded-full bg-emerald-100 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-emerald-100 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-emerald-700")}>
-                          this location
+                          {pc("thisLocation")}
                         </Text>
                       </View>
                     ) : null}
                     {isPortable ? (
-                      <View style={twStyle("ml-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-indigo-700")}>
-                          Portable
+                          {pc("portable")}
                         </Text>
                       </View>
                     ) : null}
                     {deviceMatchedTerminal?.id === terminal.id ? (
-                      <View style={twStyle("ml-2 rounded-full bg-slate-900 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-slate-900 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-white")}>
-                          This device
+                          {pc("thisDevice")}
                         </Text>
                       </View>
                     ) : null}
                     {isSandbox ? (
-                      <View style={twStyle("ml-2 rounded-full bg-amber-200 px-2 py-0.5")}>
-                        <Text style={twStyle("text-[10px] font-semibold text-amber-900")}>TEST</Text>
+                      <View style={twStyle("ms-2 rounded-full bg-amber-200 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-semibold text-amber-900")}>{pc("testBadge")}</Text>
                       </View>
                     ) : null}
                     {merchantPending ? (
-                      <View style={twStyle("ml-2 rounded-full bg-gray-200 px-2 py-0.5")}>
+                      <View style={twStyle("ms-2 rounded-full bg-gray-200 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-semibold text-gray-700")}>
-                          Setup pending
+                          {pc("setupPending")}
                         </Text>
                       </View>
                     ) : null}
                   </View>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    {terminal.terminal_sn ? `Serial ${terminal.terminal_sn}` : "Card machine"}
+                    {terminal.terminal_sn ? pc("serialLabel", { serial: terminal.terminal_sn }) : pc("cardMachine")}
                     {terminal.location_name
-                      ? ` · ${terminal.location_name}`
+                      ? pc("locationSuffix", { name: terminal.location_name })
                       : isPortable
-                        ? " · All locations"
+                        ? pc("allLocationsSuffix")
                         : ""}
                   </Text>
                   <Text style={twStyle("text-[11px] text-gray-400")}>
                     {lastUsedLabel}
                     {terminal.total_transactions > 0
-                      ? ` · ${terminal.total_transactions} payment${terminal.total_transactions === 1 ? "" : "s"}`
+                      ? pc("paymentCount", { count: terminal.total_transactions })
                       : ""}
                   </Text>
                 </View>
@@ -1395,10 +1407,10 @@ export function PayCloudPaymentSheet({
       <ActionButton
         label={
           processing
-            ? "Waiting on card machine…"
+            ? pc("waitingCta")
             : isSameDeviceMode
-              ? `Pay ${displayAmount} on this device`
-              : `Send ${displayAmount} to card machine`
+              ? pc("payOnDeviceCta", { amount: displayAmount })
+              : pc("sendToMachineCta", { amount: displayAmount })
         }
         onPress={handleProcess}
         loading={processing}

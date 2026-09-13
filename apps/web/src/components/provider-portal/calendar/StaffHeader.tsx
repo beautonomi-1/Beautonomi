@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { TeamMember } from "@/lib/provider-portal/types";
 import { getStaffColor, STAFF_DAY_COLUMN_LAYOUT } from "./constants";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface StaffHeaderProps {
   member: TeamMember;
@@ -35,6 +36,7 @@ function StaffHeaderComponent({
   onEditWorkHours,
   onSetDayOff,
 }: StaffHeaderProps) {
+  const { t } = useTranslation();
   const gradient = getStaffColor(index);
 
   return (
@@ -72,17 +74,17 @@ function StaffHeaderComponent({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="w-48">
           <DropdownMenuItem onClick={() => onViewWeekSchedule?.(member)} disabled={!onViewWeekSchedule}>
-            View Week Schedule
+            {t("web.provider.calendarMobile.viewWeekSchedule")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onPrintDaySchedule?.(member)} disabled={!onPrintDaySchedule}>
-            Print Day Schedule
+            {t("web.provider.calendarMobile.printDaySchedule")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => onEditWorkHours?.(member)} disabled={!onEditWorkHours}>
-            Edit Work Hours
+            {t("web.provider.calendarMobile.editWorkHours")}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onSetDayOff?.(member)} disabled={!onSetDayOff}>
-            Set Day Off
+            {t("web.provider.calendarMobile.setDayOff")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

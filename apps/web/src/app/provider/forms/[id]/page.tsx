@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -38,12 +39,18 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 
-const FIELD_TYPES = [
-  { value: "text", label: "Text" },
-  { value: "checkbox", label: "Checkbox" },
-  { value: "signature", label: "Signature" },
-  { value: "date", label: "Date" },
-] as const;
+function fieldTypes(t: (k: string) => string) {
+  return [
+    { value: "text", label: t("web.provider.pages.forms/[id].typeText") },
+    { value: "checkbox", label: t("web.provider.pages.forms/[id].typeCheckbox") },
+    { value: "signature", label: t("web.provider.pages.forms/[id].typeSignature") },
+    { value: "date", label: t("web.provider.pages.forms/[id].typeDate") },
+  ];
+}
+
+function fieldTypeLabel(t: (k: string) => string, value: string) {
+  return fieldTypes(t).find((ft) => ft.value === value)?.label ?? value;
+}
 
 interface FormField {
   id: string;
@@ -63,6 +70,7 @@ interface Form {
 }
 
 export default function FormDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
@@ -84,14 +92,14 @@ export default function FormDetailPage() {
       const list = res?.data ?? [];
       const found = list.find((f: Form) => f.id === id);
       if (!found) {
-        toast.error("Form not found");
+        toast.error(t("web.provider.pages.forms/[id].formNotFound"));
         router.replace("/provider/forms");
         return;
       }
       setForm(found);
     } catch (error) {
       console.error("Failed to load form:", error);
-      toast.error("Failed to load form");
+      toast.error(t("web.provider.pages.forms/[id].failedToLoad"));
       router.replace("/provider/forms");
     } finally {
       setIsLoading(false);
@@ -104,7 +112,7 @@ export default function FormDetailPage() {
 
   const handleAddField = async () => {
     if (!newFieldName.trim()) {
-      toast.error("Field name is required");
+      toast.error(t("web.provider.pages.forms/[id].fieldNameRequired"));
       return;
     }
     try {
@@ -113,7 +121,7 @@ export default function FormDetailPage() {
         field_type: newFieldType,
         is_required: newFieldRequired,
       });
-      toast.success("Field added");
+      toast.success(t("web.provider.pages.forms/[id].fieldAdded"));
       setNewFieldName("");
       setNewFieldType("text");
       setNewFieldRequired(false);
@@ -121,19 +129,19 @@ export default function FormDetailPage() {
       loadForm();
     } catch (error) {
       console.error("Failed to add field:", error);
-      toast.error("Failed to add field");
+      toast.error(t("web.provider.pages.forms/[id].failedToAdd"));
     }
   };
 
   const handleDeleteField = async (field: FormField) => {
-    if (!confirm(`Remove field "${field.name}"?`)) return;
+    if (!confirm(t("web.provider.pages.forms/[id].removeConfirm", { name: field.name }))) return;
     try {
       await fetcher.delete(`/api/provider/forms/${id}/fields/${field.id}`);
-      toast.success("Field removed");
+      toast.success(t("web.provider.pages.forms/[id].fieldRemoved"));
       loadForm();
     } catch (error) {
       console.error("Failed to delete field:", error);
-      toast.error("Failed to delete field");
+      toast.error(t("web.provider.pages.forms/[id].failedToDelete"));
     }
   };
 
@@ -145,7 +153,7 @@ export default function FormDetailPage() {
 
   const handleSaveForm = async () => {
     if (!editTitle.trim()) {
-      toast.error("Title is required");
+      toast.error(t("web.provider.pages.forms/[id].titleRequired"));
       return;
     }
     try {
@@ -153,17 +161,17 @@ export default function FormDetailPage() {
         title: editTitle.trim(),
         description: editDescription.trim() || undefined,
       });
-      toast.success("Form updated");
+      toast.success(t("web.provider.pages.forms/[id].formUpdated"));
       setEditFormOpen(false);
       loadForm();
     } catch (error) {
       console.error("Failed to update form:", error);
-      toast.error("Failed to update form");
+      toast.error(t("web.provider.pages.forms/[id].failedToUpdate"));
     }
   };
 
   if (isLoading || !form) {
-    return <LoadingTimeout loadingMessage="Loading form..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.pages.forms/[id].loading")} />;
   }
 
   const fields = (form.fields ?? []).sort(
@@ -174,11 +182,11 @@ export default function FormDetailPage() {
     <div>
       <PageHeader
         title={form.title}
-        subtitle={form.description ?? "Manage form fields"}
+        subtitle={form.description ?? t("web.provider.pages.forms/[id].manageFields")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Resources & Forms", href: "/provider/resources-forms" },
-          { label: "Forms", href: "/provider/forms" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+          { label: t("web.provider.sidebar.sections.resourcesForms"), href: "/provider/resources-forms" },
+          { label: t("web.provider.sidebar.items.forms"), href: "/provider/forms" },
           { label: form.title },
         ]}
       />
@@ -187,44 +195,44 @@ export default function FormDetailPage() {
         <Button variant="outline" size="sm" asChild>
           <Link href="/provider/forms" className="gap-2">
             <ArrowLeft className="w-4 h-4" />
-            Back to forms
+            {t("web.provider.pages.forms/[id].backToForms")}
           </Link>
         </Button>
         <Button variant="outline" size="sm" onClick={openEditForm} className="gap-2">
           <FileEdit className="w-4 h-4" />
-          Edit form
+          {t("web.provider.pages.forms/[id].editForm")}
         </Button>
       </div>
 
       <SectionCard className="mt-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <h3 className="text-lg font-semibold">Fields</h3>
+          <h3 className="text-lg font-semibold">{t("web.provider.pages.forms/[id].fields")}</h3>
           <Button onClick={() => setAddFieldOpen(true)} className="gap-2">
             <Plus className="w-4 h-4" />
-            Add field
+            {t("web.provider.pages.forms/[id].addField")}
           </Button>
         </div>
 
         {fields.length === 0 ? (
           <div className="text-center py-8 text-gray-500 border border-dashed rounded-lg">
-            <p className="font-medium">No fields yet</p>
-            <p className="text-sm mt-1">Add fields to collect information from clients.</p>
+            <p className="font-medium">{t("web.provider.pages.forms/[id].noFields")}</p>
+            <p className="text-sm mt-1">{t("web.provider.pages.forms/[id].noFieldsHint")}</p>
             <Button
               variant="outline"
               className="mt-4"
               onClick={() => setAddFieldOpen(true)}
             >
-              Add field
+              {t("web.provider.pages.forms/[id].addField")}
             </Button>
           </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Order</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Required</TableHead>
+                <TableHead>{t("web.provider.pages.forms/[id].order")}</TableHead>
+                <TableHead>{t("web.provider.common.name")}</TableHead>
+                <TableHead>{t("web.provider.common.type")}</TableHead>
+                <TableHead>{t("web.provider.pages.forms/[id].required")}</TableHead>
                 <TableHead className="w-[80px]" />
               </TableRow>
             </TableHeader>
@@ -234,15 +242,15 @@ export default function FormDetailPage() {
                   <TableCell className="text-gray-500">{index + 1}</TableCell>
                   <TableCell className="font-medium">{field.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{field.field_type}</Badge>
+                    <Badge variant="secondary">{fieldTypeLabel(t, field.field_type)}</Badge>
                   </TableCell>
-                  <TableCell>{field.is_required ? "Yes" : "No"}</TableCell>
+                  <TableCell>{field.is_required ? t("web.provider.common.yes") : t("web.provider.common.no")}</TableCell>
                   <TableCell>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDeleteField(field)}
-                      aria-label="Remove field"
+                      aria-label={t("web.provider.pages.forms/[id].removeField")}
                     >
                       <Trash2 className="w-4 h-4 text-destructive" />
                     </Button>
@@ -257,34 +265,34 @@ export default function FormDetailPage() {
       <Dialog open={editFormOpen} onOpenChange={setEditFormOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit form</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.forms/[id].editForm")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="edit-form-title">Title</Label>
+              <Label htmlFor="edit-form-title">{t("web.provider.pages.forms/[id].title")}</Label>
               <Input
                 id="edit-form-title"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
-                placeholder="e.g. Client intake"
+                placeholder={t("web.provider.pages.forms/[id].titlePlaceholder")}
               />
             </div>
             <div>
-              <Label htmlFor="edit-form-desc">Description (optional)</Label>
+              <Label htmlFor="edit-form-desc">{t("web.provider.pages.forms/[id].descriptionOptional")}</Label>
               <Textarea
                 id="edit-form-desc"
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
-                placeholder="Brief description"
+                placeholder={t("web.provider.pages.forms/[id].descriptionPlaceholder")}
                 rows={2}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditFormOpen(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
-            <Button onClick={handleSaveForm}>Save</Button>
+            <Button onClick={handleSaveForm}>{t("web.provider.common.save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -292,28 +300,28 @@ export default function FormDetailPage() {
       <Dialog open={addFieldOpen} onOpenChange={setAddFieldOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add field</DialogTitle>
+            <DialogTitle>{t("web.provider.pages.forms/[id].addField")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="field-name">Field name</Label>
+              <Label htmlFor="field-name">{t("web.provider.pages.forms/[id].fieldName")}</Label>
               <Input
                 id="field-name"
                 value={newFieldName}
                 onChange={(e) => setNewFieldName(e.target.value)}
-                placeholder="e.g. Phone number"
+                placeholder={t("web.provider.pages.forms/[id].fieldNamePlaceholder")}
               />
             </div>
             <div>
-              <Label>Type</Label>
+              <Label>{t("web.provider.common.type")}</Label>
               <Select value={newFieldType} onValueChange={setNewFieldType}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {FIELD_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
+                  {fieldTypes(t).map((ft) => (
+                    <SelectItem key={ft.value} value={ft.value}>
+                      {ft.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -326,15 +334,15 @@ export default function FormDetailPage() {
                 onCheckedChange={(v) => setNewFieldRequired(!!v)}
               />
               <Label htmlFor="field-required" className="font-normal cursor-pointer">
-                Required
+                {t("web.provider.pages.forms/[id].required")}
               </Label>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddFieldOpen(false)}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
-            <Button onClick={handleAddField}>Add field</Button>
+            <Button onClick={handleAddField}>{t("web.provider.pages.forms/[id].addField")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

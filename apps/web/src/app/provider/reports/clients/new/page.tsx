@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -17,6 +18,7 @@ import { EmptyReportState } from "../../components/EmptyReportState";
 import { useReportLocationQuery } from "@/app/provider/reports/utils/use-report-location-query";
 import { appendReportDateParams } from "@/app/provider/reports/utils/report-api-url";
 import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface NewClientsData {
   totalNewClients: number;
@@ -43,6 +45,7 @@ interface NewClientsData {
 export default function NewClientsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subMonths(new Date(), 6),
     to: new Date(),
@@ -102,10 +105,10 @@ export default function NewClientsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "New Clients" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/new.title") },
         ]}
       >
         <ReportSkeleton />
@@ -117,15 +120,15 @@ export default function NewClientsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "New Clients" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/new.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="New Clients" />
-          <ReportSubscriptionRequired feature="New Clients" />
+          <PageHeader title={t("web.provider.reports.pages.clients/new.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.clients/new.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -135,15 +138,15 @@ export default function NewClientsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "New Clients" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/new.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load new clients data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.clients/new.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -152,21 +155,21 @@ export default function NewClientsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "New Clients" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.clients/new.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="New Clients"
-          subtitle="Track new client acquisition and onboarding"
+          title={t("web.provider.reports.pages.clients/new.title")}
+          subtitle={t("web.provider.reports.pages.clients/new.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -181,7 +184,7 @@ export default function NewClientsReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total New Clients</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/new.totalNew")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -193,7 +196,7 @@ export default function NewClientsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Returned Clients</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/new.returned")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -205,7 +208,7 @@ export default function NewClientsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Return Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/new.returnRate")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -219,7 +222,7 @@ export default function NewClientsReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg First Booking</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/new.avgFirstBooking")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -235,23 +238,23 @@ export default function NewClientsReport() {
         {/* Monthly Breakdown */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>New Clients by Month</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.clients/new.byMonth")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.monthlyBreakdown.length === 0 ? (
-              <EmptyReportState title="No new clients" description="No new clients in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.clients/new.emptyTitle")} description={t("web.provider.reports.pages.clients/new.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.monthlyBreakdown.map((item) => {
                   const [year, month] = item.month.split("-");
-                  const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                  const monthName = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString(getDefaultMoneyLocale(), { month: "long", year: "numeric" });
                   return (
                     <div
                       key={item.month}
                       className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
                     >
                       <p className="font-medium text-gray-900">{monthName}</p>
-                      <p className="font-semibold text-gray-900">{item.count} new clients</p>
+                      <p className="font-semibold text-gray-900">{t("web.provider.reports.pages.clients/new.newClientsCount", { count: item.count })}</p>
                     </div>
                   );
                 })}
@@ -263,11 +266,11 @@ export default function NewClientsReport() {
         {/* Recent New Clients */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Recent New Clients</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.clients/new.recent")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.newClients.length === 0 ? (
-              <EmptyReportState title="No new clients" description="No new clients in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.clients/new.emptyTitle")} description={t("web.provider.reports.pages.clients/new.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.newClients.map((client) => (
@@ -278,21 +281,21 @@ export default function NewClientsReport() {
                     <div>
                       <p className="font-medium text-gray-900">{client.clientName}</p>
                       <p className="text-sm text-gray-600">
-                        First visit: {format(new Date(client.firstVisit), "MMM dd, yyyy")}
+                        {t("web.provider.reports.pages.clients/new.firstVisit", { date: format(new Date(client.firstVisit), "MMM dd, yyyy") })}
                       </p>
                       {client.hasReturned && (
                         <p className="text-xs text-green-600 mt-1">
-                          ✓ Returned ({client.totalBookings} visits)
+                          {t("web.provider.reports.pages.clients/new.returnedVisits", { count: client.totalBookings })}
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold text-gray-900">
                         {fmt(client.firstBookingValue)}
                       </p>
                       {client.totalSpent > client.firstBookingValue && (
                         <p className="text-sm text-gray-600">
-                          Total: {fmt(client.totalSpent)}
+                          {t("web.provider.reports.pages.clients/new.total", { amount: fmt(client.totalSpent) })}
                         </p>
                       )}
                     </div>

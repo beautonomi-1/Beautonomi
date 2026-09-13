@@ -1,25 +1,26 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ShoppingBag, Undo2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const items = [
-  { label: "Orders", href: "/provider/ecommerce/orders", icon: ShoppingBag, description: "View and manage product orders" },
-  { label: "Returns", href: "/provider/ecommerce/returns", icon: Undo2, description: "Process returns and refunds" },
-];
-
 export default function OrdersHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    { label: t("web.provider.sidebar.items.orders"), href: "/provider/ecommerce/orders", icon: ShoppingBag, description: t("web.provider.pages.ecommerce.ordersDesc") },
+    { label: t("web.provider.sidebar.items.returns"), href: "/provider/ecommerce/returns", icon: Undo2, description: t("web.provider.pages.ecommerce.returnsDesc") },
+  ];
   return (
     <div>
       <PageHeader
-        title="Orders"
-        subtitle="Product orders and returns"
+title={t("web.provider.sidebar.items.orders")}
+subtitle={t("web.provider.pages.orders.subtitle")}
         breadcrumbs={[
-          { label: "Home", href: "/provider/dashboard" },
-          { label: "Orders" },
+{ label: t("web.provider.common.breadcrumbHome"), href: "/provider/dashboard" },
+{ label: t("web.provider.sidebar.items.orders") },
         ]}
       />
 

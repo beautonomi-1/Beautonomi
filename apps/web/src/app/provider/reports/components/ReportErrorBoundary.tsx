@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
@@ -13,6 +14,38 @@ interface ReportErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+}
+
+function ReportErrorFallback({
+  error,
+  onReload,
+}: {
+  error: Error | null;
+  onReload: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Card className="border-red-200 bg-red-50">
+      <CardContent className="p-8 text-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="p-4 bg-red-100 rounded-full">
+            <AlertCircle className="w-8 h-8 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {t("web.provider.reports.common.errorTitle")}
+            </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {error?.message || t("web.provider.reports.common.unexpectedError")}
+            </p>
+            <Button variant="outline" onClick={onReload}>
+              {t("web.provider.reports.common.reloadPage")}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export class ReportErrorBoundary extends React.Component<
@@ -39,32 +72,13 @@ export class ReportErrorBoundary extends React.Component<
       }
 
       return (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-8 text-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="p-4 bg-red-100 rounded-full">
-                <AlertCircle className="w-8 h-8 text-red-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Something went wrong
-                </h3>
-                <p className="text-sm text-gray-600 mb-4">
-                  {this.state.error?.message || "An unexpected error occurred"}
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    this.setState({ hasError: false, error: null });
-                    window.location.reload();
-                  }}
-                >
-                  Reload Page
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <ReportErrorFallback
+          error={this.state.error}
+          onReload={() => {
+            this.setState({ hasError: false, error: null });
+            window.location.reload();
+          }}
+        />
       );
     }
 

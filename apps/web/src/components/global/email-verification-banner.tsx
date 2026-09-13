@@ -9,6 +9,7 @@ import {
   resolveMailableAccountEmail,
   shouldShowEmailVerificationBanner,
 } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * EmailVerificationBanner
@@ -17,6 +18,7 @@ import {
  * Phone-only and placeholder-email accounts are excluded.
  */
 export default function EmailVerificationBanner() {
+  const { t } = useTranslation();
   const { user, session, resendVerificationEmail } = useAuth();
   const [isDismissed, setIsDismissed] = useState(false);
   const [isResending, setIsResending] = useState(false);
@@ -58,12 +60,12 @@ export default function EmailVerificationBanner() {
     try {
       setIsResending(true);
       await resendVerificationEmail();
-      toast.success("Verification email sent! Please check your inbox.");
+      toast.success(t("web.global.emailVerificationBanner.sent"));
     } catch (error: unknown) {
       const message =
         error instanceof Error
           ? error.message
-          : "Failed to send verification email. Please try again.";
+          : t("web.global.emailVerificationBanner.sendFailed");
       toast.error(message);
     } finally {
       setIsResending(false);
@@ -71,21 +73,20 @@ export default function EmailVerificationBanner() {
   };
 
   return (
-    <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-6 rounded-r-lg">
+    <div className="bg-amber-50 border-s-4 border-amber-400 p-4 mb-6 rounded-r-lg">
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <AlertCircle className="h-5 w-5 text-amber-600" />
         </div>
-        <div className="ml-3 flex-1">
+        <div className="ms-3 flex-1">
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <h3 className="text-sm font-medium text-amber-800">
-                Verify your email address
+                {t("web.global.emailVerificationBanner.title")}
               </h3>
               <div className="mt-2 text-sm text-amber-700">
                 <p>
-                  We&apos;ve sent a verification email to <strong>{mailableEmail}</strong>.
-                  Please check your inbox and click the verification link to activate your account.
+                  {t("web.global.emailVerificationBanner.body", { email: mailableEmail })}
                 </p>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -96,8 +97,8 @@ export default function EmailVerificationBanner() {
                   disabled={isResending}
                   className="bg-white hover:bg-amber-100 border-amber-300 text-amber-800"
                 >
-                  <Mail className="h-4 w-4 mr-2" />
-                  {isResending ? "Sending..." : "Resend verification email"}
+                  <Mail className="h-4 w-4 me-2" />
+                  {isResending ? t("web.auth.inlineSignup.sending") : t("web.auth.inlineSignup.resendVerificationEmail")}
                 </Button>
               </div>
             </div>
@@ -108,8 +109,8 @@ export default function EmailVerificationBanner() {
                   localStorage.setItem(`email-verification-dismissed-${user.id}`, "true");
                 }
               }}
-              className="ml-4 flex-shrink-0 text-amber-600 hover:text-amber-800"
-              aria-label="Dismiss"
+              className="ms-4 flex-shrink-0 text-amber-600 hover:text-amber-800"
+              aria-label={t("common.dismiss")}
             >
               <X className="h-5 w-5" />
             </button>

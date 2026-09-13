@@ -5,6 +5,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type PayeeKind = "individual" | "business";
 
@@ -16,28 +17,29 @@ export type PayeeEntityData = {
   verified_person_role: "owner" | "authorized_representative" | null;
 };
 
-const OPTIONS: Array<{ kind: PayeeKind; title: string; subtitle: string }> = [
-  {
-    kind: "individual",
-    title: "Just me (sole proprietor / freelancer)",
-    subtitle: "I work under my own name. Bank account is usually in my personal name.",
-  },
-  {
-    kind: "business",
-    title: "Registered company / salon",
-    subtitle: "I have a company registration number. Payouts may be in the business name.",
-  },
-];
-
 type Props = {
   initial: PayeeEntityData;
   onSaved?: (data: PayeeEntityData) => void;
 };
 
 export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
+  const { t } = useTranslation();
   const [data, setData] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const options: Array<{ kind: PayeeKind; title: string; subtitle: string }> = [
+    {
+      kind: "individual",
+      title: t("web.provider.entityTypeSelector.individualTitle"),
+      subtitle: t("web.provider.entityTypeSelector.individualSubtitle"),
+    },
+    {
+      kind: "business",
+      title: t("web.provider.entityTypeSelector.businessTitle"),
+      subtitle: t("web.provider.entityTypeSelector.businessSubtitle"),
+    },
+  ];
 
   const save = useCallback(
     async (next: PayeeEntityData) => {
@@ -52,20 +54,20 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
         setData(saved);
         onSaved?.(saved);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to save");
+        setError(e instanceof Error ? e.message : t("web.provider.entityTypeSelector.saveFailed"));
       } finally {
         setSaving(false);
       }
     },
-    [onSaved],
+    [onSaved, t],
   );
 
   const selectKind = (kind: PayeeKind) => {
     if (kind === data.payee_kind) return;
     const confirmed = window.confirm(
       kind === "individual"
-        ? "Switch to sole proprietor? You will only verify your personal identity."
-        : "Switch to registered company? Enter your company details, then save.",
+        ? t("web.provider.entityTypeSelector.confirmIndividual")
+        : t("web.provider.entityTypeSelector.confirmBusiness"),
     );
     if (!confirmed) return;
     if (kind === "individual") {
@@ -79,7 +81,6 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
       });
       return;
     }
-    // Business: update local state only — persist after company name is filled.
     setData({
       ...data,
       payee_kind: "business",
@@ -90,14 +91,14 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">How is your business set up?</h2>
+        <h2 className="text-lg font-semibold text-gray-900">{t("web.provider.entityTypeSelector.title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          This determines what we need to verify before you can go live.
+          {t("web.provider.entityTypeSelector.subtitle")}
         </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        {OPTIONS.map((opt) => {
+        {options.map((opt) => {
           const selected = data.payee_kind === opt.kind;
           return (
             <button
@@ -106,7 +107,7 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
               onClick={() => selectKind(opt.kind)}
               disabled={saving}
               className={cn(
-                "rounded-xl border-2 p-4 text-left transition-colors",
+                "rounded-xl border-2 p-4 text-start transition-colors",
                 selected ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300",
               )}
             >
@@ -119,31 +120,31 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
 
       {data.payee_kind === "business" && (
         <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-          <p className="text-sm font-semibold">Company details</p>
+          <p className="text-sm font-semibold">{t("web.provider.entityTypeSelector.companyDetails")}</p>
           <Input
             value={data.registered_business_name ?? ""}
             onChange={(e) => setData((d) => ({ ...d, registered_business_name: e.target.value }))}
-            placeholder="Registered business name"
+            placeholder={t("web.provider.entityTypeSelector.registeredNamePlaceholder")}
           />
           <Input
             value={data.business_registration_number ?? ""}
             onChange={(e) =>
               setData((d) => ({ ...d, business_registration_number: e.target.value }))
             }
-            placeholder="Registration number (e.g. CIPC)"
+            placeholder={t("web.provider.entityTypeSelector.registrationNumberPlaceholder")}
           />
           <Input
             value={data.business_registration_country ?? ""}
             onChange={(e) =>
               setData((d) => ({ ...d, business_registration_country: e.target.value.toUpperCase() }))
             }
-            placeholder="Country of registration (e.g. ZA)"
+            placeholder={t("web.provider.entityTypeSelector.registrationCountryPlaceholder")}
           />
           <div className="flex flex-wrap gap-2">
             {(
               [
-                ["owner", "I am the owner"],
-                ["authorized_representative", "Authorized representative"],
+                ["owner", t("web.provider.entityTypeSelector.owner")],
+                ["authorized_representative", t("web.provider.entityTypeSelector.authorizedRep")],
               ] as const
             ).map(([role, label]) => (
               <Button
@@ -161,14 +162,14 @@ export function ProviderEntityTypeSelector({ initial, onSaved }: Props) {
             type="button"
             onClick={() => {
               if (!data.registered_business_name?.trim()) {
-                setError("Registered business name is required.");
+                setError(t("web.provider.entityTypeSelector.nameRequired"));
                 return;
               }
               void save(data);
             }}
             disabled={saving}
           >
-            {saving ? "Saving…" : "Save company details"}
+            {saving ? t("web.provider.entityTypeSelector.saving") : t("web.provider.entityTypeSelector.saveCompany")}
           </Button>
         </div>
       )}

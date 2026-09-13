@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -18,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { formatCurrency } from "@/lib/format";
 
 interface GroupBookingSettings {
   enableGroupBooking: boolean;
@@ -41,6 +43,12 @@ interface Service {
 }
 
 export default function GroupAppointmentsSettingsScreen() {
+  const { t } = useTranslation();
+  const ga = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.groupAppointments." + key, opts) as string,
+    [t],
+  );
   useResponsive();
   const {
     data: settings,
@@ -81,10 +89,10 @@ export default function GroupAppointmentsSettingsScreen() {
       excluded_services: form.excludedServices,
     });
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(ga("errorTitle"), err);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Saved", "Group booking settings saved successfully.");
+      Alert.alert(ga("savedTitle"), ga("savedBody"));
       void refresh();
     }
   }
@@ -117,7 +125,7 @@ export default function GroupAppointmentsSettingsScreen() {
   if (error && !settings) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Group Appointments" showBack />
+        <ScreenHeader title={ga("title")} showBack />
         <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -125,14 +133,13 @@ export default function GroupAppointmentsSettingsScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Group Appointments" showBack subtitle="Configure group booking settings" />
+      <ScreenHeader title={ga("title")} showBack subtitle={ga("subtitle")} />
 
-      {/* Main toggles */}
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("flex-row items-center justify-between py-2")}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable Group Bookings</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Allow multiple clients in one appointment</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{ga("enableTitle")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{ga("enableHint")}</Text>
           </View>
           <Switch
             value={form.enableGroupBooking}
@@ -148,8 +155,8 @@ export default function GroupAppointmentsSettingsScreen() {
 
             <View style={twStyle("flex-row items-center justify-between py-2")}>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("text-sm font-medium text-gray-900")}>Online Group Booking</Text>
-                <Text style={twStyle("text-xs text-gray-500")}>Clients can book group sessions online</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>{ga("onlineTitle")}</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>{ga("onlineHint")}</Text>
               </View>
               <Switch
                 value={form.allowOnlineGroupBooking}
@@ -162,20 +169,20 @@ export default function GroupAppointmentsSettingsScreen() {
             <View style={twStyle("my-2 border-t border-gray-100")} />
 
             <View style={twStyle("py-2")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Maximum Group Size</Text>
-              <Text style={twStyle("mb-2 text-xs text-gray-500")}>Max participants per group session</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{ga("maxSize")}</Text>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>{ga("maxSizeHint")}</Text>
               <View style={twStyle("flex-row items-center")}>
                 <TouchableOpacity
-                  style={[twStyle("h-10 w-10 items-center justify-center rounded-lg bg-gray-100"), { marginRight: 12 }]}
+                  style={[twStyle("h-10 w-10 items-center justify-center rounded-lg bg-gray-100"), { marginEnd: 12 }]}
                   onPress={() => setForm((p) => ({ ...p, maxGroupSize: Math.max(2, p.maxGroupSize - 1) }))}
                 >
                   <Ionicons name="remove" size={20} color="#374151" />
                 </TouchableOpacity>
                 <TextInput
-                  style={[twStyle("h-10 w-16 rounded-lg border border-gray-200 bg-gray-50 text-center text-base font-semibold text-gray-900"), { marginRight: 12 }]}
+                  style={[twStyle("h-10 w-16 rounded-lg border border-gray-200 bg-gray-50 text-center text-base font-semibold text-gray-900"), { marginEnd: 12 }]}
                   value={String(form.maxGroupSize)}
-                  onChangeText={(t) => {
-                    const n = parseInt(t, 10);
+                  onChangeText={(text) => {
+                    const n = parseInt(text, 10);
                     if (!isNaN(n) && n >= 2 && n <= 10) setForm((p) => ({ ...p, maxGroupSize: n }));
                   }}
                   keyboardType="number-pad"
@@ -192,10 +199,9 @@ export default function GroupAppointmentsSettingsScreen() {
         )}
       </View>
 
-      {/* Enabled Locations */}
       {form.enableGroupBooking && (locations?.length ?? 0) > 0 && (
         <>
-          <SectionHeader title="Enabled Locations" />
+          <SectionHeader title={ga("enabledLocations")} />
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {(locations ?? []).map((loc, i, arr) => {
               const enabled = form.enabledLocations.includes(loc.id);
@@ -223,12 +229,11 @@ export default function GroupAppointmentsSettingsScreen() {
         </>
       )}
 
-      {/* Excluded Services */}
       {form.enableGroupBooking && (services?.length ?? 0) > 0 && (
         <>
-          <SectionHeader title="Excluded Services" />
+          <SectionHeader title={ga("excludedServices")} />
           <Text style={twStyle("mb-2 text-xs text-gray-500 px-1")}>
-            Services that cannot be booked as group appointments
+            {ga("excludedHint")}
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {(services ?? []).map((svc, i, arr) => {
@@ -243,7 +248,7 @@ export default function GroupAppointmentsSettingsScreen() {
                 >
                   <View style={twStyle("flex-1")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>{svc.title}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>R{svc.price}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{formatCurrency(svc.price)}</Text>
                   </View>
                   <Ionicons
                     name={excluded ? "checkbox" : "square-outline"}
@@ -258,7 +263,7 @@ export default function GroupAppointmentsSettingsScreen() {
       )}
 
       <View style={twStyle("mt-6")}>
-        <ActionButton label="Save Settings" onPress={handleSave} loading={saving} fullWidth />
+        <ActionButton label={ga("saveSettings")} onPress={handleSave} loading={saving} fullWidth />
       </View>
 
       <View style={twStyle("h-8")} />

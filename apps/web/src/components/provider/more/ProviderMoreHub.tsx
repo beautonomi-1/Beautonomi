@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 type SetupStatusStep = {
   id: string;
@@ -101,17 +102,18 @@ type PaycloudSettingsLite = {
 };
 
 const DEFAULT_EXPANDED: Record<string, boolean> = {
-  "Grow your business": true,
-  Operations: true,
-  "E-Commerce & Products": true,
-  Business: true,
-  Engagement: true,
-  Settings: true,
+  "provider.mobile.screens.moreTab.sectionGrowBusiness": true,
+  "provider.mobile.screens.moreTab.sectionOperations": true,
+  "provider.mobile.screens.moreTab.sectionEcommerce": true,
+  "provider.mobile.screens.moreTab.sectionBusiness": true,
+  "provider.mobile.screens.moreTab.sectionEngagement": true,
+  "provider.mobile.screens.moreTab.sectionSettings": true,
 };
 
 const COMPLETION_ITEM_DISPLAY_LIMIT = 10;
 
 export function ProviderMoreHub() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { provider, isLoading: portalLoading } = useProviderPortal();
@@ -329,11 +331,11 @@ export function ProviderMoreHub() {
     ? new Date(payoutSchedule.next_payout_date)
     : null;
   const requestPayoutDisabledReason = !canRequestPayouts
-    ? "Requires Edit settings permission"
+    ? t("web.provider.moreHub.requiresEditSettings")
     : !hasPayoutAccount
-      ? "Add a bank account first"
+      ? t("web.provider.moreHub.addBankFirst")
       : minimumPayout != null && availablePayout < minimumPayout
-        ? `Minimum payout is ${formatMoney(minimumPayout)}`
+        ? t("web.provider.moreHub.minimumPayout", { amount: formatMoney(minimumPayout) })
         : null;
 
   const filteredQuickActions = MORE_QUICK_ACTIONS.filter(
@@ -354,9 +356,9 @@ export function ProviderMoreHub() {
     <div className="pb-8" data-testid="provider-more-hub">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">More</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900">{t("web.provider.moreHub.title")}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Finance, bookings, growth, and settings — same as the mobile app
+            {t("web.provider.moreHub.subtitle")}
           </p>
         </div>
         <Button
@@ -367,7 +369,7 @@ export function ProviderMoreHub() {
           className="shrink-0"
         >
           <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-          <span className="sr-only">Refresh</span>
+          <span className="sr-only">{t("web.provider.moreHub.refresh")}</span>
         </Button>
       </div>
 
@@ -386,7 +388,7 @@ export function ProviderMoreHub() {
           </Avatar>
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xl font-bold text-gray-900">My profile</span>
+              <span className="text-xl font-bold text-gray-900">{t("web.provider.moreHub.myProfile")}</span>
               {(provider as { is_verified?: boolean } | null)?.is_verified ? (
                 <VerifiedBadge verified size="md" />
               ) : null}
@@ -407,7 +409,7 @@ export function ProviderMoreHub() {
               <span className="font-bold">{meProfile.provider_rating_average.toFixed(1)}</span>
             </span>
             <span className="text-[10px] text-gray-500">
-              {meProfile.provider_review_count ?? 0} reviews
+              {t("web.provider.moreHub.reviewsCount", { count: meProfile.provider_review_count ?? 0 })}
             </span>
           </Link>
         ) : null}
@@ -424,29 +426,29 @@ export function ProviderMoreHub() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
-                Provider payouts
+                {t("web.provider.moreHub.providerPayouts")}
               </p>
               <p className="text-3xl font-extrabold text-emerald-950 tracking-tight mt-0.5">
                 {formatMoney(availablePayout)}
               </p>
-              <p className="text-sm text-emerald-700">All-time available to withdraw</p>
+              <p className="text-sm text-emerald-700">{t("web.provider.moreHub.availableToWithdraw")}</p>
             </div>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             {minimumPayout != null ? (
               <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                Min {formatMoney(minimumPayout)}
+                {t("web.provider.moreHub.minAmount", { amount: formatMoney(minimumPayout) })}
               </span>
             ) : null}
             {pendingPayouts > 0 ? (
               <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
-                {formatMoney(pendingPayouts)} pending
+                {t("web.provider.moreHub.pendingAmount", { amount: formatMoney(pendingPayouts) })}
               </span>
             ) : null}
             {nextPayoutDate && Number.isFinite(nextPayoutDate.getTime()) ? (
               <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-900">
-                Next run {nextPayoutDate.toLocaleDateString()}
+                {t("web.provider.moreHub.nextRun", { date: nextPayoutDate.toLocaleDateString() })}
               </span>
             ) : null}
           </div>
@@ -461,7 +463,7 @@ export function ProviderMoreHub() {
           >
             <Wallet className="h-5 w-5" />
             <span className="flex-1 font-bold">
-              {hasPayoutAccount ? "Request payout" : "Set up bank account"}
+{hasPayoutAccount ? t("web.provider.moreHub.requestPayout") : t("web.provider.moreHub.setUpBank")}
             </span>
             <ChevronRight className="h-4 w-4 opacity-80" />
           </Link>
@@ -476,13 +478,13 @@ export function ProviderMoreHub() {
               <AlertCircle className="h-5 w-5 text-amber-600" />
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-gray-900">Bank account setup</p>
+              <p className="text-sm font-bold text-gray-900">{t("web.provider.moreHub.bankAccountSetup")}</p>
               <p className="text-xs text-gray-500 truncate">
                 {payoutAccountsLoading
-                  ? "Checking payout account..."
+                  ? t("web.provider.moreHub.checkingPayoutAccount")
                   : hasPayoutAccount
-                    ? `${primaryPayoutAccount?.bank_name || "Bank account"}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
-                    : "Add a bank account before requesting payouts"}
+                    ? `${primaryPayoutAccount?.bank_name || t("web.provider.moreHub.bankAccount")}${payoutAccountLast4 ? ` • •••• ${payoutAccountLast4}` : ""}`
+                    : t("web.provider.moreHub.addBankBeforePayouts")}
               </p>
             </div>
             <ChevronRight className="h-4 w-4 text-gray-300" />
@@ -503,11 +505,11 @@ export function ProviderMoreHub() {
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-200/40">
               <Megaphone className="h-5 w-5 text-amber-700" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-wide text-amber-900">Ads</span>
+            <span className="text-xs font-bold uppercase tracking-wide text-amber-900">{t("web.provider.moreHub.ads")}</span>
           </div>
-          <p className="font-bold text-amber-950">Buy ads</p>
+          <p className="font-bold text-amber-950">{t("web.provider.moreHub.buyAds")}</p>
           <p className="text-xs text-amber-800 mt-1 leading-snug">
-            Boost discovery & fill your calendar
+            {t("web.provider.moreHub.buyAdsHint")}
           </p>
         </Link>
         <Link
@@ -519,12 +521,12 @@ export function ProviderMoreHub() {
               <CreditCardIcon />
             </div>
             <span className="text-xs font-bold uppercase tracking-wide text-violet-900">
-              Recurring
+              {t("web.provider.moreHub.recurring")}
             </span>
           </div>
-          <p className="font-bold text-violet-950">Sell memberships</p>
+          <p className="font-bold text-violet-950">{t("web.provider.moreHub.sellMemberships")}</p>
           <p className="text-xs text-violet-800 mt-1 leading-snug">
-            Plans, perks & subscriber revenue
+            {t("web.provider.moreHub.sellMembershipsHint")}
           </p>
         </Link>
       </div>
@@ -552,15 +554,15 @@ export function ProviderMoreHub() {
                 ) : null}
               </div>
               <span className="text-xs font-medium text-gray-700 text-center leading-snug">
-                {action.label}
+                {t(action.labelKey, { defaultValue: action.label })}
               </span>
               {isCardMachines && paycloudEnabled ? (
                 <span className="mt-1 text-[10px] text-gray-500 text-center">
                   {paycloudSettings?.ready
-                    ? "Ready"
+                    ? t("web.provider.moreHub.paycloudReady")
                     : paycloudSettings?.accept_paycloud
-                      ? "Set up"
-                      : "Off"}
+                      ? t("web.provider.moreHub.paycloudSetUp")
+                      : t("web.provider.moreHub.paycloudOff")}
                 </span>
               ) : null}
             </Link>
@@ -571,7 +573,7 @@ export function ProviderMoreHub() {
       {!setupLoading && setupError && !setupStatus ? (
         <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p className="text-sm text-amber-900">
-            Couldn&apos;t load profile setup status. Check your connection and try again.
+            {t("web.provider.moreHub.setupLoadFailed")}
           </p>
           <Button
             variant="outline"
@@ -582,7 +584,7 @@ export function ProviderMoreHub() {
               void loadData();
             }}
           >
-            Try again
+            {t("web.provider.moreHub.tryAgain")}
           </Button>
         </div>
       ) : null}
@@ -591,7 +593,7 @@ export function ProviderMoreHub() {
         <div className="mb-5 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
           <button
             type="button"
-            className="w-full text-left"
+            className="w-full text-start"
             onClick={() => {
               const href = firstIncompleteStep?.link ?? "/provider/get-started";
               router.push(href);
@@ -602,13 +604,13 @@ export function ProviderMoreHub() {
                 <Sparkles className="h-5 w-5 text-indigo-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900">Complete your business profile</p>
+                <p className="font-semibold text-gray-900">{t("web.provider.moreHub.completeProfile")}</p>
                 <p className="text-sm text-gray-500 mt-1">
                   {incompleteRequiredCount > 0
-                    ? `${incompleteRequiredCount} required task${incompleteRequiredCount === 1 ? "" : "s"} left${incompleteOptionalCount > 0 ? ` · ${incompleteOptionalCount} optional` : ""}`
+                    ? `${t("web.provider.moreHub.requiredTasksLeft", { count: incompleteRequiredCount })}${incompleteOptionalCount > 0 ? ` · ${t("web.provider.moreHub.optionalCount", { count: incompleteOptionalCount })}` : ""}`
                     : incompleteOptionalCount > 0
-                      ? `All required tasks done · ${incompleteOptionalCount} optional improvement${incompleteOptionalCount === 1 ? "" : "s"}`
-                      : "Finish setup to start accepting bookings"}
+                      ? t("web.provider.moreHub.allRequiredDone", { count: incompleteOptionalCount })
+                      : t("web.provider.moreHub.finishSetup")}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
                   <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -632,7 +634,7 @@ export function ProviderMoreHub() {
                     key={step.id}
                     type="button"
                     onClick={() => router.push(step.link)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5 text-left hover:bg-gray-50"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-1 py-1.5 text-start hover:bg-gray-50"
                   >
                     {step.completed ? (
                       <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
@@ -655,11 +657,11 @@ export function ProviderMoreHub() {
                     </span>
                     {step.completed ? (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-800">
-                        Done
+                        {t("web.provider.moreHub.done")}
                       </span>
                     ) : !step.required ? (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
-                        Optional
+                        {t("web.provider.moreHub.optional")}
                       </span>
                     ) : null}
                     <ChevronRight className="h-3.5 w-3.5 text-indigo-200 shrink-0" />
@@ -671,8 +673,8 @@ export function ProviderMoreHub() {
                 className="mt-2 flex items-center justify-center rounded-xl bg-indigo-50 py-2.5 text-sm font-semibold text-indigo-800 hover:bg-indigo-100"
               >
                 {completionOverflowCount > 0
-                  ? `View full checklist · +${completionOverflowCount} more`
-                  : "View full checklist"}
+                  ? t("web.provider.moreHub.viewChecklistMore", { count: completionOverflowCount })
+                  : t("web.provider.moreHub.viewChecklist")}
               </Link>
             </div>
           ) : null}
@@ -680,7 +682,7 @@ export function ProviderMoreHub() {
       ) : null}
 
       <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 px-1">
-        All features
+        {t("web.provider.moreHub.allFeatures")}
       </p>
 
       <div className="space-y-2 mb-6">
@@ -691,18 +693,20 @@ export function ProviderMoreHub() {
               passesMorePermissionGate(item.permission, permissionOpts),
           );
           if (items.length === 0) return null;
-          const isExpanded = expandedSections[section.title] ?? false;
+          const isExpanded = expandedSections[section.titleKey] ?? false;
 
           return (
             <Collapsible
-              key={section.title}
+              key={section.titleKey}
               open={isExpanded}
               onOpenChange={(open) =>
-                setExpandedSections((prev) => ({ ...prev, [section.title]: open }))
+                setExpandedSections((prev) => ({ ...prev, [section.titleKey]: open }))
               }
             >
-              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 text-left hover:bg-gray-50 transition-colors touch-manipulation">
-                <span className="font-medium text-gray-900">{section.title}</span>
+              <CollapsibleTrigger className="flex w-full items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-3.5 text-start hover:bg-gray-50 transition-colors touch-manipulation">
+                <span className="font-medium text-gray-900">
+                  {t(section.titleKey, { defaultValue: section.title })}
+                </span>
                 {isExpanded ? (
                   <ChevronUp className="h-4 w-4 text-gray-400" />
                 ) : (
@@ -729,11 +733,15 @@ export function ProviderMoreHub() {
                         <Icon className="h-4 w-4" style={{ color: item.color }} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{item.label}</p>
-                        <p className="text-xs text-gray-500 truncate">{item.subtitle}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {t(item.labelKey, { defaultValue: item.label })}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {t(item.subtitleKey, { defaultValue: item.subtitle })}
+                        </p>
                       </div>
                       {badge ? (
-                        <span className="mr-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-extrabold text-white">
+                        <span className="me-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-extrabold text-white">
                           {badge}
                         </span>
                       ) : null}
@@ -752,7 +760,7 @@ export function ProviderMoreHub() {
         onClick={() => void handleSignOut()}
         className="w-full rounded-xl border border-gray-200 py-3 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors touch-manipulation"
       >
-        Sign out
+        {t("web.provider.moreHub.signOut")}
       </button>
     </div>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Lock, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +29,7 @@ export function PermissionGate({
   actionMessage,
   actionHref,
 }: PermissionGateProps) {
+  const { t } = useTranslation();
   const { hasPermission, isLoading } = usePermissions();
 
   if (isLoading) {
@@ -46,8 +49,8 @@ export function PermissionGate({
       return null;
     }
 
-    const defaultMessage = message || `You don't have permission to access this feature.`;
-    const defaultActionMessage = actionMessage || "Contact your administrator to request access";
+    const defaultMessage = message || t("web.permissionGate.defaultMessage");
+    const defaultActionMessage = actionMessage || t("web.permissionGate.defaultAction");
     const defaultActionHref = actionHref || "/provider/settings/team/permissions";
 
     return (
@@ -57,7 +60,7 @@ export function PermissionGate({
             <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-red-50 flex items-center justify-center">
               <Lock className="w-8 h-8 text-red-600" />
             </div>
-            <CardTitle className="text-xl">Access Restricted</CardTitle>
+            <CardTitle className="text-xl">{t("web.permissionGate.accessRestricted")}</CardTitle>
             <CardDescription className="mt-2">
               {defaultMessage}
             </CardDescription>
@@ -75,7 +78,7 @@ export function PermissionGate({
                 className="w-full bg-primary hover:bg-primary-hover"
               >
                 <Link href={defaultActionHref}>
-                  Request Access
+                  {t("web.permissionGate.requestAccess")}
                 </Link>
               </Button>
             )}
@@ -85,7 +88,7 @@ export function PermissionGate({
               className="w-full"
             >
               <Link href="/provider/dashboard">
-                Go to Dashboard
+                {t("web.permissionGate.goToDashboard")}
               </Link>
             </Button>
           </CardContent>

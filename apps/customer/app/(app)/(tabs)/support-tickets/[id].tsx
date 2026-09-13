@@ -17,6 +17,7 @@ import { appendFormDataFileNative } from "@beautonomi/utils";
 import { invalidateSupportTicketsListCache } from "@/lib/api-response-cache";
 import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
+import { endTextAlign } from "@/lib/rtlText";
 
 type Message = {
   id: string;
@@ -65,6 +66,49 @@ function formatDateTimeSafe(value: unknown): string {
   return parsed.toLocaleString();
 }
 
+const CONTEXT_TYPE_KEYS: Record<string, string> = {
+  booking: "contextBooking",
+  product_order: "contextProductOrder",
+  gift_card: "contextGiftCard",
+  payment: "contextPayment",
+  provider_onboarding: "contextProviderOnboarding",
+  account: "contextAccount",
+  technical: "contextTechnical",
+  other: "contextOther",
+};
+
+const STATUS_KEYS: Record<string, string> = {
+  open: "statusOpen",
+  in_progress: "statusInProgress",
+  waiting_customer: "statusWaitingCustomer",
+  resolved: "statusResolved",
+  closed: "statusClosed",
+};
+
+const PRIORITY_KEYS: Record<string, string> = {
+  low: "priorityLow",
+  medium: "priorityMedium",
+  high: "priorityHigh",
+  urgent: "priorityUrgent",
+};
+
+type TranslateFn = (key: string, opts?: Record<string, string | number>) => string;
+
+function contextTypeLabel(type: string, sd: TranslateFn): string {
+  const key = CONTEXT_TYPE_KEYS[type];
+  return key ? sd(key) : type.replace(/_/g, " ");
+}
+
+function statusLabel(status: string, sd: TranslateFn): string {
+  const key = STATUS_KEYS[status];
+  return key ? sd(key) : status.replace(/_/g, " ");
+}
+
+function priorityLabel(priority: string, sd: TranslateFn): string {
+  const key = PRIORITY_KEYS[priority];
+  return key ? sd(key) : priority;
+}
+
 function statusBg(status: string): string {
   switch (status) {
     case "open":
@@ -86,7 +130,8 @@ export default function SupportTicketDetailScreen() {
   useScreenTracking("Support ticket detail");
   const { t } = useTranslation();
   const sd = useCallback(
-    (key: string) => t(`customer.mobile.screens.supportTicketDetail.${key}`) as string,
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.screens.supportTicketDetail.${key}`, opts) as string,
     [t],
   );
   const router = useRouter();
@@ -262,11 +307,11 @@ export default function SupportTicketDetailScreen() {
       const sentMessage = (res.data as { message?: Message } | null | undefined)?.message;
       const localMessage: Message = {
         id: sentMessage?.id ?? `local-${Date.now()}`,
-        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? "(attachment)" : "")),
+        message: sentMessage?.message ?? (msg || (attachmentsToSend.length ? sd("attachmentOnlyMessage") : "")),
         is_internal: false,
         created_at: sentMessage?.created_at ?? new Date().toISOString(),
         user_id: sentMessage?.user_id ?? user?.id ?? "",
-        author_name: "You",
+        author_name: sd("you"),
         is_mine: true,
         attachments: sentMessage?.attachments ?? attachmentsToSend,
       };
@@ -336,7 +381,7 @@ export default function SupportTicketDetailScreen() {
         comment: csatComment.trim() || null,
       });
       if (res.error) {
-        Alert.alert("Could not submit rating", getApiErrorMessage(res.error, "Please try again."));
+        Alert.alert(sd("csatSubmitFailedTitle"), getApiErrorMessage(res.error, sd("csatSubmitFailedFallback")));
         return;
       }
       invalidateSupportTicketsListCache();
@@ -345,14 +390,12 @@ export default function SupportTicketDetailScreen() {
       csatDirtyRef.current = false;
       setCsatEditing(false);
       Alert.alert(
-        "Thanks for your feedback",
-        wasFirstSubmit
-          ? "Your rating has been saved and this ticket is now closed."
-          : "Your rating has been updated. Thank you!",
+        sd("csatThanksTitle"),
+        wasFirstSubmit ? sd("csatSavedClosed") : sd("csatUpdated"),
       );
       await loadTicket();
     } catch (e) {
-      Alert.alert("Could not submit rating", e instanceof Error ? e.message : "Please try again.");
+      Alert.alert(sd("csatSubmitFailedTitle"), e instanceof Error ? e.message : sd("csatSubmitFailedFallback"));
     } finally {
       setSubmittingCsat(false);
     }
@@ -381,14 +424,14 @@ export default function SupportTicketDetailScreen() {
           <>
             <Text style={styles.errorText}>{loadError}</Text>
             <TouchableOpacity onPress={loadTicket} style={styles.retryWrap} accessibilityRole="button">
-              <Text style={styles.retryText}>Retry</Text>
+              <Text style={styles.retryText}>{sd("retry")}</Text>
             </TouchableOpacity>
           </>
         ) : (
           <>
-            <Text style={styles.muted}>Ticket not found</Text>
+            <Text style={styles.muted}>{sd("ticketNotFound")}</Text>
             <TouchableOpacity onPress={() => router.back()} style={styles.retryWrap} accessibilityRole="button">
-              <Text style={styles.retryText}>Back to list</Text>
+              <Text style={styles.retryText}>{sd("backToList")}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -416,34 +459,40 @@ export default function SupportTicketDetailScreen() {
         <View style={styles.inner}>
           <View style={styles.headerRow}>
             <View style={[styles.statusPill, { backgroundColor: statusBg(ticket.status) }]}>
-              <Text style={styles.statusPillText}>{ticket.status.replace("_", " ")}</Text>
+              <Text style={styles.statusPillText}>{statusLabel(ticket.status, sd)}</Text>
             </View>
             <Text style={styles.dateSmall}>{formatDateSafe(ticket.created_at)}</Text>
           </View>
           <Text style={styles.title}>{ticket.subject}</Text>
           <Text style={styles.subMeta}>
-            {ticket.category ? `Category: ${labelForSupportTicketCategory(String(ticket.category))} · ` : ""}
-            Priority: {ticket.priority}
+            {ticket.category
+              ? sd("categoryPriority", {
+                  category: labelForSupportTicketCategory(String(ticket.category)),
+                  priority: priorityLabel(ticket.priority, sd),
+                })
+              : sd("priorityOnly", { priority: priorityLabel(ticket.priority, sd) })}
           </Text>
           {ticket.support_context_type ? (
             <Text style={styles.contextMeta}>
-              About: {ticket.support_context_type.replace(/_/g, " ")}
-              {ticket.support_context_label ? ` · ${ticket.support_context_label}` : ""}
+              {sd("aboutContext", {
+                context: ticket.support_context_label
+                  ? `${contextTypeLabel(ticket.support_context_type, sd)} · ${ticket.support_context_label}`
+                  : contextTypeLabel(ticket.support_context_type, sd),
+              })}
             </Text>
           ) : null}
 
           {messages.map((m) => {
             const isOwn = m.is_mine ?? m.user_id === user?.id;
-            const authorLabel = isOwn ? "You" : m.author_name ?? "Support Team";
-            const initials =
-              authorLabel === "You"
-                ? "Me"
-                : authorLabel
-                    .split(" ")
-                    .map((w) => w[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase();
+            const authorLabel = isOwn ? sd("you") : m.author_name ?? sd("supportTeam");
+            const initials = isOwn
+              ? sd("youInitials")
+              : authorLabel
+                  .split(" ")
+                  .map((w) => w[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase();
             return (
               <View key={m.id} style={[styles.msgRow, isOwn ? styles.msgRowOwn : styles.msgRowOther]}>
                 {!isOwn && (
@@ -472,13 +521,13 @@ export default function SupportTicketDetailScreen() {
                           accessibilityRole="button"
                         >
                           <Text style={[styles.attachmentText, isOwn && styles.attachmentTextOwn]} numberOfLines={1}>
-                            📎 {attachment.name || `Attachment ${index + 1}`}
+                            📎 {attachment.name || sd("attachmentFallback", { index: index + 1 })}
                           </Text>
                         </TouchableOpacity>
                       ))}
                     </View>
                   )}
-                  <Text style={[styles.bubbleTime, isOwn && styles.bubbleTimeOwn]}>
+                  <Text style={[styles.bubbleTime, isOwn && styles.bubbleTimeOwn, isOwn && { textAlign: endTextAlign() }]}>
                     {formatDateTimeSafe(m.created_at)}
                   </Text>
                 </View>
@@ -487,15 +536,15 @@ export default function SupportTicketDetailScreen() {
           })}
 
           {messages.length === 0 ? (
-            <Text style={styles.emptyThreadText}>No visible messages are available for this ticket yet.</Text>
+            <Text style={styles.emptyThreadText}>{sd("emptyThread")}</Text>
           ) : null}
 
           {canReply && (
             <View style={styles.replyBlock}>
-              <Text style={styles.label}>Add a reply</Text>
+              <Text style={styles.label}>{sd("addReply")}</Text>
               <TextInput
                 style={styles.replyInput}
-                placeholder="Type your message..."
+                placeholder={sd("messagePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={reply}
                 onChangeText={setReply}
@@ -507,13 +556,13 @@ export default function SupportTicketDetailScreen() {
                   {pendingAttachments.map((attachment, index) => (
                     <View key={`${attachment.url}-${index}`} style={styles.pendingAttachment}>
                       <Text style={styles.pendingAttachmentText} numberOfLines={1}>
-                        {attachment.name || `Attachment ${index + 1}`}
+                        {attachment.name || sd("attachmentFallback", { index: index + 1 })}
                       </Text>
                       <TouchableOpacity
                         onPress={() => setPendingAttachments((prev) => prev.filter((_, i) => i !== index))}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.pendingRemove}>Remove</Text>
+                        <Text style={styles.pendingRemove}>{sd("remove")}</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
@@ -528,7 +577,7 @@ export default function SupportTicketDetailScreen() {
                 {uploadingAttachment ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <Text style={styles.attachBtnText}>Attach image</Text>
+                  <Text style={styles.attachBtnText}>{sd("attachImage")}</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
@@ -540,7 +589,7 @@ export default function SupportTicketDetailScreen() {
                 ]}
                 accessibilityRole="button"
               >
-                <Text style={styles.sendBtnText}>{sending ? "Sending…" : "Send reply"}</Text>
+                <Text style={styles.sendBtnText}>{sending ? sd("sending") : sd("sendReply")}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -549,26 +598,27 @@ export default function SupportTicketDetailScreen() {
             <View style={styles.csatBlock}>
               {typeof ticket.csat_score === "number" && !csatEditing ? (
                 <>
-                  <Text style={styles.label}>Thanks for your feedback</Text>
+                  <Text style={styles.label}>{sd("csatThanksTitle")}</Text>
                   <Text style={styles.csatThanksScore}>
-                    Your rating: {ticket.csat_score}/5
-                    {ticket.csat_comment ? `\n“${ticket.csat_comment}”` : ""}
+                    {ticket.csat_comment
+                      ? sd("yourRatingWithComment", { score: ticket.csat_score, comment: ticket.csat_comment })
+                      : sd("yourRating", { score: ticket.csat_score })}
                   </Text>
                   <Text style={styles.csatThanksBanner}>
-                    This ticket is closed. We appreciate you taking a moment to rate support.
+                    {sd("csatClosedBanner")}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setCsatEditing(true)}
                     style={styles.csatSecondaryBtn}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.csatSecondaryBtnText}>Update rating</Text>
+                    <Text style={styles.csatSecondaryBtnText}>{sd("updateRating")}</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <>
                   <Text style={styles.label}>
-                    {typeof ticket.csat_score === "number" ? "Update your rating" : "Rate this support experience"}
+                    {typeof ticket.csat_score === "number" ? sd("updateYourRating") : sd("rateExperience")}
                   </Text>
                   <View style={styles.csatRow}>
                     {[1, 2, 3, 4, 5].map((score) => (
@@ -590,11 +640,11 @@ export default function SupportTicketDetailScreen() {
                     ))}
                   </View>
                   {csatScore && typeof ticket.csat_score !== "number" ? (
-                    <Text style={styles.csatHint}>Tap “Submit rating” below to send your {csatScore}/5 rating.</Text>
+                    <Text style={styles.csatHint}>{sd("csatHint", { score: csatScore })}</Text>
                   ) : null}
                   <TextInput
                     style={styles.csatInput}
-                    placeholder="Optional comment"
+                    placeholder={sd("optionalCommentPlaceholder")}
                     placeholderTextColor="#9ca3af"
                     value={csatComment}
                     onChangeText={(text) => {
@@ -612,10 +662,10 @@ export default function SupportTicketDetailScreen() {
                   >
                     <Text style={styles.sendBtnText}>
                       {submittingCsat
-                        ? "Submitting…"
+                        ? sd("submitting")
                         : typeof ticket.csat_score === "number"
-                          ? "Save rating"
-                          : "Submit rating"}
+                          ? sd("saveRating")
+                          : sd("submitRating")}
                     </Text>
                   </TouchableOpacity>
                   {typeof ticket.csat_score === "number" ? (
@@ -629,13 +679,13 @@ export default function SupportTicketDetailScreen() {
                       style={styles.csatSecondaryBtn}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.csatSecondaryBtnText}>Cancel</Text>
+                      <Text style={styles.csatSecondaryBtnText}>{t("common.cancel")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </>
               )}
               <Text style={styles.closedNote}>
-                This ticket is {ticket.status}. Open Help → New ticket if you need further help.
+                {sd("closedNote", { status: statusLabel(ticket.status, sd) })}
               </Text>
             </View>
           )}
@@ -667,7 +717,7 @@ const styles = StyleSheet.create({
   msgRowOwn: { alignItems: "flex-end" },
   msgRowOther: { alignItems: "flex-start" },
   msgAuthorRow: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
-  authorNameSpacing: { marginLeft: 4 },
+  authorNameSpacing: { marginStart: 4 },
   avatar: {
     width: 20,
     height: 20,
@@ -691,7 +741,7 @@ const styles = StyleSheet.create({
   attachmentText: { fontSize: 12, fontWeight: "600", color: Colors.gray[700] },
   attachmentTextOwn: { color: "#fff" },
   bubbleTime: { marginTop: 4, fontSize: 10, color: "#9CA3AF" },
-  bubbleTimeOwn: { color: "rgba(255,255,255,0.65)", textAlign: "right" },
+  bubbleTimeOwn: { color: "rgba(255,255,255,0.65)" },
   emptyThreadText: { marginTop: 12, marginBottom: 4, fontSize: 13, color: Colors.gray[500], textAlign: "center" },
   replyBlock: { marginTop: 16 },
   label: { marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] },
@@ -717,7 +767,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
-  pendingAttachmentText: { flex: 1, marginRight: 8, fontSize: 12, color: Colors.gray[700] },
+  pendingAttachmentText: { flex: 1, marginEnd: 8, fontSize: 12, color: Colors.gray[700] },
   pendingRemove: { fontSize: 12, fontWeight: "700", color: "#DC2626" },
   attachBtn: {
     marginBottom: 10,

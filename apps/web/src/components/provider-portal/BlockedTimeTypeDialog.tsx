@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { BlockedTimeType } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BlockedTimeTypeDialogProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function BlockedTimeTypeDialog({
   type,
   onSuccess,
 }: BlockedTimeTypeDialogProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -67,16 +69,16 @@ export function BlockedTimeTypeDialog({
     try {
       if (type) {
         await providerApi.updateBlockedTimeType(type.id, formData);
-        toast.success("Blocked time type updated");
+        toast.success(t("web.provider.portal.blockedTimeTypeDialog.updated"));
       } else {
         await providerApi.createBlockedTimeType(formData);
-        toast.success("Blocked time type created");
+        toast.success(t("web.provider.portal.blockedTimeTypeDialog.created"));
       }
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save blocked time type:", error);
-      toast.error("Failed to save blocked time type");
+      toast.error(t("web.provider.portal.blockedTimeTypeDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -87,24 +89,26 @@ export function BlockedTimeTypeDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {type ? "Edit Blocked Time Type" : "New Blocked Time Type"}
+            {type
+              ? t("web.provider.portal.blockedTimeTypeDialog.editTitle")
+              : t("web.provider.portal.blockedTimeTypeDialog.newTitle")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t("web.provider.portal.blockedTimeTypeDialog.nameRequired")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Lunch Break, Training, Meeting"
+              placeholder={t("web.provider.portal.blockedTimeTypeDialog.namePlaceholder")}
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("web.provider.portal.blockedTimeTypeDialog.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -115,7 +119,7 @@ export function BlockedTimeTypeDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="color">Color</Label>
+              <Label htmlFor="color">{t("web.provider.portal.blockedTimeTypeDialog.color")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="color"
@@ -132,12 +136,12 @@ export function BlockedTimeTypeDialog({
               </div>
             </div>
             <div>
-              <Label htmlFor="icon">Icon (Optional)</Label>
+              <Label htmlFor="icon">{t("web.provider.portal.blockedTimeTypeDialog.iconOptional")}</Label>
               <Input
                 id="icon"
                 value={formData.icon}
                 onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                placeholder="Icon name or URL"
+                placeholder={t("web.provider.portal.blockedTimeTypeDialog.iconPlaceholder")}
               />
             </div>
           </div>
@@ -151,7 +155,7 @@ export function BlockedTimeTypeDialog({
               }
             />
             <Label htmlFor="is_active" className="cursor-pointer">
-              Active
+              {t("web.provider.portal.blockedTimeTypeDialog.active")}
             </Label>
           </div>
 
@@ -162,14 +166,18 @@ export function BlockedTimeTypeDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : type ? "Update" : "Create"}
+              {isLoading
+                ? t("web.provider.portal.blockedTimeTypeDialog.saving")
+                : type
+                  ? t("web.provider.portal.blockedTimeTypeDialog.update")
+                  : t("web.provider.portal.blockedTimeTypeDialog.create")}
             </Button>
           </DialogFooter>
         </form>

@@ -7,6 +7,7 @@ import {
   DEFAULT_VERIFICATION_POLICY,
   type PublicConfigBundle,
 } from "@/lib/config-bundle";
+import { resyncLocaleFromBundle } from "@/lib/i18n";
 
 interface ConfigBundleContextValue {
   bundle: PublicConfigBundle | null;
@@ -62,6 +63,7 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
         platform: "customer",
         environment: __DEV__ ? "development" : "production",
       });
+      void resyncLocaleFromBundle();
       requestAnimationFrame(() => {
         setBundle(data);
         setError(null);

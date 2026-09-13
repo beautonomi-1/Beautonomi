@@ -11,11 +11,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface SearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -35,6 +37,9 @@ const MIN_QUERY_LENGTH = 2;
 const DEBOUNCE_MS = 300;
 
 export default function SearchScreen() {
+  const { t } = useTranslation();
+  const as = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.appSearch.${key}`, opts) as string;
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollBottomPad = Math.max(insets.bottom, 8) + 28;
@@ -101,13 +106,13 @@ export default function SearchScreen() {
 
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
-      <ScreenHeader title="Search" onBack={() => router.back()} />
+      <ScreenHeader title={as("title")} onBack={() => router.back()} />
       <View style={twStyle("px-4 pt-2 pb-4 border-b border-gray-200")}>
         <View style={twStyle("flex-row items-center rounded-xl bg-gray-100 px-4 py-3")}>
           <Ionicons name="search-outline" size={22} color={Colors.gray[500]} />
           <TextInput
-            style={twStyle("ml-3 flex-1 text-base text-gray-900")}
-            placeholder="Clients, bookings, services…"
+            style={twStyle("ms-3 flex-1 text-base text-gray-900")}
+            placeholder={as("placeholder")}
             placeholderTextColor={Colors.gray[500]}
             value={inputValue}
             onChangeText={handleInputChange}
@@ -137,7 +142,7 @@ export default function SearchScreen() {
         {inputValue.trim().length > 0 && inputValue.trim().length < MIN_QUERY_LENGTH && (
           <View style={twStyle("py-8 items-center")}>
             <Text style={twStyle("text-gray-500 text-center")}>
-              Type at least {MIN_QUERY_LENGTH} characters to search
+              {as("minChars", { count: MIN_QUERY_LENGTH })}
             </Text>
           </View>
         )}
@@ -145,7 +150,7 @@ export default function SearchScreen() {
         {searchPath && loading && !data && (
           <View style={twStyle("py-12 items-center")}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={twStyle("mt-3 text-gray-500")}>Searching…</Text>
+            <Text style={twStyle("mt-3 text-gray-500")}>{as("searching")}</Text>
           </View>
         )}
 
@@ -156,7 +161,7 @@ export default function SearchScreen() {
               onPress={() => refresh()}
               style={twStyle("mt-4 rounded-lg bg-gray-200 py-3")}
             >
-              <Text style={twStyle("text-center font-medium text-gray-800")}>Retry</Text>
+              <Text style={twStyle("text-center font-medium text-gray-800")}>{as("retry")}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -165,7 +170,7 @@ export default function SearchScreen() {
           <View style={twStyle("py-12 items-center")}>
             <Ionicons name="search-outline" size={40} color={Colors.gray[400]} />
             <Text style={twStyle("mt-3 text-gray-500 text-center")}>
-              {`No results for "${query.trim()}"`}
+              {as("noResults", { query: query.trim() })}
             </Text>
           </View>
         )}
@@ -198,7 +203,7 @@ export default function SearchScreen() {
                     }
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                     {s.title}
                   </Text>
@@ -208,7 +213,7 @@ export default function SearchScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+                <DirectionalIcon name="chevron-forward" size={20} color={Colors.gray[400]} />
               </TouchableOpacity>
             ))}
           </View>

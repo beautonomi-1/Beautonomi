@@ -101,7 +101,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
       {/* Mobile Back Button */}
       <div className="flex md:hidden px-4 py-3 items-center">
         <Link href="/" className="flex items-center text-gray-600">
-          <ChevronLeft className="h-5 w-5 mr-1" />
+          <ChevronLeft className="h-5 w-5 me-1" />
           <span className="text-sm">Go back</span>
         </Link>
       </div>

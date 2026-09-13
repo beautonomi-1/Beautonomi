@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -56,6 +58,7 @@ interface ServicePackage {
 }
 
 export default function ProviderPackagesPage() {
+  const { t } = useTranslation();
   const locale = useTenantLocaleTag();
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,7 +76,7 @@ export default function ProviderPackagesPage() {
       const list = unpackPackagesListPayload(response) as ServicePackage[];
       setPackages(list);
     } catch (err) {
-      setError(err instanceof FetchError ? err.message : "Failed to load packages");
+      setError(err instanceof FetchError ? err.message : t("web.provider.packagesPage.loadFailed"));
       console.error("Error loading packages:", err);
     } finally {
       setIsLoading(false);
@@ -81,16 +84,16 @@ export default function ProviderPackagesPage() {
   };
 
   const handleDelete = async (packageId: string) => {
-    if (!confirm("Are you sure you want to delete this package?")) {
+    if (!confirm(t("web.provider.packagesPage.deleteConfirm"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/provider/packages/${packageId}`);
-      toast.success("Package deleted successfully");
+      toast.success(t("web.provider.packagesPage.deleted"));
       loadPackages();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to delete package");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.packagesPage.failedToDelete"));
       console.error("Error deleting package:", err);
     }
   };
@@ -111,12 +114,12 @@ export default function ProviderPackagesPage() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Packages" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.packages") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading packages..." />
+<LoadingTimeout loadingMessage={t("web.provider.packagesPage.loading")} />
       </SettingsDetailLayout>
     );
   }
@@ -124,21 +127,21 @@ export default function ProviderPackagesPage() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Packages" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.packages") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Service Packages"
-          subtitle="Create and manage service packages for your clients"
+          title={t("web.provider.packagesPage.title")}
+          subtitle={t("web.provider.packagesPage.subtitle")}
           actions={
             <Link href="/provider/packages/new">
               <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create Package
+                <Plus className="w-4 h-4 me-2" />
+{t("web.provider.packagesPage.createPackage")}
               </Button>
             </Link>
           }
@@ -153,10 +156,10 @@ export default function ProviderPackagesPage() {
         {packages.length === 0 ? (
           <EmptyState
             icon={Package}
-            title="No packages created yet"
-            description="Create service packages to offer bundled services at discounted rates"
+            title={t("web.provider.packagesPage.emptyTitle")}
+            description={t("web.provider.packagesPage.emptyDesc")}
             action={{
-              label: "Create Your First Package",
+              label: t("web.provider.packagesPage.createFirst"),
               onClick: () => window.location.href = "/provider/packages/new",
             }}
           />
@@ -168,7 +171,7 @@ export default function ProviderPackagesPage() {
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-xl">{pkg.name}</CardTitle>
                     {!pkg.is_active && (
-                      <Badge variant="secondary">Inactive</Badge>
+<Badge variant="secondary">{t("web.provider.common.inactive")}</Badge>
                     )}
                   </div>
                   {pkg.description && (
@@ -182,25 +185,27 @@ export default function ProviderPackagesPage() {
                     </p>
                     {pkg.discount_percentage && (
                       <p className="text-sm text-green-600">
-                        {pkg.discount_percentage}% discount
+{t("web.provider.packagesPage.percentDiscount", { percent: pkg.discount_percentage })}
                       </p>
                     )}
                   </div>
 
                   <div className="mb-4">
-                    <p className="text-sm font-semibold mb-2">Items Included:</p>
+<p className="text-sm font-semibold mb-2">{t("web.provider.packagesPage.itemsIncluded")}</p>
                     <ul className="space-y-1">
                       {pkg.items.map((item) => {
                         const variantLabel = formatVariantLabel(item);
                         const itemName = item.offering 
-                          ? `${item.offering.title} (Service)`
+                          ? t("web.provider.packagesPage.itemService", { name: item.offering.title })
                           : item.product 
-                          ? `${item.product.name}${variantLabel ? ` — ${variantLabel}` : ""} (Product)`
+                          ? variantLabel
+                            ? t("web.provider.packagesPage.itemProductVariant", { name: item.product.name, variant: variantLabel })
+                            : t("web.provider.packagesPage.itemProduct", { name: item.product.name })
                           : item.offering_id
-                          ? "Service (deleted)"
+                          ? t("web.provider.packagesPage.serviceDeleted")
                           : item.product_id
-                          ? "Product (deleted)"
-                          : "Unknown item";
+                          ? t("web.provider.packagesPage.productDeleted")
+                          : t("web.provider.packagesPage.unknownItem");
                         return (
                           <li key={item.id} className="text-sm text-gray-600">
                             • {itemName} {item.quantity > 1 && `(x${item.quantity})`}
@@ -213,8 +218,8 @@ export default function ProviderPackagesPage() {
                   <div className="flex gap-2 pt-4 border-t">
                     <Link href={`/provider/packages/${pkg.id}/edit`} className="flex-1">
                       <Button variant="outline" className="w-full" size="sm">
-                        <Edit className="w-4 h-4 mr-1" />
-                        Edit
+                        <Edit className="w-4 h-4 me-1" />
+{t("web.provider.common.edit")}
                       </Button>
                     </Link>
                     <Button

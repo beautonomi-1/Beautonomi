@@ -1,8 +1,9 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 /**
  * /provider/settings/sales/terminal-shop
- * Storefront for Beautonomi card machines: browse the catalog, place orders,
+ * Storefront for {t("web.provider.settings.pages.sales/terminal-shop.beautonomiCardMachines")}: browse the catalog, place orders,
  * pay via Paystack, track fulfillment, and jump to activation.
  */
 
@@ -143,14 +144,16 @@ const EMPTY_DELIVERY: DeliveryForm = {
   contact_phone: "",
 };
 
-const FULFILLMENT_META: Record<string, { label: string; Icon: typeof Truck }> = {
-  shipping: { label: "Shipped to you", Icon: Truck },
-  courier: { label: "Courier delivery", Icon: Truck },
-  collection: { label: "Collect in person", Icon: MapPin },
-  digital_activation: { label: "Instant digital activation", Icon: Zap },
-};
+function fulfillmentMeta(t: (key: string) => string): Record<string, { label: string; Icon: typeof Truck }> {
+  return {
+    shipping: { label: t("web.provider.settings.pages.sales/terminal-shop.shippedToYou"), Icon: Truck },
+    courier: { label: t("web.provider.settings.pages.sales/terminal-shop.courierDelivery"), Icon: Truck },
+    collection: { label: t("web.provider.settings.pages.sales/terminal-shop.collectInPerson"), Icon: MapPin },
+    digital_activation: { label: t("web.provider.settings.pages.sales/terminal-shop.instantDigitalActivation"), Icon: Zap },
+  };
+}
 
-const CHECKOUT_STEPS = ["Plan", "Delivery", "Review"] as const;
+const CHECKOUT_STEP_KEYS = ["plan", "delivery", "review"] as const;
 
 function formatMoney(currency: string, amount: number | null | undefined) {
   if (amount == null) return "—";
@@ -184,7 +187,8 @@ function ProductImage({ product }: { product: TerminalProduct }) {
 }
 
 function FulfillmentChip({ type }: { type: string | null | undefined }) {
-  const meta = FULFILLMENT_META[type ?? ""] ?? null;
+  const { t } = useTranslation();
+  const meta = fulfillmentMeta(t)[type ?? ""] ?? null;
   if (!meta) return null;
   const { label, Icon } = meta;
   return (
@@ -196,9 +200,10 @@ function FulfillmentChip({ type }: { type: string | null | undefined }) {
 }
 
 function OrderTimeline({ order }: { order: TerminalOrder }) {
+  const { t } = useTranslation();
   const steps = getTerminalOrderProgressSteps(order);
   return (
-    <ol className="mt-3 flex items-center" aria-label="Order progress">
+    <ol className="mt-3 flex items-center" aria-label={t("web.provider.settings.pages.sales/terminal-shop.orderProgress")}>
       {steps.map((step, idx) => (
         <li key={step.label} className="flex items-center">
           {idx > 0 ? (
@@ -240,9 +245,16 @@ function OrderTimeline({ order }: { order: TerminalOrder }) {
 }
 
 function CheckoutStepper({ step }: { step: 1 | 2 | 3 }) {
+  const { t } = useTranslation();
+  const labels = {
+    plan: t("web.provider.settings.pages.sales/terminal-shop.plan"),
+    delivery: t("web.provider.settings.pages.sales/terminal-shop.delivery"),
+    review: t("web.provider.settings.pages.sales/terminal-shop.review"),
+  };
   return (
-    <ol className="flex items-center gap-1" aria-label="Checkout steps">
-      {CHECKOUT_STEPS.map((label, idx) => {
+    <ol className="flex items-center gap-1" aria-label={t("web.provider.settings.pages.sales/terminal-shop.checkoutSteps")}>
+      {CHECKOUT_STEP_KEYS.map((key, idx) => {
+        const label = labels[key];
         const n = (idx + 1) as 1 | 2 | 3;
         const state = n < step ? "done" : n === step ? "current" : "upcoming";
         return (
@@ -296,6 +308,7 @@ function ShopSkeleton() {
 }
 
 export default function TerminalShopPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const catalogEnabled = useFeatureFlag("terminal_product_catalog_enabled");
   const ecommerceEnabled = useFeatureFlag("terminal_ecommerce_enabled");
@@ -341,7 +354,7 @@ export default function TerminalShopPage() {
       setAssets(assetRes?.data?.assets ?? []);
       setCollectionLocations(locRes?.data?.locations ?? []);
     } catch {
-      toast.error("Failed to load terminal shop");
+      toast.error(t("web.provider.settings.pages.sales/terminal-shop.failedToLoadTerminalShop"));
     } finally {
       setLoading(false);
     }
@@ -359,10 +372,10 @@ export default function TerminalShopPage() {
         try {
           await fetcher.get(`/api/paystack/verify-reference?reference=${encodeURIComponent(reference)}`);
           setPaymentBanner("confirmed");
-          toast.success("Payment confirmed.");
+          toast.success(t("web.provider.settings.pages.sales/terminal-shop.paymentConfirmed"));
         } catch {
           setPaymentBanner("processing");
-          toast.message("Payment submitted — confirmation may take a moment.");
+          toast.message(t("web.provider.settings.pages.sales/terminal-shop.paymentSubmittedMoment"));
         }
         void loadAll();
       })();
@@ -470,7 +483,7 @@ export default function TerminalShopPage() {
 
   function validateFulfillmentStep(): string | null {
     if (fulfillmentType === "collection" && collectionLocations.length === 0) {
-      return "No pickup locations are configured yet. Contact support.";
+      return t("web.provider.settings.pages.sales/terminal-shop.noPickupLocations");
     }
     const payload = buildFulfillmentPayload();
     try {
@@ -481,7 +494,7 @@ export default function TerminalShopPage() {
       });
       return null;
     } catch (error) {
-      return error instanceof Error ? error.message : "Invalid fulfillment details";
+      return error instanceof Error ? error.message : t("web.provider.settings.pages.sales/terminal-shop.invalidFulfillmentDetails");
     }
   }
 
@@ -518,7 +531,7 @@ export default function TerminalShopPage() {
         );
         order = res.data?.order;
         requiresPayment = false;
-        toast.success("Terminal allocated from your subscription plan.");
+        toast.success(t("web.provider.settings.pages.sales/terminal-shop.terminalAllocatedFromYourSubscriptionPlan"));
       } else {
         const res = await fetcher.post<{ data: { order: TerminalOrder; requires_payment: boolean } }>(
           "/api/provider/terminal-orders",
@@ -526,7 +539,7 @@ export default function TerminalShopPage() {
         );
         order = res.data?.order;
         requiresPayment = res.data?.requires_payment ?? true;
-        toast.success(requiresPayment ? "Order placed — complete payment to confirm." : "Order placed.");
+        toast.success(requiresPayment ? t("web.provider.settings.pages.sales/terminal-shop.orderPlacedCompletePayment") : t("web.provider.settings.pages.sales/terminal-shop.orderPlaced"));
       }
 
       setCheckoutProduct(null);
@@ -537,9 +550,9 @@ export default function TerminalShopPage() {
       }
     } catch (err) {
       if (err instanceof FetchError && err.status === 403) {
-        toast.error("Only the business owner can place terminal orders");
+        toast.error(t("web.provider.settings.pages.sales/terminal-shop.onlyTheBusinessOwnerCanPlace"));
       } else {
-        toast.error(err instanceof FetchError ? err.message : "Failed to place order");
+        toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-shop.failedToPlaceOrder"));
       }
     } finally {
       setSubmitting(false);
@@ -558,9 +571,9 @@ export default function TerminalShopPage() {
         window.location.href = url;
         return;
       }
-      toast.error("Could not start payment");
+      toast.error(t("web.provider.settings.pages.sales/terminal-shop.couldNotStartPayment"));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Payment failed to start");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.settings.pages.sales/terminal-shop.paymentFailedToStart"));
     } finally {
       setPayingOrderId(null);
     }
@@ -569,7 +582,7 @@ export default function TerminalShopPage() {
   if (!catalogEnabled && !ecommerceEnabled) {
     return (
       <SettingsDetailLayout
-        title="Terminal Shop"
+        title={t("web.provider.settings.categories.sales.items.terminalShop.title")}
         backHref={
           paycloudEnabled
             ? "/provider/settings/sales/card-machines"
@@ -577,7 +590,7 @@ export default function TerminalShopPage() {
         }
       >
         <SectionCard>
-          <p className="text-sm text-gray-600">Terminal e-commerce is not enabled for your account yet.</p>
+          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.sales/terminal-shop.ecommerceNotEnabled")}</p>
         </SectionCard>
       </SettingsDetailLayout>
     );
@@ -589,8 +602,8 @@ export default function TerminalShopPage() {
 
   return (
     <SettingsDetailLayout
-      title="Terminal Shop"
-      description="Card machines sold and supported by Beautonomi."
+      title={t("web.provider.settings.pages.sales/terminal-shop.terminalShop")}
+      description={t("web.provider.settings.pages.sales/terminal-shop.soldAndSupported")}
       backHref="/provider/settings"
     >
       {loading ? (
@@ -603,27 +616,26 @@ export default function TerminalShopPage() {
               <div className="max-w-xl">
                 <div className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-2.5 py-1 text-xs font-medium text-pink-700 ring-1 ring-pink-200">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Beautonomi card machines
+                  {t("web.provider.settings.pages.sales/terminal-shop.beautonomiCardMachines")}
                 </div>
                 <h2 className="mt-3 text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
-                  Get paid in person — tap, insert, swipe, and QR wallets
+                  {t("web.provider.settings.pages.sales/terminal-shop.getPaidInPerson")}
                 </h2>
                 <p className="mt-1.5 text-sm text-gray-600">
-                  Order a card machine, activate it with its serial number, and charges flow straight
-                  from your bookings and sales checkout.
+                  {t("web.provider.settings.pages.sales/terminal-shop.orderActivateHint")}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
                     <Zap className="h-3.5 w-3.5 text-pink-600" />
-                    Charges pushed from checkout
+                    {t("web.provider.settings.pages.sales/terminal-shop.chargesPushed")}
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
                     <BadgeCheck className="h-3.5 w-3.5 text-pink-600" />
-                    Payments auto-reconciled
+                    {t("web.provider.settings.pages.sales/terminal-shop.paymentsAutoReconciled")}
                   </span>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200/70">
                     <ShieldCheck className="h-3.5 w-3.5 text-pink-600" />
-                    Sold &amp; supported by Beautonomi
+                    {t("web.provider.settings.pages.sales/terminal-shop.soldSupportedByBeautonomi")}
                   </span>
                 </div>
               </div>
@@ -631,13 +643,13 @@ export default function TerminalShopPage() {
                 {activeDeviceCount > 0 ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 ring-1 ring-green-200">
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    {activeDeviceCount} device{activeDeviceCount === 1 ? "" : "s"} active
+                    {t("web.provider.settings.pages.sales/terminal-shop.devicesActive", { count: activeDeviceCount })}
                   </span>
                 ) : null}
                 <Button asChild variant="outline" size="sm" className="bg-white/80">
                   <Link href={manageMachinesHref}>
-                    Manage machines
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                    {t("web.provider.settings.pages.sales/terminal-shop.manageMachines")}
+                    <ArrowRight className="ms-1.5 h-4 w-4" />
                   </Link>
                 </Button>
               </div>
@@ -666,8 +678,8 @@ export default function TerminalShopPage() {
                     }`}
                   >
                     {paymentBanner === "confirmed"
-                      ? "Payment confirmed"
-                      : "Payment submitted — confirmation may take a moment"}
+                      ? t("web.provider.settings.pages.sales/terminal-shop.paymentConfirmedNoPeriod")
+                      : t("web.provider.settings.pages.sales/terminal-shop.paymentSubmittedShort")}
                   </p>
                   <p
                     className={`text-xs ${
@@ -675,8 +687,8 @@ export default function TerminalShopPage() {
                     }`}
                   >
                     {paymentBanner === "confirmed"
-                      ? "Next step: activate your machine with its serial number."
-                      : "Check Your orders below — the status updates automatically."}
+                      ? t("web.provider.settings.pages.sales/terminal-shop.nextStepActivate")
+                      : t("web.provider.settings.pages.sales/terminal-shop.checkYourOrdersBelow")}
                   </p>
                 </div>
               </div>
@@ -684,9 +696,9 @@ export default function TerminalShopPage() {
                 <Button asChild size="sm">
                   <Link href={integrationSetupHref(pendingActivationOrder)}>
                     {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                      ? "Complete application"
-                      : "Activate machine"}
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                      ? t("web.provider.settings.pages.sales/terminal-shop.completeApplication")
+                      : t("web.provider.settings.pages.sales/terminal-shop.activateMachine")}
+                    <ArrowRight className="ms-1.5 h-4 w-4" />
                   </Link>
                 </Button>
               ) : null}
@@ -701,22 +713,22 @@ export default function TerminalShopPage() {
                 <div>
                   <p className="text-sm font-medium text-pink-900">
                     {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                      ? "Complete your card machine application"
-                      : `${pendingActivationOrder.terminal_products?.name ?? "Your card machine"} is paid and waiting for activation`}
+                      ? t("web.provider.settings.pages.sales/terminal-shop.completeYourApplication")
+                      : t("web.provider.settings.pages.sales/terminal-shop.machinePaidWaiting", { name: pendingActivationOrder.terminal_products?.name ?? t("web.provider.settings.pages.sales/terminal-shop.yourCardMachine") })}
                   </p>
                   <p className="text-xs text-pink-700">
                     {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                      ? "We need a few business details before we can ship your device."
-                      : "Enter the serial number from the device label to finish setup."}
+                      ? t("web.provider.settings.pages.sales/terminal-shop.needBusinessDetails")
+                      : t("web.provider.settings.pages.sales/terminal-shop.enterSerialToFinish")}
                   </p>
                 </div>
               </div>
               <Button asChild size="sm">
                 <Link href={integrationSetupHref(pendingActivationOrder)}>
                   {pendingActivationOrder.integration_setup_status === "awaiting_merchant_onboarding"
-                    ? "Complete application"
-                    : "Activate machine"}
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                    ? t("web.provider.settings.pages.sales/terminal-shop.completeApplication")
+                    : t("web.provider.settings.pages.sales/terminal-shop.activateMachine")}
+                  <ArrowRight className="ms-1.5 h-4 w-4" />
                 </Link>
               </Button>
             </div>
@@ -725,13 +737,13 @@ export default function TerminalShopPage() {
           {/* Catalog */}
           {catalogEnabled && (
             <SectionCard
-              title="Choose your machine"
-              description="Every machine works with Beautonomi checkout out of the box."
+              title={t("web.provider.settings.pages.sales/terminal-shop.chooseYourMachine")}
+              description={t("web.provider.settings.pages.sales/terminal-shop.everyMachineWorks")}
             >
               {products.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-10 text-center">
                   <Smartphone className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-                  <p className="text-sm text-gray-500">No terminal products available yet — check back soon.</p>
+                  <p className="text-sm text-gray-500">{t("web.provider.settings.pages.sales/terminal-shop.noTerminalProducts")}</p>
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -757,7 +769,7 @@ export default function TerminalShopPage() {
                           {includedOption ? (
                             <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-pink-600 px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm">
                               <Sparkles className="h-3 w-3" />
-                              Included in your plan
+                              {t("web.provider.settings.pages.sales/terminal-shop.includedInYourPlan")}
                             </span>
                           ) : null}
                           {p.stock_status !== "in_stock" ? (
@@ -795,7 +807,7 @@ export default function TerminalShopPage() {
                                 <span className="font-semibold">
                                   {opt.requires_payment
                                     ? formatMoney(opt.currency, opt.price)
-                                    : "R 0 — in plan"}
+                                    : t("web.provider.settings.pages.sales/terminal-shop.inPlanPrice")}
                                 </span>
                               </div>
                             ))}
@@ -804,13 +816,13 @@ export default function TerminalShopPage() {
                         <div className="mt-auto space-y-1.5 pt-1">
                           {cta.kind === "order" ? (
                             <Button className="w-full" onClick={() => openCheckout(p)}>
-                              Order this machine
-                              <ArrowRight className="ml-1.5 h-4 w-4" />
+                              {t("web.provider.settings.pages.sales/terminal-shop.orderThisMachine")}
+                              <ArrowRight className="ms-1.5 h-4 w-4" />
                             </Button>
                           ) : (
                             <>
                               <Button className="w-full" disabled>
-                                {cta.kind === "out_of_stock" ? "Out of stock" : "Order this machine"}
+                                {cta.kind === "out_of_stock" ? t("web.provider.settings.pages.sales/terminal-shop.outOfStock") : t("web.provider.settings.pages.sales/terminal-shop.orderThisMachine")}
                               </Button>
                               {cta.kind !== "out_of_stock" ? (
                                 <p className="text-center text-xs text-gray-500">{cta.message}</p>
@@ -818,7 +830,7 @@ export default function TerminalShopPage() {
                             </>
                           )}
                           <p className="text-center text-[11px] text-gray-400">
-                            Sold and supported by Beautonomi
+                            {t("web.provider.settings.pages.sales/terminal-shop.soldAndSupportedByBeautonomi")}
                           </p>
                         </div>
                       </div>
@@ -831,12 +843,12 @@ export default function TerminalShopPage() {
 
           {/* Orders */}
           {ecommerceEnabled && (
-            <SectionCard title="Your orders" description="Track payment, integration, and delivery.">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-shop.yourOrders")} description={t("web.provider.settings.pages.sales/terminal-shop.trackPaymentIntegration")}>
               {orders.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-8 text-center">
                   <Package className="mx-auto mb-2 h-8 w-8 text-gray-300" />
                   <p className="text-sm text-gray-500">
-                    No orders yet — pick a machine above to get started.
+                    {t("web.provider.settings.pages.sales/terminal-shop.noOrdersYet")}
                   </p>
                 </div>
               ) : (
@@ -854,7 +866,7 @@ export default function TerminalShopPage() {
                       >
                         <div className="min-w-0 space-y-1">
                           <p className="font-medium text-gray-900">
-                            {o.terminal_products?.name ?? "Terminal order"}
+                            {o.terminal_products?.name ?? t("web.provider.settings.pages.sales/terminal-shop.terminalOrder")}
                           </p>
                           <p className="text-xs text-gray-500">
                             {new Date(o.created_at).toLocaleDateString()} ·{" "}
@@ -866,18 +878,18 @@ export default function TerminalShopPage() {
                           <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1 text-xs text-gray-500">
                             {o.fulfillment_type ? (
                               <span className="capitalize">
-                                {FULFILLMENT_META[o.fulfillment_type]?.label ??
+                                {fulfillmentMeta(t)[o.fulfillment_type]?.label ??
                                   o.fulfillment_type.replace(/_/g, " ")}
                               </span>
                             ) : null}
                             {o.tracking_reference ? (
                               <span>
-                                {o.courier_name ? `${o.courier_name}: ` : "Tracking: "}
+                                {o.courier_name ? `${o.courier_name}: ` : t("web.provider.settings.pages.sales/terminal-shop.trackingLabel")}
                                 <span className="font-mono">{o.tracking_reference}</span>
                               </span>
                             ) : null}
                             {o.fulfillment_type === "collection" && o.terminal_collection_locations?.name ? (
-                              <span>Pickup: {o.terminal_collection_locations.name}</span>
+                              <span>{t("web.provider.settings.pages.sales/terminal-shop.pickupLabel", { name: o.terminal_collection_locations.name })}</span>
                             ) : null}
                             {["cancelled", "refunded", "failed"].includes(o.order_status) ? (
                               <Badge variant="outline" className="text-xs capitalize">
@@ -889,17 +901,17 @@ export default function TerminalShopPage() {
                         <div className="flex flex-col items-stretch gap-2 sm:items-end">
                           {primaryAction === "pay" ? (
                             <Button size="sm" disabled={payingOrderId === o.id} onClick={() => payForOrder(o.id)}>
-                              <CreditCard className="mr-1.5 h-4 w-4" />
-                              {payingOrderId === o.id ? "Starting…" : "Pay now"}
+                              <CreditCard className="me-1.5 h-4 w-4" />
+                              {payingOrderId === o.id ? t("web.provider.settings.pages.sales/terminal-shop.starting") : t("web.provider.settings.pages.sales/terminal-shop.payNow")}
                             </Button>
                           ) : null}
                           {primaryAction === "setup" ? (
                             <Button size="sm" asChild>
                               <Link href={integrationSetupHref(o)}>
-                                <Wrench className="mr-1.5 h-4 w-4" />
+                                <Wrench className="me-1.5 h-4 w-4" />
                                 {o.integration_setup_status === "awaiting_merchant_onboarding"
-                                  ? "Complete application"
-                                  : "Complete setup"}
+                                  ? t("web.provider.settings.pages.sales/terminal-shop.completeApplication")
+                                  : t("web.provider.settings.pages.sales/terminal-shop.completeSetup")}
                               </Link>
                             </Button>
                           ) : null}
@@ -910,8 +922,8 @@ export default function TerminalShopPage() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
-                                <Download className="mr-1.5 h-4 w-4" />
-                                Receipt
+                                <Download className="me-1.5 h-4 w-4" />
+                                {t("web.provider.settings.pages.sales/terminal-shop.receipt")}
                               </a>
                             </Button>
                           ) : null}
@@ -926,7 +938,7 @@ export default function TerminalShopPage() {
 
           {/* Devices */}
           {assets.length > 0 && (
-            <SectionCard title="Your devices" description="Machines linked to your account.">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-shop.yourDevices")} description={t("web.provider.settings.pages.sales/terminal-shop.machinesLinked")}>
               <div className="space-y-2">
                 {assets.map((a) => (
                   <div
@@ -939,21 +951,20 @@ export default function TerminalShopPage() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-900">
-                          {a.terminal_products?.name ?? "Terminal device"}
+                          {a.terminal_products?.name ?? t("web.provider.settings.pages.sales/terminal-shop.terminalDevice")}
                         </p>
                         <p className="text-xs text-gray-500">
                           {TERMINAL_ASSET_OWNERSHIP_LABELS[a.ownership_model] ??
                             a.ownership_model.replace(/_/g, " ")}
                           {a.serial_number ? (
                             <>
-                              {" · Serial "}
+                              {t("web.provider.settings.pages.sales/terminal-shop.serialLabel")}
                               <span className="font-mono">{a.serial_number}</span>
                             </>
                           ) : (
                             <>
                               {" · "}
-                              Serial not assigned yet — card payments stay unavailable until
-                              Beautonomi registers this machine
+                              {t("web.provider.settings.pages.sales/terminal-shop.serialNotAssigned")}
                             </>
                           )}
                         </p>
@@ -971,16 +982,16 @@ export default function TerminalShopPage() {
             </SectionCard>
           )}
 
-          {/* What happens after purchase */}
+          {/* {t("web.provider.settings.pages.sales/terminal-shop.whatHappensAfterPurchase")} */}
           <SectionCard className="border-dashed bg-slate-50">
-            <h3 className="font-semibold text-gray-900">What happens after purchase</h3>
+            <h3 className="font-semibold text-gray-900">{t("web.provider.settings.pages.sales/terminal-shop.whatHappensAfterPurchase")}</h3>
             <ol className="mt-3 grid gap-3 sm:grid-cols-3">
               <li className="flex items-start gap-2.5">
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-pink-100 text-xs font-bold text-pink-700">
                   1
                 </span>
                 <p className="text-sm text-gray-600">
-                  Pay for your order — we prepare it for delivery, pickup, or instant activation.
+                  {t("web.provider.settings.pages.sales/terminal-shop.afterPurchaseStep1")}
                 </p>
               </li>
               <li className="flex items-start gap-2.5">
@@ -988,9 +999,9 @@ export default function TerminalShopPage() {
                   2
                 </span>
                 <p className="text-sm text-gray-600">
-                  Activate the machine with its serial number in{" "}
+                  {t("web.provider.settings.pages.sales/terminal-shop.afterPurchaseStep2Before")}{" "}
                   <Link href={manageMachinesHref} className="font-medium text-pink-600 underline">
-                    {paycloudEnabled ? "Card machines" : "Terminal Integrations"}
+                    {paycloudEnabled ? t("web.provider.settings.pages.sales/card-machines.cardMachines") : t("web.provider.settings.pages.sales/terminal-integrations.terminalIntegrations")}
                   </Link>
                   .
                 </p>
@@ -1000,7 +1011,7 @@ export default function TerminalShopPage() {
                   3
                 </span>
                 <p className="text-sm text-gray-600">
-                  Turn on in-person acceptance and start charging at bookings and sales.
+                  {t("web.provider.settings.pages.sales/terminal-shop.afterPurchaseStep3")}
                 </p>
               </li>
             </ol>
@@ -1015,12 +1026,12 @@ export default function TerminalShopPage() {
           if (!open && !submitting) setCheckoutProduct(null);
         }}
       >
-        <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
+        <SheetContent side="end" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
           {checkoutProduct ? (
             <>
               <div className="border-b px-6 pb-4 pt-6">
                 <SheetHeader>
-                  <SheetTitle>Order {checkoutProduct.name}</SheetTitle>
+                  <SheetTitle>{t("web.provider.settings.pages.sales/terminal-shop.orderProduct", { name: checkoutProduct.name })}</SheetTitle>
                   <SheetDescription className="capitalize">
                     {checkoutProduct.vendor}
                     {checkoutProduct.model ? ` · ${checkoutProduct.model}` : ""}
@@ -1034,10 +1045,10 @@ export default function TerminalShopPage() {
               <div className="flex-1 overflow-y-auto px-6 py-5">
                 {checkoutStep === 1 && (
                   <div className="space-y-2.5">
-                    <p className="text-sm font-medium text-gray-900">How would you like to get it?</p>
+                    <p className="text-sm font-medium text-gray-900">{t("web.provider.settings.pages.sales/terminal-shop.howWouldYouLike")}</p>
                     {checkoutOptions.length === 0 ? (
                       <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                        This product isn&apos;t configured for checkout. Contact Beautonomi support.
+                        {t("web.provider.settings.pages.sales/terminal-shop.productNotConfigured")}
                       </p>
                     ) : (
                       checkoutOptions.map((opt) => {
@@ -1073,7 +1084,7 @@ export default function TerminalShopPage() {
                                 <span className={`font-semibold ${opt.requires_payment ? "text-gray-900" : "text-pink-700"}`}>
                                   {opt.requires_payment
                                     ? formatMoney(opt.currency, opt.price)
-                                    : "R 0 — in your plan"}
+                                    : t("web.provider.settings.pages.sales/terminal-shop.inYourPlanPrice")}
                                 </span>
                               </span>
                               {opt.description && (
@@ -1094,10 +1105,10 @@ export default function TerminalShopPage() {
                     </div>
                     {fulfillmentType === "collection" && (
                       <div className="space-y-2">
-                        <Label>Pickup location</Label>
+                        <Label>{t("web.provider.settings.pages.sales/terminal-shop.pickupLocation")}</Label>
                         {collectionLocations.length === 0 ? (
                           <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                            No pickup locations are configured yet. Contact support.
+                            {t("web.provider.settings.pages.sales/terminal-shop.noPickupLocations")}
                           </p>
                         ) : (
                           collectionLocations.map((loc) => {
@@ -1108,7 +1119,7 @@ export default function TerminalShopPage() {
                                 key={loc.id}
                                 type="button"
                                 onClick={() => setCollectionLocationId(loc.id)}
-                                className={`flex w-full items-start gap-3 rounded-xl border p-3.5 text-left transition-colors ${
+                                className={`flex w-full items-start gap-3 rounded-xl border p-3.5 text-start transition-colors ${
                                   selected
                                     ? "border-pink-400 bg-pink-50/50 ring-1 ring-pink-300"
                                     : "border-gray-200 hover:border-gray-300"
@@ -1131,13 +1142,13 @@ export default function TerminalShopPage() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         {(
                           [
-                            ["line1", "Address line 1", "address-line1"],
-                            ["line2", "Address line 2", "address-line2"],
-                            ["city", "City", "address-level2"],
-                            ["province", "Province", "address-level1"],
-                            ["postal_code", "Postal code", "postal-code"],
-                            ["contact_name", "Contact name", "name"],
-                            ["contact_phone", "Contact phone", "tel"],
+                            ["line1", t("web.provider.settings.pages.sales/terminal-shop.addressLine1"), "address-line1"],
+                            ["line2", t("web.provider.settings.pages.sales/terminal-shop.addressLine2"), "address-line2"],
+                            ["city", t("web.provider.settings.pages.sales/terminal-shop.city"), "address-level2"],
+                            ["province", t("web.provider.settings.pages.sales/terminal-shop.province"), "address-level1"],
+                            ["postal_code", t("web.provider.settings.pages.sales/terminal-shop.postalCode"), "postal-code"],
+                            ["contact_name", t("web.provider.settings.pages.sales/terminal-shop.contactName"), "name"],
+                            ["contact_phone", t("web.provider.settings.pages.sales/terminal-shop.contactPhone"), "tel"],
                           ] as const
                         ).map(([key, label, autoComplete]) => (
                           <div key={key} className={key === "line1" || key === "line2" ? "sm:col-span-2" : ""}>
@@ -1156,8 +1167,7 @@ export default function TerminalShopPage() {
                       <div className="flex items-start gap-2.5 rounded-xl bg-gray-50 p-4">
                         <Zap className="mt-0.5 h-4 w-4 text-pink-600" />
                         <p className="text-sm text-gray-600">
-                          This product activates digitally — nothing gets shipped. You&apos;ll be prompted
-                          to complete brand integration after confirmation.
+                          {t("web.provider.settings.pages.sales/terminal-shop.digitalActivationHint")}
                         </p>
                       </div>
                     )}
@@ -1189,22 +1199,22 @@ export default function TerminalShopPage() {
                     </div>
                     <dl className="space-y-2 rounded-xl bg-gray-50 p-4 text-sm">
                       <div className="flex justify-between">
-                        <dt className="text-gray-500">Plan</dt>
+                        <dt className="text-gray-500">{t("web.provider.settings.pages.sales/terminal-shop.plan")}</dt>
                         <dd className="font-medium text-gray-900">{selectedOption.label}</dd>
                       </div>
                       {fulfillmentType === "collection" ? (
                         <div className="flex justify-between">
-                          <dt className="text-gray-500">Pickup</dt>
+                          <dt className="text-gray-500">{t("web.provider.settings.pages.sales/terminal-shop.pickup")}</dt>
                           <dd className="font-medium text-gray-900">
-                            {collectionLocations.find((l) => l.id === collectionLocationId)?.name ?? "—"}
+                            {collectionLocations.find((l) => l.id === collectionLocationId)?.name ?? t("web.provider.common.emDash")}
                           </dd>
                         </div>
                       ) : null}
                       {(fulfillmentType === "shipping" || fulfillmentType === "courier") &&
                       deliveryForm.line1 ? (
                         <div className="flex justify-between gap-4">
-                          <dt className="text-gray-500">Deliver to</dt>
-                          <dd className="text-right font-medium text-gray-900">
+                          <dt className="text-gray-500">{t("web.provider.settings.pages.sales/terminal-shop.deliverTo")}</dt>
+                          <dd className="text-end font-medium text-gray-900">
                             {[deliveryForm.line1, deliveryForm.city, deliveryForm.postal_code]
                               .filter(Boolean)
                               .join(", ")}
@@ -1212,18 +1222,18 @@ export default function TerminalShopPage() {
                         </div>
                       ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-2">
-                        <dt className="font-medium text-gray-900">Total today</dt>
+                        <dt className="font-medium text-gray-900">{t("web.provider.settings.pages.sales/terminal-shop.totalToday")}</dt>
                         <dd className="text-base font-bold text-gray-900">
                           {selectedOption.requires_payment
                             ? formatMoney(selectedOption.currency, selectedOption.price)
-                            : "R 0 — included in subscription"}
+                            : t("web.provider.settings.pages.sales/terminal-shop.includedInSubscription")}
                         </dd>
                       </div>
                     </dl>
                     {checkoutProduct.requires_integration_setup && (
                       <p className="flex items-start gap-2 text-xs text-gray-500">
                         <Wrench className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                        Brand integration setup will be required after confirmation.
+                        {t("web.provider.settings.pages.sales/terminal-shop.brandIntegrationRequired")}
                       </p>
                     )}
                   </div>
@@ -1233,11 +1243,11 @@ export default function TerminalShopPage() {
               <div className="border-t bg-gray-50/70 px-6 py-4">
                 {selectedOption ? (
                   <div className="mb-3 flex items-center justify-between text-sm">
-                    <span className="text-gray-500">Total today</span>
+                    <span className="text-gray-500">{t("web.provider.settings.pages.sales/terminal-shop.totalToday")}</span>
                     <span className="font-semibold text-gray-900">
                       {selectedOption.requires_payment
                         ? formatMoney(selectedOption.currency, selectedOption.price)
-                        : "R 0 — in your plan"}
+                        : t("web.provider.settings.pages.sales/terminal-shop.inYourPlanPrice")}
                     </span>
                   </div>
                 ) : null}
@@ -1249,7 +1259,7 @@ export default function TerminalShopPage() {
                       onClick={() => setCheckoutStep((s) => (s - 1) as 1 | 2 | 3)}
                       disabled={submitting}
                     >
-                      Back
+                      {t("common.back")}
                     </Button>
                   ) : (
                     <Button
@@ -1258,7 +1268,7 @@ export default function TerminalShopPage() {
                       onClick={() => setCheckoutProduct(null)}
                       disabled={submitting}
                     >
-                      Cancel
+                      {t("web.provider.common.cancel")}
                     </Button>
                   )}
                   {checkoutStep < 3 ? (
@@ -1270,8 +1280,8 @@ export default function TerminalShopPage() {
                         (checkoutStep === 1 && checkoutOptions.length === 0)
                       }
                     >
-                      Continue
-                      <ArrowRight className="ml-1.5 h-4 w-4" />
+                      {t("common.continue")}
+                      <ArrowRight className="ms-1.5 h-4 w-4" />
                     </Button>
                   ) : (
                     <Button
@@ -1281,10 +1291,10 @@ export default function TerminalShopPage() {
                       title={checkoutConfirmState.message}
                     >
                       {submitting
-                        ? "Placing…"
+                        ? t("web.provider.settings.pages.sales/terminal-shop.placing")
                         : selectedOption?.requires_payment
-                          ? "Place order & pay"
-                          : "Confirm allocation"}
+                          ? t("web.provider.settings.pages.sales/terminal-shop.placeOrderAndPay")
+                          : t("web.provider.settings.pages.sales/terminal-shop.confirmAllocation")}
                     </Button>
                   )}
                 </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -33,6 +34,7 @@ import { ServiceCreateEditDialog } from "./components/ServiceCreateEditDialog";
 import { toast } from "sonner";
 
 export default function ProviderServices() {
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedService, setSelectedService] = useState<any>(null);
@@ -140,7 +142,7 @@ export default function ProviderServices() {
 
   const handleSaveCategory = async () => {
     if (!categoryName.trim()) {
-      toast.error("Category name is required");
+      toast.error(t("web.provider.catalogue.services.categoryNameRequired"));
       return;
     }
 
@@ -151,14 +153,14 @@ export default function ProviderServices() {
           color: categoryColor,
           description: categoryDescription,
         });
-        toast.success("Category updated");
+        toast.success(t("web.provider.catalogue.services.categoryUpdated"));
       } else {
         await providerApi.createServiceCategory({ 
           name: categoryName,
           color: categoryColor,
           description: categoryDescription,
         });
-        toast.success("Category created");
+        toast.success(t("web.provider.catalogue.services.categoryCreated"));
       }
       setIsCategoryDialogOpen(false);
       setCategoryName("");
@@ -168,24 +170,24 @@ export default function ProviderServices() {
       loadServices();
     } catch (error) {
       console.error("Failed to save category:", error);
-      toast.error("Failed to save category");
+      toast.error(t("web.provider.catalogue.services.failedToSaveCategory"));
     }
   };
 
   const handleDeleteCategory = async (category: ServiceCategory) => {
     if (category.services.length > 0) {
-      toast.error("Cannot delete category with services. Please remove all services first.");
+      toast.error(t("web.provider.catalogue.services.cannotDeleteWithServices"));
       return;
     }
 
-    if (confirm(`Are you sure you want to delete "${category.name}"?`)) {
+    if (confirm(t("web.provider.catalogue.services.deleteConfirm", { name: category.name }))) {
       try {
         await providerApi.deleteServiceCategory(category.id);
-        toast.success("Category deleted");
+        toast.success(t("web.provider.catalogue.services.categoryDeleted"));
         loadServices();
       } catch (error) {
         console.error("Failed to delete category:", error);
-        toast.error("Failed to delete category");
+        toast.error(t("web.provider.catalogue.services.failedToDeleteCategory"));
       }
     }
   };
@@ -195,12 +197,12 @@ export default function ProviderServices() {
       <div>
         <Breadcrumb
           items={[
-            { label: "Dashboard", href: "/provider/dashboard" },
-            { label: "Catalogue", href: "/provider/catalogue" },
-            { label: "Services" },
+            { label: t("web.provider.sidebar.items.dashboard"), href: "/provider/dashboard" },
+            { label: t("web.provider.sidebar.items.catalogue"), href: "/provider/catalogue" },
+            { label: t("web.provider.sidebar.items.services") },
           ]}
         />
-        <PageHeader title="Services menu" subtitle="Manage your service offerings" />
+        <PageHeader title={t("web.provider.catalogue.services.title")} subtitle={t("web.provider.settings.categories.services.items.servicesMenu.description")} />
         <SectionCard>
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -219,36 +221,36 @@ export default function ProviderServices() {
     <div>
       <Breadcrumb
         items={[
-          { label: "Dashboard", href: "/provider/dashboard" },
-          { label: "Catalogue", href: "/provider/catalogue" },
-          { label: "Services" },
+          { label: t("web.provider.sidebar.items.dashboard"), href: "/provider/dashboard" },
+          { label: t("web.provider.sidebar.items.catalogue"), href: "/provider/catalogue" },
+          { label: t("web.provider.sidebar.items.services") },
         ]}
       />
       <PageHeader
-        title="Services menu"
-        subtitle="Manage, add or categorize services here"
+        title={t("web.provider.catalogue.services.title")}
+        subtitle={t("web.provider.catalogue.services.subtitle")}
         primaryAction={{
-          label: "Add Service",
+          label: t("web.provider.catalogue.services.addService"),
           onClick: () => handleCreateService(),
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
         actions={
           <>
             <Button 
               variant="outline" 
               onClick={() => setIsReordering(!isReordering)}
-              className="mr-2 min-h-[44px] touch-manipulation w-full sm:w-auto"
+              className="me-2 min-h-[44px] touch-manipulation w-full sm:w-auto"
             >
-              {isReordering ? "Done" : "Manage order"}
+              {isReordering ? t("web.provider.catalogue.services.done") : t("web.provider.catalogue.services.manageOrder")}
             </Button>
             <Button 
               variant="outline"
               onClick={handleCreateCategory}
               className="min-h-[44px] touch-manipulation w-full sm:w-auto"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Add Category</span>
-              <span className="sm:hidden">Add Category</span>
+              <Plus className="w-4 h-4 me-2" />
+              <span className="hidden sm:inline">{t("web.provider.catalogue.services.addCategory")}</span>
+              <span className="sm:hidden">{t("web.provider.catalogue.services.addCategory")}</span>
             </Button>
           </>
         }
@@ -263,23 +265,23 @@ export default function ProviderServices() {
               </div>
             </div>
             <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 sm:mb-3 px-2">
-              Manage your services with Beautonomi service list
+              {t("web.provider.catalogue.services.emptyTitle")}
             </h2>
             <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
-              Organize and manage your service offerings efficiently
+              {t("web.provider.catalogue.services.emptyBody")}
             </p>
-            <ul className="text-left space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
+            <ul className="text-start space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-1 flex-shrink-0">•</span>
-                <span>Start with a single service or create service packages</span>
+                <span>{t("web.provider.catalogue.services.emptyBullet1")}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-1 flex-shrink-0">•</span>
-                <span>Organise your services by adding categories</span>
+                <span>{t("web.provider.catalogue.services.emptyBullet2")}</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-1 flex-shrink-0">•</span>
-                <span>Set pricing, duration, and assign team members</span>
+                <span>{t("web.provider.catalogue.services.emptyBullet3")}</span>
               </li>
             </ul>
             <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
@@ -287,10 +289,10 @@ export default function ProviderServices() {
                 onClick={handleCreateCategory}
                 className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation"
               >
-                Start now
+                {t("web.provider.catalogue.services.startNow")}
               </button>
               <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-primary font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
-                Learn more
+                {t("web.provider.catalogue.services.learnMore")}
               </button>
             </div>
           </div>
@@ -301,7 +303,7 @@ export default function ProviderServices() {
             {categories.map((category) => (
               <AccordionItem key={category.id} value={category.id} className="border-gray-200">
                 <div className="flex items-center justify-between px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
-                  <AccordionTrigger className="hover:no-underline flex-1 min-w-0 [&>svg]:ml-2">
+                  <AccordionTrigger className="hover:no-underline flex-1 min-w-0 [&>svg]:ms-2">
                     <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
                       {isReordering && (
                         <div className="flex flex-col gap-1 flex-shrink-0">
@@ -364,19 +366,19 @@ export default function ProviderServices() {
                   </AccordionTrigger>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 flex-shrink-0 touch-manipulation ml-2">
+                      <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 flex-shrink-0 touch-manipulation ms-2">
                         <MoreVertical className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuItem onClick={() => handleEditCategory(category)}>
-                        Edit Category
+                        {t("web.provider.catalogue.services.editCategory")}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
                         className="text-red-600"
                         onClick={() => handleDeleteCategory(category)}
                       >
-                        Delete Category
+                        {t("web.provider.catalogue.services.deleteCategory")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -385,15 +387,15 @@ export default function ProviderServices() {
                   <div className="space-y-2 sm:space-y-3 pt-2">
                     {category.services.length === 0 ? (
                       <div className="text-center py-6 sm:py-8 text-gray-500">
-                        <p className="text-sm sm:text-base">No services in this category</p>
+                        <p className="text-sm sm:text-base">{t("web.provider.catalogue.services.noServicesInCategory")}</p>
                         <Button
                           variant="outline"
                           size="sm"
                           className="mt-4 min-h-[44px] touch-manipulation"
                           onClick={() => handleCreateService(category.id)}
                         >
-                          <Plus className="w-4 h-4 mr-2" />
-                          Add Service
+                          <Plus className="w-4 h-4 me-2" />
+                          {t("web.provider.catalogue.services.addService")}
                         </Button>
                       </div>
                     ) : (
@@ -462,25 +464,25 @@ export default function ProviderServices() {
                                       )}
                                       {/* Variant indicator */}
                                       {service.service_type === "variant" && service.parent_service_id && (
-                                        <span className="text-xs text-gray-500">(variant)</span>
+                                        <span className="text-xs text-gray-500">{t("web.provider.catalogue.services.variant")}</span>
                                       )}
                                     </div>
                                     <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm text-gray-600">
-                                      <span>{service.duration_minutes}min</span>
+                                      <span>{t("web.provider.catalogue.services.durationMin", { count: service.duration_minutes })}</span>
                                       <span className="hidden sm:inline">•</span>
                                       <span className="font-medium text-gray-900"><Money amount={service.price} /></span>
                                     </div>
                                   </div>
                                   {/* Show variants if present */}
                                   {(service as any).variants && (service as any).variants.length > 0 && (
-                                    <div className="mt-2 ml-6 space-y-1">
-                                      <p className="text-xs text-gray-500 font-medium">Variants:</p>
+                                    <div className="mt-2 ms-6 space-y-1">
+                                      <p className="text-xs text-gray-500 font-medium">{t("web.provider.catalogue.services.variants")}</p>
                                       {(service as any).variants.map((variant: any) => (
                                         <div key={variant.id} className="flex items-center gap-2 text-xs text-gray-600">
                                           <span className="w-1 h-1 rounded-full bg-purple-400"></span>
                                           <span>{variant.variant_name || variant.name}</span>
                                           <span className="text-gray-400">•</span>
-                                          <span>{variant.duration_minutes}min</span>
+                                          <span>{t("web.provider.catalogue.services.durationMin", { count: variant.duration_minutes })}</span>
                                           <span className="text-gray-400">•</span>
                                           <span><Money amount={variant.price} /></span>
                                         </div>
@@ -489,8 +491,8 @@ export default function ProviderServices() {
                                   )}
                                   {/* Show included services for packages */}
                                   {service.service_type === "package" && service.included_services && service.included_services.length > 0 && (
-                                    <div className="mt-2 ml-6">
-                                      <p className="text-xs text-gray-500 font-medium mb-1">Includes:</p>
+                                    <div className="mt-2 ms-6">
+                                      <p className="text-xs text-gray-500 font-medium mb-1">{t("web.provider.catalogue.services.includes")}</p>
                                       <div className="flex flex-wrap gap-1">
                                         {service.included_services.map((incId: string, idx: number) => {
                                           // Find service name from all categories
@@ -510,8 +512,8 @@ export default function ProviderServices() {
                                   )}
                                   {/* Show applicable services for addons */}
                                   {service.service_type === "addon" && (service as any).applicable_service_ids && (service as any).applicable_service_ids.length > 0 && (
-                                    <div className="mt-2 ml-6">
-                                      <p className="text-xs text-gray-500 font-medium mb-1">Available for:</p>
+                                    <div className="mt-2 ms-6">
+                                      <p className="text-xs text-gray-500 font-medium mb-1">{t("web.provider.catalogue.services.availableFor")}</p>
                                       <div className="flex flex-wrap gap-1">
                                         {(service as any).applicable_service_ids.map((appId: string, idx: number) => {
                                           let appName = appId;
@@ -538,24 +540,24 @@ export default function ProviderServices() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent>
                                   <DropdownMenuItem onClick={() => handleEditService(service)}>
-                                    Edit
+                                    {t("web.provider.common.edit")}
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     className="text-red-600"
                                     onClick={async () => {
-                                      if (confirm(`Are you sure you want to delete "${service.name}"?`)) {
+                                      if (confirm(t("web.provider.catalogue.services.deleteConfirm", { name: service.name }))) {
                                         try {
                                           await providerApi.deleteService(service.id);
-                                          toast.success("Service deleted");
+                                          toast.success(t("web.provider.catalogue.services.serviceDeleted"));
                                           loadServices();
                                         } catch (error) {
                                           console.error("Failed to delete service:", error);
-                                          toast.error("Failed to delete service");
+                                          toast.error(t("web.provider.catalogue.services.failedToDeleteService"));
                                         }
                                       }
                                     }}
                                   >
-                                    Delete
+                                    {t("web.provider.common.delete")}
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
@@ -567,9 +569,9 @@ export default function ProviderServices() {
                           className="w-full mt-2 min-h-[44px] touch-manipulation"
                           onClick={() => handleCreateService(category.id)}
                         >
-                          <Plus className="w-4 h-4 mr-2" />
-                          <span className="hidden sm:inline">Add Service to {category.name}</span>
-                          <span className="sm:hidden">Add Service</span>
+                          <Plus className="w-4 h-4 me-2" />
+                          <span className="hidden sm:inline">{t("web.provider.catalogue.services.addServiceTo", { name: category.name })}</span>
+                          <span className="sm:hidden">{t("web.provider.catalogue.services.addService")}</span>
                         </Button>
                       </>
                     )}
@@ -602,31 +604,31 @@ export default function ProviderServices() {
         <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader className="px-0 sm:px-0">
             <DialogTitle className="text-lg sm:text-xl">
-              {editingCategory ? "Edit Category" : "Add Category"}
+              {editingCategory ? t("web.provider.catalogue.services.editCategory") : t("web.provider.catalogue.services.addCategory")}
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm text-gray-500 mt-1">
-              Organize your services into categories to help clients browse more easily
+              {t("web.provider.catalogue.services.categoryDialogHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 sm:space-y-4 py-2 sm:py-4 px-0 sm:px-0">
             <div>
-              <Label htmlFor="categoryName" className="text-sm sm:text-base">Category name *</Label>
+              <Label htmlFor="categoryName" className="text-sm sm:text-base">{t("web.provider.catalogue.services.categoryName")}</Label>
               <Input
                 id="categoryName"
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
-                placeholder="e.g., Nails, Hair & Styling"
+                placeholder={t("web.provider.catalogue.services.categoryNamePlaceholder")}
                 required
                 className="mt-1.5"
               />
               <p className="text-xs text-gray-500 mt-1.5">
-                The name that appears in your service menu and to clients when booking
+                {t("web.provider.catalogue.services.categoryNameHint")}
               </p>
             </div>
             
             <div>
-              <Label className="text-sm sm:text-base">Appointment color</Label>
-              <p className="text-xs text-gray-500 mb-2 mt-1.5">Choose a color to visually identify services in this category</p>
+              <Label className="text-sm sm:text-base">{t("web.provider.catalogue.services.appointmentColor")}</Label>
+              <p className="text-xs text-gray-500 mb-2 mt-1.5">{t("web.provider.catalogue.services.appointmentColorHint")}</p>
               <div className="grid grid-cols-6 sm:grid-cols-8 gap-2">
                 {[
                   "#FF0077", "#FF6B9D", "#FFB6C1", "#FFA07A",
@@ -653,17 +655,17 @@ export default function ProviderServices() {
             </div>
 
             <div>
-              <Label htmlFor="categoryDescription" className="text-sm sm:text-base">Description (Optional)</Label>
+              <Label htmlFor="categoryDescription" className="text-sm sm:text-base">{t("web.provider.catalogue.services.descriptionOptional")}</Label>
               <Textarea
                 id="categoryDescription"
                 value={categoryDescription}
                 onChange={(e) => setCategoryDescription(e.target.value)}
-                placeholder="Add a short summary that helps clients understand what types of services are included in this category"
+                placeholder={t("web.provider.catalogue.services.descriptionPlaceholder")}
                 rows={3}
                 className="mt-1.5"
               />
               <p className="text-xs text-gray-500 mt-1.5">
-                Help clients understand what types of services are included in this category
+                {t("web.provider.catalogue.services.descriptionHint")}
               </p>
             </div>
           </div>
@@ -679,14 +681,14 @@ export default function ProviderServices() {
               }}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button 
               onClick={handleSaveCategory} 
               className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
               disabled={!categoryName.trim()}
             >
-              {editingCategory ? "Update" : "Add"}
+              {editingCategory ? t("web.provider.common.update") : t("web.provider.common.add")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 
@@ -22,13 +23,14 @@ import { OccupancyMinutesChart, OccupancyPercentChart } from "./components/Occup
 
 const MAX_DAYS = 31;
 
-function formatPct(p: number | null): string {
-  if (p === null) return "—";
+function formatPct(p: number | null, empty = "—"): string {
+  if (p === null) return empty;
   return `${p}%`;
 }
 
 export default function OccupancyReportPage() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency } = useReportCurrency();
   const today = format(new Date(), "yyyy-MM-dd");
   const [from, setFrom] = useState(format(subDays(new Date(), 6), "yyyy-MM-dd"));
@@ -59,12 +61,12 @@ export default function OccupancyReportPage() {
       setIsSubscriptionRequired(false);
       setSubscriptionGateMessage(null);
       if (from > to) {
-        setError("'From' must be on or before 'To'.");
+        setError(t("web.provider.reports.pages.occupancy.fromBeforeTo"));
         setData(null);
         return;
       }
       if (rangeDayCount > MAX_DAYS) {
-        setError(`Choose at most ${MAX_DAYS} inclusive days (your range is ${rangeDayCount} days).`);
+        setError(t("web.provider.reports.pages.occupancy.maxDays", { max: MAX_DAYS, count: rangeDayCount }));
         setData(null);
         return;
       }
@@ -98,7 +100,7 @@ export default function OccupancyReportPage() {
       const rows = formatReportDataForExport(data as unknown as ReportRow, "occupancy", exportCurrency);
       exportToCSV(rows, "occupancy-report");
     } else {
-      exportToPDF("occupancy-report", "occupancy-report", "Occupancy report");
+      exportToPDF("occupancy-report", "occupancy-report", t("web.provider.reports.pages.occupancy.reportTitle"));
     }
   };
 
@@ -112,10 +114,10 @@ export default function OccupancyReportPage() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Occupancy" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.occupancy.title") },
         ]}
       >
         <ReportSkeleton />
@@ -127,13 +129,13 @@ export default function OccupancyReportPage() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Occupancy" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.occupancy.title") },
         ]}
       >
-        <ReportSubscriptionRequired feature="Occupancy" message={subscriptionGateMessage} />
+        <ReportSubscriptionRequired feature={t("web.provider.reports.pages.occupancy.title")} message={subscriptionGateMessage} />
       </SettingsDetailLayout>
     );
   }
@@ -141,27 +143,27 @@ export default function OccupancyReportPage() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Occupancy" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.occupancy.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <PageHeader
-            title="Occupancy"
-            subtitle="Booked service minutes vs scheduled staff availability (provider timezone)"
+            title={t("web.provider.reports.pages.occupancy.title")}
+            subtitle={t("web.provider.reports.pages.occupancy.subtitle")}
           />
           {data && !error && (
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("csv")}>
-                <Download className="mr-1 h-4 w-4" />
-                CSV
+                <Download className="me-1 h-4 w-4" />
+                {t("web.provider.common.csv")}
               </Button>
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => handleExport("pdf")}>
-                Print / PDF
+                {t("web.provider.reports.common.printPdf")}
               </Button>
             </div>
           )}
@@ -170,7 +172,7 @@ export default function OccupancyReportPage() {
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-2">
             <Label htmlFor="occ-from" className="text-sm font-medium text-gray-700">
-              From
+              {t("web.provider.reports.common.from")}
             </Label>
             <Input
               id="occ-from"
@@ -182,7 +184,7 @@ export default function OccupancyReportPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="occ-to" className="text-sm font-medium text-gray-700">
-              To
+              {t("web.provider.reports.common.to")}
             </Label>
             <Input
               id="occ-to"
@@ -193,16 +195,16 @@ export default function OccupancyReportPage() {
             />
           </div>
           <Button onClick={() => void loadReport()} disabled={isLoading} className="rounded-xl">
-            {isLoading ? "Loading…" : "Update"}
+            {isLoading ? t("web.provider.reports.common.loading") : t("web.provider.reports.common.update")}
           </Button>
-          <div className="flex gap-2 sm:ml-2">
+          <div className="flex gap-2 sm:ms-2">
             <Button
               variant={view === "byDate" ? "default" : "outline"}
               size="sm"
               onClick={() => setView("byDate")}
               className="rounded-xl"
             >
-              By date
+              {t("web.provider.reports.pages.occupancy.byDate")}
             </Button>
             <Button
               variant={view === "byStaff" ? "default" : "outline"}
@@ -210,18 +212,21 @@ export default function OccupancyReportPage() {
               onClick={() => setView("byStaff")}
               className="rounded-xl"
             >
-              By staff
+              {t("web.provider.reports.pages.occupancy.byStaff")}
             </Button>
           </div>
         </div>
 
         {rangeDayCount > MAX_DAYS && (
           <p className="text-sm text-amber-800">
-            Range is {rangeDayDaysLabel(rangeDayCount)} — maximum {MAX_DAYS} days.
+            {t("web.provider.reports.pages.occupancy.rangeTooLong", {
+              range: t("web.provider.reports.pages.occupancy.daysCount", { count: rangeDayCount }),
+              max: MAX_DAYS,
+            })}
           </p>
         )}
 
-        {error && <EmptyReportState title="Report unavailable" description={error} />}
+        {error && <EmptyReportState title={t("web.provider.reports.pages.occupancy.reportUnavailable")} description={error} />}
 
         {data && !error && (
           <div id="occupancy-report" className="space-y-6">
@@ -229,11 +234,11 @@ export default function OccupancyReportPage() {
               <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
                 <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
                 <div>
-                  <p className="font-medium text-sky-900">Facts & definitions</p>
+                  <p className="font-medium text-sky-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
                   <p className="mt-1">{data.basisNote}</p>
                   {data.includedBookingStatuses?.length ? (
                     <p className="mt-2 text-xs text-sky-900/85">
-                      Booking statuses included: {data.includedBookingStatuses.join(", ")}
+                      {t("web.provider.reports.pages.occupancy.bookingStatuses", { statuses: data.includedBookingStatuses.join(", ") })}
                     </p>
                   ) : null}
                 </div>
@@ -244,13 +249,13 @@ export default function OccupancyReportPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Card className="border-gray-200 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">Period occupancy</CardTitle>
-                    <p className="text-xs text-gray-500">Total booked ÷ total available minutes</p>
+                    <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.occupancy.periodOccupancy")}</CardTitle>
+                    <p className="text-xs text-gray-500">{t("web.provider.reports.pages.occupancy.periodOccupancyHint")}</p>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-2xl font-semibold tabular-nums tracking-tight text-violet-900">
-                        {formatPct(summary.occupancyPercent)}
+                        {formatPct(summary.occupancyPercent, t("web.provider.common.emDash"))}
                       </p>
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
                         <TrendingUp className="h-5 w-5 text-violet-700" />
@@ -258,8 +263,7 @@ export default function OccupancyReportPage() {
                     </div>
                     {summary.occupancyPercent !== null && summary.occupancyPercent > 100 ? (
                       <p className="mt-2 text-xs leading-snug text-amber-800">
-                        Above 100% means booked service time exceeds summed schedule windows (overlapping services or long
-                        appointments vs shift length).
+                        {t("web.provider.reports.pages.occupancy.above100")}
                       </p>
                     ) : null}
                   </CardContent>
@@ -267,8 +271,8 @@ export default function OccupancyReportPage() {
 
                 <Card className="border-gray-200 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">Scheduled availability</CardTitle>
-                    <p className="text-xs text-gray-500">Minutes in range</p>
+                    <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.occupancy.scheduledAvailability")}</CardTitle>
+                    <p className="text-xs text-gray-500">{t("web.provider.reports.pages.occupancy.minutesInRange")}</p>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between gap-2">
@@ -284,8 +288,8 @@ export default function OccupancyReportPage() {
 
                 <Card className="border-gray-200 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">Booked service time</CardTitle>
-                    <p className="text-xs text-gray-500">Sum of service durations</p>
+                    <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.occupancy.bookedServiceTime")}</CardTitle>
+                    <p className="text-xs text-gray-500">{t("web.provider.reports.pages.occupancy.sumOfDurations")}</p>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between gap-2">
@@ -301,9 +305,9 @@ export default function OccupancyReportPage() {
 
                 <Card className="border-gray-200 shadow-sm">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium text-gray-600">Staff in scope</CardTitle>
+                    <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.occupancy.staffInScope")}</CardTitle>
                     <p className="text-xs text-gray-500">
-                      {summary.dayCount} day{summary.dayCount === 1 ? "" : "s"} · {data.timezone}
+                      {t("web.provider.reports.pages.occupancy.daysTz", { count: summary.dayCount, tz: data.timezone })}
                     </p>
                   </CardHeader>
                   <CardContent>
@@ -320,16 +324,16 @@ export default function OccupancyReportPage() {
 
             {overCapacity ? (
               <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                Period booked minutes exceed summed availability — review schedules or booking durations for accuracy.
+                {t("web.provider.reports.pages.occupancy.overCapacity")}
               </p>
             ) : null}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <Card className="border-gray-200 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Minutes by day</CardTitle>
+                  <CardTitle className="text-lg">{t("web.provider.reports.pages.occupancy.minutesByDay")}</CardTitle>
                   <p className="text-sm font-normal text-gray-500">
-                    Available (schedule) vs booked (confirmed → completed services).
+                    {t("web.provider.reports.pages.occupancy.minutesByDayHint")}
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -338,9 +342,9 @@ export default function OccupancyReportPage() {
               </Card>
               <Card className="border-gray-200 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Occupancy % by day</CardTitle>
+                  <CardTitle className="text-lg">{t("web.provider.reports.pages.occupancy.occupancyByDay")}</CardTitle>
                   <p className="text-sm font-normal text-gray-500">
-                    Daily booked ÷ daily summed availability. Reference line at 100%.
+                    {t("web.provider.reports.pages.occupancy.occupancyByDayHint")}
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -354,7 +358,7 @@ export default function OccupancyReportPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <Calendar className="h-5 w-5" />
-                    By date
+                    {t("web.provider.reports.pages.occupancy.byDate")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -362,20 +366,20 @@ export default function OccupancyReportPage() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-200 bg-gray-50/80">
-                          <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-700">Available (min)</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-700">Booked (min)</th>
-                          <th className="px-4 py-3 text-right font-semibold text-gray-700">Occupancy</th>
+                          <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.date")}</th>
+                          <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.availableMin")}</th>
+                          <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.bookedMin")}</th>
+                          <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.occupancy")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.byDate.map((row) => (
                           <tr key={row.date} className="border-b border-gray-50 hover:bg-gray-50/60">
                             <td className="px-4 py-3 font-medium text-gray-900">{row.date}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-800">{row.totalAvailable}</td>
-                            <td className="px-4 py-3 text-right tabular-nums text-gray-800">{row.totalBooked}</td>
-                            <td className="px-4 py-3 text-right font-medium tabular-nums text-gray-900">
-                              {formatPct(row.occupancyPercent)}
+                            <td className="px-4 py-3 text-end tabular-nums text-gray-800">{row.totalAvailable}</td>
+                            <td className="px-4 py-3 text-end tabular-nums text-gray-800">{row.totalBooked}</td>
+                            <td className="px-4 py-3 text-end font-medium tabular-nums text-gray-900">
+                              {formatPct(row.occupancyPercent, t("web.provider.common.emDash"))}
                             </td>
                           </tr>
                         ))}
@@ -391,7 +395,7 @@ export default function OccupancyReportPage() {
                 {data.byStaff.length === 0 ? (
                   <Card className="border-gray-200 shadow-sm">
                     <CardContent className="py-8 text-center text-sm text-gray-600">
-                      No active staff match this filter.
+                      {t("web.provider.reports.pages.occupancy.noActiveStaff")}
                     </CardContent>
                   </Card>
                 ) : (
@@ -408,20 +412,20 @@ export default function OccupancyReportPage() {
                           <table className="w-full text-sm">
                             <thead>
                               <tr className="border-b border-gray-200 bg-gray-50/80">
-                                <th className="px-4 py-3 text-left font-semibold text-gray-700">Date</th>
-                                <th className="px-4 py-3 text-right font-semibold text-gray-700">Available (min)</th>
-                                <th className="px-4 py-3 text-right font-semibold text-gray-700">Booked (min)</th>
-                                <th className="px-4 py-3 text-right font-semibold text-gray-700">Occupancy</th>
+                                <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.date")}</th>
+                                <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.availableMin")}</th>
+                                <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.bookedMin")}</th>
+                                <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.occupancy.occupancy")}</th>
                               </tr>
                             </thead>
                             <tbody>
                               {staff.byDate.map((row) => (
                                 <tr key={row.date} className="border-b border-gray-50 hover:bg-gray-50/60">
                                   <td className="px-4 py-3 font-medium text-gray-900">{row.date}</td>
-                                  <td className="px-4 py-3 text-right tabular-nums text-gray-800">{row.availableMinutes}</td>
-                                  <td className="px-4 py-3 text-right tabular-nums text-gray-800">{row.bookedMinutes}</td>
-                                  <td className="px-4 py-3 text-right font-medium tabular-nums text-gray-900">
-                                    {formatPct(row.occupancyPercent)}
+                                  <td className="px-4 py-3 text-end tabular-nums text-gray-800">{row.availableMinutes}</td>
+                                  <td className="px-4 py-3 text-end tabular-nums text-gray-800">{row.bookedMinutes}</td>
+                                  <td className="px-4 py-3 text-end font-medium tabular-nums text-gray-900">
+                                    {formatPct(row.occupancyPercent, t("web.provider.common.emDash"))}
                                   </td>
                                 </tr>
                               ))}
@@ -441,6 +445,3 @@ export default function OccupancyReportPage() {
   );
 }
 
-function rangeDayDaysLabel(n: number): string {
-  return `${n} day${n === 1 ? "" : "s"}`;
-}

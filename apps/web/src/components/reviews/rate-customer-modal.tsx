@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +43,7 @@ export default function RateCustomerModal({
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [comment, setComment] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (!open) return;
@@ -52,7 +55,7 @@ export default function RateCustomerModal({
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      toast.error("Please select a rating");
+      toast.error(t("web.reviews.rateCustomer.selectRating"));
       return;
     }
 
@@ -63,14 +66,14 @@ export default function RateCustomerModal({
           rating,
           comment: comment.trim() || undefined,
         });
-        toast.success("Rating updated successfully!");
+        toast.success(t("web.reviews.rateCustomer.updated"));
       } else {
         await fetcher.post("/api/provider/ratings", {
           booking_id: bookingId,
           rating,
           comment: comment.trim() || undefined,
         });
-        toast.success("Rating submitted successfully!");
+        toast.success(t("web.reviews.rateCustomer.submitted"));
       }
       onSuccess?.();
       onOpenChange(false);
@@ -79,7 +82,7 @@ export default function RateCustomerModal({
       setComment("");
     } catch (error: unknown) {
       console.error("Error submitting rating:", error);
-      const message = error instanceof Error ? error.message : "Failed to submit rating. Please try again.";
+      const message = error instanceof Error ? error.message : t("web.reviews.rateCustomer.submitFailed");
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -99,10 +102,10 @@ export default function RateCustomerModal({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold">
-            {providerRatingId ? "Update rating" : "Rate"} {customerName}
+            {providerRatingId ? t("web.reviews.rateCustomer.updateTitle", { name: customerName }) : t("web.reviews.rateCustomer.rateTitle", { name: customerName })}
           </DialogTitle>
           <DialogDescription>
-            Share your experience with this customer to help other providers.
+{t("web.reviews.rateCustomer.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -110,7 +113,7 @@ export default function RateCustomerModal({
           {/* Star Rating */}
           <div>
             <Label className="text-base font-medium mb-3 block">
-              How would you rate this customer? *
+{t("web.reviews.rateCustomer.howWouldYouRate")}
             </Label>
             <div className="flex items-center gap-2">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -133,16 +136,16 @@ export default function RateCustomerModal({
                 </button>
               ))}
               {rating > 0 && (
-                <span className="ml-2 text-sm text-gray-600">
-                  {rating === 1
-                    ? "Poor"
+                <span className="ms-2 text-sm text-gray-600">
+{rating === 1
+                    ? t("web.reviews.rateCustomer.poor")
                     : rating === 2
-                    ? "Fair"
+                    ? t("web.reviews.rateCustomer.fair")
                     : rating === 3
-                    ? "Good"
+                    ? t("web.reviews.rateCustomer.good")
                     : rating === 4
-                    ? "Very Good"
-                    : "Excellent"}
+                    ? t("web.reviews.rateCustomer.veryGood")
+                    : t("web.reviews.rateCustomer.excellent")}
                 </span>
               )}
             </div>
@@ -151,11 +154,11 @@ export default function RateCustomerModal({
           {/* Comment */}
           <div>
             <Label htmlFor="comment" className="text-base font-medium mb-3 block">
-              Add a comment (optional)
+{t("web.reviews.rateCustomer.addComment")}
             </Label>
             <Textarea
               id="comment"
-              placeholder="Share details about your experience with this customer..."
+              placeholder={t("web.reviews.rateCustomer.commentPlaceholder")}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               disabled={isSubmitting}
@@ -164,7 +167,7 @@ export default function RateCustomerModal({
               maxLength={500}
             />
             <p className="text-xs text-gray-500 mt-1">
-              {comment.length}/500 characters
+{t("web.reviews.rateCustomer.charCount", { count: comment.length })}
             </p>
           </div>
 
@@ -175,14 +178,14 @@ export default function RateCustomerModal({
               onClick={handleClose}
               disabled={isSubmitting}
             >
-              Cancel
+{t("common.cancel")}
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting || rating === 0}
               className="bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white"
             >
-              {isSubmitting ? "Submitting..." : "Submit Rating"}
+{isSubmitting ? t("web.reviews.rateCustomer.submitting") : t("web.reviews.rateCustomer.submitRating")}
             </Button>
           </div>
         </div>

@@ -3,6 +3,7 @@
  */
 import { useCallback, useState } from "react";
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -23,24 +24,18 @@ type Props = {
   compact?: boolean;
 };
 
-const OPTIONS: Array<{
-  kind: PayeeKind;
-  title: string;
-  subtitle: string;
-}> = [
-  {
-    kind: "individual",
-    title: "Just me (sole proprietor / freelancer)",
-    subtitle: "I work under my own name. Bank account is usually in my personal name.",
-  },
-  {
-    kind: "business",
-    title: "Registered company / salon",
-    subtitle: "I have a company registration number. Payouts may be in the business name.",
-  },
+const OPTION_KEYS: Array<{ kind: PayeeKind; titleKey: "individualTitle"; subtitleKey: "individualSubtitle" } | { kind: PayeeKind; titleKey: "businessTitle"; subtitleKey: "businessSubtitle" }> = [
+  { kind: "individual", titleKey: "individualTitle", subtitleKey: "individualSubtitle" },
+  { kind: "business", titleKey: "businessTitle", subtitleKey: "businessSubtitle" },
 ];
 
 export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props) {
+  const { t } = useTranslation();
+  const et = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.providerEntityTypeSelector.${key}`, opts) as string,
+    [t],
+  );
   const [data, setData] = useState<PayeeEntityData>(initial);
   const [saving, setSaving] = useState(false);
 
@@ -57,25 +52,23 @@ export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props)
         setData(saved);
         onSaved?.(saved);
       } catch (err) {
-        Alert.alert("Could not save", getApiErrorMessage(err));
+        Alert.alert(et("couldNotSave"), getApiErrorMessage(err));
       } finally {
         setSaving(false);
       }
     },
-    [onSaved],
+    [onSaved, et],
   );
 
   const selectKind = (kind: PayeeKind) => {
     if (kind === data.payee_kind) return;
     Alert.alert(
-      "Change how your business is set up?",
-      kind === "individual"
-        ? "You will only need to verify your personal identity."
-        : "Enter your company details, then save.",
+      et("changeTitle"),
+      kind === "individual" ? et("changeIndividual") : et("changeBusiness"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: et("cancel"), style: "cancel" },
         {
-          text: "Continue",
+          text: et("continue"),
           onPress: () => {
             if (kind === "individual") {
               void save({
@@ -103,16 +96,16 @@ export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props)
     <View style={twStyle(compact ? "gap-3" : "gap-4")}>
       <View>
         <Text style={twStyle("text-base font-semibold text-slate-900")}>
-          How is your business set up?
+          {et("heading")}
         </Text>
         {!compact && (
           <Text style={twStyle("mt-1 text-sm text-slate-600")}>
-            This determines what we need to verify before you can go live.
+            {et("headingHint")}
           </Text>
         )}
       </View>
 
-      {OPTIONS.map((opt) => {
+      {OPTION_KEYS.map((opt) => {
         const selected = data.payee_kind === opt.kind;
         return (
           <TouchableOpacity
@@ -127,39 +120,39 @@ export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props)
             accessibilityRole="radio"
             accessibilityState={{ selected }}
           >
-            <Text style={twStyle("font-semibold text-slate-900")}>{opt.title}</Text>
-            <Text style={twStyle("mt-1 text-sm text-slate-600")}>{opt.subtitle}</Text>
+            <Text style={twStyle("font-semibold text-slate-900")}>{et(opt.titleKey)}</Text>
+            <Text style={twStyle("mt-1 text-sm text-slate-600")}>{et(opt.subtitleKey)}</Text>
           </TouchableOpacity>
         );
       })}
 
       {data.payee_kind === "business" && (
         <View style={twStyle("gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4")}>
-          <Text style={twStyle("text-sm font-semibold text-slate-800")}>Company details</Text>
+          <Text style={twStyle("text-sm font-semibold text-slate-800")}>{et("companyDetails")}</Text>
           <TextInput
             value={data.registered_business_name ?? ""}
             onChangeText={(t) => setData((d) => ({ ...d, registered_business_name: t }))}
-            placeholder="Registered business name"
+            placeholder={et("registeredNamePlaceholder")}
             style={twStyle("rounded-xl border border-slate-200 bg-white px-4 py-3 text-base")}
           />
           <TextInput
             value={data.business_registration_number ?? ""}
             onChangeText={(t) => setData((d) => ({ ...d, business_registration_number: t }))}
-            placeholder="Registration number (e.g. CIPC)"
+            placeholder={et("registrationNumberPlaceholder")}
             style={twStyle("rounded-xl border border-slate-200 bg-white px-4 py-3 text-base")}
           />
           <TextInput
             value={data.business_registration_country ?? ""}
             onChangeText={(t) => setData((d) => ({ ...d, business_registration_country: t }))}
-            placeholder="Country of registration (e.g. ZA)"
+            placeholder={et("countryPlaceholder")}
             autoCapitalize="characters"
             style={twStyle("rounded-xl border border-slate-200 bg-white px-4 py-3 text-base")}
           />
           <View style={twStyle("flex-row flex-wrap gap-2")}>
             {(
               [
-                ["owner", "I am the owner"],
-                ["authorized_representative", "Authorized representative"],
+                ["owner", et("roleOwner")],
+                ["authorized_representative", et("roleRep")],
               ] as const
             ).map(([role, label]) => {
               const on = data.verified_person_role === role;
@@ -187,7 +180,7 @@ export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props)
           <TouchableOpacity
             onPress={() => {
               if (!data.registered_business_name?.trim()) {
-                Alert.alert("Company details", "Registered business name is required.");
+                Alert.alert(et("nameRequiredTitle"), et("nameRequired"));
                 return;
               }
               void save(data);
@@ -198,7 +191,7 @@ export function ProviderEntityTypeSelector({ initial, onSaved, compact }: Props)
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={twStyle("font-semibold text-white")}>Save company details</Text>
+              <Text style={twStyle("font-semibold text-white")}>{et("saveCompany")}</Text>
             )}
           </TouchableOpacity>
         </View>

@@ -4,6 +4,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToast } from "@/lib/adminToast";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type VariantOptType = { name: string; values: string[] };
 
@@ -120,8 +121,7 @@ export function AdminProductEditorSheet(props: {
   const product = q.data;
   const currency = String(product?.preferred_currency ?? "ZAR");
   const fmt = useMemo(
-    () => (n: number) =>
-      new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(n),
+    () => (n: number) => formatAdminCurrency(n, currency),
     [currency],
   );
 

@@ -2,7 +2,6 @@ import { useEffect, useRef, useCallback } from "react";
 import { View, Platform, TouchableOpacity, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, router, usePathname } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { RoleGate } from "@/components/RoleGate";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import { LegalAcceptanceGate } from "@/components/legal/LegalAcceptanceGate";
@@ -24,6 +23,7 @@ import {
 } from "@/lib/sentry";
 import { useTranslation } from "@beautonomi/i18n";
 import { NotificationBannerListener } from "@/components/NotificationBannerListener";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   requiresCustomerLogin,
   requiresOnboardingBeforeAccess,
@@ -226,11 +226,11 @@ export default function AppLayout() {
           router.replace("/(app)/(tabs)/profile");
         }
       }}
-      style={{ marginLeft: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
+      style={{ marginStart: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
       accessibilityLabel="Back"
       accessibilityRole="button"
     >
-      <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+      <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
     </TouchableOpacity>
   );
 
@@ -306,7 +306,7 @@ export default function AppLayout() {
         <Stack.Screen name="on-demand/result" options={{ headerShown: true, title: stackTitle("result") }} />
         <Stack.Screen name="more-providers/[section]" options={{ headerShown: true }} />
         <Stack.Screen name="in-app-browser" options={{ headerShown: false, title: stackTitle("link") }} />
-        <Stack.Screen name="pdf-preview" options={{ headerShown: false, title: "PDF" }} />
+        <Stack.Screen name="pdf-preview" options={{ headerShown: false, title: stackTitle("pdf") }} />
         <Stack.Screen name="onboarding/index" options={{ headerShown: false, gestureEnabled: false, animation: "fade" }} />
         <Stack.Screen name="safety" options={{ headerShown: false }} />
       </Stack>

@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, TextInput, Alert, Switch, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -32,18 +33,24 @@ interface EmailIntegration {
 }
 
 const PROVIDERS = [
-  { label: "SendGrid", value: "sendgrid", icon: "mail-outline" as const, color: "#0ea5e9" },
-  { label: "Mailchimp", value: "mailchimp", icon: "megaphone-outline" as const, color: "#f59e0b" },
+  { labelKey: "providerSendgrid", value: "sendgrid", icon: "mail-outline" as const, color: "#0ea5e9" },
+  { labelKey: "providerMailchimp", value: "mailchimp", icon: "megaphone-outline" as const, color: "#f59e0b" },
 ];
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString();
 }
 
 export default function EmailIntegrationScreen() {
+  const { t } = useTranslation();
+  const ei = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.emailIntegration.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { data: integration, loading, refresh } = useApi<EmailIntegration | null>(
     "/api/provider/email-integration"
@@ -72,12 +79,12 @@ export default function EmailIntegrationScreen() {
 
   async function handleSave() {
     if (!apiKey.trim() || !fromEmail.trim()) {
-      Alert.alert("Required", "API key and from email are required");
+      Alert.alert(ei("requiredTitle"), ei("requiredFields"));
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(fromEmail.trim())) {
-      Alert.alert("Invalid", "Please enter a valid email address");
+      Alert.alert(ei("invalidTitle"), ei("invalidEmail"));
       return;
     }
     const { error, errorCode } = await saveIntegration("/api/provider/email-integration", {
@@ -88,7 +95,7 @@ export default function EmailIntegrationScreen() {
       is_enabled: isEnabled,
     });
     if (error) {
-      showPlanGateAlert({ title: "Could not save", message: error, errorCode, router });
+      showPlanGateAlert({ title: ei("saveFailed"), message: error, errorCode, router });
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -104,29 +111,29 @@ export default function EmailIntegrationScreen() {
     if (error) {
       setTestResult({ success: false, message: error });
     } else {
-      setTestResult({ success: true, message: "Connection successful!" });
+      setTestResult({ success: true, message: ei("connectionSuccess") });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }
 
   async function handleSendTest() {
     if (!fromEmail.trim()) {
-      Alert.alert("Required", "From email is required to send a test");
+      Alert.alert(ei("requiredTitle"), ei("fromEmailRequired"));
       return;
     }
     const { error } = await sendTestEmail("/api/provider/email-integration/send-test", {
       to_email: fromEmail.trim(),
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ei("errorTitle"), error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Sent", `Test email sent to ${fromEmail}`);
+      Alert.alert(ei("sentTitle"), ei("testSent", { email: fromEmail }));
     }
   }
 
   function maskedKey(key: string): string {
-    if (!key || key.length < 8) return "••••••••";
+    if (!key || key.length < 8) return ei("maskedKey");
     return key.substring(0, 4) + "••••" + key.substring(key.length - 4);
   }
 
@@ -136,37 +143,34 @@ export default function EmailIntegrationScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Email Integration" showBack subtitle="SendGrid or Mailchimp" />
+      <ScreenHeader title={ei("title")} showBack subtitle={ei("subtitle")} />
 
-      {/* Connection status */}
       {integration?.connected_date && (
         <View style={twStyle("mb-4 rounded-xl bg-green-50 p-3")}>
           <View style={twStyle("flex-row items-center")}>
             <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
-            <Text style={twStyle("ml-1.5 text-sm text-green-700")}>
-              Connected since {formatDateSafe(integration.connected_date)}
+            <Text style={twStyle("ms-1.5 text-sm text-green-700")}>
+              {ei("connectedSince", { date: formatDateSafe(integration.connected_date, ei("emptyValue")) })}
             </Text>
           </View>
         </View>
       )}
 
-      {/* Email stats */}
       {stats && (
         <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-            <StatCard title="Sent" value={String(stats.total_sent)} icon="send-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+            <StatCard title={ei("statSent")} value={String(stats.total_sent)} icon="send-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-            <StatCard title="Delivered" value={`${(stats.delivery_rate * 100).toFixed(0)}%`} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+            <StatCard title={ei("statDelivered")} value={`${(stats.delivery_rate * 100).toFixed(0)}%`} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
           </View>
           <View style={twStyle("flex-1")}>
-            <StatCard title="Opened" value={String(stats.opened)} icon="mail-open-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+            <StatCard title={ei("statOpened")} value={String(stats.opened)} icon="mail-open-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
           </View>
         </View>
       )}
 
-      {/* Provider selection */}
-      <SectionHeader title="Email Provider" />
+      <SectionHeader title={ei("emailProvider")} />
       <View style={twStyle("mb-4 flex-row")}>
         {PROVIDERS.map((p, i) => (
           <TouchableOpacity
@@ -175,7 +179,7 @@ export default function EmailIntegrationScreen() {
               provider === p.value
                 ? "border-indigo-500 bg-indigo-50"
                 : "border-gray-200 bg-white"
-            }`), i < PROVIDERS.length - 1 ? { marginRight: 12 } : undefined]}
+            }`), i < PROVIDERS.length - 1 ? { marginEnd: 12 } : undefined]}
             onPress={() => setProvider(p.value)}
           >
             <Ionicons
@@ -188,19 +192,18 @@ export default function EmailIntegrationScreen() {
                 provider === p.value ? "text-indigo-700" : "text-gray-600"
               }`)}
             >
-              {p.label}
+              {ei(p.labelKey)}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Configuration */}
-      <SectionHeader title="Configuration" />
+      <SectionHeader title={ei("configuration")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("flex-row items-center justify-between mb-4")}>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enabled</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>Activate email sending</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>{ei("enabled")}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{ei("enabledHint")}</Text>
           </View>
           <Switch
             value={isEnabled}
@@ -210,14 +213,14 @@ export default function EmailIntegrationScreen() {
           />
         </View>
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>API Key *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ei("apiKey")}</Text>
         <View style={twStyle("mb-3 flex-row items-center")}>
           <TextInput
-            style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+            style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginEnd: 8 }]}
             value={showKey ? apiKey : maskedKey(apiKey)}
             onChangeText={setApiKey}
             onFocus={() => setShowKey(true)}
-            placeholder={provider === "sendgrid" ? "SG.xxxxx..." : "xxxxx-us1"}
+            placeholder={provider === "sendgrid" ? ei("placeholderSendgrid") : ei("placeholderMailchimp")}
             placeholderTextColor="#9ca3af"
             secureTextEntry={!showKey}
           />
@@ -229,31 +232,30 @@ export default function EmailIntegrationScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>From Email *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ei("fromEmail")}</Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={fromEmail}
           onChangeText={setFromEmail}
-          placeholder="noreply@yourbusiness.com"
+          placeholder={ei("fromEmailPlaceholder")}
           placeholderTextColor="#9ca3af"
           keyboardType="email-address"
           autoCapitalize="none"
         />
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>From Name</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ei("fromName")}</Text>
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={fromName}
           onChangeText={setFromName}
-          placeholder="Your Business Name"
+          placeholder={ei("fromNamePlaceholder")}
           placeholderTextColor="#9ca3af"
         />
 
-        <ActionButton label="Save Integration" onPress={handleSave} loading={saving} fullWidth />
+        <ActionButton label={ei("save")} onPress={handleSave} loading={saving} fullWidth />
       </View>
 
-      {/* Test connection */}
-      <SectionHeader title="Testing" />
+      <SectionHeader title={ei("testing")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         {testResult && (
           <View style={twStyle(`mb-3 rounded-lg p-3 ${testResult.success ? "bg-green-50" : "bg-red-50"}`)}>
@@ -263,7 +265,7 @@ export default function EmailIntegrationScreen() {
                 size={16}
                 color={testResult.success ? "#22c55e" : "#ef4444"}
               />
-              <Text style={twStyle(`ml-1.5 text-sm ${testResult.success ? "text-green-700" : "text-red-700"}`)}>
+              <Text style={twStyle(`ms-1.5 text-sm ${testResult.success ? "text-green-700" : "text-red-700"}`)}>
                 {testResult.message}
               </Text>
             </View>
@@ -271,9 +273,9 @@ export default function EmailIntegrationScreen() {
         )}
 
         <View style={twStyle("flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <ActionButton
-              label="Test Connection"
+              label={ei("testConnection")}
               variant="outline"
               onPress={handleTestConnection}
               loading={testing}
@@ -282,7 +284,7 @@ export default function EmailIntegrationScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <ActionButton
-              label="Send Test Email"
+              label={ei("sendTestEmail")}
               variant="outline"
               onPress={handleSendTest}
               loading={sendingTest}

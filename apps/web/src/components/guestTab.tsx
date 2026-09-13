@@ -1,4 +1,7 @@
+"use client";
+
 import Image, { type StaticImageData } from "next/image";
+import { useTranslation } from "@beautonomi/i18n";
 // Placeholder images - some originals were missing
 const Getting = "/images/getting-started-optimized.jpg";
 import Access from "./../../public/images/accessing-your-account-optimized.jpg";
@@ -19,46 +22,47 @@ interface Guide {
   mobileSrc: StaticImageData | string;
 }
 
-const guides: Guide[] = [
-  {
-    src: Getting,
-    alt: "Access and manage your account",
-    description: "Getting started on Beautonomi",
-    mobileSrc: Started,
-    link:"/"
-  },
-  {
-    src: Access,
-    alt: "Getting paid",
-    description: "Access and manage your account",
-    mobileSrc: Profile,
-    link:"/"
-
-  },
-  {
-    src: Reservation,
-    alt: "Help with a booking",
-    description: "Help with a booking",
-    mobileSrc: Calendar,
-    link:"/"
-
-  },
-  {
-    src: Aircover,
-    alt: "Getting protected through Beautonomi Coverage for Providers",
-    description: "Beautonomi Coverage for customers",
-    mobileSrc: Home,
-    link:"/"
-
-  },
-];
-
 export default function CustomerTab() {
+  const { t } = useTranslation();
+  const guides: Guide[] = [
+    {
+      src: Getting,
+      alt: t("web.helpGuides.accessAccountAlt"),
+      description: t("web.helpGuides.gettingStartedBeautonomi"),
+      mobileSrc: Started,
+      link:"/"
+    },
+    {
+      src: Access,
+      alt: t("web.helpGuides.gettingPaid"),
+      description: t("web.helpGuides.accessManageAccount"),
+      mobileSrc: Profile,
+      link:"/"
+
+    },
+    {
+      src: Reservation,
+      alt: t("web.helpGuides.helpWithBooking"),
+      description: t("web.helpGuides.helpWithBooking"),
+      mobileSrc: Calendar,
+      link:"/"
+
+    },
+    {
+      src: Aircover,
+      alt: t("web.helpGuides.coverageProviders"),
+      description: t("web.helpGuides.coverageCustomers"),
+      mobileSrc: Home,
+      link:"/"
+
+    },
+  ];
+
   return (
     <div className="max-w-6xl mx-auto py-5 sm:py-8">
       <div className="block sm:flex justify-between items-center mb-6">
         <h2 className="text-[26px] mb-5 sm:mb-1 font-normal  text-secondary">
-          Guides for getting started
+          {t("web.helpGuides.gettingStartedTitle")}
         </h2>
         <div className="block sm:hidden">
           {guides.map((guide, index) => (
@@ -74,7 +78,7 @@ export default function CustomerTab() {
                     {guide.description}
                   </h2>
                 </div>
-                <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+                <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
               </div>
             </Link>
           ))}
@@ -84,10 +88,10 @@ export default function CustomerTab() {
             href="#"
             className="flex items-center font-light  text-lg sm:text-sm text-secondary"
           >
-            Browse all topics{" "}
-            <ArrowRightIcon className="hidden sm:block ml-1 h-4 w-4" />
+            {t("web.helpGuides.browseAllTopics")}{" "}
+            <ArrowRightIcon className="hidden sm:block ms-1 h-4 w-4" />
           </a>
-          <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+          <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
         </div>
       </div>
       <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0">

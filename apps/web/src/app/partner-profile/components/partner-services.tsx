@@ -9,6 +9,11 @@ import EmptyState from "@/components/ui/empty-state";
 import ServiceDetailModal from "./service-detail-modal";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
+import { ApproxMoneyLabel } from "@/components/i18n/ApproxMoneyLabel";
+import { useLocale } from "@/components/i18n/LocaleProvider";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 import type { PartnerProfileServiceCategoryInitial } from "@/types/partner-profile-services";
 
 type PublicServiceVariant = {
@@ -40,13 +45,8 @@ type ServiceCategory = {
   services: PublicService[];
 };
 
-function formatMoney(amount: number, currency: string) {
-  const code = currency && currency.trim().length === 3 ? currency.trim() : "ZAR";
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: code }).format(amount);
-  } catch {
-    return `${code} ${amount.toFixed(2)}`;
-  }
+function formatMoney(amount: number, currency: string, formatLocale?: string) {
+  return formatMoneyUtil(amount, currency, formatLocale);
 }
 
 function variantLabel(v: PublicServiceVariant) {
@@ -97,6 +97,8 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
   initialServiceCategories,
 }) => {
   const router = useRouter();
+  const { formatLocale, language } = useLocale();
+  const { t, pp } = usePartnerProfileT();
   const [activeCategory, setActiveCategory] = useState(0);
   const skipClientServicesFetch = Array.isArray(initialServiceCategories);
   const normalizedFromServer = skipClientServicesFetch
@@ -129,7 +131,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
 
     const load = async () => {
       if (!providerSlug) {
-        setError("Provider identifier is required");
+        setError(pp("providerIdRequired"));
         setIsLoading(false);
         return;
       }
@@ -211,7 +213,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
   if (isLoading) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <LoadingTimeout loadingMessage="Loading services..." />
+        <LoadingTimeout loadingMessage={pp("loadingServices")} />
       </div>
     );
   }
@@ -219,7 +221,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
   if (error) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <EmptyState title="Unable to load services" description={error} />
+        <EmptyState title={pp("unableToLoadServices")} description={error} />
       </div>
     );
   }
@@ -227,7 +229,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
   if (serviceCategories.length === 0) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <EmptyState title="No services available" description="This provider hasn't added bookable services yet" />
+        <EmptyState title={pp("noServicesAvailable")} description={pp("noServicesHint")} />
       </div>
     );
   }
@@ -236,7 +238,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-6 md:py-8">
-      <h2 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6">Services</h2>
+      <h2 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6">{pp("tabServices")}</h2>
 
       <div className="relative mb-6 md:mb-8">
         <div className="flex items-center">
@@ -256,7 +258,12 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                     : "bg-white text-gray-800 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                 }`}
               >
-                {category.name}
+                {translatePublicCategory(
+                  t,
+                  category.name.replace(/\s+/g, "-"),
+                  category.name,
+                  { language },
+                )}
               </button>
             ))}
           </div>
@@ -264,7 +271,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
             type="button"
             onClick={() => scroll("left")}
             className="absolute left-0 bg-white p-1 rounded-full shadow-md hidden md:block"
-            aria-label="Scroll left"
+            aria-label={t("web.a11y.scrollLeft")}
           >
             <ChevronLeft className="w-4 h-4 text-gray-400" />
           </button>
@@ -272,7 +279,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
             type="button"
             onClick={() => scroll("right")}
             className="absolute right-0 bg-white p-1 rounded-full shadow-md hidden md:block"
-            aria-label="Scroll right"
+            aria-label={t("web.a11y.scrollRight")}
           >
             <ChevronRight className="w-4 h-4 text-gray-400" />
           </button>
@@ -287,9 +294,14 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
           const maxP = Math.max(...prices);
           const currency = hasVariants ? service.variants[0]?.currency || service.currency : service.currency;
           const priceLabel =
-            hasVariants && minP !== maxP
-              ? `${formatMoney(minP, currency)} – ${formatMoney(maxP, currency)}`
-              : formatMoney(minP, currency);
+            hasVariants && minP !== maxP ? (
+              <>
+                <ApproxMoneyLabel amount={minP} chargeCurrency={currency} /> –{" "}
+                <ApproxMoneyLabel amount={maxP} chargeCurrency={currency} />
+              </>
+            ) : (
+              <ApproxMoneyLabel amount={minP} chargeCurrency={currency} />
+            );
           const chosenId = hasVariants ? selectedVariantId[service.id] || service.variants[0]?.id : service.id;
           const chosen = hasVariants ? service.variants.find((v) => v.id === chosenId) : null;
 
@@ -308,13 +320,13 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
             >
               <div className="p-4 md:p-5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div className="flex-1 min-w-0 text-left">
+                  <div className="flex-1 min-w-0 text-start">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
                       <h3 className="text-base md:text-lg font-semibold text-gray-900">{service.title}</h3>
                       {hasVariants && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 text-violet-800 text-xs font-semibold px-3 py-1 border border-violet-100">
                           <Layers className="h-3.5 w-3.5" />
-                          {service.variants.length} options
+                          {pp("optionsCount", { count: service.variants.length })}
                         </span>
                       )}
                     </div>
@@ -322,11 +334,11 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                       <div className="flex items-center gap-1.5 text-gray-600">
                         <Clock className="h-4 w-4 text-gray-400 shrink-0" />
                         <span className="text-sm">
-                          {chosen ? `${chosen.duration_minutes} min` : `${service.duration_minutes} min`}
+                          {chosen ? pp("durationMinutes", { minutes: chosen.duration_minutes }) : pp("durationMinutes", { minutes: service.duration_minutes })}
                         </span>
                       </div>
                       <span className="text-base md:text-lg font-bold text-gray-900">
-                        {hasVariants ? <>From {priceLabel}</> : priceLabel}
+                        {hasVariants ? <>{pp("fromPrefix")}{priceLabel}</> : priceLabel}
                       </span>
                     </div>
                     {service.description && (
@@ -334,10 +346,10 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                     )}
                     {hasVariants && chosen && variantSectionExpanded && (
                       <p className="mt-2 text-xs text-gray-500">
-                        Selected:{" "}
+                        {pp("selectedPrefix")}{" "}
                         <span className="font-medium text-gray-800">{variantLabel(chosen)}</span>
                         {" · "}
-                        {formatMoney(Number(chosen.price), chosen.currency)}
+                        {formatMoney(Number(chosen.price), chosen.currency, formatLocale)}
                       </p>
                     )}
                   </div>
@@ -353,7 +365,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                         className="px-4 py-2.5 border border-gray-200 rounded-full hover:bg-gray-50 transition-colors text-sm font-semibold flex items-center justify-center gap-2 min-h-[44px] bg-white"
                       >
                         <Info className="w-4 h-4" />
-                        <span>Details</span>
+                        <span>{pp("detailsCta")}</span>
                       </button>
                     )}
                     <button
@@ -364,7 +376,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                       }}
                       className="flex-1 md:w-full px-6 py-2.5 bg-[#FF0077] text-white rounded-full hover:bg-[#e6006c] transition-colors text-sm font-semibold shadow-sm shadow-pink-500/25 items-center justify-center min-h-[44px] flex"
                     >
-                      Book
+                      {pp("bookCta")}
                     </button>
                   </div>
                 </div>
@@ -378,7 +390,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                     <CollapsibleTrigger
                       type="button"
                       className={cn(
-                        "flex w-full items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold transition-all",
+                        "flex w-full items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-start text-sm font-semibold transition-all",
                         variantSectionExpanded
                           ? "border-[#FF0077] bg-pink-50 text-[#FF0077]"
                           : "border-gray-200 bg-gray-50 text-gray-900 hover:border-[#FF0077]/40 hover:bg-pink-50/40"
@@ -387,7 +399,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                       <span className="inline-flex items-center gap-2.5">
                         <Layers className="h-4 w-4 shrink-0" />
                         <span>
-                          {variantSectionExpanded ? "Hide options" : `Choose from ${service.variants.length} option${service.variants.length !== 1 ? "s" : ""}`}
+                          {variantSectionExpanded ? pp("hideOptions") : pp("chooseFromOptions", { count: service.variants.length })}
                         </span>
                         {!variantSectionExpanded && chosen && (
                           <span className="text-xs font-medium text-gray-500 truncate max-w-[160px]">
@@ -404,7 +416,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-3 space-y-3 overflow-hidden data-[state=closed]:hidden">
                       <p className="text-xs text-gray-500">
-                        Pick the option that matches what you need — your booking will use this exact service.
+                        {pp("pickExactOption")}
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {service.variants.map((v) => {
@@ -418,7 +430,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                                 setSelectedVariantId((prev) => ({ ...prev, [service.id]: v.id }));
                               }}
                               className={cn(
-                                "rounded-full border-2 px-4 py-2.5 text-left transition-all text-sm max-w-full",
+                                "rounded-full border-2 px-4 py-2.5 text-start transition-all text-sm max-w-full",
                                 selected
                                   ? "border-[#FF0077] bg-pink-50 text-gray-900 ring-2 ring-pink-200/60"
                                   : "border-gray-200 bg-white hover:border-gray-300 text-gray-800"
@@ -431,10 +443,10 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                 <span className="inline-flex items-center gap-1">
                                   <Clock className="h-3.5 w-3.5" />
-                                  {v.duration_minutes} min
+                                  {pp("durationMinutes", { minutes: v.duration_minutes })}
                                 </span>
                                 <span className="font-semibold text-gray-900">
-                                  {formatMoney(Number(v.price), v.currency)}
+                                  {formatMoney(Number(v.price), v.currency, formatLocale)}
                                 </span>
                               </div>
                             </button>
@@ -450,7 +462,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                           }}
                           className="rounded-full bg-[#FF0077] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#e6006c] inline-flex items-center justify-center min-h-[44px] shadow-sm shadow-pink-500/25"
                         >
-                          Book selected option
+                          {pp("bookSelectedOption")}
                         </button>
                       </div>
                     </CollapsibleContent>
@@ -471,7 +483,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
           }}
           className="text-gray-600 hover:text-gray-900 underline text-sm"
         >
-          View all services
+          {pp("viewAllServices")}
         </button>
       </div>
 
@@ -483,7 +495,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
             title: selectedService.title,
             description: selectedService.description,
             duration: `${selectedService.duration_minutes} min`,
-            price: formatMoney(Number(selectedService.price), selectedService.currency),
+            price: formatMoney(Number(selectedService.price), selectedService.currency, formatLocale),
             category: currentCategory?.name,
             supports_at_home: selectedService.supports_at_home,
             supports_at_salon: selectedService.supports_at_salon,
@@ -493,7 +505,7 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
                   label: variantLabel(v),
                   description: v.description,
                   duration_minutes: v.duration_minutes,
-                  priceFormatted: formatMoney(Number(v.price), v.currency),
+                  priceFormatted: formatMoney(Number(v.price), v.currency, formatLocale),
                 }))
               : undefined,
           }}

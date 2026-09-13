@@ -15,38 +15,39 @@ interface PrivacySettings {
   analytics_consent: boolean;
 }
 
-const PRIVACY_TOGGLES: {
+function buildPrivacyToggles(t: (key: string) => string): {
   key: keyof PrivacySettings;
   label: string;
   description: string;
-}[] = [
-  {
-    key: "show_profile_publicly",
-    label: "Show my profile publicly",
-    description: "Allow other users to view your profile and basic information",
-  },
-  {
-    key: "allow_providers_see_reviews",
-    label: "Allow providers to see my reviews",
-    description: "Let service providers view reviews you've written",
-  },
-  {
-    key: "share_booking_data",
-    label: "Share booking data for recommendations",
-    description: "Help us personalise your experience with smarter recommendations",
-  },
-  {
-    key: "receive_marketing",
-    label: "Receive marketing communications",
-    description: "Get emails and notifications about promotions and new features",
-  },
-  {
-    key: "analytics_consent",
-    label: "Product analytics",
-    description:
-      "Help improve the app with usage analytics and optional session diagnostics while you are signed in. You can turn this off anytime.",
-  },
-];
+}[] {
+  return [
+    {
+      key: "show_profile_publicly",
+      label: t("customer.mobile.screens.privacySharing.toggleShowProfilePubliclyLabel"),
+      description: t("customer.mobile.screens.privacySharing.toggleShowProfilePubliclyDesc"),
+    },
+    {
+      key: "allow_providers_see_reviews",
+      label: t("customer.mobile.screens.privacySharing.toggleAllowProvidersSeeReviewsLabel"),
+      description: t("customer.mobile.screens.privacySharing.toggleAllowProvidersSeeReviewsDesc"),
+    },
+    {
+      key: "share_booking_data",
+      label: t("customer.mobile.screens.privacySharing.toggleShareBookingDataLabel"),
+      description: t("customer.mobile.screens.privacySharing.toggleShareBookingDataDesc"),
+    },
+    {
+      key: "receive_marketing",
+      label: t("customer.mobile.screens.privacySharing.toggleReceiveMarketingLabel"),
+      description: t("customer.mobile.screens.privacySharing.toggleReceiveMarketingDesc"),
+    },
+    {
+      key: "analytics_consent",
+      label: t("customer.mobile.screens.privacySharing.toggleAnalyticsConsentLabel"),
+      description: t("customer.mobile.screens.privacySharing.toggleAnalyticsConsentDesc"),
+    },
+  ];
+}
 
 const DEFAULT_SETTINGS: PrivacySettings = {
   show_profile_publicly: true,
@@ -68,6 +69,7 @@ function mergeServerPrivacyPayload(raw: unknown): Partial<PrivacySettings> {
 
 export default function PrivacyAndSharingScreen() {
   const { t } = useTranslation();
+  const PRIVACY_TOGGLES = buildPrivacyToggles(t);
   const errTitle = t("customer.mobile.screens.authLogin.errorTitle");
   const ps = useCallback(
     (key: "updateErrorBody" | "loadFailed") => t(`customer.mobile.screens.privacySharing.${key}`) as string,
@@ -133,9 +135,9 @@ export default function PrivacyAndSharingScreen() {
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       <View>
         <View>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Privacy Controls</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{t("customer.mobile.screens.privacySharing.title")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
-            Manage how your information is used and shared
+            {t("customer.mobile.screens.privacySharing.subtitle")}
           </Text>
         </View>
 
@@ -143,7 +145,7 @@ export default function PrivacyAndSharingScreen() {
           {PRIVACY_TOGGLES.map((item, index) => (
             <View key={item.key} style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <View style={{ flex: 1, marginRight: 12 }}>
+                <View style={{ flex: 1, marginEnd: 12 }}>
                   <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{item.label}</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>{item.description}</Text>
                 </View>
@@ -167,45 +169,42 @@ export default function PrivacyAndSharingScreen() {
 
         <View style={{ backgroundColor: Colors.primaryLight, borderRadius: 12, padding: 16, marginTop: 8 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>
-            Your data is protected in accordance with the Protection of Personal Information
-            Act (POPIA) and our Privacy Policy. You can change these settings at any time.
-            Disabling data sharing may limit personalised recommendations.
+            {t("customer.mobile.screens.privacySharing.popiaNote")}
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
             <Text
-              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginEnd: 8 }}
               onPress={() => pushWebPrivacyPolicy(router)}
             >
-              Privacy policy
+              {t("customer.mobile.screens.privacySharing.privacyPolicyLink")}
             </Text>
             <Text
-              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginEnd: 8 }}
               onPress={() => pushWebTermsOfService(router)}
             >
-              Terms of service
+              {t("customer.mobile.screens.privacySharing.termsLink")}
             </Text>
             <Text
-              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 8 }}
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginEnd: 8 }}
               onPress={() => pushWebCookiePolicy(router)}
             >
-              Cookie policy
+              {t("customer.mobile.screens.privacySharing.cookiePolicyLink")}
             </Text>
             <Text
               style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
               onPress={() => pushWebAgeSuitability(router)}
             >
-              Age suitability
+              {t("customer.mobile.screens.privacySharing.ageSuitabilityLink")}
             </Text>
           </View>
         </View>
 
         <View style={{ marginTop: 28 }}>
           <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
-            Delete account
+            {t("customer.mobile.screens.privacySharing.deleteAccountSectionTitle")}
           </Text>
           <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
-            Permanently delete your account and personal data. You will confirm with your password and by typing
-            DELETE.
+            {t("customer.mobile.screens.privacySharing.deleteAccountSectionBody")}
           </Text>
           <TouchableOpacity
             onPress={() => router.push("/(app)/account-settings/delete-account" as never)}
@@ -219,9 +218,9 @@ export default function PrivacyAndSharingScreen() {
               alignItems: "center",
             }}
             accessibilityRole="button"
-            accessibilityLabel="Delete account permanently"
+            accessibilityLabel={t("customer.mobile.screens.privacySharing.deleteAccountA11y")}
           >
-            <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>Delete account</Text>
+            <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>{t("customer.mobile.screens.privacySharing.deleteAccountCta")}</Text>
           </TouchableOpacity>
         </View>
       </View>

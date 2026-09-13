@@ -7,6 +7,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import { Switch } from "@/components/ui/switch";
 import {
   Sheet,
@@ -19,6 +20,7 @@ import {
 import { AlertCircle, CreditCard, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import BackButton from "../components/back-button";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 type ProviderMembership = {
   id: string;
@@ -100,14 +102,17 @@ function formatDateSafe(value: string | null | undefined): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-function cardLabel(card: { last4: string; brand: string; exp: string } | null): string {
+function cardLabel(
+  card: { last4: string; brand: string; exp: string } | null,
+  t: TFunction,
+): string {
   if (!card) return "";
-  const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
-  return `${brand} •••• ${card.last4} · exp. ${card.exp}`;
+  const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : t("web.accountSettings.membership.cardFallback");
+  return t("web.accountSettings.membership.cardLine", { brand, last4: card.last4, exp: card.exp });
 }
 
 function formatMoney(amount: number, currency = "ZAR"): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getDefaultMoneyLocale(), {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
@@ -115,6 +120,7 @@ function formatMoney(amount: number, currency = "ZAR"): string {
 }
 
 export default function MembershipPageClient() {
+  const { t } = useTranslation();
   const [data, setData] = useState<MembershipData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +154,7 @@ export default function MembershipPageClient() {
       });
       setData(res.data ?? null);
     } catch (err) {
-      setError(err instanceof FetchError ? err.message : "Failed to load memberships");
+      setError(err instanceof FetchError ? err.message : t("web.accountSettings.membership.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -159,7 +165,7 @@ export default function MembershipPageClient() {
   }, [load]);
 
   const cancelPlatformMembership = async () => {
-    if (!confirm("Cancel your platform membership?")) return;
+    if (!confirm(t("web.accountSettings.membership.cancelPlatformConfirm"))) return;
     setCancellingPlatform(true);
     try {
       const res = await fetcher.post<{ data: { cancelled?: boolean; message?: string } }>(
@@ -167,14 +173,14 @@ export default function MembershipPageClient() {
         {}
       );
       if (res.data?.cancelled) {
-        toast.success("Membership cancelled");
+        toast.success(t("web.accountSettings.membership.cancelled"));
         await load();
       } else {
-        toast.info(res.data?.message ?? "No active membership found");
+        toast.info(res.data?.message ?? t("web.accountSettings.membership.noActiveMembership"));
         await load();
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to cancel membership");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.cancelFailed"));
     } finally {
       setCancellingPlatform(false);
     }
@@ -183,7 +189,7 @@ export default function MembershipPageClient() {
   const cancelSalonMembership = async (membership: ProviderMembership) => {
     if (
       !confirm(
-        `Cancel your ${membership.plan_name} membership with ${membership.provider_name}?`
+        t("web.accountSettings.membership.cancelSalonConfirm", { planName: membership.plan_name, providerName: membership.provider_name })
       )
     ) {
       return;
@@ -195,14 +201,14 @@ export default function MembershipPageClient() {
         { provider_membership_id: membership.id }
       );
       if (res.data?.cancelled) {
-        toast.success("Salon membership cancelled");
+        toast.success(t("web.accountSettings.membership.salonCancelled"));
         await load();
       } else {
-        toast.info(res.data?.message ?? "No active membership found");
+        toast.info(res.data?.message ?? t("web.accountSettings.membership.noActiveMembership"));
         await load();
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to cancel membership");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.cancelFailed"));
     } finally {
       setCancellingSalonId(null);
     }
@@ -210,7 +216,7 @@ export default function MembershipPageClient() {
 
   const toggleAutoRenew = async (membership: ProviderMembership, newValue: boolean) => {
     if (newValue && !membership.card) {
-      toast.error("Add a payment card in Payments before enabling auto-renew.");
+      toast.error(t("web.accountSettings.membership.addCardBeforeAutoRenew"));
       return;
     }
     setTogglingId(membership.id);
@@ -222,13 +228,13 @@ export default function MembershipPageClient() {
         auto_renew: newValue,
       });
       if (!res.data?.success) {
-        toast.error(res.data?.message ?? "Failed to update auto-renew");
+        toast.error(res.data?.message ?? t("web.accountSettings.membership.autoRenewUpdateFailed"));
       } else {
-        toast.success(newValue ? "Auto-renew enabled" : "Auto-renew disabled");
+        toast.success(newValue ? t("web.accountSettings.membership.autoRenewEnabled") : t("web.accountSettings.membership.autoRenewDisabled"));
         await load();
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update auto-renew");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.autoRenewUpdateFailed"));
     } finally {
       setTogglingId(null);
     }
@@ -244,7 +250,7 @@ export default function MembershipPageClient() {
       });
       setPaymentMethods(res.data ?? []);
     } catch {
-      toast.error("Could not load saved cards");
+      toast.error(t("web.accountSettings.membership.loadCardsFailed"));
       setPaymentMethods([]);
     } finally {
       setLoadingCards(false);
@@ -260,15 +266,15 @@ export default function MembershipPageClient() {
         { membership_id: cardTarget.id, payment_method_id: paymentMethodId }
       );
       if (res.data?.success) {
-        toast.success("Payment card updated");
+        toast.success(t("web.accountSettings.membership.cardUpdated"));
         setCardSheetOpen(false);
         setCardTarget(null);
         await load();
       } else {
-        toast.error(res.data?.message ?? "Failed to update card");
+        toast.error(res.data?.message ?? t("web.accountSettings.membership.updateCardFailed"));
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update card");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.updateCardFailed"));
     } finally {
       setUpdatingCard(false);
     }
@@ -278,7 +284,7 @@ export default function MembershipPageClient() {
     const paused = membership.status === "paused";
     if (
       !paused &&
-      !confirm(`Pause your ${membership.plan_name} membership with ${membership.provider_name}? Auto-renew will turn off.`)
+      !confirm(t("web.accountSettings.membership.pauseConfirm", { planName: membership.plan_name, providerName: membership.provider_name }))
     ) {
       return;
     }
@@ -289,17 +295,17 @@ export default function MembershipPageClient() {
           "/api/me/membership/resume",
           { provider_membership_id: membership.id },
         );
-        toast.success(res.data?.resumed ? "Membership resumed" : res.data?.message ?? "Updated");
+        toast.success(res.data?.resumed ? t("web.accountSettings.membership.resumed") : res.data?.message ?? t("web.accountSettings.membership.updated"));
       } else {
         const res = await fetcher.post<{ data: { paused?: boolean; message?: string } }>(
           "/api/me/membership/pause",
           { provider_membership_id: membership.id },
         );
-        toast.success(res.data?.paused ? "Membership paused" : res.data?.message ?? "Updated");
+        toast.success(res.data?.paused ? t("web.accountSettings.membership.paused") : res.data?.message ?? t("web.accountSettings.membership.updated"));
       }
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update membership");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.updateFailed"));
     } finally {
       setPausingId(null);
     }
@@ -307,11 +313,11 @@ export default function MembershipPageClient() {
 
   const openChangePlan = async (membership: ProviderMembership) => {
     if (membership.auto_renew !== true) {
-      toast.error("Turn on auto-renew first. The new plan applies at the next renewal.");
+      toast.error(t("web.accountSettings.membership.changePlanAutoRenewFirst"));
       return;
     }
     if (!membership.provider_slug) {
-      toast.error("This provider has no public profile, so other plans cannot be loaded.");
+      toast.error(t("web.accountSettings.membership.changePlanNoPublicProfile"));
       return;
     }
     setPlanTarget(membership);
@@ -323,7 +329,7 @@ export default function MembershipPageClient() {
       );
       setSalonPlans(res.data?.plans ?? []);
     } catch {
-      toast.error("Could not load plans");
+      toast.error(t("web.accountSettings.membership.loadPlansFailed"));
       setSalonPlans([]);
     } finally {
       setLoadingPlans(false);
@@ -346,19 +352,21 @@ export default function MembershipPageClient() {
         plan_id: planId,
       });
       if (res.data?.cleared) {
-        toast.success("Scheduled plan change cleared");
+        toast.success(t("web.accountSettings.membership.scheduledChangeCleared"));
       } else if (res.data?.scheduled) {
         toast.success(
-          `Plan change scheduled${res.data.scheduled_change_at ? ` for ${formatDateSafe(res.data.scheduled_change_at)}` : ""}`,
+          res.data.scheduled_change_at
+            ? t("web.accountSettings.membership.planChangeScheduledFor", { date: formatDateSafe(res.data.scheduled_change_at) })
+            : t("web.accountSettings.membership.planChangeScheduled"),
         );
       } else {
-        toast.success("Updated");
+        toast.success(t("web.accountSettings.membership.updated"));
       }
       setPlanSheetOpen(false);
       setPlanTarget(null);
       await load();
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to schedule plan change");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.schedulePlanFailed"));
     } finally {
       setSchedulingPlan(false);
     }
@@ -377,7 +385,7 @@ export default function MembershipPageClient() {
       setUsageRows(res.data?.bookings ?? []);
       setUsageTotal(Number(res.data?.discount_total ?? 0));
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load usage");
+      toast.error(err instanceof FetchError ? err.message : t("web.accountSettings.membership.loadUsageFailed"));
       setUsageRows([]);
       setUsageTotal(0);
     } finally {
@@ -388,7 +396,7 @@ export default function MembershipPageClient() {
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading memberships..." />
+        <LoadingTimeout loadingMessage={t("web.accountSettings.membership.loading")} />
       </div>
     );
   }
@@ -404,16 +412,16 @@ export default function MembershipPageClient() {
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
       <BackButton href="/account-settings" />
-      <h1 className="mb-2 text-3xl font-bold">Memberships</h1>
+      <h1 className="mb-2 text-3xl font-bold">{t("web.accountSettings.membership.title")}</h1>
       <p className="mb-6 text-sm text-gray-600">
-        Manage salon memberships, auto-renewal, and billing.
+        {t("web.accountSettings.membership.subtitle")}
       </p>
 
       {error ? (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
           <p className="text-red-600">{error}</p>
           <Button variant="outline" size="sm" className="mt-2" onClick={() => void load()}>
-            Retry
+            {t("web.accountSettings.membership.retry")}
           </Button>
         </div>
       ) : null}
@@ -421,8 +429,8 @@ export default function MembershipPageClient() {
       {hasPlatform && platformMembership ? (
         <Card className="mb-6 border-pink-100 bg-gradient-to-br from-pink-50/80 to-white">
           <CardHeader>
-            <CardTitle className="text-lg">Platform membership</CardTitle>
-            <p className="text-sm text-gray-600">Active membership</p>
+            <CardTitle className="text-lg">{t("web.accountSettings.membership.platformTitle")}</CardTitle>
+            <p className="text-sm text-gray-600">{t("web.accountSettings.membership.activeMembership")}</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -431,15 +439,17 @@ export default function MembershipPageClient() {
                 <p className="mt-2 text-sm text-gray-700">{platformMembership.description}</p>
               ) : null}
               <p className="mt-2 text-sm text-gray-500">
-                {platformMembership.billing_cycle === "yearly" ? "Billed yearly" : "Billed monthly"}
+                {platformMembership.billing_cycle === "yearly"
+                  ? t("web.accountSettings.membership.billedYearly")
+                  : t("web.accountSettings.membership.billedMonthly")}
                 {platformMembership.expires_at
-                  ? ` · Renews ${formatDateSafe(platformMembership.expires_at)}`
+                  ? t("web.accountSettings.membership.renews", { date: formatDateSafe(platformMembership.expires_at) })
                   : ""}
               </p>
             </div>
             {benefits.length > 0 ? (
               <div>
-                <p className="mb-2 font-medium text-gray-900">Benefits</p>
+                <p className="mb-2 font-medium text-gray-900">{t("web.accountSettings.membership.benefits")}</p>
                 <ul className="space-y-2">
                   {benefits.map((b, i) => (
                     <li key={i} className="rounded-lg bg-white/80 px-3 py-2 text-sm">
@@ -454,9 +464,9 @@ export default function MembershipPageClient() {
             ) : null}
             {(savings.this_month > 0 || savings.lifetime > 0) && (
               <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                <p className="font-semibold">Your savings</p>
-                <p>This month: {formatMoney(savings.this_month, savingsCurrency)}</p>
-                <p>Lifetime: {formatMoney(savings.lifetime, savingsCurrency)}</p>
+                <p className="font-semibold">{t("web.accountSettings.membership.yourSavings")}</p>
+                <p>{t("web.accountSettings.membership.thisMonth", { amount: formatMoney(savings.this_month, savingsCurrency) })}</p>
+                <p>{t("web.accountSettings.membership.lifetime", { amount: formatMoney(savings.lifetime, savingsCurrency) })}</p>
               </div>
             )}
             {platformMembership.auto_renew !== false ? (
@@ -466,7 +476,7 @@ export default function MembershipPageClient() {
                 onClick={() => void cancelPlatformMembership()}
                 disabled={cancellingPlatform}
               >
-                {cancellingPlatform ? "Cancelling…" : "Cancel membership"}
+{cancellingPlatform ? t("web.accountSettings.membership.cancelling") : t("web.accountSettings.membership.cancelMembership")}
               </Button>
             ) : null}
           </CardContent>
@@ -474,7 +484,7 @@ export default function MembershipPageClient() {
       ) : hasSalon ? (
         <Card className="mb-6 bg-gray-50">
           <CardContent className="py-4 text-sm text-gray-700">
-            No platform membership. Your active salon memberships are listed below.
+            {t("web.accountSettings.membership.noPlatformMembership")}
           </CardContent>
         </Card>
       ) : null}
@@ -482,9 +492,9 @@ export default function MembershipPageClient() {
       {hasSalon ? (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Salon memberships</h2>
+            <h2 className="text-xl font-bold text-gray-900">{t("web.accountSettings.membership.salonTitle")}</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Active memberships with providers. Discounts apply automatically when you book.
+              {t("web.accountSettings.membership.salonSubtitle")}
             </p>
           </div>
           {providerMemberships.map((pm) => {
@@ -501,11 +511,11 @@ export default function MembershipPageClient() {
                     <div className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
                       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" />
                       <div>
-                        <p className="font-semibold">Paused</p>
+                        <p className="font-semibold">{t("web.accountSettings.membership.pausedTitle")}</p>
                         <p className="mt-1">
-                          Auto-renew is off
-                          {pm.paused_until ? ` until ${formatDateSafe(pm.paused_until)}` : ""}.
-                          Resume anytime to keep your benefits.
+                          {t("web.accountSettings.membership.pausedBodyBefore")}
+                          {pm.paused_until ? t("web.accountSettings.membership.pausedUntil", { date: formatDateSafe(pm.paused_until) }) : ""}
+                          {t("web.accountSettings.membership.pausedBodyAfter")}
                         </p>
                       </div>
                     </div>
@@ -513,10 +523,9 @@ export default function MembershipPageClient() {
                     <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
                       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
                       <div>
-                        <p className="font-semibold">Payment action needed</p>
+                        <p className="font-semibold">{t("web.accountSettings.membership.paymentActionNeeded")}</p>
                         <p className="mt-1">
-                          We couldn&apos;t renew your {pm.plan_name} membership. Update your card
-                          within the grace period to keep your benefits.
+                          {t("web.accountSettings.membership.pastDueBody", { planName: pm.plan_name })}
                         </p>
                       </div>
                     </div>
@@ -524,12 +533,13 @@ export default function MembershipPageClient() {
                     <div className="flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                       <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                       <div>
-                        <p className="font-semibold">Add a payment method</p>
+                        <p className="font-semibold">{t("web.accountSettings.membership.addPaymentMethod")}</p>
                         <p className="mt-1">
-                          Your {pm.plan_name} membership is active, but we couldn&apos;t save a card
-                          for renewals. Add a payment method{" "}
-                          {pm.next_billing_at ? `before ${formatDateSafe(pm.next_billing_at)}` : "soon"}{" "}
-                          to keep it from lapsing.
+                          {t("web.accountSettings.membership.renewalCardBodyBefore", { planName: pm.plan_name })}{" "}
+                          {pm.next_billing_at
+                            ? t("web.accountSettings.membership.beforeDate", { date: formatDateSafe(pm.next_billing_at) })
+                            : t("web.accountSettings.membership.soon")}{" "}
+                          {t("web.accountSettings.membership.renewalCardBodyAfter")}
                         </p>
                       </div>
                     </div>
@@ -544,30 +554,30 @@ export default function MembershipPageClient() {
                     <div className="mt-2 flex flex-wrap gap-3 text-sm text-gray-600">
                       {pm.discount_percent > 0 ? (
                         <Badge variant="secondary" className="bg-pink-100 text-pink-800">
-                          {pm.discount_percent}% off services
+                          {t("web.accountSettings.membership.discountOffServices", { percent: pm.discount_percent })}
                         </Badge>
                       ) : null}
                       {pm.scheduled_plan_id ? (
                         <span>
-                          Changes to {pm.scheduled_plan_name ?? "the selected plan"}{" "}
-                          {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : "at period end"}
+                          {t("web.accountSettings.membership.changesTo", { planName: pm.scheduled_plan_name ?? t("web.accountSettings.membership.selectedPlan") })}{" "}
+                          {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : t("web.accountSettings.membership.atPeriodEnd")}
                         </span>
                       ) : null}
                       {pm.auto_renew && pm.next_billing_at ? (
-                        <span>Renews {formatDateSafe(pm.next_billing_at)}</span>
+<span>{t("web.accountSettings.membership.renewsDate", { date: formatDateSafe(pm.next_billing_at) })}</span>
                       ) : pm.expires_at ? (
-                        <span>Expires {formatDateSafe(pm.expires_at)}</span>
+<span>{t("web.accountSettings.membership.expiresDate", { date: formatDateSafe(pm.expires_at) })}</span>
                       ) : null}
                       {pm.price_monthly > 0 ? (
-                        <span>{formatMoney(pm.price_monthly, pm.currency)}/month</span>
+<span>{t("web.accountSettings.membership.perMonth", { amount: formatMoney(pm.price_monthly, pm.currency) })}</span>
                       ) : null}
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between border-t border-gray-100 pt-4">
-                    <span className="text-sm font-medium text-gray-800">Auto-renew</span>
+                    <span className="text-sm font-medium text-gray-800">{t("web.accountSettings.membership.autoRenew")}</span>
                     {togglingId === pm.id ? (
-                      <span className="text-sm text-gray-500">Saving…</span>
+                      <span className="text-sm text-gray-500">{t("web.accountSettings.membership.saving")}</span>
                     ) : (
                       <Switch
                         checked={pm.auto_renew}
@@ -579,7 +589,7 @@ export default function MembershipPageClient() {
                   {pm.card ? (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <CreditCard className="h-4 w-4" />
-                      <span>{cardLabel(pm.card)}</span>
+                      <span>{cardLabel(pm.card, t)}</span>
                     </div>
                   ) : null}
 
@@ -589,21 +599,21 @@ export default function MembershipPageClient() {
                       size="sm"
                       onClick={() => void openUpdateCard(pm)}
                     >
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      {isPastDue ? "Update card" : "Change card"}
+                      <CreditCard className="me-2 h-4 w-4" />
+{isPastDue ? t("web.accountSettings.membership.updateCard") : t("web.accountSettings.membership.changeCard")}
                     </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link
                         href={`/account-settings/membership/billing-history?provider_id=${encodeURIComponent(pm.provider_id)}&provider_name=${encodeURIComponent(pm.provider_name)}&plan_id=${encodeURIComponent(pm.plan_id)}`}
                       >
-                        Billing history
+                        {t("web.accountSettings.membership.billingHistory")}
                       </Link>
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => void openUsage(pm)}>
-                      Usage
+                      {t("web.accountSettings.membership.usage")}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => void openChangePlan(pm)}>
-                      Change plan
+                      {t("web.accountSettings.membership.changePlan")}
                     </Button>
                     <Button
                       variant="outline"
@@ -612,16 +622,16 @@ export default function MembershipPageClient() {
                       disabled={pausingId === pm.id}
                     >
                       {pausingId === pm.id
-                        ? "Saving…"
+                        ? t("web.accountSettings.membership.saving")
                         : isPaused
-                          ? "Resume"
-                          : "Pause"}
+                          ? t("web.accountSettings.membership.resume")
+                          : t("web.accountSettings.membership.pause")}
                     </Button>
                     {pm.provider_slug ? (
                       <Button variant="ghost" size="sm" asChild>
                         <Link href={`/partner-profile?slug=${encodeURIComponent(pm.provider_slug)}`}>
-                          View provider
-                          <ExternalLink className="ml-1 h-3.5 w-3.5" />
+                          {t("web.accountSettings.membership.viewProvider")}
+                          <ExternalLink className="ms-1 h-3.5 w-3.5" />
                         </Link>
                       </Button>
                     ) : null}
@@ -634,7 +644,7 @@ export default function MembershipPageClient() {
                       onClick={() => void cancelSalonMembership(pm)}
                       disabled={cancellingSalonId === pm.id}
                     >
-                      {cancellingSalonId === pm.id ? "Cancelling…" : "Cancel salon membership"}
+{cancellingSalonId === pm.id ? t("web.accountSettings.membership.cancelling") : t("web.accountSettings.membership.cancelSalonMembership")}
                     </Button>
                   ) : null}
                 </CardContent>
@@ -647,12 +657,12 @@ export default function MembershipPageClient() {
       {!hasPlatform && !hasSalon ? (
         <Card>
           <CardContent className="space-y-4 py-8 text-center">
-            <p className="text-gray-600">No memberships yet</p>
+            <p className="text-gray-600">{t("web.accountSettings.membership.noMembershipsYet")}</p>
             <p className="mx-auto max-w-md text-sm text-gray-500">
-              Browse provider profiles to see membership plans and subscribe.
+              {t("web.accountSettings.membership.noMembershipsBody")}
             </p>
             <Button asChild>
-              <Link href="/search">Find a salon</Link>
+              <Link href="/search">{t("web.accountSettings.membership.findSalon")}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -661,24 +671,24 @@ export default function MembershipPageClient() {
       <Sheet open={cardSheetOpen} onOpenChange={setCardSheetOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Update payment card</SheetTitle>
+            <SheetTitle>{t("web.accountSettings.membership.updatePaymentCard")}</SheetTitle>
             <SheetDescription>
-              Choose a saved card for {cardTarget?.provider_name ?? "this membership"}.
+              {t("web.accountSettings.membership.chooseSavedCard", { name: cardTarget?.provider_name ?? t("web.accountSettings.membership.thisMembership") })}
             </SheetDescription>
           </SheetHeader>
           <div className="my-4 space-y-2">
             {loadingCards ? (
-              <p className="text-sm text-gray-500">Loading cards…</p>
+              <p className="text-sm text-gray-500">{t("web.accountSettings.membership.loadingCards")}</p>
             ) : paymentMethods.length === 0 ? (
               <div className="space-y-3 text-sm text-gray-600">
-                <p>No saved cards. Add one in Payments, then return here.</p>
+                <p>{t("web.accountSettings.membership.noSavedCards")}</p>
                 <Button variant="outline" asChild>
-                  <Link href="/account-settings/payments">Go to Payments</Link>
+                  <Link href="/account-settings/payments">{t("web.accountSettings.membership.goToPayments")}</Link>
                 </Button>
               </div>
             ) : (
               paymentMethods.map((m) => {
-                const label = `${(m.card_type ?? "Card").toUpperCase()} •••• ${m.last4 ?? "****"}${m.expiry_label ? ` · ${m.expiry_label}` : ""}`;
+                const label = `${(m.card_type ?? t("web.accountSettings.membership.cardFallback")).toUpperCase()} •••• ${m.last4 ?? "****"}${m.expiry_label ? ` · ${m.expiry_label}` : ""}`;
                 const disabled = m.is_expired || updatingCard;
                 return (
                   <Button
@@ -688,11 +698,11 @@ export default function MembershipPageClient() {
                     disabled={disabled}
                     onClick={() => void applyCardToMembership(m.id)}
                   >
-                    <CreditCard className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="text-left">
+                    <CreditCard className="me-2 h-4 w-4 shrink-0" />
+                    <span className="text-start">
                       {label}
-                      {m.is_default ? " (default)" : ""}
-                      {m.is_expired ? " — expired" : ""}
+                      {m.is_default ? t("web.accountSettings.membership.defaultSuffix") : ""}
+                      {m.is_expired ? t("web.accountSettings.membership.expiredSuffix") : ""}
                     </span>
                   </Button>
                 );
@@ -701,7 +711,7 @@ export default function MembershipPageClient() {
           </div>
           <SheetFooter>
             <Button variant="ghost" onClick={() => setCardSheetOpen(false)}>
-              Close
+              {t("web.accountSettings.membership.close")}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -710,16 +720,16 @@ export default function MembershipPageClient() {
       <Sheet open={planSheetOpen} onOpenChange={setPlanSheetOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Change plan</SheetTitle>
+            <SheetTitle>{t("web.accountSettings.membership.changePlan")}</SheetTitle>
             <SheetDescription>
-              Takes effect at the end of the current period. Same plan clears a pending change.
+              {t("web.accountSettings.membership.changePlanDesc")}
             </SheetDescription>
           </SheetHeader>
           <div className="my-4 space-y-2">
             {loadingPlans ? (
-              <p className="text-sm text-gray-500">Loading plans…</p>
+              <p className="text-sm text-gray-500">{t("web.accountSettings.membership.loadingPlans")}</p>
             ) : salonPlans.length === 0 ? (
-              <p className="text-sm text-gray-600">No other plans available.</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.membership.noOtherPlans")}</p>
             ) : (
               salonPlans.map((plan) => {
                 const current = plan.id === planTarget?.plan_id;
@@ -732,13 +742,12 @@ export default function MembershipPageClient() {
                     disabled={schedulingPlan}
                     onClick={() => void schedulePlanChange(plan.id)}
                   >
-                    <span className="text-left">
+                    <span className="text-start">
                       <span className="block font-medium">{plan.name}</span>
                       <span className="block text-xs text-gray-500">
-                        {formatMoney(Number(plan.price_monthly ?? plan.price ?? 0), plan.currency ?? planTarget?.currency ?? "ZAR")}
-                        /month
-                        {current ? " · current" : ""}
-                        {pending ? " · scheduled" : ""}
+                        {t("web.accountSettings.membership.planPriceMonth", { amount: formatMoney(Number(plan.price_monthly ?? plan.price ?? 0), plan.currency ?? planTarget?.currency ?? "ZAR") })}
+                        {current ? t("web.accountSettings.membership.currentSuffix") : ""}
+                        {pending ? t("web.accountSettings.membership.scheduledSuffix") : ""}
                       </span>
                     </span>
                   </Button>
@@ -748,7 +757,7 @@ export default function MembershipPageClient() {
           </div>
           <SheetFooter>
             <Button variant="ghost" onClick={() => setPlanSheetOpen(false)}>
-              Close
+              {t("web.accountSettings.membership.close")}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -757,20 +766,20 @@ export default function MembershipPageClient() {
       <Sheet open={usageSheetOpen} onOpenChange={setUsageSheetOpen}>
         <SheetContent>
           <SheetHeader>
-            <SheetTitle>Membership usage</SheetTitle>
+            <SheetTitle>{t("web.accountSettings.membership.usageTitle")}</SheetTitle>
             <SheetDescription>
-              Bookings where your {usageTarget?.plan_name ?? "membership"} discount applied.
+              {t("web.accountSettings.membership.usageDesc", { planName: usageTarget?.plan_name ?? t("web.accountSettings.membership.membershipFallback") })}
             </SheetDescription>
           </SheetHeader>
           <div className="my-4 space-y-2">
             {loadingUsage ? (
-              <p className="text-sm text-gray-500">Loading usage…</p>
+              <p className="text-sm text-gray-500">{t("web.accountSettings.membership.loadingUsage")}</p>
             ) : usageRows.length === 0 ? (
-              <p className="text-sm text-gray-600">No discounted bookings yet.</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.membership.noDiscountedBookings")}</p>
             ) : (
               <>
                 <p className="text-sm font-medium text-gray-800">
-                  Total saved: {formatMoney(usageTotal, usageTarget?.currency ?? "ZAR")}
+                  {t("web.accountSettings.membership.totalSaved", { amount: formatMoney(usageTotal, usageTarget?.currency ?? "ZAR") })}
                 </p>
                 {usageRows.map((row) => (
                   <div key={row.id} className="rounded-lg border border-gray-100 px-3 py-2 text-sm">
@@ -787,7 +796,7 @@ export default function MembershipPageClient() {
           </div>
           <SheetFooter>
             <Button variant="ghost" onClick={() => setUsageSheetOpen(false)}>
-              Close
+              {t("web.accountSettings.membership.close")}
             </Button>
           </SheetFooter>
         </SheetContent>

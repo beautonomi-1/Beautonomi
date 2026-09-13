@@ -14,10 +14,9 @@ import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
 } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
-import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
-import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
-import { getTenantRegionConfig } from "@/lib/regions/config";
+import { buildHreflangAlternates } from "@/lib/seo/hreflang-from-languages";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage, type RequestLanguageContext } from "@/lib/locale/resolve-request-language";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -60,6 +59,15 @@ export async function generateMetadata(): Promise<Metadata> {
     process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION || process.env.NEXT_PUBLIC_BING_VERIFICATION,
   );
 
+  const localeCtx = await resolveRequestLanguage();
+  const t = await getServerT(localeCtx.language);
+  const defaultTitle = t("web.seo.defaultTitle") as string;
+  const defaultDescription = t("web.seo.defaultDescription") as string;
+  const hreflang = buildHreflangAlternates("/", {
+    supportedLanguages: localeCtx.marketSupportedLanguages,
+    regionCode: localeCtx.regionCode,
+  });
+
   return {
     /** Same mark as navbar (`/images/logo.svg`); App Router also serves `src/app/icon.svg` at `/icon.svg`. */
     icons: {
@@ -74,11 +82,10 @@ export async function generateMetadata(): Promise<Metadata> {
     // browser strips cookies on the manifest fetch and the request 401s. The
     // real file is served by `src/app/manifest.ts` (a metadata route).
     title: {
-      default: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
-      template: "%s | Beautonomi",
+      default: defaultTitle,
+      template: `%s | ${t("web.seo.siteName")}`,
     },
-    description:
-      "Book trusted beauty services near you. Compare verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals on Beautonomi.",
+    description: defaultDescription,
     keywords: [
       "beauty services",
       "salon booking",
@@ -97,7 +104,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(metadataBaseUrl),
     alternates: {
       canonical: metadataBaseUrl,
-      languages: getHreflangAlternateUrls("/"),
+      languages: hreflang,
     },
     appleWebApp: {
       capable: true,
@@ -115,8 +122,8 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: ogLocale,
       url: "/",
       siteName: "Beautonomi",
-      title: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
-      description: "Find and book verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals near you.",
+      title: defaultTitle,
+      description: defaultDescription,
       images: [
         {
           url: "/og-image.jpg",
@@ -128,8 +135,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: "Beautonomi | Book Beauty Services, Salons & Mobile Pros",
-      description: "Find and book verified salons, spas, barbers, nail techs, makeup artists, and mobile beauty professionals near you.",
+      title: defaultTitle,
+      description: defaultDescription,
       images: ["/twitter-image.jpg"],
     },
     robots: {
@@ -147,22 +154,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Resolve BCP-47 lang tag from the tenant's configured locale (e.g. "en-ZA", "zu-ZA"). */
-async function resolveTenantLang(headersList: Awaited<ReturnType<typeof headers>>): Promise<string> {
-  try {
-    const req = new Request("https://placeholder", {
-      headers: Object.fromEntries(headersList.entries()),
-    });
-    const tenantId = await resolveTenantIdWithZaFallback(req);
-    const regionConfig = await getTenantRegionConfig(tenantId);
-    const tag = getTenantLocaleTagFromRegionConfig(regionConfig);
-    // Return just the primary language subtag (e.g. "en" from "en-ZA")
-    return tag ? tag.split("-")[0] : "en";
-  } catch {
-    return "en";
-  }
-}
-
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -172,12 +163,12 @@ export default async function RootLayout({
   const ua = headersList.get("user-agent") ?? "";
   const osType = getOsTypeFromUserAgent(ua);
   const organizationBaseUrl = await getPublicSiteOriginFromHeaders();
-  const lang = await resolveTenantLang(headersList);
+  const locale = await resolveRequestLanguage();
   const supabaseStorageOrigin = getSupabaseStorageOrigin();
   const cspNonce = headersList.get(CSP_NONCE_HEADER) ?? undefined;
 
   return (
-    <html lang={lang} className="overflow-x-hidden max-w-full">
+    <html lang={locale.language} dir={locale.dir} className="overflow-x-hidden max-w-full">
       <head>
         {/**
          * §Provider-launch (2026-05): emit the PWA manifest link manually so
@@ -203,7 +194,9 @@ export default async function RootLayout({
         ) : null}
         <RootErrorBoundary>
           <CspNonceProvider nonce={cspNonce}>
-            <ClientAppShellLoader osType={osType}>{children}</ClientAppShellLoader>
+            <ClientAppShellLoader osType={osType} locale={locale}>
+              {children}
+            </ClientAppShellLoader>
           </CspNonceProvider>
         </RootErrorBoundary>
       </body>

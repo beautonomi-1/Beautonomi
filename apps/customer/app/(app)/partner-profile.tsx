@@ -45,8 +45,10 @@ import { APP_URL } from "@/config/public-env";
 import { shareProvider } from "@/lib/share-provider";
 import { Colors, Shadows } from "@/constants/colors";
 import { tabBarBottomInset } from "@/constants/layout";
+import { endTextAlign } from "@/lib/rtlText";
 import { Skeleton } from "@/components/Skeleton";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useFormatCurrency } from "@/hooks/useFormatCurrency";
 import {
   formatMoney,
   formatProviderDescriptionDisplay,
@@ -55,7 +57,7 @@ import {
   providerGalleryFrameHeight,
 } from "@beautonomi/utils";
 import { ProviderGalleryImage } from "@beautonomi/ui/native";
-import { useTranslation, buildCancellationPolicyLines } from "@beautonomi/i18n";
+import { useTranslation, buildCancellationPolicyLines, translatePublicCategoryLabel, type TFunction } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { horizontalFlatListPerf } from "@/lib/flatListPerformance";
@@ -66,6 +68,7 @@ import {
   matchesExpoReturnUrl,
 } from "@/lib/paystack-webview-utils";
 import * as ExpoLinking from "expo-linking";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import type {
   PublicProviderDetail,
   PublicProfilePromotion,
@@ -93,15 +96,24 @@ interface Review {
   author?: { full_name?: string | null; avatar_url?: string | null };
 }
 
+function partnerProfileT(
+  t: TFunction,
+  key: string,
+  options?: Record<string, string | number>,
+) {
+  const fullKey = `customer.mobile.screens.partnerProfile.${key}`;
+  return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+}
+
 function isAnonymousDisplayName(name?: string | null) {
   if (!name) return true;
   return /anon/i.test(name.trim());
 }
 
-function getReviewerDisplayName(review: Review) {
+function getReviewerDisplayName(review: Review, t: TFunction) {
   const preferred = review.author?.full_name ?? review.reviewerName;
   if (!isAnonymousDisplayName(preferred)) return preferred!.trim();
-  return "Verified customer";
+  return partnerProfileT(t, "verifiedCustomer");
 }
 
 /* ─── Membership plan type ─── */
@@ -118,7 +130,7 @@ interface MembershipPlan {
 }
 
 /** Map GET /api/public/providers/.../membership-plans rows to UI fields (API uses price_monthly). */
-function normalizePublicMembershipPlan(raw: Record<string, unknown>): MembershipPlan {
+function normalizePublicMembershipPlan(raw: Record<string, unknown>, t: TFunction): MembershipPlan {
   const fb = getTenantDefaultCurrency();
   const monthly = Number(raw.price_monthly ?? raw.price ?? 0);
   const price = Number.isFinite(monthly) ? monthly : 0;
@@ -129,12 +141,12 @@ function normalizePublicMembershipPlan(raw: Record<string, unknown>): Membership
     benefits = ben.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
   }
   if ((!benefits || benefits.length === 0) && Number.isFinite(discount) && discount > 0) {
-    benefits = [`${discount}% off services`];
+    benefits = [partnerProfileT(t, "percentOffServices", { percent: discount })];
   }
   const currency = typeof raw.currency === "string" && raw.currency.trim() ? raw.currency.trim() : fb;
   return {
     id: String(raw.id ?? ""),
-    name: String(raw.name ?? "Membership"),
+    name: String(raw.name ?? partnerProfileT(t, "membershipFallbackName")),
     description: raw.description != null ? String(raw.description) : null,
     price,
     price_monthly: price,
@@ -146,6 +158,15 @@ function normalizePublicMembershipPlan(raw: Record<string, unknown>): Membership
 }
 
 const OPENING_DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+const OPENING_DAY_I18N: Record<(typeof OPENING_DAY_ORDER)[number], string> = {
+  monday: "dayMonday",
+  tuesday: "dayTuesday",
+  wednesday: "dayWednesday",
+  thursday: "dayThursday",
+  friday: "dayFriday",
+  saturday: "daySaturday",
+  sunday: "daySunday",
+};
 
 type DayHoursNormalized = { closed: boolean; open?: string; close?: string };
 
@@ -188,20 +209,27 @@ function readDayValue(hoursData: Record<string, unknown>, day: string): unknown 
   return short?.[1];
 }
 
-function formatWeekScheduleFromHoursData(hoursData: Record<string, unknown>): { day: string; hours: string }[] {
+function formatWeekScheduleFromHoursData(
+  hoursData: Record<string, unknown>,
+  t: TFunction,
+): { day: string; hours: string }[] {
   return OPENING_DAY_ORDER.map((day) => {
     const normalized = normalizeDayHours(readDayValue(hoursData, day));
+    const dayLabel = partnerProfileT(t, OPENING_DAY_I18N[day]);
     if (!normalized || normalized.closed || !normalized.open || !normalized.close) {
-      return { day: day.charAt(0).toUpperCase() + day.slice(1), hours: "Closed" };
+      return { day: dayLabel, hours: partnerProfileT(t, "closed") };
     }
     return {
-      day: day.charAt(0).toUpperCase() + day.slice(1),
+      day: dayLabel,
       hours: `${normalized.open} – ${normalized.close}`,
     };
   });
 }
 
-function openingTimeSectionsForAbout(locations: ProviderLocation[]): { placeLabel: string; schedule: { day: string; hours: string }[] }[] {
+function openingTimeSectionsForAbout(
+  locations: ProviderLocation[],
+  t: TFunction,
+): { placeLabel: string; schedule: { day: string; hours: string }[] }[] {
   // §Customer-audit 2026-04: exclude `base` locations — those are
   // mobile-only freelancer home-bases used for distance/travel only
   // and don't represent a place customers can visit. Their stored
@@ -223,8 +251,8 @@ function openingTimeSectionsForAbout(locations: ProviderLocation[]): { placeLabe
   withParsed.sort((a, b) => score(b.loc) - score(a.loc));
 
   return withParsed.map(({ loc, data }) => ({
-    placeLabel: loc.name?.trim() || [loc.city, loc.country].filter(Boolean).join(", ") || "Location",
-    schedule: formatWeekScheduleFromHoursData(data),
+    placeLabel: loc.name?.trim() || [loc.city, loc.country].filter(Boolean).join(", ") || partnerProfileT(t, "locationFallback"),
+    schedule: formatWeekScheduleFromHoursData(data, t),
   }));
 }
 
@@ -237,14 +265,15 @@ function AboutOpeningTimes({
   contentPadding: number;
   disclosureTier: "anon" | "authed" | "booked";
 }) {
+  const { t } = useTranslation();
   if (disclosureTier === "anon") return null;
-  const sections = openingTimeSectionsForAbout(locations);
+  const sections = openingTimeSectionsForAbout(locations, t);
   if (sections.length === 0) return null;
   return (
     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-        <Ionicons name="time-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Opening times</Text>
+        <Ionicons name="time-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{partnerProfileT(t, "openingTimes")}</Text>
       </View>
       {sections.map((section, si) => (
         <View key={`${section.placeLabel}-${si}`} style={{ marginBottom: si < sections.length - 1 ? 14 : 0 }}>
@@ -265,7 +294,7 @@ function AboutOpeningTimes({
               }}
             >
               <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{row.day}</Text>
-              <Text style={{ fontSize: 13, color: Colors.gray[600], marginLeft: 12, textAlign: "right", flex: 1 }}>{row.hours}</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginStart: 12, textAlign: endTextAlign(), flex: 1 }}>{row.hours}</Text>
             </View>
           ))}
         </View>
@@ -285,12 +314,13 @@ function Tag({ label, color }: { label: string; color: string }) {
 }
 
 function VerifiedTag() {
+  const { t } = useTranslation();
   return (
     <View style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center" }}>
-      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center", marginRight: 5 }}>
+      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center", marginEnd: 5 }}>
         <Ionicons name="checkmark" size={10} color="#fff" />
       </View>
-      <Text style={{ fontSize: 11, fontWeight: "600", color: "#111" }}>Verified</Text>
+      <Text style={{ fontSize: 11, fontWeight: "600", color: "#111" }}>{partnerProfileT(t, "verifiedTag")}</Text>
     </View>
   );
 }
@@ -330,9 +360,11 @@ function TrustModule({
   /** Opens Reviews tab — rating & review cells use this for one coherent “social proof” affordance */
   onPressReviews?: () => void;
 }) {
+  const { t } = useTranslation();
   const missingDistance = distance_km == null;
   const ratingLabel = rating > 0 ? rating.toFixed(1) : "—";
   const reviewLabel = review_count.toLocaleString();
+  const opensReviews = onPressReviews ? partnerProfileT(t, "opensReviewsA11y") : "";
   const micro = {
     fontSize: 10,
     fontWeight: "600" as const,
@@ -381,9 +413,9 @@ function TrustModule({
         accessibilityLabel={
           missingDistance
             ? onPressSetAddress
-              ? "Distance unknown. Set your address to see how far this provider is."
-              : "Distance not available"
-            : `About ${distance_km!.toFixed(1)} kilometres from you`
+              ? partnerProfileT(t, "distanceUnknownA11y")
+              : partnerProfileT(t, "distanceUnavailableA11y")
+            : partnerProfileT(t, "distanceAboutA11y", { km: distance_km!.toFixed(1) })
         }
       >
         {iconBubble(Colors.primaryLight, <Ionicons name="navigate-outline" size={19} color={Colors.primary} />)}
@@ -397,14 +429,14 @@ function TrustModule({
             }}
             numberOfLines={2}
           >
-            {onPressSetAddress ? "Set address" : "—"}
+            {onPressSetAddress ? partnerProfileT(t, "setAddressCta") : "—"}
           </Text>
         ) : (
           <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>
-            {`${distance_km.toFixed(1)} km`}
+            {partnerProfileT(t, "distanceKm", { km: distance_km.toFixed(1) })}
           </Text>
         )}
-        <Text style={micro}>Distance</Text>
+        <Text style={micro}>{partnerProfileT(t, "distanceLabel")}</Text>
       </TouchableOpacity>
 
       {divider}
@@ -415,16 +447,20 @@ function TrustModule({
         disabled={!onPressReviews}
         activeOpacity={onPressReviews ? 0.72 : 1}
         accessibilityRole={onPressReviews ? "button" : "text"}
-        accessibilityLabel={`Average rating ${rating > 0 ? rating.toFixed(1) : "not yet rated"} out of five. ${onPressReviews ? "Opens reviews." : ""}`}
+        accessibilityLabel={
+          rating > 0
+            ? partnerProfileT(t, "ratingA11y", { rating: rating.toFixed(1), suffix: opensReviews })
+            : partnerProfileT(t, "ratingNotYetA11y", { suffix: opensReviews })
+        }
       >
         {iconBubble("rgba(245, 158, 11, 0.15)", <Ionicons name="star" size={18} color="#D97706" />)}
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>{ratingLabel}</Text>
           {rating > 0 ? (
-            <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 2, marginLeft: 4 }}>/5</Text>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 2, marginStart: 4 }}>{partnerProfileT(t, "ratingOutOf")}</Text>
           ) : null}
         </View>
-        <Text style={micro}>Rating</Text>
+        <Text style={micro}>{partnerProfileT(t, "ratingLabel")}</Text>
       </TouchableOpacity>
 
       {divider}
@@ -435,11 +471,14 @@ function TrustModule({
         disabled={!onPressReviews}
         activeOpacity={onPressReviews ? 0.72 : 1}
         accessibilityRole={onPressReviews ? "button" : "text"}
-        accessibilityLabel={`${review_count} ${review_count === 1 ? "review" : "reviews"}.${onPressReviews ? " Opens reviews." : ""}`}
+        accessibilityLabel={partnerProfileT(t, review_count === 1 ? "reviewCountA11yOne" : "reviewCountA11yOther", {
+          count: review_count,
+          suffix: opensReviews ? ` ${opensReviews}` : "",
+        })}
       >
         {iconBubble(Colors.gray[100], <Ionicons name="chatbubbles-outline" size={18} color={Colors.gray[600]} />)}
         <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>{reviewLabel}</Text>
-        <Text style={micro}>{review_count === 1 ? "Review" : "Reviews"}</Text>
+        <Text style={micro}>{partnerProfileT(t, review_count === 1 ? "reviewLabelOne" : "reviewLabelOther")}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -453,17 +492,17 @@ function TrustModule({
 const TAB_KEYS = ["services", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "custom_service", "about"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-const TAB_LABELS: Record<TabKey, string> = {
-  services: "Services",
-  products: "Products",
-  photos: "Photos",
-  locations: "Locations",
-  team: "Team",
-  reviews: "Reviews",
-  memberships: "Memberships",
-  giftcard: "Giftcard",
-  custom_service: "Custom request",
-  about: "About",
+const TAB_I18N_KEYS: Record<TabKey, string> = {
+  services: "tabServices",
+  products: "tabProducts",
+  photos: "tabPhotos",
+  locations: "tabLocations",
+  team: "tabTeam",
+  reviews: "tabReviews",
+  memberships: "tabMemberships",
+  giftcard: "tabGiftcard",
+  custom_service: "tabCustomService",
+  about: "tabAbout",
 };
 
 /* ─── Service Card (variants: expandable picker + tenant money formatting) ─── */
@@ -474,24 +513,25 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
   onDetails: () => void;
   contentPadding: number;
 }) {
-  const fb = getTenantDefaultCurrency();
-  const fc = (amount: number, cur = currency) => formatMoney(amount, cur ?? fb);
+  const { t } = useTranslation();
+  const { formatCurrency: fc } = useFormatCurrency();
   const variants = service.variants ?? [];
   const hasVariants = Boolean(service.has_variants && variants.length > 0);
   const [expanded, setExpanded] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
     hasVariants ? variants[0]?.id ?? null : null,
   );
+  const optionFallback = partnerProfileT(t, "optionFallback");
 
   const prices = hasVariants ? variants.map((v) => v.price) : [service.price];
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const priceLabel =
     hasVariants && minP !== maxP
-      ? `${fc(minP)} – ${fc(maxP)}`
+      ? `${fc(minP, currency)} – ${fc(maxP, currency)}`
       : hasVariants
-        ? `From ${fc(minP)}`
-        : fc(service.price);
+        ? partnerProfileT(t, "fromPrice", { price: fc(minP, currency) })
+        : fc(service.price, currency);
 
   const selected = variants.find((v) => v.id === selectedVariantId);
   const durationShown = selected?.duration_minutes ?? service.duration_minutes;
@@ -510,29 +550,29 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
       <Pressable
         onPress={handlePrimaryBook}
         accessibilityRole="button"
-        accessibilityLabel={`Book ${service.title}`}
+        accessibilityLabel={partnerProfileT(t, "bookServiceA11y", { title: service.title })}
         style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
       >
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827", flex: 1 }}>{service.title}</Text>
         {hasVariants ? (
           <View style={{ backgroundColor: "#F5F3FF", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 }}>
-            <Text style={{ fontSize: 11, fontWeight: "700", color: "#5B21B6" }}>{variants.length} options</Text>
+            <Text style={{ fontSize: 11, fontWeight: "700", color: "#5B21B6" }}>{partnerProfileT(t, "optionsCount", { count: variants.length })}</Text>
           </View>
         ) : null}
       </View>
       <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
-          <Ionicons name="time-outline" size={14} color="#9CA3AF" style={{ marginRight: 3 }} />
-          <Text style={{ fontSize: 13, color: "#6B7280" }}>{durationShown} min</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", marginEnd: 8 }}>
+          <Ionicons name="time-outline" size={14} color="#9CA3AF" style={{ marginEnd: 3 }} />
+          <Text style={{ fontSize: 13, color: "#6B7280" }}>{partnerProfileT(t, "durationMinutes", { minutes: durationShown })}</Text>
         </View>
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>{priceLabel}</Text>
       </View>
       {hasVariants && selected ? (
         <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6 }}>
-          Selected:{" "}
+          {partnerProfileT(t, "selectedPrefix")}{" "}
           <Text style={{ fontWeight: "600", color: "#111827" }}>
-            {selected.title || selected.variant_name || "Option"}
+            {selected.title || selected.variant_name || optionFallback}
           </Text>
           {" · "}
           {fc(selected.price)}
@@ -550,9 +590,9 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
           onPress={() => { setExpanded((e) => !e); haptic.selection(); }}
           style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingVertical: 6 }}
           accessibilityRole="button"
-          accessibilityLabel={expanded ? "Hide service options" : "Show service options"}
+          accessibilityLabel={partnerProfileT(t, expanded ? "hideServiceOptionsA11y" : "showServiceOptionsA11y")}
         >
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>Choose a specific option</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>{partnerProfileT(t, "chooseSpecificOption")}</Text>
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={20} color="#6B7280" />
         </TouchableOpacity>
       ) : null}
@@ -574,11 +614,15 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
                   backgroundColor: isSel ? "#F9FAFB" : "#fff",
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`${v.title || v.variant_name || "Option"}, ${v.duration_minutes} minutes, ${fc(v.price)}`}
+                accessibilityLabel={partnerProfileT(t, "optionA11y", {
+                  name: v.title || v.variant_name || optionFallback,
+                  minutes: v.duration_minutes,
+                  price: fc(v.price),
+                })}
               >
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || "Option"}</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || optionFallback}</Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
-                  {v.duration_minutes} min · {fc(v.price)}
+                  {partnerProfileT(t, "durationPrice", { minutes: v.duration_minutes, price: fc(v.price) })}
                 </Text>
               </TouchableOpacity>
             );
@@ -591,17 +635,17 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
           onPress={onDetails}
           style={{
             flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 999, paddingVertical: 10,
-            alignItems: "center", flexDirection: "row", justifyContent: "center", marginRight: 10,
+            alignItems: "center", flexDirection: "row", justifyContent: "center", marginEnd: 10,
           }}
         >
-          <Ionicons name="information-circle-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
-          <Text style={{ fontWeight: "500", color: "#374151", fontSize: 14 }}>Details</Text>
+          <Ionicons name="information-circle-outline" size={16} color="#6B7280" style={{ marginEnd: 4 }} />
+          <Text style={{ fontWeight: "500", color: "#374151", fontSize: 14 }}>{partnerProfileT(t, "detailsCta")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handlePrimaryBook}
           style={{ flex: 2, backgroundColor: "#111827", borderRadius: 999, paddingVertical: 10, alignItems: "center" }}
         >
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Book</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{partnerProfileT(t, "bookCta")}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -615,7 +659,7 @@ function CategoryPill({ label, active, onPress, contentPadding }: { label: strin
       onPress={onPress}
       style={{
         backgroundColor: active ? "#111827" : "#F3F4F6", borderRadius: 999,
-        paddingHorizontal: contentPadding, paddingVertical: 8, marginRight: 8,
+        paddingHorizontal: contentPadding, paddingVertical: 8, marginEnd: 8,
       }}
     >
       <Text style={{ color: active ? "#fff" : "#374151", fontWeight: "600", fontSize: 13 }}>{label}</Text>
@@ -631,6 +675,7 @@ function LocationCard({
   loc: ProviderLocation;
   disclosureTier: "anon" | "authed" | "booked";
 }) {
+  const { t } = useTranslation();
   const isPublicSalon = loc.location_type === "salon";
   const canShowExactAddress = disclosureTier === "booked" && Boolean(loc.address_line1);
   const fullAddress = [loc.address_line1, loc.address_line2, loc.city, loc.state, loc.country].filter(Boolean).join(", ");
@@ -664,23 +709,23 @@ function LocationCard({
       ) : (
         <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
           {serviceArea
-            ? `Service area: ${serviceArea}`
+            ? partnerProfileT(t, "serviceArea", { area: serviceArea })
             : disclosureTier === "authed"
-              ? "Exact address available after booking confirmation"
-              : "Sign in to see location details"}
+              ? partnerProfileT(t, "exactAddressAfterBooking")
+              : partnerProfileT(t, "signInToSeeLocation")}
         </Text>
       )}
       <View style={{ flexDirection: "row", marginTop: 10 }}>
         {canShowExactAddress && (loc.latitude != null || fullAddress) && (
-          <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", marginRight: 16 }}>
-            <Ionicons name="navigate-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
-            <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Directions</Text>
+          <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", marginEnd: 16 }}>
+            <Ionicons name="navigate-outline" size={16} color={Colors.primary} style={{ marginEnd: 4 }} />
+            <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>{partnerProfileT(t, "directionsCta")}</Text>
           </TouchableOpacity>
         )}
         {disclosureTier === "booked" && loc.phone && (
           <TouchableOpacity onPress={callPhone} style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="call-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
-            <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Call</Text>
+            <Ionicons name="call-outline" size={16} color={Colors.primary} style={{ marginEnd: 4 }} />
+            <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>{partnerProfileT(t, "callCta")}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -698,6 +743,7 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
   contentPadding: number;
 }) {
   const { t } = useTranslation();
+  const { formatCurrency: fc } = useFormatCurrency();
   const variants = service?.variants ?? [];
   const hasVariants = Boolean(service?.has_variants && variants.length > 0);
   const [pickedVariantId, setPickedVariantId] = useState<string | null>(null);
@@ -710,21 +756,21 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
   }, [visible, service]);
 
   if (!service) return null;
-  const fb = getTenantDefaultCurrency();
-  const fc = (amount: number) => formatMoney(amount, currency ?? fb);
   const prices = hasVariants ? variants.map((v) => v.price) : [service.price];
   const minP = Math.min(...prices);
   const maxP = Math.max(...prices);
   const displayPriceLabel =
     hasVariants && minP !== maxP
-      ? `${fc(minP)} – ${fc(maxP)}`
+      ? `${fc(minP, currency)} – ${fc(maxP, currency)}`
       : hasVariants
-        ? `From ${fc(minP)}`
-        : fc(service.price);
+        ? partnerProfileT(t, "fromPrice", { price: fc(minP, currency) })
+        : fc(service.price, currency);
   const durationMins = hasVariants ? variants.map((v) => v.duration_minutes) : [service.duration_minutes];
   const dMin = Math.min(...durationMins);
   const dMax = Math.max(...durationMins);
-  const durationLabel = hasVariants && dMin !== dMax ? `${dMin}–${dMax} min` : `${dMin} min`;
+  const durationLabel = hasVariants && dMin !== dMax
+    ? partnerProfileT(t, "durationMinutesRange", { min: dMin, max: dMax })
+    : partnerProfileT(t, "durationMinutes", { minutes: dMin });
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
@@ -738,11 +784,11 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
           <ScrollView contentContainerStyle={{ paddingHorizontal: contentPadding, paddingBottom: contentPadding }} showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
-              <View style={{ flex: 1, marginRight: 12 }}>
+              <View style={{ flex: 1, marginEnd: 12 }}>
                 <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }}>{service.title}</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
-                    <Ionicons name="time-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
+                  <View style={{ flexDirection: "row", alignItems: "center", marginEnd: 8 }}>
+                    <Ionicons name="time-outline" size={16} color="#6B7280" style={{ marginEnd: 4 }} />
                     <Text style={{ fontSize: 14, color: "#6B7280" }}>{durationLabel}</Text>
                   </View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{displayPriceLabel}</Text>
@@ -756,28 +802,28 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
             {/* Description */}
             {service.description ? (
               <View style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>About this service</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>{partnerProfileT(t, "aboutThisService")}</Text>
                 <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}>{service.description}</Text>
                 <Text style={{ fontSize: 12, color: "#9CA3AF", lineHeight: 18, marginTop: 10, fontStyle: "italic" }}>
-                  {t("customer.mobile.screens.partnerProfile.medicalDisclaimer")}
+                  {partnerProfileT(t, "medicalDisclaimer")}
                 </Text>
               </View>
             ) : null}
 
             {/* Location availability */}
             <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Available at</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>{partnerProfileT(t, "availableAt")}</Text>
               <View style={{ flexDirection: "row" }}>
                 {service.supports_at_salon && (
-                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 12 }}>
-                    <Ionicons name="business-outline" size={16} color="#6B7280" style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 13, color: "#374151" }}>At Salon</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginEnd: 12 }}>
+                    <Ionicons name="business-outline" size={16} color="#6B7280" style={{ marginEnd: 6 }} />
+                    <Text style={{ fontSize: 13, color: "#374151" }}>{partnerProfileT(t, "atSalon")}</Text>
                   </View>
                 )}
                 {service.supports_at_home && (
                   <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-                    <Ionicons name="home-outline" size={16} color="#6B7280" style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 13, color: "#374151" }}>House Call</Text>
+                    <Ionicons name="home-outline" size={16} color="#6B7280" style={{ marginEnd: 6 }} />
+                    <Text style={{ fontSize: 13, color: "#374151" }}>{partnerProfileT(t, "houseCall")}</Text>
                   </View>
                 )}
               </View>
@@ -786,9 +832,9 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
             {/* Variants */}
             {hasVariants && (
               <View style={{ marginBottom: 20 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Options</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>{partnerProfileT(t, "optionsHeading")}</Text>
                 <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
-                  Tap an option, then confirm below — your booking uses the highlighted option.
+                  {partnerProfileT(t, "optionsHint")}
                 </Text>
                 {variants.map((v) => {
                   const sel = pickedVariantId === v.id;
@@ -803,10 +849,10 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
                       }}
                     >
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || `${v.duration_minutes} min`}</Text>
-                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || partnerProfileT(t, "durationMinutes", { minutes: v.duration_minutes })}</Text>
+                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{partnerProfileT(t, "durationMinutes", { minutes: v.duration_minutes })}</Text>
                       </View>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginLeft: 8 }}>{fc(v.price)}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginStart: 8 }}>{fc(v.price)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -831,9 +877,9 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
             >
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                 {(() => {
-                  if (!hasVariants) return `Book — ${displayPriceLabel}`;
+                  if (!hasVariants) return partnerProfileT(t, "bookWithPrice", { price: displayPriceLabel });
                   const pv = pickedVariantId ? variants.find((x) => x.id === pickedVariantId) : null;
-                  return pv ? `Book — ${fc(pv.price)}` : `Book — ${displayPriceLabel}`;
+                  return partnerProfileT(t, "bookWithPrice", { price: pv ? fc(pv.price) : displayPriceLabel });
                 })()}
               </Text>
             </TouchableOpacity>
@@ -851,6 +897,7 @@ function GalleryViewer({ images, initialIndex, visible, onClose }: {
   visible: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { width: sw } = useWindowDimensions();
   const [idx, setIdx] = useState(initialIndex);
 
@@ -891,7 +938,7 @@ function GalleryViewer({ images, initialIndex, visible, onClose }: {
           )}
         />
         <View style={{ position: "absolute", bottom: 40, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 }}>
-          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{idx + 1} / {images.length}</Text>
+          <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>{partnerProfileT(t, "photoCounter", { current: idx + 1, total: images.length })}</Text>
         </View>
       </View>
     </Modal>
@@ -908,7 +955,7 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
           name={rating >= star ? "star" : rating >= star - 0.5 ? "star-half" : "star-outline"}
           size={size}
           color="#FACC15"
-          style={star < 5 ? { marginRight: 2 } : undefined}
+          style={star < 5 ? { marginEnd: 2 } : undefined}
         />
       ))}
     </View>
@@ -917,9 +964,10 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
 
 /* ─── Review Card ─── */
 function ReviewCard({ review, onReport }: { review: Review; onReport?: () => void }) {
+  const { t, i18n } = useTranslation();
   const date = new Date(review.created_at);
-  const timeAgo = getRelativeTime(date);
-  const name = getReviewerDisplayName(review);
+  const timeAgo = getRelativeTime(date, t, i18n.language || "en");
+  const name = getReviewerDisplayName(review, t);
   const initial = name.charAt(0).toUpperCase();
 
   return (
@@ -927,9 +975,9 @@ function ReviewCard({ review, onReport }: { review: Review; onReport?: () => voi
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 }}>
           {review.author?.avatar_url?.trim() ? (
-            <Image source={{ uri: review.author.avatar_url!.trim() }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} contentFit="cover" />
+            <Image source={{ uri: review.author.avatar_url!.trim() }} style={{ width: 40, height: 40, borderRadius: 20, marginEnd: 10 }} contentFit="cover" />
           ) : (
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginEnd: 10 }}>
               <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 15 }}>{initial}</Text>
             </View>
           )}
@@ -943,7 +991,7 @@ function ReviewCard({ review, onReport }: { review: Review; onReport?: () => voi
             <TouchableOpacity
               onPress={onReport}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Report review"
+              accessibilityLabel={partnerProfileT(t, "reportReviewA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="flag-outline" size={18} color="#9CA3AF" />
@@ -951,7 +999,7 @@ function ReviewCard({ review, onReport }: { review: Review; onReport?: () => voi
           ) : null}
           <View style={{ backgroundColor: "#FEF3C7", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
+              <Ionicons name="star" size={12} color="#D97706" style={{ marginEnd: 4 }} />
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#B45309" }}>{review.rating.toFixed(1)}</Text>
             </View>
           </View>
@@ -965,10 +1013,10 @@ function ReviewCard({ review, onReport }: { review: Review; onReport?: () => voi
       ) : null}
       {review.provider_response ? (
         <View style={{ marginTop: 10, backgroundColor: "#F0F9FF", borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
-          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>Provider reply</Text>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>{partnerProfileT(t, "providerReply")}</Text>
           <Text style={{ fontSize: 13, color: "#374151", lineHeight: 19 }}>{review.provider_response}</Text>
           {review.provider_response_at ? (
-            <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>{getRelativeTime(new Date(review.provider_response_at))}</Text>
+            <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>{getRelativeTime(new Date(review.provider_response_at), t, i18n.language || "en")}</Text>
           ) : null}
         </View>
       ) : null}
@@ -976,15 +1024,15 @@ function ReviewCard({ review, onReport }: { review: Review; onReport?: () => voi
   );
 }
 
-function getRelativeTime(date: Date): string {
+function getRelativeTime(date: Date, t: TFunction, locale: string): string {
   const diff = Date.now() - date.getTime();
   const days = Math.floor(diff / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-  if (days < 365) return `${Math.floor(days / 30)} months ago`;
-  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  if (days === 0) return partnerProfileT(t, "relativeToday");
+  if (days === 1) return partnerProfileT(t, "relativeYesterday");
+  if (days < 7) return partnerProfileT(t, "relativeDaysAgo", { count: days });
+  if (days < 30) return partnerProfileT(t, "relativeWeeksAgo", { count: Math.floor(days / 7) });
+  if (days < 365) return partnerProfileT(t, "relativeMonthsAgo", { count: Math.floor(days / 30) });
+  return date.toLocaleDateString(locale, { month: "short", year: "numeric" });
 }
 
 /* ─── Staff Card ─── */
@@ -998,9 +1046,9 @@ function StaffCard({ member, contentPadding }: { member: StaffMember; contentPad
     }}>
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         {member.avatar_url ? (
-          <Image source={{ uri: member.avatar_url }} style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
+          <Image source={{ uri: member.avatar_url }} style={{ width: 56, height: 56, borderRadius: 28, marginEnd: 12 }} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
-          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginEnd: 12 }}>
             <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 22 }}>{initial}</Text>
           </View>
         )}
@@ -1019,7 +1067,7 @@ function StaffCard({ member, contentPadding }: { member: StaffMember; contentPad
       {member.specialties && member.specialties.length > 0 && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
           {member.specialties.map((s, i) => (
-            <View key={i} style={{ backgroundColor: Colors.primaryLight, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, marginBottom: 6 }}>
+            <View key={i} style={{ backgroundColor: Colors.primaryLight, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginEnd: 6, marginBottom: 6 }}>
               <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: "500" }}>{s}</Text>
             </View>
           ))}
@@ -1043,6 +1091,7 @@ function MembershipCard({
   isActiveMember: boolean;
   isPaused?: boolean;
 }) {
+  const { t } = useTranslation();
   const fb = getTenantDefaultCurrency();
   const unitPrice = Number.isFinite(plan.price) ? plan.price : 0;
   const priceLabel = formatMoney(unitPrice, plan.currency ?? fb);
@@ -1070,7 +1119,7 @@ function MembershipCard({
         <View style={{ marginTop: 12 }}>
           {plan.benefits.map((b, i) => (
             <View key={i} style={{ flexDirection: "row", alignItems: "center", marginTop: i === 0 ? 0 : 6 }}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.success} style={{ marginRight: 6 }} />
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} style={{ marginEnd: 6 }} />
               <Text style={{ fontSize: 13, color: "#374151" }}>{b}</Text>
             </View>
           ))}
@@ -1089,16 +1138,16 @@ function MembershipCard({
           }}
         >
           <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>
-            {isPaused ? "Paused — manage in account" : "You're subscribed"}
+            {partnerProfileT(t, isPaused ? "subscribedPaused" : "subscribedActive")}
           </Text>
-          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>Manage in Account → Membership</Text>
+          <Text style={{ color: Colors.gray[500], fontSize: 12, marginTop: 4 }}>{partnerProfileT(t, "manageInAccount")}</Text>
         </View>
       ) : (
         <TouchableOpacity
           onPress={onJoin}
           style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingVertical: 12, alignItems: "center", marginTop: 14 }}
         >
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Join Plan</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{partnerProfileT(t, "joinPlanCta")}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -1116,7 +1165,8 @@ const PROFILE_MANY_CAT_PILLS = 10;
    ═══════════════════════════════════════════ */
 export default function PartnerProfileScreen() {
   useScreenTracking("Partner Profile");
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { formatCurrency: formatBrowseMoney } = useFormatCurrency();
   const pp = useCallback(
     (key: string, options?: Record<string, string | number>) => {
       const fullKey = `customer.mobile.screens.partnerProfile.${key}`;
@@ -1376,7 +1426,7 @@ export default function PartnerProfileScreen() {
           const preferredName = r.author?.full_name ?? r.reviewerName ?? null;
           const normalizedName = !isAnonymousDisplayName(preferredName)
             ? preferredName!.trim()
-            : "Verified customer";
+            : pp("verifiedCustomer");
           return {
             id: r.id,
             rating: Number(r.rating) || 5,
@@ -1395,7 +1445,7 @@ export default function PartnerProfileScreen() {
       })
       .finally(() => setReviewsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/effectiveSlug; avoid refetch when reviews populated
-  }, [activeTab, effectiveSlug]);
+  }, [activeTab, effectiveSlug, pp]);
 
   /* ── Load staff when tab is active ── */
   useEffect(() => {
@@ -1422,11 +1472,11 @@ export default function PartnerProfileScreen() {
         const payload = res.data as { plans?: unknown[] } | null;
         const rawList = payload?.plans;
         if (!Array.isArray(rawList)) return;
-        setMemberships(rawList.map((row) => normalizePublicMembershipPlan(row as Record<string, unknown>)));
+        setMemberships(rawList.map((row) => normalizePublicMembershipPlan(row as Record<string, unknown>, t)));
       })
       .catch(() => {})
       .finally(() => setMembershipsLoading(false));
-  }, [activeTab, effectiveSlug]);
+  }, [activeTab, effectiveSlug, t]);
 
   /* ── Detect active salon membership for this provider (signed-in customers) ── */
   useEffect(() => {
@@ -1730,14 +1780,14 @@ export default function PartnerProfileScreen() {
               if (Platform.OS !== "web") {
                 const returnUrl = ExpoLinking.createURL("membership-paystack");
                 const pr = await membershipPaystackCheckout.waitForCheckout(url, {
-                  title: pp("membershipPaystackTitle") || "Membership payment",
+                  title: pp("membershipPaystackTitle"),
                   returnUrl,
                   matchSuccess: (u) => matchesExpoReturnUrl(u, returnUrl) && !isCancelledPaystackUrl(u),
                   matchCancel: (u) => isCancelledPaystackUrl(u),
                 });
                 if (pr.outcome === "cancel") {
                   haptic.error();
-                  Alert.alert("Payment cancelled", "You cancelled the payment. Your membership has not been activated.");
+                  Alert.alert(pp("paymentCancelledTitle"), pp("paymentCancelledBody"));
                   return;
                 }
                 if (pr.outcome === "success" && pr.url && !isCancelledPaystackUrl(pr.url)) {
@@ -1772,7 +1822,7 @@ export default function PartnerProfileScreen() {
       [
         { text: t("common.cancel"), style: "cancel" },
         ...(canPayWithWallet
-          ? [{ text: "Pay with wallet", onPress: () => void subscribe("wallet") }]
+          ? [{ text: pp("payWithWalletCta"), onPress: () => void subscribe("wallet") }]
           : []),
         { text: pp("subscribeCta"), onPress: () => void subscribe("paystack") },
       ],
@@ -1990,6 +2040,7 @@ export default function PartnerProfileScreen() {
   if (!provider) return null;
 
   const tenantFb = getTenantDefaultCurrency();
+  const fmtProduct = (amount: number, cur?: string | null) => formatBrowseMoney(amount, cur ?? tenantFb);
 
   const partnerPolicyContent = provider.policies
     ? buildCancellationPolicyLines(
@@ -2065,7 +2116,7 @@ export default function PartnerProfileScreen() {
                   <Pressable
                     onPress={() => { setGalleryViewerIndex(index); setGalleryViewerVisible(true); }}
                     accessibilityRole="button"
-                    accessibilityLabel={`View photo ${index + 1} of ${images.length} fullscreen`}
+                    accessibilityLabel={pp("viewPhotoA11y", { index: index + 1, total: images.length })}
                   >
                     <Image
                       source={{ uri: item }}
@@ -2093,23 +2144,23 @@ export default function PartnerProfileScreen() {
                 ...Shadows.card,
               }}
             >
-              <Ionicons name="arrow-back" size={20} color="#111" />
+              <DirectionalIcon name="arrow-back" size={20} color="#111" />
             </TouchableOpacity>
 
             {/* Tags */}
             <View style={{ position: "absolute", top: Math.max(insets.top + 8, 48) + 46, left: 16, flexDirection: "row", flexWrap: "wrap" }}>
-              {provider.is_verified && <View style={{ marginRight: 6, marginBottom: 6 }}><VerifiedTag /></View>}
-              {provider.is_featured && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="Featured" color="rgba(236,72,153,0.9)" /></View>}
-              {provider.supports_house_calls && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="House Calls" color="rgba(34,197,94,0.9)" /></View>}
-              {provider.supports_salon && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="At Salon" color="rgba(139,92,246,0.9)" /></View>}
-              {provider.business_type === "freelancer" && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="Freelancer" color="rgba(249,115,22,0.9)" /></View>}
+              {provider.is_verified && <View style={{ marginEnd: 6, marginBottom: 6 }}><VerifiedTag /></View>}
+              {provider.is_featured && <View style={{ marginEnd: 6, marginBottom: 6 }}><Tag label={pp("tagFeatured")} color="rgba(236,72,153,0.9)" /></View>}
+              {provider.supports_house_calls && <View style={{ marginEnd: 6, marginBottom: 6 }}><Tag label={pp("tagHouseCalls")} color="rgba(34,197,94,0.9)" /></View>}
+              {provider.supports_salon && <View style={{ marginEnd: 6, marginBottom: 6 }}><Tag label={pp("atSalon")} color="rgba(139,92,246,0.9)" /></View>}
+              {provider.business_type === "freelancer" && <View style={{ marginEnd: 6, marginBottom: 6 }}><Tag label={pp("tagFreelancer")} color="rgba(249,115,22,0.9)" /></View>}
             </View>
 
             {/* Action icons */}
             <View style={{ position: "absolute", top: Math.max(insets.top + 8, 48), right: 16, flexDirection: "row" }}>
-              <View style={{ marginRight: 8 }}><FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} /></View>
-              <View style={{ marginRight: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
-              <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
+              <View style={{ marginEnd: 8 }}><FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} /></View>
+              <View style={{ marginEnd: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
+              <View style={{ marginEnd: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
               <FloatingIcon name="ellipsis-horizontal" onPress={() => {
                 if (!user) {
                   promptPartnerSignIn(pp("signInTitle"), pp("signInToReportBody"));
@@ -2158,7 +2209,7 @@ export default function PartnerProfileScreen() {
                 onPress={() => { setGalleryViewerIndex(galleryIndex); setGalleryViewerVisible(true); }}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={`Photo ${galleryIndex + 1} of ${images.length}. Tap to view all photos.`}
+                accessibilityLabel={pp("photoCounterA11y", { index: galleryIndex + 1, total: images.length })}
                 style={{ position: "absolute", bottom: 24, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}
               >
                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
@@ -2219,7 +2270,7 @@ export default function PartnerProfileScreen() {
                   {provider.current_badge.icon_url ? (
                     <Image
                       source={{ uri: provider.current_badge.icon_url }}
-                      style={{ width: 14, height: 14, marginRight: 5 }}
+                      style={{ width: 14, height: 14, marginEnd: 5 }}
                       contentFit="contain"
                     />
                   ) : null}
@@ -2230,7 +2281,7 @@ export default function PartnerProfileScreen() {
               ) : null}
               {(provider.city || provider.country) && (
                 <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10, marginBottom: 4 }}>
-                  <Ionicons name="location-outline" size={14} color="#6B7280" style={{ marginRight: 4, marginTop: 2 }} />
+                  <Ionicons name="location-outline" size={14} color="#6B7280" style={{ marginEnd: 4, marginTop: 2 }} />
                   <Text style={{ flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 18 }}>
                     {[provider.city, provider.country].filter(Boolean).join(", ")}
                   </Text>
@@ -2252,7 +2303,7 @@ export default function PartnerProfileScreen() {
             {provider.profile_promotions && provider.profile_promotions.length > 0 ? (
               <View style={{ paddingHorizontal: contentPadding, marginBottom: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
-                  Offers from this provider
+                  {pp("offersFromProvider")}
                 </Text>
                 {provider.profile_promotions.map((p: PublicProfilePromotion) => (
                   <View
@@ -2306,9 +2357,9 @@ export default function PartnerProfileScreen() {
                           backgroundColor: "#16a34a",
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Copy promo code ${p.code}`}
+                        accessibilityLabel={pp("copyPromoA11y", { code: p.code })}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>Copy</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#fff" }}>{pp("copyCta")}</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -2319,7 +2370,7 @@ export default function PartnerProfileScreen() {
             {/* Description */}
             {profileDescriptionPreview ? (
               <View style={{ paddingHorizontal: contentPadding, paddingVertical: 14, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>What this provider offers:</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>{pp("whatThisProviderOffers")}</Text>
                 <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }} numberOfLines={4}>
                   {profileDescriptionPreview}
                 </Text>
@@ -2328,17 +2379,17 @@ export default function PartnerProfileScreen() {
 
             {/* ═══════════ SECTION TABS ═══════════ */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: contentPadding, paddingVertical: 12 }}>
-              {visibleTabs.map((t) => (
+              {visibleTabs.map((tab) => (
                 <TouchableOpacity
-                  key={t}
-                  onPress={() => { setActiveTab(t); haptic.selection(); }}
+                  key={tab}
+                  onPress={() => { setActiveTab(tab); haptic.selection(); }}
                   style={{
                     paddingHorizontal: contentPadding, paddingVertical: 8,
-                    borderBottomWidth: 2, borderColor: activeTab === t ? Colors.primary : "transparent", marginRight: 4,
+                    borderBottomWidth: 2, borderColor: activeTab === tab ? Colors.primary : "transparent", marginEnd: 4,
                   }}
                 >
-                  <Text style={{ color: activeTab === t ? Colors.primary : "#6B7280", fontWeight: activeTab === t ? "600" : "400", fontSize: 14 }}>
-                    {TAB_LABELS[t]}
+                  <Text style={{ color: activeTab === tab ? Colors.primary : "#6B7280", fontWeight: activeTab === tab ? "600" : "400", fontSize: 14 }}>
+                    {pp(TAB_I18N_KEYS[tab])}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -2350,11 +2401,11 @@ export default function PartnerProfileScreen() {
               {/* ── SERVICES ── */}
               {activeTab === "services" && services && services.categories.length > 0 && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Services</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{pp("tabServices")}</Text>
                   {services.categories.length > 1 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
                       {services.categories.map((cat) => (
-                        <CategoryPill key={cat.id} label={cat.name} active={activeCategory === cat.id} onPress={() => setActiveCategory(cat.id)} contentPadding={contentPadding} />
+                        <CategoryPill key={cat.id} label={translatePublicCategoryLabel(t, cat.name, cat.name, { language: i18n.language })} active={activeCategory === cat.id} onPress={() => setActiveCategory(cat.id)} contentPadding={contentPadding} />
                       ))}
                     </ScrollView>
                   )}
@@ -2373,7 +2424,7 @@ export default function PartnerProfileScreen() {
                       onPress={() => setActiveCategory(null)}
                       style={{ paddingVertical: 10 }}
                     >
-                      <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 14 }}>View all services</Text>
+                      <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 14 }}>{pp("viewAllServices")}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -2382,7 +2433,7 @@ export default function PartnerProfileScreen() {
               {/* ── PRODUCTS (provider's shop) ── */}
               {activeTab === "products" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Products</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{pp("tabProducts")}</Text>
                   {providerProductsLoading ? (
                     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: PRODUCT_GRID_GAP }}>
                       {Array.from({ length: productGridNumCols * 2 }, (_, i) => i + 1).map((i) => (
@@ -2404,7 +2455,7 @@ export default function PartnerProfileScreen() {
                   ) : providerProducts.length === 0 ? (
                     <View style={{ alignItems: "center", paddingVertical: 32 }}>
                       <Ionicons name="cube-outline" size={40} color="#D1D5DB" />
-                      <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 8 }}>No products available</Text>
+                      <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 8 }}>{pp("noProductsAvailable")}</Text>
                     </View>
                   ) : (
                     <>
@@ -2444,13 +2495,15 @@ export default function PartnerProfileScreen() {
                                     paddingHorizontal: 16,
                                     paddingVertical: 8,
                                     borderRadius: 999,
-                                    marginRight: 8,
+                                    marginEnd: 8,
                                     backgroundColor: active ? Colors.primary : "#FFF",
                                     borderWidth: 1,
                                     borderColor: active ? Colors.primary : "#E5E7EB",
                                   }}
                                 >
-                                  <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#FFF" : "#374151" }}>{label}</Text>
+                                  <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#FFF" : "#374151" }}>
+                                    {label === "All" ? pp("filterAll") : label === "Other" ? pp("filterOther") : label}
+                                  </Text>
                                 </TouchableOpacity>
                               );
                             })}
@@ -2510,7 +2563,7 @@ export default function PartnerProfileScreen() {
                                   )}
                                   {!prod.inStock && (
                                     <View style={{ position: "absolute", top: 8, right: 8, backgroundColor: "#EF4444", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
-                                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>Sold Out</Text>
+                                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{pp("soldOut")}</Text>
                                     </View>
                                   )}
                                 </View>
@@ -2529,11 +2582,11 @@ export default function PartnerProfileScreen() {
                                         const lo = Math.min(...pv);
                                         const hi = Math.max(...pv);
                                         if (lo !== hi) {
-                                          return `${formatMoney(lo, cur ?? tenantFb)} – ${formatMoney(hi, cur ?? tenantFb)}`;
+                                          return `${fmtProduct(lo, cur)} – ${fmtProduct(hi, cur)}`;
                                         }
-                                        return `From ${formatMoney(lo, cur ?? tenantFb)}`;
+                                        return pp("fromPrice", { price: fmtProduct(lo, cur) });
                                       }
-                                      return formatMoney(Number(prod.price), cur ?? tenantFb);
+                                      return fmtProduct(Number(prod.price), cur);
                                     })()}
                                   </Text>
                                 </View>
@@ -2542,7 +2595,7 @@ export default function PartnerProfileScreen() {
                           </View>
                           {productTotalPages > 1 && (
                             <View
-                              accessibilityLabel="Product list pagination"
+                              accessibilityLabel={pp("productPaginationA11y")}
                               style={{
                                 flexDirection: "row",
                                 alignItems: "center",
@@ -2612,7 +2665,7 @@ export default function PartnerProfileScreen() {
               {/* ── PHOTOS ── */}
               {activeTab === "photos" && images.length > 0 && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Photos</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{pp("tabPhotos")}</Text>
                   {/* Feature image */}
                   {images[0] && (
                     <Pressable onPress={() => { setGalleryViewerIndex(0); setGalleryViewerVisible(true); }}>
@@ -2629,7 +2682,7 @@ export default function PartnerProfileScreen() {
                       <Pressable
                         key={i}
                         onPress={() => { setGalleryViewerIndex(i + 1); setGalleryViewerVisible(true); }}
-                        style={{ marginRight: 4, marginBottom: 4 }}
+                        style={{ marginEnd: 4, marginBottom: 4 }}
                       >
                         <ProviderGalleryImage
                           uri={uri}
@@ -2646,7 +2699,9 @@ export default function PartnerProfileScreen() {
               {activeTab === "locations" && provider.locations && provider.locations.length > 0 && (
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-                    {provider.locations.length === 1 ? "Location" : `${provider.locations.length} Locations`}
+                    {provider.locations.length === 1
+                      ? pp("locationFallback")
+                      : pp("locationsHeadingMany", { count: provider.locations.length })}
                   </Text>
                   {provider.locations.map((loc) => (
                     <LocationCard key={loc.id} loc={loc} disclosureTier={disclosureTier} />
@@ -2657,13 +2712,13 @@ export default function PartnerProfileScreen() {
               {/* ── TEAM (live data) ── */}
               {activeTab === "team" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Meet the Team</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{pp("meetTheTeam")}</Text>
                   {staffLoading ? (
                     <View>
                       {[1, 2, 3].map((i) => (
                         <View key={i} style={{ flexDirection: "row", alignItems: "center", padding: contentPadding, backgroundColor: "#F9FAFB", borderRadius: 16, marginTop: i === 0 ? 0 : 10 }}>
                           <Skeleton width={56} height={56} borderRadius={28} />
-                          <View style={{ flex: 1, marginLeft: 12 }}>
+                          <View style={{ flex: 1, marginStart: 12 }}>
                             <Skeleton width="60%" height={16} />
                             <Skeleton width="40%" height={12} style={{ marginTop: 8 }} />
                           </View>
@@ -2674,7 +2729,7 @@ export default function PartnerProfileScreen() {
                     staff.map((m) => <StaffCard key={m.id} member={m} contentPadding={contentPadding} />)
                   ) : (
                     <Text style={{ color: "#6B7280", fontSize: 14 }}>
-                      {provider.staff_count ?? 0} team members. Meet our professionals when you book.
+                      {pp("teamMembersFallback", { count: provider.staff_count ?? 0 })}
                     </Text>
                   )}
                 </View>
@@ -2692,15 +2747,15 @@ export default function PartnerProfileScreen() {
                         backgroundColor: Colors.primaryLight,
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginEnd: 12,
                       }}
                     >
                       <Ionicons name="ribbon-outline" size={22} color={Colors.primary} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Reviews</Text>
+                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{pp("tabReviews")}</Text>
                       <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 3, lineHeight: 16 }}>
-                        Average rating and breakdown from clients
+                        {pp("reviewsSubtitle")}
                       </Text>
                     </View>
                   </View>
@@ -2720,26 +2775,27 @@ export default function PartnerProfileScreen() {
                         ...Shadows.cardSubtle,
                       }}
                     >
-                      <View style={{ alignItems: "center", width: 108, paddingRight: 12, justifyContent: "center" }}>
+                      <View style={{ alignItems: "center", width: 108, paddingEnd: 12, justifyContent: "center" }}>
                         <Text style={{ fontSize: 36, fontWeight: "800", color: Colors.gray[900], lineHeight: 38, letterSpacing: -0.8 }}>
                           {Number(provider.rating ?? 0).toFixed(1)}
                         </Text>
                         <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginTop: 2, letterSpacing: 0.2 }}>
-                          out of 5
+                          {pp("outOfFive")}
                         </Text>
                         <View style={{ marginTop: 8 }}>
                           <StarRow rating={Number(provider.rating ?? 0)} size={14} />
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10, maxWidth: 108 }}>
-                          <Ionicons name="chatbubbles-outline" size={15} color={Colors.gray[500]} style={{ marginRight: 5 }} />
+                          <Ionicons name="chatbubbles-outline" size={15} color={Colors.gray[500]} style={{ marginEnd: 5 }} />
                           <Text style={{ fontSize: 12, color: Colors.gray[600], fontWeight: "600", flex: 1, flexWrap: "wrap" }} numberOfLines={2}>
-                            {provider.review_count.toLocaleString()}{" "}
-                            {provider.review_count === 1 ? "review" : "reviews"}
+                            {pp(provider.review_count === 1 ? "reviewCountLabelOne" : "reviewCountLabelOther", {
+                              count: provider.review_count.toLocaleString(),
+                            })}
                           </Text>
                         </View>
                       </View>
                       <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: Colors.gray[200], alignSelf: "stretch" }} />
-                      <View style={{ flex: 1, paddingLeft: 14, justifyContent: "center", minWidth: 0 }}>
+                      <View style={{ flex: 1, paddingStart: 14, justifyContent: "center", minWidth: 0 }}>
                         <Text
                           style={{
                             fontSize: 10,
@@ -2750,7 +2806,7 @@ export default function PartnerProfileScreen() {
                             marginBottom: 8,
                           }}
                         >
-                          Star distribution
+                          {pp("starDistribution")}
                         </Text>
                         {[5, 4, 3, 2, 1].map((star) => {
                           const count = reviews.filter((r) => Math.round(r.rating) === star).length;
@@ -2761,13 +2817,13 @@ export default function PartnerProfileScreen() {
                               style={{ flexDirection: "row", alignItems: "center", marginTop: star === 5 ? 0 : 5 }}
                             >
                               <View style={{ flexDirection: "row", alignItems: "center", width: 44, justifyContent: "flex-end" }}>
-                                <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[700], marginRight: 3 }}>{star}</Text>
+                                <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[700], marginEnd: 3 }}>{star}</Text>
                                 <Ionicons name="star" size={12} color="#EAB308" />
                               </View>
                               <View
                                 style={{
                                   flex: 1,
-                                  marginLeft: 10,
+                                  marginStart: 10,
                                   height: 7,
                                   borderRadius: 4,
                                   backgroundColor: Colors.gray[200],
@@ -2795,7 +2851,7 @@ export default function PartnerProfileScreen() {
                         <View key={i} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginTop: i === 0 ? 0 : 10 }}>
                           <View style={{ flexDirection: "row", marginBottom: 8 }}>
                             <Skeleton width={36} height={36} borderRadius={18} />
-                            <View style={{ flex: 1, marginLeft: 10 }}>
+                            <View style={{ flex: 1, marginStart: 10 }}>
                               <Skeleton width="40%" height={14} />
                               <Skeleton width="30%" height={10} style={{ marginTop: 6 }} />
                             </View>
@@ -2825,14 +2881,14 @@ export default function PartnerProfileScreen() {
                         }}
                         style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}
                       >
-                        <Ionicons name="calendar-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>Book again — review after your visit</Text>
+                        <Ionicons name="calendar-outline" size={16} color={Colors.primary} style={{ marginEnd: 6 }} />
+                        <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>{pp("bookAgainReviewCta")}</Text>
                       </TouchableOpacity>
                     </>
                   ) : (
                     <View style={{ alignItems: "center", paddingVertical: 20 }}>
                       <Ionicons name="chatbubbles-outline" size={36} color="#D1D5DB" />
-                      <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>No reviews yet.</Text>
+                      <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>{pp("noReviewsYet")}</Text>
                       <TouchableOpacity
                         onPress={() => {
                           const s = typeof slug === "string" ? slug : provider.slug;
@@ -2840,7 +2896,7 @@ export default function PartnerProfileScreen() {
                         }}
                         style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                       >
-                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Book a visit — then leave a review</Text>
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{pp("bookThenReviewCta")}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -2850,7 +2906,7 @@ export default function PartnerProfileScreen() {
               {/* ── MEMBERSHIPS (live data) ── */}
               {activeTab === "memberships" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Membership Plans</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{pp("membershipPlansHeading")}</Text>
                   {membershipsLoading ? (
                     <View>
                       {[1, 2].map((i) => (
@@ -2876,7 +2932,7 @@ export default function PartnerProfileScreen() {
                   ) : (
                     <View style={{ alignItems: "center", paddingVertical: 20 }}>
                       <Ionicons name="card-outline" size={36} color="#D1D5DB" />
-                      <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>No membership plans available yet.</Text>
+                      <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>{pp("noMembershipPlans")}</Text>
                     </View>
                   )}
                 </View>
@@ -2894,15 +2950,15 @@ export default function PartnerProfileScreen() {
                         backgroundColor: Colors.primaryLight,
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginEnd: 12,
                       }}
                     >
                       <Ionicons name="sparkles" size={24} color={Colors.primary} />
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Request custom service</Text>
+                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{pp("requestCustomService")}</Text>
                       <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4, lineHeight: 18 }}>
-                        Tailored to you — {provider.business_name} will reply with a quote or questions.
+                        {pp("customServiceLead", { name: provider.business_name })}
                       </Text>
                     </View>
                   </View>
@@ -2917,16 +2973,16 @@ export default function PartnerProfileScreen() {
                     }}
                   >
                     <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-                      <Ionicons name="information-circle-outline" size={20} color="#2563EB" style={{ marginRight: 10, marginTop: 1 }} />
+                      <Ionicons name="information-circle-outline" size={20} color="#2563EB" style={{ marginEnd: 10, marginTop: 1 }} />
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>How it works</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{pp("howItWorks")}</Text>
                         <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20, marginBottom: 10 }}>
-                          Describe what you need, optional budget and photos, then submit. You’ll chat with the provider about timing and pricing.
+                          {pp("customHowItWorksBody")}
                         </Text>
                         <View>
-                          {["Share your vision and any must-haves", "Add inspiration photos if helpful", "Get a personalized offer in messages"].map((line, i) => (
+                          {[pp("customStepVision"), pp("customStepPhotos"), pp("customStepOffer")].map((line, i) => (
                             <View key={line} style={{ flexDirection: "row", alignItems: "flex-start", marginTop: i === 0 ? 0 : 6 }}>
-                              <Text style={{ color: Colors.primary, fontWeight: "700", marginRight: 8, marginTop: 1 }}>•</Text>
+                              <Text style={{ color: Colors.primary, fontWeight: "700", marginEnd: 8, marginTop: 1 }}>•</Text>
                               <Text style={{ flex: 1, fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>{line}</Text>
                             </View>
                           ))}
@@ -2951,8 +3007,8 @@ export default function PartnerProfileScreen() {
                       ...Shadows.cardSmall,
                     }}
                   >
-                    <Ionicons name="create-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Start your request</Text>
+                    <Ionicons name="create-outline" size={20} color="#fff" style={{ marginEnd: 8 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{pp("startYourRequestCta")}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -2960,23 +3016,23 @@ export default function PartnerProfileScreen() {
               {/* ── GIFTCARD ── */}
               {activeTab === "giftcard" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 }}>Gift Cards</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 }}>{pp("giftCardsHeading")}</Text>
                   <Text style={{ fontSize: 13, color: "#6B7280", lineHeight: 20, marginBottom: 16 }}>
-                    Give the gift of beauty. Purchase a gift card for {provider.business_name} and share it with someone special.
+                    {pp("giftCardsLead", { name: provider.business_name })}
                   </Text>
                   <View style={{ backgroundColor: "#FFF7ED", borderRadius: 16, padding: contentPadding, alignItems: "center", marginBottom: 16 }}>
                     <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#FDE68A", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                       <Ionicons name="gift" size={28} color="#F59E0B" />
                     </View>
                     <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>{provider.business_name}</Text>
-                    <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>Choose any amount and send it digitally</Text>
+                    <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>{pp("giftCardsChooseAmount")}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => router.push({ pathname: "/(app)/gift-card-purchase", params: { provider_id: provider.id, provider_name: provider.business_name } })}
                     style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
                   >
-                    <Ionicons name="gift-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Buy a Gift Card</Text>
+                    <Ionicons name="gift-outline" size={20} color="#fff" style={{ marginEnd: 8 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{pp("buyGiftCardCta")}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -2984,20 +3040,20 @@ export default function PartnerProfileScreen() {
               {/* ── ABOUT ── */}
               {activeTab === "about" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 }}>About</Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 }}>{pp("tabAbout")}</Text>
 
                   {/* Business description */}
                   {disclosureTier === "anon" && !user ? (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <Text style={{ fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
-                        Sign in to read the full description, opening times, and location details.
+                        {pp("signInToReadAbout")}
                       </Text>
                     </View>
                   ) : aboutDescription ? (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                        <Ionicons name="information-circle-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Overview</Text>
+                        <Ionicons name="information-circle-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{pp("overview")}</Text>
                       </View>
                       <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>
                         {aboutDescription}
@@ -3011,22 +3067,24 @@ export default function PartnerProfileScreen() {
                       <View style={{ flex: 1, backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14, alignItems: "center" }}>
                         <Text style={{ fontSize: 22, fontWeight: "800", color: Colors.primary }}>{provider.years_in_business}</Text>
                         <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>
-                          {provider.years_in_business === 1 ? "Year in\nbusiness" : "Years in\nbusiness"}
+                          {pp(provider.years_in_business === 1 ? "yearInBusiness" : "yearsInBusiness")}
                         </Text>
                       </View>
                     )}
                     {provider.response_rate != null && (
                       <View style={{ flex: 1, backgroundColor: "#F0FDF4", borderRadius: 12, padding: 14, alignItems: "center" }}>
                         <Text style={{ fontSize: 22, fontWeight: "800", color: "#16A34A" }}>{provider.response_rate}%</Text>
-                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>Response{"\n"}rate</Text>
+                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>{pp("responseRate")}</Text>
                       </View>
                     )}
                     {provider.response_time_hours != null && (
                       <View style={{ flex: 1, backgroundColor: "#FFF7ED", borderRadius: 12, padding: 14, alignItems: "center" }}>
                         <Text style={{ fontSize: 22, fontWeight: "800", color: "#D97706" }}>
-                          {provider.response_time_hours < 1 ? "<1h" : `${provider.response_time_hours}h`}
+                          {provider.response_time_hours < 1
+                            ? pp("responseTimeUnderOneHour")
+                            : pp("responseTimeHours", { hours: provider.response_time_hours })}
                         </Text>
-                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>Response{"\n"}time</Text>
+                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>{pp("responseTime")}</Text>
                       </View>
                     )}
                   </View>
@@ -3034,20 +3092,20 @@ export default function PartnerProfileScreen() {
                   {/* Service mode */}
                   <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                      <Ionicons name="briefcase-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>How they work</Text>
+                      <Ionicons name="briefcase-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{pp("howTheyWork")}</Text>
                     </View>
                     <View style={{ flexDirection: "row", gap: 10 }}>
                       {provider.supports_salon && (
                         <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#E0F2FE", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-                          <Ionicons name="storefront-outline" size={15} color="#0369A1" style={{ marginRight: 6 }} />
-                          <Text style={{ fontSize: 12, color: "#0369A1", fontWeight: "600" }}>At the salon</Text>
+                          <Ionicons name="storefront-outline" size={15} color="#0369A1" style={{ marginEnd: 6 }} />
+                          <Text style={{ fontSize: 12, color: "#0369A1", fontWeight: "600" }}>{pp("atTheSalon")}</Text>
                         </View>
                       )}
                       {provider.supports_house_calls && (
                         <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-                          <Ionicons name="home-outline" size={15} color="#15803D" style={{ marginRight: 6 }} />
-                          <Text style={{ fontSize: 12, color: "#15803D", fontWeight: "600" }}>At your home</Text>
+                          <Ionicons name="home-outline" size={15} color="#15803D" style={{ marginEnd: 6 }} />
+                          <Text style={{ fontSize: 12, color: "#15803D", fontWeight: "600" }}>{pp("atYourHome")}</Text>
                         </View>
                       )}
                     </View>
@@ -3063,8 +3121,8 @@ export default function PartnerProfileScreen() {
                   {provider.categories?.length > 0 && (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                        <Ionicons name="sparkles-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Specialties</Text>
+                        <Ionicons name="sparkles-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{pp("specialties")}</Text>
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                         {provider.categories.map((cat) => (
@@ -3080,8 +3138,8 @@ export default function PartnerProfileScreen() {
                   {provider.languages_spoken && provider.languages_spoken.length > 0 && (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                        <Ionicons name="language-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Languages spoken</Text>
+                        <Ionicons name="language-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{pp("languagesSpoken")}</Text>
                       </View>
                       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                         {provider.languages_spoken.map((lang) => (
@@ -3096,8 +3154,8 @@ export default function PartnerProfileScreen() {
                   {partnerPolicyContent && partnerPolicyContent.lines.length > 0 && (
                     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-                        <Ionicons name="document-text-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Booking policies</Text>
+                        <Ionicons name="document-text-outline" size={18} color={Colors.primary} style={{ marginEnd: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{pp("bookingPolicies")}</Text>
                       </View>
                       {partnerPolicyContent.lines.map((line) => (
                         <View key={line.id} style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 8 }}>
@@ -3105,7 +3163,7 @@ export default function PartnerProfileScreen() {
                             name={line.tone === "good" ? "checkmark-circle-outline" : "alert-circle-outline"}
                             size={15}
                             color={line.tone === "good" ? "#059669" : "#D97706"}
-                            style={{ marginRight: 8, marginTop: 1 }}
+                            style={{ marginEnd: 8, marginTop: 1 }}
                           />
                           <Text style={{ flex: 1, fontSize: 12, color: "#374151", lineHeight: 18 }}>{line.text}</Text>
                         </View>
@@ -3113,13 +3171,13 @@ export default function PartnerProfileScreen() {
                       <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>{partnerPolicyContent.storeCreditNote}</Text>
                       {provider.policies?.requires_deposit && (
                         <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10 }}>
-                          <Ionicons name="card-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
+                          <Ionicons name="card-outline" size={15} color="#6B7280" style={{ marginEnd: 8, marginTop: 1 }} />
                           <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Deposit required</Text>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>{pp("depositRequired")}</Text>
                             <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
                               {provider.policies?.deposit_percentage != null
-                                ? `${provider.policies.deposit_percentage}% deposit to confirm booking`
-                                : "A deposit is required to confirm your booking"}
+                                ? pp("depositPercentToConfirm", { percent: provider.policies.deposit_percentage })
+                                : pp("depositRequiredToConfirm")}
                             </Text>
                           </View>
                         </View>
@@ -3133,7 +3191,7 @@ export default function PartnerProfileScreen() {
                       onPress={() => Linking.openURL(provider.website!.startsWith("http") ? provider.website! : `https://${provider.website}`)}
                       style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}
                     >
-                      <Ionicons name="globe-outline" size={18} color={Colors.primary} style={{ marginRight: 10 }} />
+                      <Ionicons name="globe-outline" size={18} color={Colors.primary} style={{ marginEnd: 10 }} />
                       <Text style={{ flex: 1, fontSize: 13, color: Colors.primary, fontWeight: "500" }} numberOfLines={1}>{provider.website}</Text>
                       <Ionicons name="open-outline" size={15} color={Colors.primary} />
                     </TouchableOpacity>
@@ -3142,7 +3200,7 @@ export default function PartnerProfileScreen() {
                   {/* Location summary */}
                   {(provider.city || provider.country) && (
                     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
-                      <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 10 }} />
+                      <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginEnd: 10 }} />
                       <Text style={{ fontSize: 13, color: "#374151" }}>
                         {[provider.city, provider.country].filter(Boolean).join(", ")}
                       </Text>
@@ -3166,12 +3224,12 @@ export default function PartnerProfileScreen() {
           <TouchableOpacity
             onPress={handleMessage}
             style={{
-              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", marginRight: 10,
+              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", marginEnd: 10,
               borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14,
             }}
           >
-            <Ionicons name="chatbubble-outline" size={18} color="#374151" style={{ marginRight: 6 }} />
-            <Text style={{ fontWeight: "600", color: "#374151", fontSize: 15 }}>Message</Text>
+            <Ionicons name="chatbubble-outline" size={18} color="#374151" style={{ marginEnd: 6 }} />
+            <Text style={{ fontWeight: "600", color: "#374151", fontSize: 15 }}>{pp("messageCta")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleBook}
@@ -3180,8 +3238,8 @@ export default function PartnerProfileScreen() {
               backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14,
             }}
           >
-            <Ionicons name="calendar-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={{ fontWeight: "700", color: "#fff", fontSize: 16 }}>Book Now</Text>
+            <Ionicons name="calendar-outline" size={18} color="#fff" style={{ marginEnd: 6 }} />
+            <Text style={{ fontWeight: "700", color: "#fff", fontSize: 16 }}>{pp("bookNowCta")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -3208,7 +3266,7 @@ export default function PartnerProfileScreen() {
                   borderWidth: 1.5,
                   borderColor: active ? "#EF4444" : "#E5E7EB",
                   backgroundColor: active ? "#FEF2F2" : "#fff",
-                  marginRight: 8,
+                  marginEnd: 8,
                   marginBottom: 8,
                 }}
               >
@@ -3235,7 +3293,7 @@ export default function PartnerProfileScreen() {
             minHeight: 100, marginBottom: 8,
           }}
         />
-        <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "right", marginBottom: 16 }}>
+        <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: endTextAlign(), marginBottom: 16 }}>
           {reportDescription.length}/2000
         </Text>
 
@@ -3254,7 +3312,7 @@ export default function PartnerProfileScreen() {
             <ActivityIndicator size="small" color="#fff" />
           ) : (
             <>
-              <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Ionicons name="flag" size={18} color="#fff" style={{ marginEnd: 8 }} />
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{pp("submitReportCta")}</Text>
             </>
           )}

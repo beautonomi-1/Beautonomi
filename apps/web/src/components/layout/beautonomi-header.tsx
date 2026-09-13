@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useTransition, useCallback } from "react";
 import Link from "next/link";
-import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
@@ -34,12 +34,17 @@ import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNot
 import { cn } from "@/lib/utils";
 import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
 import { useCookieConsent } from "@/providers/CookieConsentProvider";
+import { useTranslation } from "@beautonomi/i18n";
+import { PreferencesTrigger } from "@/components/global/PreferencesTrigger";
+import { useOpenGlobalPreferences } from "@/components/global/GlobalPreferencesDialog";
+import { translatePublicCategory } from "@/lib/i18n/translate-public-category";
 
 interface Category {
   id: string;
   name: string;
   slug: string;
   icon?: string; // Lucide name (PascalCase), image URL, or legacy emoji
+  nameI18n?: Record<string, string> | null;
 }
 
 interface BeautonomiHeaderProps {
@@ -54,6 +59,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   onCategoryChange,
   initialGlobalCategories,
 }) => {
+  const { t, i18n } = useTranslation();
+  const openPreferences = useOpenGlobalPreferences();
   const { user, isLoading: authLoading, signOut, role: authRole } = useAuth();
   const { isReady: consentReady, allowsFunctional } = useCookieConsent();
   const canPersistUserLocation = consentReady && allowsFunctional;
@@ -72,7 +79,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isAddressMenuOpenDesktop, setIsAddressMenuOpenDesktop] = useState(false);
   const [isAddressMenuOpenMobile, setIsAddressMenuOpenMobile] = useState(false);
-  const [selectedAddress, setSelectedAddress] = useState("Select address");
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<{ latitude: number; longitude: number; address: string } | null>(null);
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
@@ -94,7 +101,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const { recentLocations, addLocation } = useRecentLocations();
   const { availability, checkAvailability } = useServiceAvailability();
   const [categories, setCategories] = useState<Category[]>(() => {
-    const all: Category = { id: "all", name: "All", slug: "all", icon: "all" };
+    const all: Category = { id: "all", name: t("web.layout.header.allCategories"), slug: "all", icon: "all" };
     if (initialGlobalCategories?.length) {
       return [
         all,
@@ -103,6 +110,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           name: c.name,
           slug: c.slug,
           icon: c.icon || "BeautonomiAll",
+          nameI18n: c.nameI18n ?? null,
         })),
       ];
     }
@@ -152,26 +160,27 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             id: cat.id,
             name: cat.name,
             slug: cat.slug,
-            icon: cat.icon || "BeautonomiAll"
+            icon: cat.icon || "BeautonomiAll",
+            nameI18n: (cat.name_i18n ?? cat.nameI18n ?? null) as Record<string, string> | null,
           }));
 
           // Prepend "All" category if not present
           setCategories([
-            { id: "all", name: "All", slug: "all", icon: "all" },
+            { id: "all", name: t("web.layout.header.allCategories"), slug: "all", icon: "all" },
             ...mappedCategories
           ]);
         } else {
           console.warn("No categories returned from API or empty response:", response);
           // Keep the default "All" category
           setCategories([
-            { id: "all", name: "All", slug: "all", icon: "all" }
+            { id: "all", name: t("web.layout.header.allCategories"), slug: "all", icon: "all" }
           ]);
         }
       } catch (error) {
         console.error("Failed to load categories", error);
         // Keep fallback categories with just "All"
         setCategories([
-          { id: "all", name: "All", slug: "all", icon: "all" }
+          { id: "all", name: t("web.layout.header.allCategories"), slug: "all", icon: "all" }
         ]);
       }
     };
@@ -302,7 +311,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
       try {
         const location = JSON.parse(savedLocation);
         setSelectedLocation(location);
-        setSelectedAddress(location.address || "Select address");
+        setSelectedAddress(location.address || null);
       } catch (error) {
         console.error("Error parsing saved location:", error);
       }
@@ -345,7 +354,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
     try {
       // Show a temporary address while fetching
-      setSelectedAddress("Detecting location...");
+      setSelectedAddress(t("web.layout.header.detectingLocation"));
 
       let response: { 
         data: {
@@ -383,11 +392,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         // Check if it's a reserved IP error or other geolocation error
         if (fetchError.code === "RESERVED_IP" || fetchError.message?.includes("reserved range")) {
           console.log("IP geolocation not available (reserved IP - likely in development)");
-          setSelectedAddress("Select address");
+          setSelectedAddress(null);
           return; // Exit early, user can select location manually
         }
         // For other errors, also show default
-        setSelectedAddress("Select address");
+        setSelectedAddress(null);
         return;
       }
 
@@ -397,11 +406,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         // This is common in development environments
         if (response.error.code === "RESERVED_IP" || response.error.code === "GEOLOCATION_ERROR" || response.error.code === "IP_NOT_FOUND") {
           console.log("IP geolocation not available (likely in development):", response.error.message);
-          setSelectedAddress("Select address");
+          setSelectedAddress(null);
           return; // Exit early, user can select location manually
         }
         // For other errors, also show default
-        setSelectedAddress("Select address");
+        setSelectedAddress(null);
         return;
       }
 
@@ -418,7 +427,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         
         const addressString = addressParts.length > 0 
           ? addressParts.join(", ")
-          : ipLocation.country || ipLocation.city || "Current location";
+          : ipLocation.country || ipLocation.city || t("web.layout.header.currentLocation");
 
         // If we have coordinates from IP, use them directly
         if (ipLocation.latitude && ipLocation.longitude) {
@@ -479,16 +488,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           }
         } else {
           // Fallback if we have no location data at all
-          setSelectedAddress("Select address");
+          setSelectedAddress(null);
         }
       } else {
         // If IP geolocation fails, show default
-        setSelectedAddress("Select address");
+        setSelectedAddress(null);
       }
     } catch (error) {
       console.error("Error fetching location from IP:", error);
       // On error, show default
-      setSelectedAddress("Select address");
+      setSelectedAddress(null);
     }
   };
 
@@ -544,7 +553,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   // Get current location using geolocation API
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser");
+      toast.error(t("web.layout.header.toastGeolocationUnsupported"));
       return;
     }
 
@@ -579,38 +588,38 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             // Dispatch custom event for immediate updates in same tab
             window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
 
-            toast.success("Location updated");
+            toast.success(t("web.layout.header.toastLocationUpdated"));
           } else {
             // Fallback to coordinates if reverse geocoding fails
-            const address = `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-            setSelectedAddress("Current location");
+            const address = t("web.layout.header.currentLocationWithCoords", { lat: latitude.toFixed(4), lng: longitude.toFixed(4) });
+            setSelectedAddress(t("web.layout.header.currentLocation"));
             setSelectedLocation({ latitude, longitude, address });
             persistUserLocation({
               latitude,
               longitude,
               address
             });
-            toast.success("Location updated");
+            toast.success(t("web.layout.header.toastLocationUpdated"));
           }
         } catch (error) {
           console.error("Error reverse geocoding:", error);
           // Fallback to coordinates if reverse geocoding fails
-          const address = `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-          setSelectedAddress("Current location");
+          const address = t("web.layout.header.currentLocationWithCoords", { lat: latitude.toFixed(4), lng: longitude.toFixed(4) });
+          setSelectedAddress(t("web.layout.header.currentLocation"));
           setSelectedLocation({ latitude, longitude, address });
           persistUserLocation({
             latitude,
             longitude,
             address
           });
-          toast.success("Location updated");
+          toast.success(t("web.layout.header.toastLocationUpdated"));
         } finally {
           setIsGettingLocation(false);
         }
       },
       (error) => {
         console.error("Error getting location:", error);
-        toast.error("Unable to get your location. Please enable location permissions.");
+        toast.error(t("web.layout.header.toastLocationPermissionDenied"));
         setIsGettingLocation(false);
       }
     );
@@ -659,7 +668,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     checkAvailability(address.latitude, address.longitude);
 
     setIsAddressDialogOpen(false);
-    toast.success("Location updated");
+    toast.success(t("web.layout.header.toastLocationUpdated"));
   };
 
   // Handle selecting a saved address
@@ -697,7 +706,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
       setIsAddressMenuOpenDesktop(false);
       setIsAddressMenuOpenMobile(false);
-      toast.success("Location updated");
+      toast.success(t("web.layout.header.toastLocationUpdated"));
     }
   };
 
@@ -722,7 +731,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
     setIsAddressMenuOpenDesktop(false);
     setIsAddressMenuOpenMobile(false);
-    toast.success("Location updated");
+    toast.success(t("web.layout.header.toastLocationUpdated"));
   };
 
   const scrollCategories = (direction: "left" | "right") => {
@@ -742,9 +751,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20 py-2.5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-gray-950">You are signed in as a provider</p>
+                <p className="text-sm font-semibold text-gray-950">{t("web.layout.header.providerBannerTitle")}</p>
                 <p className="text-xs text-gray-600">
-                  You are viewing the customer marketplace. Manage bookings, campaigns, and your business from the provider portal.
+                  {t("web.layout.header.providerBannerBody")}
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -752,13 +761,13 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   href="/provider/settings/ads"
                   className="inline-flex min-h-9 items-center justify-center rounded-full border border-pink-200 bg-white px-3 py-1.5 text-xs font-semibold text-pink-700 shadow-sm hover:bg-pink-50"
                 >
-                  Manage Paid Ads
+                  {t("web.layout.header.managePaidAds")}
                 </Link>
                 <Link
                   href="/provider/dashboard"
                   className="inline-flex min-h-9 items-center justify-center rounded-full bg-gray-950 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-gray-800"
                 >
-                  Return to Dashboard
+                  {t("web.layout.header.returnToDashboard")}
                 </Link>
               </div>
             </div>
@@ -779,7 +788,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   className="w-full max-w-md bg-[#FF007F] hover:bg-[#E6006F] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 flex items-center justify-center gap-2 font-medium transition-colors shadow-sm touch-manipulation select-none"
                 >
                   <MapPin className="h-4 w-4 md:h-5 md:w-5 text-white flex-shrink-0" />
-                  <span className="text-sm md:text-base truncate flex-1 text-center">{selectedAddress}</span>
+                  <span className="text-sm md:text-base truncate flex-1 text-center">{selectedAddress ?? t("web.layout.header.selectAddress")}</span>
                   <ChevronDown className="h-4 w-4 md:h-5 md:w-5 text-white flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
@@ -790,17 +799,17 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     {availability.isLoading ? (
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Checking availability...</span>
+                        <span>{t("web.layout.header.checkingAvailability")}</span>
                       </div>
                     ) : availability.in_zone ? (
                       <div className="flex items-center gap-2 text-sm text-green-600">
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>Services available</span>
+                        <span>{t("web.layout.header.servicesAvailable")}</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-sm text-amber-600">
                         <AlertCircle className="h-4 w-4" />
-                        <span>Limited availability</span>
+                        <span>{t("web.layout.header.limitedAvailability")}</span>
                       </div>
                     )}
                   </div>
@@ -814,7 +823,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-[#FF007F]" />
                     <span className="text-base text-gray-900">
-                      {isGettingLocation ? "Getting location..." : "Current location"}
+                      {isGettingLocation ? t("web.layout.header.gettingLocation") : t("web.layout.header.currentLocation")}
                     </span>
                   </div>
                 </DropdownMenuItem>
@@ -823,7 +832,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 {(recentLocations.find(loc => loc.label === "Home") || recentLocations.find(loc => loc.label === "Work")) && (
                   <>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Quick Access
+                      {t("web.layout.header.quickAccess")}
                     </div>
                     {recentLocations.find(loc => loc.label === "Home") && (
                       <DropdownMenuItem 
@@ -833,7 +842,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         <div className="flex items-start gap-2 w-full">
                           <Home className="h-4 w-4 text-[#FF007F] mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">Home</p>
+                            <p className="text-sm font-medium text-gray-900">{t("web.layout.header.home")}</p>
                             <p className="text-xs text-gray-600 truncate">
                               {recentLocations.find(loc => loc.label === "Home")!.address}
                             </p>
@@ -849,7 +858,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         <div className="flex items-start gap-2 w-full">
                           <Briefcase className="h-4 w-4 text-[#FF007F] mt-0.5 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900">Work</p>
+                            <p className="text-sm font-medium text-gray-900">{t("web.layout.header.work")}</p>
                             <p className="text-xs text-gray-600 truncate">
                               {recentLocations.find(loc => loc.label === "Work")!.address}
                             </p>
@@ -864,7 +873,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 {recentLocations.filter(loc => loc.label !== "Home" && loc.label !== "Work").length > 0 && (
                   <>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Recent Locations
+                      {t("web.layout.header.recentLocations")}
                     </div>
                     {recentLocations.filter(loc => loc.label !== "Home" && loc.label !== "Work").slice(0, 3).map((loc) => (
                       <DropdownMenuItem 
@@ -889,7 +898,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 {user && addresses.length > 0 && (
                   <>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Saved Addresses
+                      {t("web.layout.header.savedAddresses")}
                     </div>
                     {addresses.map((addr) => (
                       <DropdownMenuItem 
@@ -914,7 +923,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 )}
                 
                 <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Options
+                  {t("web.layout.header.options")}
                 </div>
                 <DropdownMenuItem 
                   onClick={() => { 
@@ -926,7 +935,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 >
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-[#FF007F]" />
-                    <span className="text-base text-gray-900">Select address</span>
+                    <span className="text-base text-gray-900">{t("web.layout.header.selectAddress")}</span>
                   </div>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -935,30 +944,28 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         </div>
       </div>
 
-      {/* Main Header Bar */}
-      <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20 relative">
-        <div className="flex items-center justify-between py-2 md:py-4 relative">
-          {/* Left: Logo (desktop) / Nothing (mobile - nav is centered) */}
-          <div className="flex items-center min-w-0 md:min-w-[140px]">
-            <Link href="/" className="flex items-center gap-2 flex-shrink-0">
-              <PlatformLogo alt="BEAUTONOMI Logo" className="h-6 md:h-10 w-auto" />
+      {/* Main Header Bar — 3 equal columns so the globe never collides with Home/Explore */}
+      <div className="max-w-[2340px] mx-auto px-3 sm:px-4 md:px-6 lg:px-20 relative">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 py-2 md:py-4">
+          <div className="flex items-center justify-start min-w-0">
+            <Link href="/" className="flex items-center gap-2 min-w-0">
+              <PlatformLogo alt={t("web.layout.header.logoAlt")} className="h-5 sm:h-6 md:h-10 w-auto max-w-[88px] sm:max-w-none" />
             </Link>
           </div>
 
-          {/* Center: Home | Explore nav (desktop + mobile, centered) */}
           <nav
-            className="flex items-center gap-1 absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 max-w-[calc(100%-200px)] z-[5]"
-            aria-label="Primary"
+            className="flex items-center justify-center gap-0 sm:gap-1 shrink-0"
+            aria-label={t("web.a11y.primaryNav")}
           >
             <Link
               href="/"
               className={cn(
-                "relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
+                "relative flex flex-col items-center gap-0.5 px-2 py-2 sm:px-3 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[44px] sm:min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
                 isHomePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
               )}
             >
               <HomeNavIcon active={isHomePage} size={24} />
-              <span className="text-[10px] md:text-xs font-medium">Home</span>
+              <span className="text-[10px] md:text-xs font-medium leading-none">{t("web.layout.home")}</span>
               {isHomePage && (
                 <div className="absolute bottom-0 left-1 right-1 md:left-2 md:right-2 h-1 bg-[#FF007F] rounded-full" aria-hidden />
               )}
@@ -966,15 +973,15 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             <Link
               href="/explore"
               className={cn(
-                "relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
+                "relative flex flex-col items-center gap-0.5 px-2 py-2 sm:px-3 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[44px] sm:min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
                 isExplorePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
               )}
             >
               <ExploreNavIcon active={isExplorePage} size={24} />
-              <span className="flex items-center gap-1 text-[10px] md:text-xs font-medium">
-                Explore
-                <span className="px-1 py-0.5 text-[8px] md:text-[9px] font-bold uppercase bg-[#FF007F] text-white rounded leading-none">
-                  New
+              <span className="flex items-center gap-1 text-[10px] md:text-xs font-medium leading-none">
+                {t("web.layout.explore")}
+                <span className="hidden sm:inline px-1 py-0.5 text-[8px] md:text-[9px] font-bold uppercase bg-[#FF007F] text-white rounded leading-none">
+                  {t("web.layout.newBadge")}
                 </span>
               </span>
               {isExplorePage && (
@@ -983,18 +990,26 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             </Link>
           </nav>
 
-          {/* Right: Search (desktop) + Become a partner + User Menu — mobile search lives in bottom nav */}
-          <div className="relative z-[110] flex items-center justify-end gap-2 md:gap-4 min-w-0 md:min-w-[140px]">
-            {/* Search Icon Toggle — md+ only; mobile uses /search from bottom navigation */}
+          {/* Right: globe aligned with menu; search + partner stay md+ */}
+          <div className="relative z-[110] flex items-center justify-end gap-0.5 md:gap-3 min-w-0">
             <button
               ref={searchToggleRef}
               type="button"
               onClick={toggleSearch}
-              className="hidden md:inline-flex p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
-              aria-label="Toggle search"
+              className="hidden md:inline-flex p-1.5 md:p-2 min-w-[44px] min-h-[44px] items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+              aria-label={t("web.a11y.toggleSearch")}
             >
               <Search className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
             </button>
+
+            {isMounted ? (
+              <PreferencesTrigger
+                variant="header"
+                onClick={() => openPreferences({ surface: "header" })}
+              />
+            ) : (
+              <span className="inline-flex min-w-[44px] min-h-[44px]" aria-hidden />
+            )}
 
             {/* Notification bell for signed-in customers (incl. mobile public home). */}
             {isMounted && user && user.role === "customer" ? <CustomerNotificationsDropdown /> : null}
@@ -1004,7 +1019,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               href="/become-a-partner"
               className="hidden md:block text-sm md:text-base font-normal text-gray-700 hover:text-[#FF007F] transition-colors"
             >
-              Become a partner
+              {t("web.layout.becomePartner")}
             </Link>
 
             {/* User Menu */}
@@ -1015,19 +1030,19 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   <SheetTrigger asChild>
                     <button
                       type="button"
-                      aria-label="Open menu"
-                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+                      aria-label={t("web.a11y.openMenu")}
+                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
                     >
                       <Menu className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
                     </button>
                   </SheetTrigger>
-                  <SheetContent side="right" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto p-0 gap-0 bg-white">
+                  <SheetContent side="end" className="w-full sm:w-[400px] max-w-[95vw] overflow-y-auto p-0 gap-0 bg-white">
                     <SheetHeader className="p-6 pb-2 border-b border-gray-100">
-                      <SheetTitle className="text-left text-xl font-bold text-gray-900">
-                        Log in or sign up
+                      <SheetTitle className="text-start text-xl font-bold text-gray-900">
+                        {t("web.layout.logInOrSignUp")}
                       </SheetTitle>
-                      <SheetDescription className="text-left text-sm text-gray-600">
-                        Access your account to save addresses and manage bookings
+                      <SheetDescription className="text-start text-sm text-gray-600">
+                        {t("web.layout.accessAccountHint")}
                       </SheetDescription>
                     </SheetHeader>
                     <div className="flex flex-col p-2">
@@ -1039,7 +1054,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                           }`}
                           onClick={() => setIsUserMenuOpen(false)}
                         >
-                          Home
+                          {t("web.layout.header.home")}
                         </Link>
                         <Link
                           href="/explore"
@@ -1048,7 +1063,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                           }`}
                           onClick={() => setIsUserMenuOpen(false)}
                         >
-                          Explore
+                          {t("web.layout.explore")}
                         </Link>
                         <Link
                           href="/search"
@@ -1057,7 +1072,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                           }`}
                           onClick={() => setIsUserMenuOpen(false)}
                         >
-                          Search
+                          {t("web.layout.header.search")}
                         </Link>
                       </div>
                       <Button
@@ -1069,7 +1084,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                           setIsUserMenuOpen(false);
                         }}
                       >
-                        Log in
+                        {t("web.layout.header.logIn")}
                       </Button>
                       <Button
                         variant="secondary"
@@ -1079,7 +1094,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                           router.push("/signup?type=customer");
                         }}
                       >
-                        Sign up
+                        {t("web.layout.header.signUp")}
                       </Button>
                       <div className="h-px bg-gray-100 my-2 mx-4" />
                       <Link 
@@ -1087,30 +1102,41 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        Become a partner
+                        {t("web.layout.becomePartner")}
                       </Link>
                       <Link 
                         href="/help"
                         className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        Help Centre
+                        {t("web.layout.header.helpCentre")}
                       </Link>
                       <Link 
                         href="/learn"
                         className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
                         onClick={() => setIsUserMenuOpen(false)}
                       >
-                        Learning Center
+                        {t("web.layout.header.learningCenter")}
                       </Link>
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          openPreferences({ surface: "header" });
+                        }}
+                      >
+                        <Globe className="h-4 w-4 shrink-0" aria-hidden />
+                        {t("web.preferences.title")}
+                      </button>
                     </div>
                   </SheetContent>
                 </Sheet>
               ) : user && (authRole ?? user.role) === "customer" ? (
                 <Link
                   href="/account-settings"
-                  className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
-                  aria-label="Account settings"
+                  className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+                  aria-label={t("web.layout.header.accountSettingsAria")}
                 >
                   <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
                 </Link>
@@ -1120,8 +1146,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      aria-label="User menu"
-                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+                      aria-label={t("web.layout.header.userMenuAria")}
+                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
                     >
                       <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
                     </button>
@@ -1129,20 +1155,20 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                   <DropdownMenuContent align="end" className="w-56 bg-white border-gray-200">
                     <div className="px-4 py-2 border-b border-gray-200">
                       <p className="text-sm font-medium text-gray-900">
-                        {user?.full_name || "User"}
+                        {user?.full_name || t("web.layout.header.userFallback")}
                       </p>
                       <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                     </div>
                     {(authRole ?? user?.role) && (authRole ?? user?.role) !== "customer" ? (
                       <DropdownMenuItem asChild>
                         <Link href="/portal" className="cursor-pointer">
-                          Dashboard
+                          {t("web.layout.header.dashboard")}
                         </Link>
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem asChild>
                       <Link href="/account-settings" className="cursor-pointer">
-                        Profile and account
+                        {t("web.layout.header.profileAndAccount")}
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem
@@ -1151,12 +1177,12 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       }}
                       className="cursor-pointer text-red-600 focus:text-red-600"
                     >
-                      Sign Out
+                      {t("web.layout.header.signOut")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <div className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0" aria-hidden />
+                <div className="p-1.5 md:p-2 min-w-[44px] min-h-[44px]" aria-hidden />
               )
             ) : (
               <div className="p-1.5 md:p-2 rounded-full">
@@ -1180,7 +1206,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         <form onSubmit={handleSearch} className="relative z-50 touch-manipulation">
           <input
             type="text"
-            placeholder="Search for providers..."
+            placeholder={t("web.layout.searchProvidersPlaceholder")}
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -1204,12 +1230,12 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 setSelectedSuggestionIndex(-1);
               }
             }}
-            className="w-full rounded-full border border-gray-200 px-4 md:px-6 py-2.5 md:py-3.5 pl-8 pr-12 md:pr-16 text-base md:text-base shadow-sm hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF007F] focus:border-transparent placeholder:text-gray-400"
+            className="w-full rounded-full border border-gray-200 px-4 md:px-6 py-2.5 md:py-3.5 ps-8 pe-12 md:pe-16 text-base md:text-base shadow-sm hover:shadow-md transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF007F] focus:border-transparent placeholder:text-gray-400"
           />
           <button
             type="submit"
-            className="absolute right-1.5 md:right-2 top-1/2 -translate-y-1/2 bg-[#FF007F] hover:bg-[#E6006F] text-white rounded-full p-2 md:p-2.5 transition-all hover:scale-105 active:scale-95"
-            aria-label="Search"
+            className="absolute end-1.5 md:end-2 top-1/2 -translate-y-1/2 bg-[#FF007F] hover:bg-[#E6006F] text-white rounded-full p-2 md:p-2.5 transition-all hover:scale-105 active:scale-95"
+            aria-label={t("web.a11y.search")}
           >
             <Search className="h-4 w-4 md:h-5 md:w-5" />
           </button>
@@ -1219,7 +1245,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50 max-h-96 overflow-y-auto">
               {isLoadingSuggestions ? (
                 <div className="px-6 py-4 text-sm text-gray-500 text-center">
-                  Searching...
+                  {t("web.layout.header.searching")}
                 </div>
               ) : suggestions.length > 0 ? (
                 <>
@@ -1227,9 +1253,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <Link
                       key={`${suggestion.type}-${suggestion.id}-${index}`}
                       href={suggestion.url}
-                      className={`w-full text-left px-6 py-3 text-sm text-gray-700 flex items-center gap-3 transition-colors ${
+                      className={`w-full text-start px-6 py-3 text-sm text-gray-700 flex items-center gap-3 transition-colors ${
                         index === selectedSuggestionIndex 
-                          ? 'bg-[#FF007F]/10 border-l-2 border-[#FF007F]' 
+                          ? 'bg-[#FF007F]/10 border-s-2 border-[#FF007F]' 
                           : 'hover:bg-gray-50'
                       }`}
                       onMouseEnter={() => setSelectedSuggestionIndex(index)}
@@ -1251,12 +1277,12 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         )}
                         {suggestion.type === 'provider' && (
                           <div className="text-xs text-gray-500 mt-0.5">
-                            Provider
+                            {t("web.layout.header.suggestionProvider")}
                           </div>
                         )}
                         {suggestion.type === 'category' && (
                           <div className="text-xs text-gray-500 mt-0.5">
-                            Category
+                            {t("web.layout.header.suggestionCategory")}
                           </div>
                         )}
                       </div>
@@ -1265,7 +1291,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 </>
               ) : (
                 <div className="px-6 py-4 text-sm text-gray-500 text-center">
-                  No suggestions found
+                  {t("web.layout.header.noSuggestions")}
                 </div>
               )}
             </div>
@@ -1286,7 +1312,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               type="button"
               onClick={() => scrollCategories("left")}
               className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10 touch-manipulation"
-              aria-label="Scroll left"
+              aria-label={t("web.a11y.scrollLeft")}
             >
               <ChevronLeft className="h-4 w-4 text-gray-400" />
             </button>
@@ -1315,7 +1341,12 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <span className="flex items-center justify-center h-6 w-6 text-inherit">
                       {renderCategoryIcon(category.icon, isActive)}
                     </span>
-                    <span className="text-[10px] md:text-sm font-medium">{category.name}</span>
+                    <span className="text-[10px] md:text-sm font-medium">
+                      {translatePublicCategory(t, category.slug, category.name, {
+                        language: i18n.language,
+                        nameI18n: category.nameI18n,
+                      })}
+                    </span>
                     {isActive && (
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-[#FF007F] rounded-full" />
                     )}
@@ -1329,7 +1360,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               type="button"
               onClick={() => scrollCategories("right")}
               className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10 touch-manipulation"
-              aria-label="Scroll right"
+              aria-label={t("web.a11y.scrollRight")}
             >
               <ChevronRight className="h-4 w-4 text-gray-400" />
             </button>

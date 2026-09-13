@@ -26,7 +26,7 @@ export default function PartnerNavbar() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const router = useRouter();
-  const { user, role, isLoading } = useAuth();
+  const { user, role } = useAuth();
   const { getSectionContent } = usePageContent("become-a-partner");
   const topBannerEnabledRaw = getSectionContent("top_banner_enabled")?.trim().toLowerCase();
   const topBannerEnabled = topBannerEnabledRaw ? TOP_BANNER_ENABLED_VALUES.has(topBannerEnabledRaw) : false;
@@ -48,7 +48,6 @@ export default function PartnerNavbar() {
   const handleSignUpClick = (e: React.MouseEvent) => {
     e.preventDefault();
     setIsMenuOpen(false);
-    if (isLoading) return;
     if (user) {
       if (role === "provider_owner") {
         router.push("/provider/dashboard");
@@ -138,7 +137,7 @@ export default function PartnerNavbar() {
 
         {/* Mobile Menu Sheet */}
         <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-          <SheetContent side="right" className="w-80">
+          <SheetContent side="end" className="w-80">
             <SheetHeader>
               <SheetTitle>Menu</SheetTitle>
             </SheetHeader>

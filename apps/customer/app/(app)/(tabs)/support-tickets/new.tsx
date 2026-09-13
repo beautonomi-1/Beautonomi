@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "@beautonomi/i18n";
 import { View, Text, TextInput, ScrollView, Alert, Platform, TouchableOpacity, StyleSheet } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -17,23 +17,33 @@ import {
 import { SupportTicketCategoryPicker } from "@/components/SupportTicketCategoryPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { trackSupportTicketCreated } from "@/lib/analytics";
-import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId, supportPrefillNoun } from "@beautonomi/utils";
+import { resolveSupportTicketPrefillFromSearch, shouldSendSupportContextId } from "@beautonomi/utils";
 
 const SUPPORT_CONTEXT_OPTIONS = [
-  { value: "booking", label: "Booking" },
-  { value: "product_order", label: "Product order" },
-  { value: "gift_card", label: "Gift card" },
-  { value: "payment", label: "Payment/refund" },
-  { value: "account", label: "Account" },
-  { value: "technical", label: "Technical" },
-  { value: "other", label: "Other" },
+  { value: "booking", labelKey: "contextBooking" },
+  { value: "product_order", labelKey: "contextProductOrder" },
+  { value: "gift_card", labelKey: "contextGiftCard" },
+  { value: "payment", labelKey: "contextPayment" },
+  { value: "account", labelKey: "contextAccount" },
+  { value: "technical", labelKey: "contextTechnical" },
+  { value: "other", labelKey: "contextOther" },
 ] as const;
+
+const PRIORITY_LABEL_KEYS: Record<(typeof SUPPORT_TICKET_PRIORITIES)[number]["value"], string> = {
+  low: "priorityLow",
+  medium: "priorityMedium",
+  high: "priorityHigh",
+  urgent: "priorityUrgent",
+};
 
 export default function NewSupportTicketScreen() {
   useScreenTracking("New support ticket");
   const { t } = useTranslation();
-  const sn = useCallback((key: string) => t(`customer.mobile.screens.supportTicketsNew.${key}`), [t]);
-  const router = useRouter();
+  const sn = useCallback(
+    (key: string, opts?: Record<string, string | number>) =>
+      t(`customer.mobile.screens.supportTicketNew.${key}`, opts) as string,
+    [t],
+  );
   const handleBack = useSafetyStackBack();
   const params = useLocalSearchParams<{
     category?: string;
@@ -75,13 +85,20 @@ export default function NewSupportTicketScreen() {
       setSupportContextLabel(prefill.supportContextLabel);
       setSupportContextId(prefill.supportContextId);
       if (!preset) {
-        const kind = supportPrefillNoun(prefill.supportContextType);
+        const kind =
+          prefill.supportContextType === "product_order"
+            ? sn("helpKindOrder")
+            : prefill.supportContextType === "gift_card"
+              ? sn("helpKindGiftCard")
+              : sn("helpKindBooking");
         setSubject((current) =>
-          current.trim() ? current : `Help with ${kind} ${prefill.supportContextLabel.split(" (")[0]}`,
+          current.trim()
+            ? current
+            : sn("helpWithSubject", { kind, label: prefill.supportContextLabel.split(" (")[0] }),
         );
       }
     }
-  }, [params.category, params.booking_id, params.booking_number, params.order_id, params.order_number, params.gift_card_id, params.gift_card_code]);
+  }, [params.category, params.booking_id, params.booking_number, params.order_id, params.order_number, params.gift_card_id, params.gift_card_code, sn]);
 
   const canSubmit = subject.trim().length >= 4 && message.trim().length >= 10;
 
@@ -134,7 +151,7 @@ export default function NewSupportTicketScreen() {
           breadcrumbSegment={sn("breadcrumb")}
         />
         <View style={styles.fieldGap}>
-          <Text style={styles.label}>What is this about?</Text>
+          <Text style={styles.label}>{sn("aboutLabel")}</Text>
           <View style={styles.contextRow}>
             {SUPPORT_CONTEXT_OPTIONS.map((option) => (
               <TouchableOpacity
@@ -148,15 +165,15 @@ export default function NewSupportTicketScreen() {
                 ]}
               >
                 <Text style={[styles.priorityChipText, supportContextType === option.value && styles.priorityChipTextActive]}>
-                  {option.label}
+                  {sn(option.labelKey)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.label}>Related reference (optional)</Text>
+          <Text style={styles.label}>{sn("referenceLabel")}</Text>
           <TextInput
             style={styles.input}
-            placeholder="Booking/order/payment reference"
+            placeholder={sn("referencePlaceholder")}
             placeholderTextColor="#9CA3AF"
             value={supportContextLabel}
             onChangeText={setSupportContextLabel}
@@ -165,7 +182,7 @@ export default function NewSupportTicketScreen() {
           <SupportTicketCategoryPicker value={category} onChange={setCategory} />
         </View>
 
-        <Text style={styles.label}>Priority</Text>
+        <Text style={styles.label}>{sn("priorityLabel")}</Text>
         <View style={styles.priorityRow}>
           {SUPPORT_TICKET_PRIORITIES.map((p) => (
             <TouchableOpacity
@@ -179,16 +196,16 @@ export default function NewSupportTicketScreen() {
               ]}
             >
               <Text style={[styles.priorityChipText, priority === p.value && styles.priorityChipTextActive]}>
-                {p.label}
+                {sn(PRIORITY_LABEL_KEYS[p.value])}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={styles.label}>Subject</Text>
+        <Text style={styles.label}>{sn("subjectLabel")}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Brief description of the issue"
+          placeholder={sn("subjectPlaceholder")}
           placeholderTextColor="#9CA3AF"
           value={subject}
           onChangeText={setSubject}
@@ -196,10 +213,10 @@ export default function NewSupportTicketScreen() {
           returnKeyType="next"
         />
 
-        <Text style={styles.label}>Details</Text>
+        <Text style={styles.label}>{sn("detailsLabel")}</Text>
         <TextInput
           style={[styles.input, styles.inputMultiline]}
-          placeholder="Describe the issue in detail, including any error messages or steps to reproduce…"
+          placeholder={sn("detailPlaceholder")}
           placeholderTextColor="#9CA3AF"
           value={message}
           onChangeText={setMessage}
@@ -213,9 +230,9 @@ export default function NewSupportTicketScreen() {
           style={[styles.submitBtn, (!canSubmit || submitting) && styles.submitBtnDisabled]}
           accessibilityRole="button"
         >
-          <Text style={styles.submitBtnText}>{submitting ? "Submitting…" : "Submit ticket"}</Text>
+          <Text style={styles.submitBtnText}>{submitting ? sn("submitting") : sn("submitTicket")}</Text>
         </TouchableOpacity>
-        <Text style={styles.hint}>We typically respond within 1–2 business days</Text>
+        <Text style={styles.hint}>{sn("responseHint")}</Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

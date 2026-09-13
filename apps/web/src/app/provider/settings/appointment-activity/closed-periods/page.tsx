@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useMemo, useState } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -20,6 +21,7 @@ type AvailabilityBlock = {
 };
 
 export default function ClosedPeriodsSettings() {
+  const { t } = useTranslation();
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   const [startAt, setStartAt] = useState<string>("");
   const [endAt, setEndAt] = useState<string>("");
@@ -47,7 +49,7 @@ export default function ClosedPeriodsSettings() {
       console.error("Error loading closed periods:", error);
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to load closed periods";
+        : error?.error?.message || t("web.provider.settings.pages.appointment-activity/closed-periods.loadFailed");
       setError(errorMessage);
       setBlocks([]);
     } finally {
@@ -64,7 +66,7 @@ export default function ClosedPeriodsSettings() {
     try {
       setIsSaving(true);
       if (!startAt || !endAt) {
-        toast.error("Start and end date/time are required");
+        toast.error(t("web.provider.settings.pages.appointment-activity/closed-periods.startAndEndDateTimeAre"));
         return;
       }
 
@@ -73,12 +75,12 @@ export default function ClosedPeriodsSettings() {
       const endDate = new Date(endAt);
 
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        toast.error("Invalid date/time format");
+        toast.error(t("web.provider.settings.pages.appointment-activity/closed-periods.invalidDateTimeFormat"));
         return;
       }
 
       if (endDate <= startDate) {
-        toast.error("End time must be after start time");
+        toast.error(t("web.provider.settings.pages.appointment-activity/closed-periods.endTimeMustBeAfterStart"));
         return;
       }
 
@@ -86,17 +88,17 @@ export default function ClosedPeriodsSettings() {
         block_type: "unavailable",
         start_at: startDate.toISOString(),
         end_at: endDate.toISOString(),
-        reason: reason.trim() || "Closed period",
+        reason: reason.trim() || t("web.provider.settings.pages.appointment-activity/closed-periods.defaultReason"),
       });
       setStartAt("");
       setEndAt("");
       setReason("");
-      toast.success("Closed period added successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/closed-periods.closedPeriodAddedSuccessfully"));
       await load();
     } catch (e: any) {
       const errorMessage = e instanceof FetchError
         ? e.message
-        : e?.error?.message || "Failed to add closed period";
+        : e?.error?.message || t("web.provider.settings.pages.appointment-activity/closed-periods.addFailed");
       toast.error(errorMessage);
       console.error("Error creating closed period:", e);
     } finally {
@@ -105,46 +107,46 @@ export default function ClosedPeriodsSettings() {
   };
 
   const deleteBlock = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this closed period?")) {
+    if (!confirm(t("web.provider.settings.pages.appointment-activity/closed-periods.removeConfirm"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/provider/availability-blocks/${id}`);
-      toast.success("Closed period removed successfully");
+      toast.success(t("web.provider.settings.pages.appointment-activity/closed-periods.closedPeriodRemovedSuccessfully"));
       await load();
     } catch (e: any) {
       const errorMessage = e instanceof FetchError
         ? e.message
-        : e?.error?.message || "Failed to remove closed period";
+        : e?.error?.message || t("web.provider.settings.pages.appointment-activity/closed-periods.removeFailed");
       toast.error(errorMessage);
       console.error("Error deleting closed period:", e);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Business Closed Periods" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.appointment-activity/closed-periods.businessClosedPeriods") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Business Closed Periods"
-        subtitle="Set holiday and closure dates"
+        title={t("web.provider.settings.categories.appointmentActivity.items.closedPeriods.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.closedPeriods.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading closed periods..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.appointment-activity/closed-periods.loadingClosedPeriods")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Business Closed Periods"
-      subtitle="Set holiday and closure dates"
+      title={t("web.provider.settings.categories.appointmentActivity.items.closedPeriods.title")}
+      subtitle={t("web.provider.settings.categories.appointmentActivity.items.closedPeriods.description")}
       onSave={createClosedPeriod}
       isSaving={isSaving}
       breadcrumbs={breadcrumbs}
@@ -152,20 +154,20 @@ export default function ClosedPeriodsSettings() {
       <SectionCard>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>Start</Label>
+<Label>{t("web.provider.settings.pages.appointment-activity/closed-periods.start")}</Label>
             <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>End</Label>
+<Label>{t("web.provider.settings.pages.appointment-activity/closed-periods.end")}</Label>
             <Input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
           </div>
           <div className="space-y-2 md:col-span-2">
-            <Label>Reason (optional)</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Holiday / Maintenance / Closed" />
+<Label>{t("web.provider.pages.team/days-off.reasonOptional")}</Label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("web.provider.settings.pages.appointment-activity/closed-periods.holidayMaintenanceClosed")} />
           </div>
           <div className="md:col-span-2">
             <Button onClick={createClosedPeriod} disabled={isSaving}>
-              Add Closed Period
+{t("web.provider.settings.pages.appointment-activity/closed-periods.addClosedPeriod")}
             </Button>
           </div>
         </div>
@@ -181,11 +183,11 @@ export default function ClosedPeriodsSettings() {
 
       <SectionCard>
         <div className="space-y-3">
-          <div className="text-sm text-gray-600">Upcoming closed periods (next 60 days)</div>
+<div className="text-sm text-gray-600">{t("web.provider.settings.pages.appointment-activity/closed-periods.upcomingTitle")}</div>
           {blocks.length === 0 ? (
             <EmptyState
-              title="No closed periods"
-              description="Add holiday or closure dates to prevent bookings during those times."
+              title={t("web.provider.settings.pages.appointment-activity/closed-periods.noClosedPeriods")}
+description={t("web.provider.settings.pages.appointment-activity/closed-periods.emptyHint")}
             />
           ) : (
             <div className="space-y-2">
@@ -216,7 +218,7 @@ export default function ClosedPeriodsSettings() {
                     size="sm"
                     onClick={() => deleteBlock(b.id)}
                   >
-                    Remove
+{t("web.provider.settings.pages.appointment-activity/closed-periods.remove")}
                   </Button>
                 </div>
               ))}

@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { AdminProductEditorSheet } from "./AdminProductEditorSheet";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type ProductRow = Record<string, unknown> & {
   id?: string;
@@ -53,11 +54,7 @@ type CatalogPayload = {
 };
 
 function money(amount: number, currency: string) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "ZAR",
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatAdminCurrency(amount, currency || "ZAR");
 }
 
 export function ProductCatalogPage() {

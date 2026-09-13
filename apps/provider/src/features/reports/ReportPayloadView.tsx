@@ -5,6 +5,7 @@ import { View, Text, ScrollView, useWindowDimensions } from "react-native";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency, formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { i18n, useTranslation } from "@beautonomi/i18n";
 
 function isMoneyKey(k: string): boolean {
   const l = k.toLowerCase();
@@ -34,7 +35,7 @@ function isPercentKey(k: string): boolean {
 
 function formatPrimitive(key: string, val: unknown): string {
   if (val == null) return "—";
-  if (typeof val === "boolean") return val ? "Yes" : "No";
+  if (typeof val === "boolean") return val ? (i18n.t("provider.mobile.components.reportPayloadView.yes") as string) : (i18n.t("provider.mobile.components.reportPayloadView.no") as string);
   if (typeof val === "number") {
     if (Number.isFinite(val) && isPercentKey(key)) {
       return formatPercentage(val);
@@ -55,9 +56,9 @@ function humanizeKey(k: string): string {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <View style={twStyle("flex-row items-start justify-between border-b border-gray-100 py-3.5")}>
-      <Text style={twStyle("mr-4 max-w-[48%] flex-1 text-sm leading-5 text-gray-600")}>{label}</Text>
+      <Text style={twStyle("me-4 max-w-[48%] flex-1 text-sm leading-5 text-gray-600")}>{label}</Text>
       <Text
-        style={twStyle("min-w-0 flex-1 text-right text-sm font-medium leading-5 text-gray-900")}
+        style={twStyle("min-w-0 flex-1 text-end text-sm font-medium leading-5 text-gray-900")}
         numberOfLines={20}
       >
         {value}
@@ -67,12 +68,14 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 export function ReportPayloadView({ data, title }: { data: unknown; title?: string }) {
+  const { t } = useTranslation();
+  const rp = (key: string) => t(`provider.mobile.components.reportPayloadView.${key}`) as string;
   const { width: windowWidth } = useWindowDimensions();
   const horizontalPad = 24;
   const tableViewport = Math.max(280, windowWidth - horizontalPad);
 
   if (data == null) {
-    return <Text style={twStyle("py-6 text-center text-sm text-gray-500")}>No data</Text>;
+    return <Text style={twStyle("py-6 text-center text-sm text-gray-500")}>{rp("noData")}</Text>;
   }
 
   if (typeof data !== "object") {
@@ -81,7 +84,7 @@ export function ReportPayloadView({ data, title }: { data: unknown; title?: stri
 
   if (Array.isArray(data)) {
     if (data.length === 0) {
-      return <Text style={twStyle("py-4 text-sm text-gray-500")}>No rows</Text>;
+      return <Text style={twStyle("py-4 text-sm text-gray-500")}>{rp("noRows")}</Text>;
     }
     const first = data[0];
     if (first != null && typeof first === "object" && !Array.isArray(first)) {

@@ -4,6 +4,7 @@ import AccountSettingsNavbar from "@/components/layout/account-settings-navbar";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getServerUserSafe } from "@/lib/supabase/auth-errors";
 import { AccountShellClient } from "./_shell/AccountShellClient";
 
 export default async function AccountSettingsLayout({
@@ -12,12 +13,9 @@ export default async function AccountSettingsLayout({
   children: React.ReactNode;
 }) {
   const supabase = await getSupabaseServer();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+  const user = await getServerUserSafe(supabase);
 
-  if (error || !user) {
+  if (!user) {
     redirect(`/?login=true&redirect=${encodeURIComponent("/account-settings")}`);
   }
 

@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -37,6 +38,7 @@ interface CommissionData {
 export default function CommissionReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -96,10 +98,10 @@ export default function CommissionReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Commission Reports" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/commission.title") },
         ]}
       >
         <ReportSkeleton />
@@ -111,15 +113,15 @@ export default function CommissionReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Commission Reports" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/commission.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Commission Reports" />
-          <ReportSubscriptionRequired feature="Commission Reports" />
+          <PageHeader title={t("web.provider.reports.pages.staff/commission.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.staff/commission.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -129,15 +131,15 @@ export default function CommissionReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Commission Reports" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/commission.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load commission data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.staff/commission.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -146,21 +148,21 @@ export default function CommissionReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Commission Reports" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.staff/commission.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Commission Reports"
-          subtitle="Track staff commission and payouts"
+          title={t("web.provider.reports.pages.staff/commission.title")}
+          subtitle={t("web.provider.reports.pages.staff/commission.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -173,7 +175,7 @@ export default function CommissionReport() {
 
         {data.zeroCommissionServiceWarning ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            {data.zeroCommissionServiceWarning} Enable staff commission on those services so earnings lines post.
+            {data.zeroCommissionServiceWarning} {t("web.provider.reports.pages.staff/commission.enableOnServices")}
           </div>
         ) : null}
 
@@ -181,7 +183,7 @@ export default function CommissionReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Commission</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/commission.totalCommission")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -195,7 +197,7 @@ export default function CommissionReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/commission.totalRevenue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -209,7 +211,7 @@ export default function CommissionReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg Commission Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/commission.avgRate")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -225,11 +227,11 @@ export default function CommissionReport() {
         {/* Staff Commission Table */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Staff Commission Breakdown</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.staff/commission.breakdown")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.staffCommissions.length === 0 ? (
-              <EmptyReportState title="No commission data" description="No commission data available for the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.staff/commission.emptyTitle")} description={t("web.provider.reports.pages.staff/commission.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.staffCommissions.map((staff) => (
@@ -244,16 +246,16 @@ export default function CommissionReport() {
                       <div>
                         <p className="font-medium text-gray-900">{staff.staffName}</p>
                         <p className="text-sm text-gray-600">
-                          {staff.commissionRate}% rate • {staff.totalBookings} booking{staff.totalBookings !== 1 ? "s" : ""}
+                          {t("web.provider.reports.pages.staff/commission.rateBookings", { rate: staff.commissionRate, count: staff.totalBookings })}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold text-gray-900">
                         {fmt(staff.totalCommission)}
                       </p>
                       <p className="text-sm text-gray-600">
-                        from {fmt(staff.totalRevenue)}
+                        {t("web.provider.reports.pages.staff/commission.fromAmount", { amount: fmt(staff.totalRevenue) })}
                       </p>
                     </div>
                   </div>

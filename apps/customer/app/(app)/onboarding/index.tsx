@@ -49,6 +49,7 @@ import { useAutoFocus } from "@/features/onboarding/useAutoFocus";
 import { useKeyboardOffset } from "@/features/onboarding/useKeyboardOffset";
 import { useScrollToFocusedInput } from "@/hooks/useScrollToFocusedInput";
 import { KeyboardDoneAccessory } from "@/features/onboarding/KeyboardDoneAccessory";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const CUSTOMER_KEYBOARD_ACCESSORY = {
   phone: "customer-onboarding-phone",
@@ -119,6 +120,26 @@ const HAIR_TYPES = [
 ] as const;
 
 const SKIN_TYPES = ["Oily", "Dry", "Combination", "Normal", "Sensitive"] as const;
+
+const HAIR_TYPE_I18N: Record<(typeof HAIR_TYPES)[number], string> = {
+  "Natural / Afro": "hairTypeNaturalAfro",
+  "Relaxed / Permed": "hairTypeRelaxedPermed",
+  "Locs / Dreadlocks": "hairTypeLocs",
+  "Braids / Weaves": "hairTypeBraidsWeaves",
+  "Short / Tapered": "hairTypeShortTapered",
+  Wavy: "hairTypeWavy",
+  Straight: "hairTypeStraight",
+  Curly: "hairTypeCurly",
+  Other: "hairTypeOther",
+};
+
+const SKIN_TYPE_I18N: Record<(typeof SKIN_TYPES)[number], string> = {
+  Oily: "skinTypeOily",
+  Dry: "skinTypeDry",
+  Combination: "skinTypeCombination",
+  Normal: "skinTypeNormal",
+  Sensitive: "skinTypeSensitive",
+};
 
 const MONTHS = [
   "January",
@@ -619,7 +640,7 @@ export default function CustomerOnboarding() {
       if (phoneConfirmedAt && authPhone === e164) {
         const verifyRes = await api.post("/api/me/phone/verify", { phone: e164 });
         if (verifyRes.error) {
-          throw new Error(getApiErrorMessage(verifyRes.error, "Could not verify phone on server."));
+          throw new Error(getApiErrorMessage(verifyRes.error, ob("couldNotVerifyPhone")));
         }
         setPhoneVerified(true);
         return;
@@ -660,7 +681,7 @@ export default function CustomerOnboarding() {
         phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
       });
       if (verifyRes.error) {
-        throw new Error(getApiErrorMessage(verifyRes.error, "Could not verify phone on server."));
+        throw new Error(getApiErrorMessage(verifyRes.error, ob("couldNotVerifyPhone")));
       }
       setPhoneVerified(true);
     } catch (e: unknown) {
@@ -676,11 +697,11 @@ export default function CustomerOnboarding() {
   const persistEmailVerified = useCallback(async (verifiedEmail: string) => {
     const res = await api.post("/api/me/email/verify", { email: verifiedEmail });
     if (res.error) {
-      throw new Error(getApiErrorMessage(res.error, "Email verified but could not save. Please try again."));
+      throw new Error(getApiErrorMessage(res.error, ob("emailVerifiedSaveFailed")));
     }
     setEmailVerified(true);
     setEmail(verifiedEmail);
-  }, []);
+  }, [ob]);
 
   const handleSendEmailOtp = async () => {
     const trimmedEmail = email.trim();
@@ -799,12 +820,12 @@ export default function CustomerOnboarding() {
             last_name: last,
             preferred_name: preferredName.trim(),
           });
-          if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save name"));
+          if (res.error) throw new Error(getApiErrorMessage(res.error, ob("couldNotSaveName")));
           const { error: metaError } = await supabase.auth.updateUser({
             data: { full_name: fullName.trim() },
           });
           if (metaError) {
-            throw new Error(metaError.message || "Could not sync your name to your account.");
+            throw new Error(metaError.message || ob("couldNotSyncName"));
           }
           break;
         }
@@ -817,12 +838,12 @@ export default function CustomerOnboarding() {
               type: avatarMimeType || "image/jpeg",
             });
             const res = await api.post<{ url?: string }>("/api/me/avatar", fd);
-            if (res.error) throw new Error(getApiErrorMessage(res.error, "Upload failed"));
+            if (res.error) throw new Error(getApiErrorMessage(res.error, ob("uploadFailed")));
             const url = res.data?.url;
             if (url) {
               const patchRes = await api.patch("/api/me/profile", { avatar_url: url });
               if (patchRes.error)
-                throw new Error(getApiErrorMessage(patchRes.error, "Could not save avatar"));
+                throw new Error(getApiErrorMessage(patchRes.error, ob("couldNotSaveAvatar")));
             }
           }
           break;
@@ -831,7 +852,7 @@ export default function CustomerOnboarding() {
           if (!dob) throw new Error(ob("validationDob"));
           const res = await api.patch("/api/me/profile", { date_of_birth: dob });
           if (res.error)
-            throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
+            throw new Error(getApiErrorMessage(res.error, ob("couldNotSaveDob")));
           break;
         }
         case 4:
@@ -851,7 +872,7 @@ export default function CustomerOnboarding() {
               payload.longitude = addressLongitude;
             }
             const res = await api.post("/api/me/addresses", payload);
-            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save address"));
+            if (res.error) throw new Error(getApiErrorMessage(res.error, ob("couldNotSaveAddress")));
             setAlreadyHasAddress(true);
           }
           break;
@@ -862,7 +883,7 @@ export default function CustomerOnboarding() {
               skin_type: skinType || null,
             });
             if (res.error)
-              throw new Error(getApiErrorMessage(res.error, "Could not save preferences"));
+              throw new Error(getApiErrorMessage(res.error, ob("couldNotSavePreferences")));
           }
           break;
         case 6:
@@ -946,7 +967,7 @@ export default function CustomerOnboarding() {
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={PRIMARY} size="large" />
           <Text style={{ marginTop: 14, fontSize: 14, color: "#64748B", fontWeight: "500" }}>
-            Setting things up…
+            {ob("settingUp")}
           </Text>
         </View>
       </LinearGradient>
@@ -980,9 +1001,9 @@ export default function CustomerOnboarding() {
             hitSlop={8}
             style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
             accessibilityRole="button"
-            accessibilityLabel="Go back to previous step"
+            accessibilityLabel={ob("goBackA11y")}
           >
-            <Ionicons name="arrow-back" size={22} color="#64748B" />
+            <DirectionalIcon name="arrow-back" size={22} color="#64748B" />
           </TouchableOpacity>
         ) : (
           <View style={{ flex: 1 }}>
@@ -990,13 +1011,13 @@ export default function CustomerOnboarding() {
               Beautonomi
             </Text>
             <Text style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, fontWeight: "500" }}>
-              Let&apos;s personalize your experience
+              {ob("tagline")}
             </Text>
           </View>
         )}
         {canSkip && (
           <TouchableOpacity onPress={handleSkip} disabled={saving} hitSlop={8}>
-            <Text style={{ fontSize: 14, color: "#94A3B8", fontWeight: "600" }}>Skip</Text>
+            <Text style={{ fontSize: 14, color: "#94A3B8", fontWeight: "600" }}>{ob("skip")}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -1013,7 +1034,7 @@ export default function CustomerOnboarding() {
             fontWeight: "500",
           }}
         >
-          Step {step} of {TOTAL_STEPS}
+          {ob("stepOf", { step, total: TOTAL_STEPS })}
         </Text>
       </View>
 
@@ -1039,8 +1060,8 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24 }}>
               <StepIcon name="person" />
               <StepTitle
-                title="Tell us about you"
-                subtitle="This is how you'll appear on your profile and to beauty providers"
+                title={ob("nameTitle")}
+                subtitle={ob("nameSubtitle")}
               />
               <View
                 style={{
@@ -1053,7 +1074,7 @@ export default function CustomerOnboarding() {
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: "600", color: PRIMARY }}>
-                  About 2 minutes · Beauty preferences are optional
+                  {ob("nameTimeHint")}
                 </Text>
               </View>
               {appleIdentity ? (
@@ -1069,31 +1090,32 @@ export default function CustomerOnboarding() {
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
                     <Ionicons name="logo-apple" size={18} color="#0F172A" />
-                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>Signed in with Apple</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A" }}>{ob("signedInWithApple")}</Text>
                   </View>
                   <Text style={{ fontSize: 14, color: "#475569", lineHeight: 20 }}>
-                    Your name and email from Apple are already saved
-                    {email ? ` (${email})` : ""}.
+                    {email
+                      ? ob("signedInWithAppleBodyWithEmail", { email })
+                      : ob("signedInWithAppleBody")}
                   </Text>
                 </View>
               ) : (
                 <>
-                  <SectionLabel required>Full name</SectionLabel>
+                  <SectionLabel required>{ob("fullNameLabel")}</SectionLabel>
                   <TextInput
                     ref={fullNameRef}
                     value={fullName}
                     onChangeText={setFullName}
-                    placeholder="e.g. Nolo Sehlolo"
+                    placeholder={ob("fullNamePlaceholder")}
                     style={inputStyle}
                     placeholderTextColor="#94A3B8"
                     returnKeyType="next"
                     onSubmitEditing={() => preferredNameRef.current?.focus()}
                     onFocus={scrollToFocusedInput(fullNameRef)}
                   />
-                  <Text style={hintStyle}>Your legal or full name for your personal profile.</Text>
+                  <Text style={hintStyle}>{ob("fullNameHint")}</Text>
                 </>
               )}
-              <SectionLabel required={!appleIdentity}>Preferred name</SectionLabel>
+              <SectionLabel required={!appleIdentity}>{ob("preferredNameLabel")}</SectionLabel>
               <TextInput
                 ref={preferredNameRef}
                 value={preferredName}
@@ -1104,7 +1126,7 @@ export default function CustomerOnboarding() {
                 returnKeyType="done"
                 onFocus={scrollToFocusedInput(preferredNameRef)}
               />
-              <Text style={hintStyle}>Can be a first name, nickname, or whatever you prefer.</Text>
+              <Text style={hintStyle}>{ob("preferredNameHint")}</Text>
             </View>
           )}
 
@@ -1113,8 +1135,8 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24, alignItems: "center" }}>
               <StepIcon name="camera" />
               <StepTitle
-                title="Add a profile photo"
-                subtitle="Required so providers can recognise you at appointments"
+                title={ob("photoTitle")}
+                subtitle={ob("photoSubtitle")}
               />
               <Pressable
                 onPress={() => void handlePickPhoto()}
@@ -1145,12 +1167,12 @@ export default function CustomerOnboarding() {
                   )}
                 </View>
                 <Text style={{ marginTop: 14, fontSize: 15, fontWeight: "600", color: "#334155" }}>
-                  {pickLoading ? "Opening…" : avatarUri ? "Change photo" : "Tap to add a photo"}
+                  {pickLoading ? ob("openingPhoto") : avatarUri ? ob("changePhoto") : ob("tapToAddPhoto")}
                 </Text>
                 <Text
                   style={[hintStyle, { marginTop: 6, textAlign: "center", paddingHorizontal: 12 }]}
                 >
-                  Camera or photo library · Required · JPEG, PNG or WebP · max 5 MB
+                  {ob("photoHint")}
                 </Text>
               </Pressable>
             </View>
@@ -1161,13 +1183,13 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24 }}>
               <StepIcon name="gift" />
               <StepTitle
-                title="When's your birthday?"
-                subtitle="Required for birthday perks and age-appropriate recommendations"
+                title={ob("birthdayTitle")}
+                subtitle={ob("birthdaySubtitle")}
               />
               <View style={{ flexDirection: "row", gap: 10 }}>
                 {/* Day */}
                 <View style={{ flex: 1 }}>
-                  <SectionLabel required>Day</SectionLabel>
+                  <SectionLabel required>{ob("dayLabel")}</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowDayPicker(true);
@@ -1177,14 +1199,14 @@ export default function CustomerOnboarding() {
                     style={pickerTriggerStyle}
                   >
                     <Text style={{ color: dobDay ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
-                      {dobDay || "--"}
+                      {dobDay || ob("dayPlaceholder")}
                     </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
                 {/* Month */}
                 <View style={{ flex: 2 }}>
-                  <SectionLabel required>Month</SectionLabel>
+                  <SectionLabel required>{ob("monthLabel")}</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowMonthPicker(true);
@@ -1194,14 +1216,14 @@ export default function CustomerOnboarding() {
                     style={pickerTriggerStyle}
                   >
                     <Text style={{ color: dobMonth ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
-                      {dobMonth || "Month"}
+                      {dobMonth || ob("monthLabel")}
                     </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
                 </View>
                 {/* Year */}
                 <View style={{ flex: 1.5 }}>
-                  <SectionLabel required>Year</SectionLabel>
+                  <SectionLabel required>{ob("yearLabel")}</SectionLabel>
                   <TouchableOpacity
                     onPress={() => {
                       setShowYearPicker(true);
@@ -1211,7 +1233,7 @@ export default function CustomerOnboarding() {
                     style={pickerTriggerStyle}
                   >
                     <Text style={{ color: dobYear ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
-                      {dobYear || "Year"}
+                      {dobYear || ob("yearLabel")}
                     </Text>
                     <Ionicons name="chevron-down" size={16} color="#94A3B8" />
                   </TouchableOpacity>
@@ -1258,7 +1280,7 @@ export default function CustomerOnboarding() {
                 />
               )}
               <Text style={[hintStyle, { marginTop: 10 }]}>
-                You must be at least 13 years old to use Beautonomi.
+                {ob("ageRequirement")}
               </Text>
             </View>
           )}
@@ -1268,8 +1290,8 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24 }}>
               <StepIcon name="location" />
               <StepTitle
-                title="Where are you based?"
-                subtitle="Used for house-call bookings and finding services near you"
+                title={ob("addressTitle")}
+                subtitle={ob("addressSubtitle")}
               />
 
               {/* AddressPicker modal -- auto-opens on first visit; can also be triggered by the CTA below */}
@@ -1295,7 +1317,7 @@ export default function CustomerOnboarding() {
                 >
                   <Ionicons name="checkmark-circle" size={16} color="#16A34A" style={{ marginTop: 1 }} />
                   <Text style={{ flex: 1, fontSize: 13, color: "#166534", lineHeight: 18 }}>
-                    You already have a saved address. You can continue or add another.
+                    {ob("alreadyHasAddress")}
                   </Text>
                 </View>
               )}
@@ -1322,11 +1344,11 @@ export default function CustomerOnboarding() {
                           marginBottom: 12,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Search for your address"
+                        accessibilityLabel={ob("searchAddressA11y")}
                       >
                         <Ionicons name="search-outline" size={20} color="#94A3B8" />
                         <Text style={{ flex: 1, fontSize: 15, color: "#94A3B8" }}>
-                          Search for your address...
+                          {ob("searchAddressPlaceholder")}
                         </Text>
                       </TouchableOpacity>
 
@@ -1348,11 +1370,11 @@ export default function CustomerOnboarding() {
                             paddingVertical: 12,
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel="Use current location"
+                          accessibilityLabel={ob("useLocationA11y")}
                         >
                           <Ionicons name="locate-outline" size={18} color={PRIMARY} />
                           <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
-                            My location
+                            {ob("myLocation")}
                           </Text>
                         </TouchableOpacity>
 
@@ -1372,17 +1394,17 @@ export default function CustomerOnboarding() {
                             paddingVertical: 12,
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel="Drop a pin on the map"
+                          accessibilityLabel={ob("dropPinA11y")}
                         >
                           <Ionicons name="map-outline" size={18} color="#475569" />
                           <Text style={{ fontSize: 13, fontWeight: "600", color: "#475569" }}>
-                            Drop a pin
+                            {ob("dropPin")}
                           </Text>
                         </TouchableOpacity>
                       </View>
 
                       <Text style={[hintStyle, { marginTop: -4, marginBottom: 20, textAlign: "center" }]}>
-                        Your exact address is only shared with providers when you book a house call.
+                        {ob("addressPrivacyHint")}
                       </Text>
                     </>
                   )}
@@ -1442,11 +1464,11 @@ export default function CustomerOnboarding() {
                             gap: 4,
                           }}
                           accessibilityRole="button"
-                          accessibilityLabel="Change address"
+                          accessibilityLabel={ob("changeAddressA11y")}
                         >
                           <Ionicons name="pencil-outline" size={14} color={PRIMARY} />
                           <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>
-                            Change address
+                            {ob("changeAddress")}
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -1466,7 +1488,7 @@ export default function CustomerOnboarding() {
                           paddingVertical: 4,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={showManualFields ? "Hide manual edit fields" : "Edit address fields manually"}
+                        accessibilityLabel={showManualFields ? ob("hideManualFieldsA11y") : ob("editManualFieldsA11y")}
                       >
                         <Ionicons
                           name={showManualFields ? "chevron-up" : "chevron-down"}
@@ -1474,13 +1496,13 @@ export default function CustomerOnboarding() {
                           color="#64748B"
                         />
                         <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "500" }}>
-                          {showManualFields ? "Hide manual fields" : "Edit fields manually"}
+                          {showManualFields ? ob("hideManualFields") : ob("editManualFields")}
                         </Text>
                       </TouchableOpacity>
 
                       {showManualFields && (
                         <View>
-                          <SectionLabel required>Street address</SectionLabel>
+                          <SectionLabel required>{ob("streetLabel")}</SectionLabel>
                           <TextInput
                             ref={addressLine1Ref}
                             value={addressLine1}
@@ -1491,7 +1513,7 @@ export default function CustomerOnboarding() {
                                 setAddressLongitude(null);
                               }
                             }}
-                            placeholder="e.g. 12 Main Street"
+                            placeholder={ob("streetAddressPlaceholder")}
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
                             returnKeyType="next"
@@ -1500,12 +1522,12 @@ export default function CustomerOnboarding() {
                             onFocus={scrollToFocusedInput(addressLine1Ref)}
                           />
 
-                          <SectionLabel>Apartment, suite, unit (optional)</SectionLabel>
+                          <SectionLabel>{ob("unitLabel")}</SectionLabel>
                           <TextInput
                             ref={addressLine2Ref}
                             value={addressLine2}
                             onChangeText={setAddressLine2}
-                            placeholder="e.g. Unit 4B, Estate name"
+                            placeholder={ob("unitPlaceholder")}
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
                             returnKeyType="next"
@@ -1514,12 +1536,12 @@ export default function CustomerOnboarding() {
                             onFocus={scrollToFocusedInput(addressLine2Ref)}
                           />
 
-                          <SectionLabel required>City</SectionLabel>
+                          <SectionLabel required>{ob("cityLabel")}</SectionLabel>
                           <TextInput
                             ref={cityRef}
                             value={city}
                             onChangeText={setCity}
-                            placeholder="e.g. Cape Town"
+                            placeholder={ob("cityPlaceholder")}
                             style={inputStyle}
                             placeholderTextColor="#94A3B8"
                             returnKeyType="next"
@@ -1530,12 +1552,12 @@ export default function CustomerOnboarding() {
 
                           <View style={{ flexDirection: "row", gap: 10 }}>
                             <View style={{ flex: 1 }}>
-                              <SectionLabel>Province</SectionLabel>
+                              <SectionLabel>{ob("provinceLabel")}</SectionLabel>
                               <TextInput
                                 ref={provinceRef}
                                 value={province}
                                 onChangeText={setProvince}
-                                placeholder="Gauteng"
+                                placeholder={ob("provincePlaceholder")}
                                 style={inputStyle}
                                 placeholderTextColor="#94A3B8"
                                 returnKeyType="next"
@@ -1545,12 +1567,12 @@ export default function CustomerOnboarding() {
                               />
                             </View>
                             <View style={{ flex: 1 }}>
-                              <SectionLabel>Postal code</SectionLabel>
+                              <SectionLabel>{ob("postalLabel")}</SectionLabel>
                               <TextInput
                                 ref={postalCodeRef}
                                 value={postalCode}
                                 onChangeText={setPostalCode}
-                                placeholder="0001"
+                                placeholder={ob("postalPlaceholder")}
                                 keyboardType="numeric"
                                 style={inputStyle}
                                 placeholderTextColor="#94A3B8"
@@ -1562,7 +1584,7 @@ export default function CustomerOnboarding() {
                           </View>
 
                           <AddressCountryPicker
-                            label="Country"
+                            label={ob("countryLabel")}
                             required
                             value={country}
                             onChange={setCountry}
@@ -1593,8 +1615,7 @@ export default function CustomerOnboarding() {
                     style={{ marginTop: 1 }}
                   />
                   <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-                    An address is required for house-call bookings. Only shared with providers when
-                    you book a visit.
+                    {ob("addressRequiredNotice")}
                   </Text>
                 </View>
               )}
@@ -1606,11 +1627,11 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24 }}>
               <StepIcon name="sparkles" />
               <StepTitle
-                title="Your beauty profile"
-                subtitle="We'll personalise service recommendations just for you"
+                title={ob("beautyTitle")}
+                subtitle={ob("beautySubtitle")}
               />
 
-              <SectionLabel>Hair type (select all that apply)</SectionLabel>
+              <SectionLabel>{ob("hairTypeLabel")}</SectionLabel>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
                 {HAIR_TYPES.map((h) => {
                   const active = hairTypes.includes(h);
@@ -1638,14 +1659,14 @@ export default function CustomerOnboarding() {
                           color: active ? "#fff" : "#475569",
                         }}
                       >
-                        {h}
+                        {ob(HAIR_TYPE_I18N[h])}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
 
-              <SectionLabel>Skin type</SectionLabel>
+              <SectionLabel>{ob("skinTypeLabel")}</SectionLabel>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {SKIN_TYPES.map((s) => {
                   const active = skinType === s;
@@ -1669,7 +1690,7 @@ export default function CustomerOnboarding() {
                           color: active ? "#fff" : "#475569",
                         }}
                       >
-                        {s}
+                        {ob(SKIN_TYPE_I18N[s])}
                       </Text>
                     </Pressable>
                   );
@@ -1683,19 +1704,15 @@ export default function CustomerOnboarding() {
             <View style={{ marginTop: 24 }}>
               <StepIcon name="shield-checkmark" />
               <StepTitle
-                title="Verify your details"
-                subtitle={
-                  appleIdentity
-                    ? "Confirm your phone number so you can book and receive updates"
-                    : "Confirm your email and phone so you can book and receive updates"
-                }
+                title={ob("verifyTitle")}
+                subtitle={appleIdentity ? ob("verifySubtitleApple") : ob("verifySubtitle")}
               />
 
               {/* Email */}
               {!appleIdentity ? (
               <>
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>
-                Email
+                {ob("emailLabel")}
               </Text>
               {emailVerified ? (
                 <View
@@ -1725,25 +1742,25 @@ export default function CustomerOnboarding() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "700", color: "#065F46" }}>
-                      Email verified
+                      {ob("emailVerified")}
                     </Text>
                     <Text style={{ fontSize: 13, color: "#047857", marginTop: 2 }}>{email}</Text>
                   </View>
                   <TouchableOpacity onPress={handleStartChangeEmail} hitSlop={8}>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>Change</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>{ob("change")}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <View style={{ marginBottom: 20 }}>
                   <Text style={hintStyle}>
-                    We&apos;ll send a {emailOtpLen}-digit code to verify your email.
+                    {ob("emailCodeHint", { digits: emailOtpLen })}
                   </Text>
-                  <SectionLabel required>Email address</SectionLabel>
+                  <SectionLabel required>{ob("emailAddressLabel")}</SectionLabel>
                   <TextInput
                     ref={emailRef}
                     value={email}
                     onChangeText={handleEmailChange}
-                    placeholder="you@example.com"
+                    placeholder={ob("emailPlaceholder")}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -1779,17 +1796,17 @@ export default function CustomerOnboarding() {
                         }}
                       >
                         {emailResendCooldown > 0
-                          ? `Resend in ${emailResendCooldown}s`
+                          ? ob("resendInSeconds", { seconds: emailResendCooldown })
                           : emailOtpSent
-                            ? "Resend code"
-                            : "Send verification code"}
+                            ? ob("resendCode")
+                            : ob("sendVerificationCode")}
                       </Text>
                     )}
                   </TouchableOpacity>
 
                   {emailOtpSent && (
                     <View style={{ marginTop: 16 }}>
-                      <SectionLabel required>Enter {emailOtpLen}-digit code</SectionLabel>
+                      <SectionLabel required>{ob("enterDigitCode", { digits: emailOtpLen })}</SectionLabel>
                       <OtpDigitRow
                         length={emailOtpLen}
                         value={emailOtpCode}
@@ -1823,7 +1840,7 @@ export default function CustomerOnboarding() {
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
                           <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
-                            Verify email
+                            {ob("verifyEmail")}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -1836,7 +1853,7 @@ export default function CustomerOnboarding() {
 
               {/* Phone */}
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#0F172A", marginBottom: 8 }}>
-                Phone
+                {ob("phoneLabel")}
               </Text>
               {phoneVerified ? (
                 <View
@@ -1865,7 +1882,7 @@ export default function CustomerOnboarding() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "700", color: "#065F46" }}>
-                      Phone verified
+                      {ob("phoneVerified")}
                     </Text>
                     <Text style={{ fontSize: 13, color: "#047857", marginTop: 2 }}>
                       {pendingPhoneE164 || `${phoneCountryCode}${phoneNational}`}
@@ -1881,12 +1898,12 @@ export default function CustomerOnboarding() {
                     }}
                     hitSlop={8}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>Change</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: PRIMARY }}>{ob("change")}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <>
-                  <SectionLabel required>Mobile number</SectionLabel>
+                  <SectionLabel required>{ob("mobileNumberLabel")}</SectionLabel>
                   <PhoneInputWithCountry
                     countryCode={phoneCountryCode}
                     nationalValue={phoneNational}
@@ -1924,10 +1941,10 @@ export default function CustomerOnboarding() {
                         }}
                       >
                         {resendCooldown > 0
-                          ? `Resend in ${resendCooldown}s`
+                          ? ob("resendInSeconds", { seconds: resendCooldown })
                           : otpSent
-                            ? "Resend code"
-                            : "Send verification code"}
+                            ? ob("resendCode")
+                            : ob("sendVerificationCode")}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -1949,15 +1966,16 @@ export default function CustomerOnboarding() {
                     >
                       <Ionicons name="checkmark-circle" size={18} color="#059669" />
                       <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
-                        Code sent. Valid for about {Math.max(1, Math.round(smsOtpExpirySec / 60))}{" "}
-                        min.
+                        {ob("codeSentBanner", {
+                          minutes: Math.max(1, Math.round(smsOtpExpirySec / 60)),
+                        })}
                       </Text>
                     </View>
                   )}
 
                   {otpSent && (
                     <View style={{ marginTop: 20 }}>
-                      <SectionLabel required>Enter {smsOtpLen}-digit code</SectionLabel>
+                      <SectionLabel required>{ob("enterDigitCode", { digits: smsOtpLen })}</SectionLabel>
                       <OtpDigitRow
                         length={smsOtpLen}
                         value={otpCode}
@@ -1990,7 +2008,7 @@ export default function CustomerOnboarding() {
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
                           <Text style={{ color: "#fff", fontWeight: "600", fontSize: 15 }}>
-                            Verify phone
+                            {ob("verifyPhone")}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -2016,9 +2034,7 @@ export default function CustomerOnboarding() {
                   style={{ marginTop: 1 }}
                 />
                 <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 18 }}>
-                  {appleIdentity
-                    ? "Your phone number must be verified before you can finish setup and start booking."
-                    : "Both email and phone must be verified before you can finish setup and start booking."}
+                  {appleIdentity ? ob("verifyRequiredApple") : ob("verifyRequired")}
                 </Text>
               </View>
             </View>
@@ -2046,7 +2062,7 @@ export default function CustomerOnboarding() {
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                  {isLastStep ? "Finish" : "Continue"}
+                  {isLastStep ? ob("finish") : ob("continue")}
                 </Text>
               )}
             </TouchableOpacity>
@@ -2058,7 +2074,7 @@ export default function CustomerOnboarding() {
                 style={{ alignItems: "center", paddingVertical: 8 }}
               >
                 <Text style={{ fontSize: 14, color: "#94A3B8" }}>
-                  {isLastStep ? "Skip and finish" : "Skip for now"}
+                  {isLastStep ? ob("skipAndFinish") : ob("skipForNow")}
                 </Text>
               </TouchableOpacity>
             )}

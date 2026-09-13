@@ -11,7 +11,7 @@ import { EVENT_CHECKOUT_START, EVENT_BOOKING_HOLD_CREATED } from "@/lib/analytic
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { fetchProviderContactDisclosure } from "@/lib/providers/fetch-provider-contact";
 import { getUserFacingMessage, extractErrorCode } from "@/lib/errors/user-messages";
-import { cancellationRequiresAck } from "@beautonomi/i18n";
+import { cancellationRequiresAck, useTranslation } from "@beautonomi/i18n";
 import { toast } from "sonner";
 import { Loader2, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
@@ -45,6 +45,7 @@ import type {
 } from "../types/booking-engine";
 
 import {
+  buildBookContinuePath,
   buildRetailCartRowsFromPublicPackage,
   cartMatchesPublicCatalogPackage,
   coerceSelectedDate,
@@ -74,6 +75,7 @@ import {
 } from "../constants";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { PUBLIC_BOOKING_MAX_ADVANCE_DAYS } from "@/lib/provider-booking/public-booking-slot-policy";
+import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
 
 /** Aligns with server `buffer_minutes || 0` when offering buffer is unknown. */
 const DEFAULT_SLOT_BUFFER_MINUTES = 0;
@@ -185,7 +187,8 @@ const AVAILABILITY_FETCH_OPTS = { staleTimeMs: 0 } as const;
 function inferCategoryForPreselected(
   entries: BookingServiceEntry[],
   baseServices: ServiceOption[],
-  variantsByServiceId: Record<string, ServiceVariant[]>
+  variantsByServiceId: Record<string, ServiceVariant[]>,
+  otherServicesName: string
 ): ProviderCategoryOption | null {
   if (entries.length === 0) return null;
   const oid = entries[0].offering_id;
@@ -208,7 +211,7 @@ function inferCategoryForPreselected(
   }
   return {
     id: "_other",
-    name: "Other Services",
+    name: otherServicesName,
     description: null,
     color: null,
     display_order: 999,
@@ -274,6 +277,31 @@ interface Provider {
   slug: string;
   business_name: string;
   timezone?: string | null;
+  locations?: LocationOption[];
+}
+
+function normalizeBookingLocations(raw: unknown): LocationOption[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LocationOption[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const loc = row as Partial<LocationOption> & { id?: string };
+    if (!loc.id) continue;
+    out.push({
+      id: loc.id,
+      name: loc.name ?? "",
+      address_line1: loc.address_line1 ?? "",
+      city: loc.city ?? "",
+      country: loc.country ?? "",
+      is_primary: Boolean(loc.is_primary),
+      location_type: loc.location_type === "base" ? "base" : "salon",
+    });
+  }
+  return out;
+}
+
+function salonLocationsOf(locs: LocationOption[]): LocationOption[] {
+  return locs.filter((l) => (l.location_type || "salon") === "salon");
 }
 
 interface OnlineBookingSettings {
@@ -364,6 +392,7 @@ export default function OnlineBookingFlowNew({
   embed = false,
 }: OnlineBookingFlowNewProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { track, isReady } = useAmplitude();
   const { bundle } = useConfigBundle();
@@ -376,12 +405,22 @@ export default function OnlineBookingFlowNew({
   const referralAttachSucceededRef = useRef(false);
 
   const [step, setStep] = useState<BookingStep>("venue");
-  const [bookingData, setBookingData] = useState<BookingData>(() => ({
-    ...defaultBookingData,
-    venueType: (queryParams.location_type as "at_salon" | "at_home") ?? "at_salon",
-    currency: tenantCurrency,
-    atHomeAddress: { ...defaultBookingData.atHomeAddress, country: tenantRegionCode },
-  }));
+  const [bookingData, setBookingData] = useState<BookingData>(() => {
+    const seeded = normalizeBookingLocations(provider.locations);
+    const salon = salonLocationsOf(seeded);
+    const expressAtHome = queryParams.location_type === "at_home";
+    const fromQuery = queryParams.location
+      ? salon.find((l) => l.id === queryParams.location)
+      : null;
+    const primary = salon.find((l) => l.is_primary) ?? salon[0] ?? null;
+    return {
+      ...defaultBookingData,
+      venueType: expressAtHome ? "at_home" : "at_salon",
+      selectedLocation: expressAtHome ? null : (fromQuery ?? primary),
+      currency: tenantCurrency,
+      atHomeAddress: { ...defaultBookingData.atHomeAddress, country: tenantRegionCode },
+    };
+  });
 
   const updateDataRef = useRef<(patch: Partial<BookingData>) => void>(() => {});
   const updateDataImpl = useCallback((patch: Partial<BookingData>) => {
@@ -458,7 +497,8 @@ export default function OnlineBookingFlowNew({
     });
   }, [bookingData.selectedServices, bookingData.selectedProducts, bookingData.selectedPackage]);
 
-  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const seededLocations = normalizeBookingLocations(provider.locations);
+  const [locations, setLocations] = useState<LocationOption[]>(seededLocations);
   const [offerings, setOfferings] = useState<ServiceOption[]>([]);
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [staff, setStaff] = useState<StaffOption[]>([]);
@@ -558,8 +598,8 @@ export default function OnlineBookingFlowNew({
     updateData({
       selectedStaff: {
         id: "any",
-        name: "Any Professional",
-        role: "Fastest availability",
+        name: t("web.book.flow.anyProfessional"),
+        role: t("web.book.flow.fastestAvailability"),
       },
     });
   }, [step, showStaffStep, bookingData.selectedStaff, updateData]);
@@ -582,12 +622,12 @@ export default function OnlineBookingFlowNew({
         }
       } else {
         if (!seen.has("_other")) {
-          seen.set("_other", { id: "_other", name: "Other Services", description: null, display_order: 999 });
+          seen.set("_other", { id: "_other", name: t("web.book.flow.otherServices"), description: null, display_order: 999 });
         }
       }
     }
     const list = Array.from(seen.values()).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-    if (list.length === 0) return [{ id: "_all", name: "Services", description: "All services" }];
+    if (list.length === 0) return [{ id: "_all", name: t("web.book.flow.services"), description: t("web.book.flow.allServices") }];
     return list;
   })();
 
@@ -751,12 +791,17 @@ export default function OnlineBookingFlowNew({
   useEffect(() => {
     const load = async () => {
       try {
+        const seedLocs = normalizeBookingLocations(provider.locations);
         const [offeringsRes, staffRes, providerRes, settingsRes, packagesRes] = await Promise.all([
-          fetcher.get<{ data: ServiceOption[] }>(`/api/public/providers/${provider.slug}/offerings`),
+          fetcher.get<{ data: ServiceOption[] }>(`/api/public/providers/${provider.slug}/offerings`).catch(() => ({ data: [] })),
           fetcher
             .get<{ data: StaffOption[] }>(`/api/public/providers/${provider.slug}/staff`)
             .catch(() => ({ data: [] })),
-          fetcher.get<{ data: { locations?: LocationOption[] } }>(`/api/public/providers/${provider.slug}`),
+          fetcher
+            .get<{ data: { locations?: LocationOption[]; seo_indexable?: boolean } }>(
+              `/api/public/providers/${provider.slug}`,
+            )
+            .catch(() => ({ data: { locations: seedLocs } })),
           fetcher.get<{ data: OnlineBookingSettings }>(`/api/public/providers/${provider.slug}/online-booking-settings`).catch(() => ({ data: null })),
           fetcher.get<{ data: PackageOption[] }>(`/api/public/providers/${provider.slug}/packages`).catch(() => ({ data: [] })),
         ]);
@@ -783,16 +828,17 @@ export default function OnlineBookingFlowNew({
           robotsMeta.content = "noindex, nofollow";
         }
 
-        let locs = (providerRes as any)?.data?.locations ?? [];
-        if (user?.id && Array.isArray(locs) && locs.length > 0) {
+        let locs = normalizeBookingLocations((providerRes as any)?.data?.locations);
+        if (locs.length === 0) locs = seedLocs;
+        if (user?.id && locs.length > 0) {
           const contact = await fetchProviderContactDisclosure(provider.slug);
           if (contact?.locations?.length) {
             const byId = new Map(contact.locations.map((l) => [l.id, l]));
             locs = locs.map((l: LocationOption) => ({ ...l, ...byId.get(l.id) }));
           }
         }
-        setLocations(Array.isArray(locs) ? locs : []);
-        const salonLocs = Array.isArray(locs) ? locs.filter((l: any) => (l.location_type || "salon") === "salon") : [];
+        setLocations(locs);
+        const salonLocs = salonLocationsOf(locs);
         /** Express links pass location_type=at_home; must not be overwritten when provider also has salon locations. */
         const expressAtHome = queryParams.location_type === "at_home";
         const treatAsAtHomeForPricing = expressAtHome || salonLocs.length === 0;
@@ -881,7 +927,7 @@ export default function OnlineBookingFlowNew({
             ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
             : [];
           if (entries.length > 0) {
-            const inferred = inferCategoryForPreselected(entries, baseServices, map);
+            const inferred = inferCategoryForPreselected(entries, baseServices, map, t("web.book.flow.otherServices"));
             setBookingData((prev) => ({
               ...prev,
               selectedPackage: null,
@@ -900,7 +946,7 @@ export default function OnlineBookingFlowNew({
             ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
             : [];
           if (entries.length > 0) {
-            const inferred = inferCategoryForPreselected(entries, baseServices, map);
+            const inferred = inferCategoryForPreselected(entries, baseServices, map, t("web.book.flow.otherServices"));
             setBookingData((prev) => ({
               ...prev,
               selectedPackage: null,
@@ -940,7 +986,7 @@ export default function OnlineBookingFlowNew({
               ? resolvedLinesToBookingEntries(lines, baseServices, map, treatAsAtHomeForPricing, tenantCurrency)
               : [];
             if (entries.length > 0) {
-              const inferred = inferCategoryForPreselected(entries, baseServices, map);
+              const inferred = inferCategoryForPreselected(entries, baseServices, map, t("web.book.flow.otherServices"));
               const subtotal =
                 typeof pkg.price === "number" ? pkg.price : entries.reduce((sum, e) => sum + e.price, 0);
               let selectedProducts: BookingData["selectedProducts"] = [];
@@ -981,7 +1027,7 @@ export default function OnlineBookingFlowNew({
           }
         }
         if (queryParams.anyone || s?.staff_selection_mode === "anyone_default") {
-          setBookingData((prev) => ({ ...prev, selectedStaff: { id: "any", name: "No preference", role: "Anyone available" } }));
+          setBookingData((prev) => ({ ...prev, selectedStaff: { id: "any", name: t("web.book.flow.noPreference"), role: t("web.book.flow.anyoneAvailable") } }));
         } else if (queryParams.staff && staffArray.length > 0) {
           const st = staffArray.find((s: StaffOption) => s.id === queryParams.staff);
           if (st) setBookingData((prev) => ({ ...prev, selectedStaff: st }));
@@ -1017,7 +1063,7 @@ export default function OnlineBookingFlowNew({
         const defs = (customRes as { data?: { definitions?: Array<{ id: string; name: string; label: string; field_type: string; is_required: boolean }> } })?.data?.definitions ?? [];
         setBookingCustomDefinitions(Array.isArray(defs) ? defs : []);
       } catch (e) {
-        toast.error(e instanceof FetchError ? e.message : "Failed to load");
+        toast.error(e instanceof FetchError ? e.message : t("web.book.flow.failedLoad"));
       } finally {
         setIsLoading(false);
       }
@@ -1072,7 +1118,7 @@ export default function OnlineBookingFlowNew({
           if (staffArray.some((s) => s.id === current.id)) return prev;
           return {
             ...prev,
-            selectedStaff: { id: "any", name: "Any Professional", role: "Fastest availability" },
+            selectedStaff: { id: "any", name: t("web.book.flow.anyProfessional"), role: t("web.book.flow.fastestAvailability") },
           };
         });
       })
@@ -1358,13 +1404,13 @@ export default function OnlineBookingFlowNew({
         return;
       }
     }
-    toast.error("No available slots in the next two weeks");
+    toast.error(t("web.book.flow.noSlotsTwoWeeks"));
   };
 
   const handleConfirm = async () => {
     if (bookingData.selectedServices.length === 0) return;
     if (!bookingData.selectedSlot || !bookingData.selectedDate) {
-      toast.error("Please choose a date and time to continue.");
+      toast.error(t("web.book.flow.chooseDateTime"));
       return;
     }
     // Only require explicit acceptance when the policy has material terms to acknowledge.
@@ -1388,7 +1434,7 @@ export default function OnlineBookingFlowNew({
         : null
     );
     if (requiresPolicyAck && bookingData.policyAccepted !== true) {
-      toast.error("Please accept the cancellation policy to continue.");
+      toast.error(t("web.book.flow.acceptCancellationPolicy"));
       return;
     }
     const isAnyStaffSelection =
@@ -1402,7 +1448,7 @@ export default function OnlineBookingFlowNew({
     const staffIdForHold =
       !rawStaffId || rawStaffId === "any" || String(rawStaffId).startsWith("provider-") ? null : rawStaffId;
     if (bookingData.venueType === "at_home" && (!bookingData.atHomeAddress.line1?.trim() || !bookingData.atHomeAddress.city?.trim())) {
-      toast.error("Please enter your address for at-home booking");
+      toast.error(t("web.book.flow.enterAddress"));
       return;
     }
 
@@ -1584,19 +1630,19 @@ export default function OnlineBookingFlowNew({
           }
         } catch {}
         if (user) {
-          router.push(`/book/continue?hold_id=${id}`);
+          router.push(buildBookContinuePath(id, embed));
         } else if (authBeforeSlots) {
           setPreAuthGateOpen(true);
         } else {
           setGateOpen(true);
         }
       } else {
-        toast.error(getUserFacingMessage("SLOT_UNAVAILABLE", null, "Failed to secure slot. Please try another time."));
+        toast.error(getUserFacingMessage("SLOT_UNAVAILABLE", null, t("web.book.flow.failedSecureSlotTryAnother")));
       }
     } catch (e) {
       const msg = e instanceof FetchError
-        ? getUserFacingMessage(extractErrorCode(e), e.message, "Failed to secure slot")
-        : "Failed to secure slot. Please try again.";
+        ? getUserFacingMessage(extractErrorCode(e), e.message, t("web.book.flow.failedSecureSlotShort"))
+        : t("web.book.flow.failedSecureSlot");
       toast.error(msg);
     } finally {
       setCreatingHold(false);
@@ -1606,7 +1652,7 @@ export default function OnlineBookingFlowNew({
   const handleAuthComplete = () => {
     setGateOpen(false);
     setPreAuthGateOpen(false);
-    if (holdId) router.push(`/book/continue?hold_id=${holdId}`);
+    if (holdId) router.push(buildBookContinuePath(holdId, embed));
   };
 
   if (isLoading) {
@@ -1782,6 +1828,7 @@ export default function OnlineBookingFlowNew({
             serviceId={bookingData.selectedServices[0]?.offering_id ?? null}
             providerTimeZone={provider.timezone ?? null}
             waitlistEnabled={settings.allow_online_waitlist !== false}
+            embed={embed}
           />
         )}
 
@@ -1804,7 +1851,7 @@ export default function OnlineBookingFlowNew({
                 className="rounded-xl px-6 py-3 font-semibold text-white min-h-[48px] min-w-[120px] touch-manipulation"
                 style={{ backgroundColor: BOOKING_ACCENT }}
               >
-                Continue
+{t("common.continue")}
               </button>
             </div>
           </div>
@@ -1882,7 +1929,7 @@ export default function OnlineBookingFlowNew({
                 border: `1px solid ${BOOKING_EDGE}`,
               }}
             >
-              Summary
+{t("web.book.flow.summary")}
               <span className="opacity-80">
                 {formatCurrency(bookingData.servicesSubtotal + bookingData.addonsSubtotal, bookingData.currency)}
               </span>
@@ -1899,14 +1946,15 @@ export default function OnlineBookingFlowNew({
             onClick={() => setStep("review")}
             className="w-full rounded-xl h-12 font-medium text-gray-800 bg-gray-100 hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 touch-manipulation"
           >
-            <span>Summary</span>
+<span>{t("web.book.flow.summary")}</span>
             <span className="text-sm text-gray-500">
-              {formatCurrency(bookingData.servicesSubtotal + bookingData.addonsSubtotal, bookingData.currency)} · {bookingData.selectedServices.length} {bookingData.selectedServices.length === 1 ? "service" : "services"}
+              {formatCurrency(bookingData.servicesSubtotal + bookingData.addonsSubtotal, bookingData.currency)} · {t("web.book.flow.serviceCount", { count: bookingData.selectedServices.length })}
             </span>
           </button>
         </footer>
       )}
 
+      <BookingEmbedBridge active={embed} />
       <BeautonomiGateModal
         holdId={holdId ?? ""}
         holdExpiresAt={holdExpiresAt}

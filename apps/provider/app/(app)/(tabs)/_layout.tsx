@@ -19,6 +19,7 @@ import { supabase } from "@/lib/supabase/client";
 import { nextRealtimeTopic } from "@/lib/supabase/realtime-topic";
 import { isMoreTabNestedScreen } from "@/lib/provider-tab-navigation";
 import { emitProviderBookingsRefresh } from "@/lib/provider-bookings-events";
+import { TabLabel } from "@/components/ui/TabLabel";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -278,8 +279,8 @@ export default function TabsLayout() {
         flexShrink: 0,
         paddingTop: 8,
         paddingBottom: safeBottom,
-        paddingLeft: sideInset,
-        paddingRight: sideInset,
+        paddingStart: sideInset,
+        paddingEnd: sideInset,
         elevation: 8,
         ...(Platform.OS === "web"
           ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
@@ -300,13 +301,19 @@ export default function TabsLayout() {
             } as unknown as ViewStyle)
           : {}),
       },
-      tabBarLabelStyle: {
-        fontSize: TAB_BAR_LABEL_FONT_SIZE,
-        lineHeight: TAB_BAR_LABEL_LINE_HEIGHT,
-        fontWeight: "600" as const,
-        marginTop: 2,
-        textAlign: "center" as const,
-      },
+      tabBarLabel: ({ color, children }: { color: string; children: string }) => (
+        <TabLabel
+          style={{
+            color: typeof color === "string" ? color : Colors.gray[400],
+            fontSize: TAB_BAR_LABEL_FONT_SIZE,
+            lineHeight: TAB_BAR_LABEL_LINE_HEIGHT,
+            fontWeight: "600",
+            marginTop: 2,
+          }}
+        >
+          {typeof children === "string" ? children : String(children ?? "")}
+        </TabLabel>
+      ),
       tabBarBadgeStyle: {
         backgroundColor: "#ef4444",
         color: "#ffffff",

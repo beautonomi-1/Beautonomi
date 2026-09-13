@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,7 @@ interface DistanceSettings {
 }
 
 export default function DistanceSettingsPage() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<DistanceSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -40,10 +42,10 @@ export default function DistanceSettingsPage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load distance settings";
+          : t("web.provider.settings.pages.distance.failedToLoadDistanceSettings");
       setError(errorMessage);
       console.error("Error loading distance settings:", err);
     } finally {
@@ -57,9 +59,9 @@ export default function DistanceSettingsPage() {
     try {
       setIsSaving(true);
       await fetcher.patch("/api/provider/distance-settings", settings);
-      toast.success("Distance settings saved successfully");
+      toast.success(t("web.provider.settings.pages.distance.distanceSettingsSavedSuccessfully"));
     } catch (error) {
-      toast.error("Failed to save distance settings");
+      toast.error(t("web.provider.settings.pages.distance.failedToSaveDistanceSettings"));
       console.error("Error saving settings:", error);
     } finally {
       setIsSaving(false);
@@ -74,16 +76,16 @@ export default function DistanceSettingsPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Distance Settings" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.distance.distanceSettings") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
-        <LoadingTimeout loadingMessage="Loading distance settings..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.distance.loadingDistanceSettings")} />
       </SettingsDetailLayout>
     );
   }
@@ -92,10 +94,10 @@ export default function DistanceSettingsPage() {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <EmptyState
-          title="Failed to load distance settings"
-          description={error || "Unable to load distance settings"}
+          title={t("web.provider.settings.categories.appointmentActivity.items.distance.title")}
+          description={error || t("web.provider.settings.pages.distance.unableToLoad")}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadSettings,
           }}
         />
@@ -106,18 +108,18 @@ export default function DistanceSettingsPage() {
   return (
     <SettingsDetailLayout breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Service Distance Settings"
-        subtitle="Configure how far you're willing to travel for house calls"
+        title={t("web.provider.settings.categories.appointmentActivity.items.distance.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.distance.description")}
       />
 
       <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between border-b pb-4">
           <div>
             <Label htmlFor="is_distance_filter_enabled" className="text-sm sm:text-base">
-              Enable Distance Filter
+{t("web.provider.settings.pages.distance.enableFilter")}
             </Label>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
-              Limit house call bookings to customers within your specified distance
+{t("web.provider.settings.pages.distance.enableFilterHint")}
             </p>
           </div>
           <input
@@ -134,15 +136,15 @@ export default function DistanceSettingsPage() {
         {settings.is_distance_filter_enabled && (
           <div className="space-y-3">
             <Label htmlFor="max_service_distance_km" className="text-sm sm:text-base">
-              Maximum Service Distance (km) *
+{t("web.provider.settings.pages.distance.maxDistanceRequired")}
             </Label>
             {/* Slider + value display */}
             <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-2xl font-bold text-gray-900 tabular-nums">
-                  {settings.max_service_distance_km} km
+{t("web.provider.settings.pages.distance.kmValue", { km: settings.max_service_distance_km })}
                 </span>
-                <span className="text-sm text-gray-500">Drag to adjust</span>
+<span className="text-sm text-gray-500">{t("web.provider.settings.pages.distance.dragToAdjust")}</span>
               </div>
               <input
                 type="range"
@@ -161,11 +163,11 @@ export default function DistanceSettingsPage() {
                 aria-valuemin={1}
                 aria-valuemax={100}
                 aria-valuenow={settings.max_service_distance_km}
-                aria-label="Maximum service distance in kilometers"
+aria-label={t("web.provider.settings.pages.distance.maxDistanceA11y")}
               />
               <div className="flex justify-between text-xs text-gray-400">
-                <span>1 km</span>
-                <span>100 km</span>
+<span>{t("web.provider.settings.pages.distance.sliderMin")}</span>
+<span>{t("web.provider.settings.pages.distance.sliderMax")}</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -183,25 +185,22 @@ export default function DistanceSettingsPage() {
                 className="w-24"
                 required
               />
-              <span className="text-sm text-gray-600">km (or type exact value)</span>
+<span className="text-sm text-gray-600">{t("web.provider.settings.pages.distance.orTypeExact")}</span>
             </div>
             <p className="text-xs sm:text-sm text-gray-600">
-              Maximum distance you're willing to travel for house call services. 
-              Customers outside this radius will not be able to book house calls with you. 
-              This value is shown on your dashboard.
+              {t("web.provider.settings.pages.distance.maxDistanceHint")}
             </p>
           </div>
         )}
 
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
           <p className="text-xs sm:text-sm text-blue-800">
-            <strong>Note:</strong> Distance is calculated from your primary business location 
-            to the customer&apos;s address. This setting only applies to house call bookings. 
-            Salon bookings are not affected by this distance limit.
+            <strong>{t("web.provider.settings.pages.distance.noteStrong")}</strong>
+            {t("web.provider.settings.pages.distance.noteBody")}
           </p>
           <p className="text-xs sm:text-sm text-blue-800">
             <Link href="/provider/settings/locations" className="underline font-medium hover:no-underline">
-              Manage your business locations
+{t("web.provider.settings.pages.distance.manageLocations")}
             </Link>
           </p>
         </div>
@@ -215,13 +214,13 @@ export default function DistanceSettingsPage() {
         >
           {isSaving ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Saving...
+              <Loader2 className="w-4 h-4 me-2 animate-spin" />
+{t("web.provider.common.saving")}
             </>
           ) : (
             <>
-              <Save className="w-4 h-4 mr-2" />
-              Save Settings
+              <Save className="w-4 h-4 me-2" />
+{t("web.provider.common.saveSettings")}
             </>
           )}
         </Button>

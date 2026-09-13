@@ -11,6 +11,7 @@ import * as WebBrowser from "expo-web-browser";
 import { formatDiditLaunchError } from "@/lib/identity-verification/userFacingDiditErrors";
 import { ProviderEntityTypeSelector, type PayeeEntityData } from "./ProviderEntityTypeSelector";
 import { ProviderVerificationPanel } from "./ProviderVerificationPanel";
+import { useTranslation } from "@beautonomi/i18n";
 
 type VerificationStep = "person_kyc" | "business_kyb" | "manual_upload" | "manual_business_review";
 
@@ -39,14 +40,14 @@ type StatusPayload = {
   kyb_available?: boolean;
 };
 
-function stepStatusLabel(status: string, locked?: boolean): string {
-  if (locked) return "Complete identity first";
-  if (status === "approved") return "Done";
-  if (status === "not_required") return "Not needed";
-  if (status === "pending_review") return "Under review";
-  if (status === "in_progress" || status === "session_created") return "In progress";
-  if (status === "rejected") return "Action needed";
-  return "Not started";
+function stepStatusLabel(status: string, vh: (key: string) => string, locked?: boolean): string {
+  if (locked) return vh("completeIdentityFirst");
+  if (status === "approved") return vh("done");
+  if (status === "not_required") return vh("notNeeded");
+  if (status === "pending_review") return vh("underReview");
+  if (status === "in_progress" || status === "session_created") return vh("inProgress");
+  if (status === "rejected") return vh("actionNeeded");
+  return vh("notStarted");
 }
 
 function stepStatusColor(status: string, locked?: boolean): string {
@@ -71,6 +72,8 @@ export function ProviderVerificationHub({
   onRefresh,
   identityPanelFooter,
 }: Props) {
+  const { t } = useTranslation();
+  const vh = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.providerVerificationHub.${key}`, opts) as string;
   const [expandedStep, setExpandedStep] = useState<VerificationStep | null>("person_kyc");
   const [kybLaunching, setKybLaunching] = useState(false);
 
@@ -89,7 +92,7 @@ export function ProviderVerificationHub({
       });
       if (res.error) throw new Error(getApiErrorMessage(res.error));
       const url = res.data?.url;
-      if (!url) throw new Error("No verification URL returned");
+      if (!url) throw new Error(vh("noUrl"));
       await WebBrowser.openBrowserAsync(url, {
         dismissButtonStyle: "close",
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FORM_SHEET,
@@ -97,13 +100,13 @@ export function ProviderVerificationHub({
       await onRefresh();
     } catch (err) {
       Alert.alert(
-        "Business verification",
+        vh("alertTitle"),
         formatDiditLaunchError(getApiErrorMessage(err), { manualAvailable: false }),
       );
     } finally {
       setKybLaunching(false);
     }
-  }, [onRefresh]);
+  }, [onRefresh, t]);
 
   const onEntitySaved = useCallback(async () => {
     await onRefresh();
@@ -127,17 +130,17 @@ export function ProviderVerificationHub({
       {plan && (
         <View style={twStyle("gap-3")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <Text style={twStyle("text-base font-semibold text-slate-900")}>Your verification</Text>
+            <Text style={twStyle("text-base font-semibold text-slate-900")}>{vh("yourVerification")}</Text>
             {progress.total > 0 && (
               <Text style={twStyle("text-sm text-slate-600")}>
-                {progress.completed} of {progress.total} complete
+                {vh("progressComplete", { completed: progress.completed, total: progress.total })}
               </Text>
             )}
           </View>
           {plan.is_complete ? (
             <View style={twStyle("rounded-2xl bg-green-50 border border-green-200 p-4")}>
               <Text style={twStyle("font-semibold text-green-800")}>
-                You&apos;re verified — you can go live.
+{vh("verifiedLive")}
               </Text>
             </View>
           ) : (
@@ -179,8 +182,8 @@ export function ProviderVerificationHub({
                   <View style={twStyle("flex-1")}>
                     <Text style={twStyle("font-semibold text-slate-900")}>{step.label}</Text>
                     <Text style={twStyle("text-xs text-slate-500")}>
-                      {stepStatusLabel(step.status, step.locked)}
-                      {!step.required ? " · Optional" : ""}
+                      {stepStatusLabel(step.status, vh, step.locked)}
+                      {!step.required ? vh("optional") : ""}
                     </Text>
                   </View>
                   <Ionicons
@@ -212,14 +215,14 @@ export function ProviderVerificationHub({
                           <ActivityIndicator color="#fff" />
                         ) : (
                           <Text style={twStyle("font-semibold text-white")}>
-                            {step.status === "not_started" ? "Start business verification" : "Continue"}
+                            {step.status === "not_started" ? vh("startBusiness") : vh("continue")}
                           </Text>
                         )}
                       </TouchableOpacity>
                     )}
                     {step.status === "approved" && (
                       <Text style={twStyle("text-sm text-green-700 font-medium")}>
-                        Business verified
+                        {vh("businessVerified")}
                       </Text>
                     )}
                   </View>
@@ -228,16 +231,15 @@ export function ProviderVerificationHub({
                 {expanded && step.step === "manual_business_review" && (
                   <View style={twStyle("border-t border-slate-100 p-4 gap-2")}>
                     <Text style={twStyle("text-sm text-slate-600")}>
-                      Automated business verification is not available for your registration country.
-                      Contact support with your company registration documents for a manual review.
+                      {vh("manualReviewBody")}
                     </Text>
                     {step.status === "approved" ? (
                       <Text style={twStyle("text-sm text-green-700 font-medium")}>
-                        Business review approved
+                        {vh("reviewApproved")}
                       </Text>
                     ) : (
                       <Text style={twStyle("text-xs text-slate-500")}>
-                        Status: {stepStatusLabel(step.status)} — we&apos;ll update this after review.
+                        {vh("statusAfterReview", { status: stepStatusLabel(step.status, vh) })}
                       </Text>
                     )}
                   </View>

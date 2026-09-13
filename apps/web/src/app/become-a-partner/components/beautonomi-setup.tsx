@@ -22,7 +22,7 @@ export default function BeautonomiSetup() {
   return (
     <div className="mb-16 sm:mb-12 md:mb-[90px] lg:mb-28">
       <div className="container">
-        <h2 className="text-[26px] md:text-[32px] lg:text-5xl font-normal lg:font-semibold  lg:Beautonomi-semibold text-secondary mb-9 text-left lg:text-center">
+        <h2 className="text-[26px] md:text-[32px] lg:text-5xl font-normal lg:font-semibold  lg:Beautonomi-semibold text-secondary mb-9 text-start lg:text-center">
         Set up easily with Beautonomi Setup
         </h2>
         <Image src={setupimg} alt="" className="mb-9" />

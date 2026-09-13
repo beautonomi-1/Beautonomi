@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, Platform } from "react-native";
 import { isScreenshotMode } from "@/config/public-env";
 import { subscribeConnectivity } from "@/lib/connectivity";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Offline indicator bar that appears at the top of the screen when the device
@@ -11,6 +12,7 @@ import { subscribeConnectivity } from "@/lib/connectivity";
  * does not flash a false "No internet connection" banner.
  */
 export function OfflineBar() {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(false);
   const screenshot = isScreenshotMode();
 
@@ -34,10 +36,10 @@ export function OfflineBar() {
         ...(Platform.OS === "android" ? { paddingTop: 4, paddingBottom: 4 } : {}),
       }}
       accessibilityRole="alert"
-      accessibilityLabel="No internet connection"
+      accessibilityLabel={t("provider.mobile.components.offlineBar.noConnection")}
     >
       <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>
-        No internet connection
+        {t("provider.mobile.components.offlineBar.noConnection")}
       </Text>
     </View>
   );

@@ -54,7 +54,7 @@ export default function TheCarousel() {
   return (
     <div className="container">
       <div className="mb-10 sm:mb-36">
-        <div className=" p-4 text-[28px] sm:text-[32px] lg:text-[42px] font-normal  text-left sm:text-center">
+        <div className=" p-4 text-[28px] sm:text-[32px] lg:text-[42px] font-normal  text-start sm:text-center">
           {slides[currentIndex].text}
         </div>
         <Carousel className="w-full h-full rounded-[32px] mb-5 overflow-hidden">

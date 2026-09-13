@@ -144,6 +144,19 @@ describe("navigateFromProviderNotification", () => {
     expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/settings/ads");
   });
 
+  it("routes close-out reminder links to the native close-out queue", () => {
+    const router = { push: jest.fn() };
+
+    navigateFromProviderNotification(router as never, {
+      id: "notification-closeout",
+      type: "booking_status_update",
+      link: "/provider/bookings?filter=close_out",
+      data: { template_key: "provider_closeout_reminder" },
+    });
+
+    expect(router.push).toHaveBeenCalledWith("/(app)/(tabs)/more/bookings?status=close_out");
+  });
+
   it("returns false when no route matches (stay on current screen)", () => {
     const router = { push: jest.fn() };
 

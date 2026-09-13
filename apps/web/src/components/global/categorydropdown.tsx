@@ -34,7 +34,7 @@ const CategoryDropdown: React.FC<CategoryDropdownProps> = ({
             className="flex items-center px-4 py-2 cursor-pointer hover:bg-gray-100"
             onClick={() => onCategorySelect(name)}
           >
-            <div className="border p-2 rounded-md mr-5">
+            <div className="border p-2 rounded-md me-5">
             <Image
               src={image}
               alt={name}

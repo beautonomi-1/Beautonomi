@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 /**
  * /provider/settings/sales/terminal-integrations/[vendor]
  *
@@ -59,12 +60,13 @@ type Integration = {
 } | null;
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const map: Record<string, { cls: string; label: string }> = {
-    connected: { cls: "bg-green-100 text-green-800", label: "Connected" },
-    pending_verification: { cls: "bg-yellow-100 text-yellow-800", label: "Pending verification" },
-    error: { cls: "bg-red-100 text-red-800", label: "Error" },
-    suspended: { cls: "bg-orange-100 text-orange-800", label: "Suspended" },
-    not_connected: { cls: "bg-slate-100 text-slate-600", label: "Not connected" },
+    connected: { cls: "bg-green-100 text-green-800", label: t("web.provider.settings.pages.sales/terminal-integrations/vendor.connected") },
+    pending_verification: { cls: "bg-yellow-100 text-yellow-800", label: t("web.provider.settings.pages.sales/terminal-integrations/vendor.pendingVerification") },
+    error: { cls: "bg-red-100 text-red-800", label: t("web.provider.settings.pages.sales/terminal-integrations/vendor.error") },
+    suspended: { cls: "bg-orange-100 text-orange-800", label: t("web.provider.settings.pages.sales/terminal-integrations/vendor.suspended") },
+    not_connected: { cls: "bg-slate-100 text-slate-600", label: t("web.provider.settings.pages.sales/terminal-integrations/vendor.notConnected") },
   };
   const s = map[status] ?? map.not_connected;
   return (
@@ -73,6 +75,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function VendorIntegrationPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const vendor = (params.vendor as string)?.toLowerCase();
@@ -109,7 +112,7 @@ export default function VendorIntegrationPage() {
           router.replace("/provider/settings/sales/terminal-integrations");
           return;
         }
-        throw new Error(json?.error?.message ?? "Failed to load");
+        throw new Error(json?.error?.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.failedToLoad"));
       }
       setVendorConfig(json.data?.vendor_config ?? null);
       const intg = json.data?.integration ?? null;
@@ -125,7 +128,7 @@ export default function VendorIntegrationPage() {
         }));
       }
     } catch (err: any) {
-      toast.error(err.message ?? "Could not load integration");
+      toast.error(err.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.couldNotLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -162,20 +165,20 @@ export default function VendorIntegrationPage() {
         body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message ?? "Save failed");
+      if (!res.ok) throw new Error(json?.error?.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.saveFailed"));
 
-      toast.success(`${vendorConfig.display_name} integration saved successfully`);
+      toast.success(t("web.provider.settings.pages.sales/terminal-integrations/vendor.savedSuccess", { name: vendorConfig.display_name }));
       setIntegration(json.data?.integration ?? null);
       setForm((f) => ({ ...f, api_key: "", api_secret: "" })); // clear sensitive fields after save
     } catch (err: any) {
-      toast.error(err.message ?? "Could not save integration");
+      toast.error(err.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.couldNotSave"));
     } finally {
       setIsSaving(false);
     }
   }
 
   async function handleDisconnect() {
-    if (!window.confirm(`Disconnect ${vendorConfig?.display_name ?? vendor} integration? Your credentials will be permanently removed.`)) return;
+    if (!window.confirm(t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnectConfirm", { name: vendorConfig?.display_name ?? vendor }))) return;
     setIsDisconnecting(true);
     try {
       const res = await fetch(`/api/provider/terminal-integrations/${vendor}`, {
@@ -184,12 +187,12 @@ export default function VendorIntegrationPage() {
         credentials: "include",
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message ?? "Disconnect failed");
-      toast.success("Integration disconnected");
+      if (!res.ok) throw new Error(json?.error?.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnectFailed"));
+      toast.success(t("web.provider.settings.pages.sales/terminal-integrations/vendor.integrationDisconnected"));
       setIntegration(null);
       setForm((f) => ({ ...f, api_key: "", api_secret: "", merchant_id: "", merchant_ref: "", business_name: "" }));
     } catch (err: any) {
-      toast.error(err.message ?? "Could not disconnect");
+      toast.error(err.message ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.couldNotDisconnect"));
     } finally {
       setIsDisconnecting(false);
     }
@@ -203,8 +206,8 @@ export default function VendorIntegrationPage() {
 
   return (
     <SettingsDetailLayout
-      title={vendorConfig?.display_name ?? vendor ?? "Terminal Integration"}
-      description={vendorConfig?.description ?? "Connect your payment terminal to Beautonomi."}
+      title={vendorConfig?.display_name ?? vendor ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.terminalIntegration")}
+      description={vendorConfig?.description ?? t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectHint")}
       backHref="/provider/settings/sales/terminal-integrations"
     >
       {isLoading ? (
@@ -215,13 +218,13 @@ export default function VendorIntegrationPage() {
         <SectionCard>
           <div className="flex items-center gap-2 text-slate-500">
             <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <p className="text-sm">This terminal integration is not currently available. Please check back later.</p>
+            <p className="text-sm">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.notAvailable")}</p>
           </div>
         </SectionCard>
       ) : (
         <div className="space-y-6">
           {/* Status card */}
-          <SectionCard title="Connection status">
+          <SectionCard title={t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectionStatus")}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 {isConnected ? (
@@ -235,13 +238,13 @@ export default function VendorIntegrationPage() {
                   <StatusBadge status={integration?.status ?? "not_connected"} />
                   {isConnected && integration?.connected_at && (
                     <p className="text-xs text-slate-500 mt-1">
-                      Connected {new Date(integration.connected_at).toLocaleDateString()}
+                      {t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectedOn", { date: new Date(integration.connected_at).toLocaleDateString() })}
                       {integration.business_name ? ` · ${integration.business_name}` : ""}
                     </p>
                   )}
                   {isPending && (
                     <p className="text-xs text-slate-500 mt-1">
-                      Verifying your credentials. This may take a few moments.
+{t("web.provider.settings.pages.sales/terminal-integrations/vendor.verifying")}
                     </p>
                   )}
                 </div>
@@ -253,8 +256,8 @@ export default function VendorIntegrationPage() {
                   onClick={loadData}
                   className="text-slate-500"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                  Refresh
+                  <RefreshCw className="h-3.5 w-3.5 me-1.5" />
+                  {t("web.provider.common.refresh")}
                 </Button>
               )}
             </div>
@@ -267,7 +270,7 @@ export default function VendorIntegrationPage() {
 
           {/* Setup instructions */}
           {vendorConfig.setup_instructions_text && (
-            <SectionCard title="Setup guide">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-integrations/vendor.setupGuide")}>
               <p className="text-sm text-slate-600 whitespace-pre-line">
                 {vendorConfig.setup_instructions_text}
               </p>
@@ -278,7 +281,7 @@ export default function VendorIntegrationPage() {
                   rel="noopener noreferrer"
                   className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-pink-600 hover:text-pink-700"
                 >
-                  View API documentation
+                  {t("web.provider.settings.pages.sales/terminal-integrations/vendor.viewApiDocs")}
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
@@ -286,36 +289,36 @@ export default function VendorIntegrationPage() {
           )}
 
           {/* Credential form */}
-          <SectionCard title={isConnected ? "Update credentials" : "Connect your terminal"}>
+          <SectionCard title={isConnected ? t("web.provider.settings.pages.sales/terminal-integrations/vendor.updateCredentials") : t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectYourTerminal")}>
             <form onSubmit={handleSave} className="space-y-5">
               {/* Credential mode selector (show only when multiple modes supported) */}
               {supportsApiKey && supportsManual && (
                 <div className="space-y-2">
-                  <Label>Connection method</Label>
+                  <Label>{t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectionMethod")}</Label>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, credential_mode: "api_key" }))}
-                      className={`flex-1 rounded-xl border px-4 py-3 text-sm text-left transition-all ${
+                      className={`flex-1 rounded-xl border px-4 py-3 text-sm text-start transition-all ${
                         form.credential_mode === "api_key"
                           ? "border-pink-500 bg-pink-50 text-pink-700"
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
                       }`}
                     >
-                      <p className="font-medium">API key</p>
-                      <p className="text-xs opacity-70 mt-0.5">Connect via API key from your merchant dashboard</p>
+                      <p className="font-medium">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.apiKey")}</p>
+                      <p className="text-xs opacity-70 mt-0.5">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.apiKeyHint")}</p>
                     </button>
                     <button
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, credential_mode: "manual" }))}
-                      className={`flex-1 rounded-xl border px-4 py-3 text-sm text-left transition-all ${
+                      className={`flex-1 rounded-xl border px-4 py-3 text-sm text-start transition-all ${
                         form.credential_mode === "manual"
                           ? "border-pink-500 bg-pink-50 text-pink-700"
                           : "border-slate-200 text-slate-600 hover:border-slate-300"
                       }`}
                     >
-                      <p className="font-medium">Manual</p>
-                      <p className="text-xs opacity-70 mt-0.5">Mark as connected without API verification</p>
+                      <p className="font-medium">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.manual")}</p>
+                      <p className="text-xs opacity-70 mt-0.5">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.manualHint")}</p>
                     </button>
                   </div>
                 </div>
@@ -325,15 +328,15 @@ export default function VendorIntegrationPage() {
               {form.credential_mode === "api_key" && supportsApiKey && (
                 <>
                   <div className="space-y-1.5">
-                    <Label htmlFor="api_key">API key {isConnected && integration?.has_api_key && <span className="text-green-600 text-xs">(saved)</span>}</Label>
+                    <Label htmlFor="api_key">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.apiKeyLabel")} {isConnected && integration?.has_api_key && <span className="text-green-600 text-xs">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.saved")}</span>}</Label>
                     <div className="relative">
                       <Input
                         id="api_key"
                         type={showApiKey ? "text" : "password"}
                         value={form.api_key}
                         onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
-                        placeholder={isConnected && integration?.has_api_key ? "Enter new key to replace" : "sk_live_..."}
-                        className="pr-10 rounded-xl"
+                        placeholder={isConnected && integration?.has_api_key ? t("web.provider.settings.pages.sales/terminal-integrations/vendor.enterNewKey") : t("web.provider.settings.pages.sales/terminal-integrations/vendor.skLivePlaceholder")}
+                        className="pe-10 rounded-xl"
                         autoComplete="off"
                       />
                       <button
@@ -348,7 +351,7 @@ export default function VendorIntegrationPage() {
 
                   <div className="space-y-1.5">
                     <Label htmlFor="api_secret">
-                      API secret <span className="text-slate-400 text-xs">(optional)</span>
+                      {t("web.provider.settings.pages.sales/terminal-integrations/vendor.apiSecret")} <span className="text-slate-400 text-xs">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.optional")}</span>
                     </Label>
                     <div className="relative">
                       <Input
@@ -356,8 +359,8 @@ export default function VendorIntegrationPage() {
                         type={showApiSecret ? "text" : "password"}
                         value={form.api_secret}
                         onChange={(e) => setForm((f) => ({ ...f, api_secret: e.target.value }))}
-                        placeholder={isConnected ? "Enter to update" : "Secret key if required"}
-                        className="pr-10 rounded-xl"
+                        placeholder={isConnected ? t("web.provider.settings.pages.sales/terminal-integrations/vendor.enterToUpdate") : t("web.provider.settings.pages.sales/terminal-integrations/vendor.secretPlaceholder")}
+                        className="pe-10 rounded-xl"
                         autoComplete="off"
                       />
                       <button
@@ -376,13 +379,13 @@ export default function VendorIntegrationPage() {
               {vendorConfig.requires_merchant_id && (
                 <div className="space-y-1.5">
                   <Label htmlFor="merchant_id">
-                    Merchant ID <span className="text-red-500">*</span>
+                    {t("web.provider.settings.pages.sales/terminal-integrations/vendor.merchantId")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="merchant_id"
                     value={form.merchant_id}
                     onChange={(e) => setForm((f) => ({ ...f, merchant_id: e.target.value }))}
-                    placeholder="Your merchant / business ID"
+                    placeholder={t("web.provider.settings.pages.sales/terminal-integrations/vendor.yourMerchantBusinessId")}
                     required
                     className="rounded-xl"
                   />
@@ -392,20 +395,20 @@ export default function VendorIntegrationPage() {
               {/* Business name */}
               <div className="space-y-1.5">
                 <Label htmlFor="business_name">
-                  Business name on terminal <span className="text-slate-400 text-xs">(optional)</span>
+                  {t("web.provider.settings.pages.sales/terminal-integrations/vendor.businessNameOnTerminal")} <span className="text-slate-400 text-xs">{t("web.provider.settings.pages.sales/terminal-integrations/vendor.optional")}</span>
                 </Label>
                 <Input
                   id="business_name"
                   value={form.business_name}
                   onChange={(e) => setForm((f) => ({ ...f, business_name: e.target.value }))}
-                  placeholder="As shown on your terminal"
+                  placeholder={t("web.provider.settings.pages.sales/terminal-integrations/vendor.asShownOnYourTerminal")}
                   className="rounded-xl"
                 />
               </div>
 
               {/* Environment toggle */}
               <div className="space-y-1.5">
-                <Label>Environment</Label>
+                <Label>{t("web.provider.settings.pages.sales/terminal-integrations/vendor.environment")}</Label>
                 <div className="flex gap-2">
                   {(["live", "sandbox"] as const).map((env) => (
                     <button
@@ -418,7 +421,7 @@ export default function VendorIntegrationPage() {
                           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {env === "live" ? "Live" : "Sandbox / test"}
+                      {env === "live" ? t("web.provider.common.live") : t("web.provider.settings.pages.sales/terminal-integrations/vendor.sandboxTest")}
                     </button>
                   ))}
                 </div>
@@ -431,11 +434,11 @@ export default function VendorIntegrationPage() {
                   className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl flex-1"
                 >
                   {isSaving ? (
-                    <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving…</>
+                    <><Loader2 className="h-4 w-4 animate-spin me-2" />{t("web.provider.common.savingEllipsis")}</>
                   ) : isConnected ? (
-                    "Update credentials"
+                    t("web.provider.settings.pages.sales/terminal-integrations/vendor.updateCredentials")
                   ) : (
-                    "Connect terminal"
+                    t("web.provider.settings.pages.sales/terminal-integrations/vendor.connectTerminal")
                   )}
                 </Button>
               </div>
@@ -444,9 +447,9 @@ export default function VendorIntegrationPage() {
 
           {/* Disconnect */}
           {(isConnected || isPending) && (
-            <SectionCard title="Disconnect" className="border-red-100">
+            <SectionCard title={t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnect")} className="border-red-100">
               <p className="text-sm text-slate-600 mb-4">
-                Disconnecting will permanently remove your stored credentials. You can reconnect at any time.
+{t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnectBody")}
               </p>
               <Button
                 variant="outline"
@@ -455,9 +458,9 @@ export default function VendorIntegrationPage() {
                 className="text-red-600 border-red-200 hover:bg-red-50 rounded-xl"
               >
                 {isDisconnecting ? (
-                  <><Loader2 className="h-4 w-4 animate-spin mr-2" />Disconnecting…</>
+                  <><Loader2 className="h-4 w-4 animate-spin me-2" />{t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnecting")}</>
                 ) : (
-                  <><Trash2 className="h-4 w-4 mr-2" />Disconnect {vendorConfig.display_name}</>
+                  <><Trash2 className="h-4 w-4 me-2" />{t("web.provider.settings.pages.sales/terminal-integrations/vendor.disconnectNamed", { name: vendorConfig.display_name })}</>
                 )}
               </Button>
             </SectionCard>

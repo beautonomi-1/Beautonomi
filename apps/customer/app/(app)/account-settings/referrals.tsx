@@ -110,9 +110,9 @@ export default function ReferralsScreen() {
           <View style={{ flexDirection: "row", marginTop: 12 }}>
             <TouchableOpacity
               onPress={handleCopy}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100], paddingVertical: 12, borderRadius: 12, marginRight: 8 }}
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100], paddingVertical: 12, borderRadius: 12, marginEnd: 8 }}
             >
-              <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={20} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={20} color={Colors.gray[700]} style={{ marginEnd: 8 }} />
               <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>
                 {copied ? t("customer.referral.copied") : t("customer.referral.copyLink")}
               </Text>
@@ -121,7 +121,7 @@ export default function ReferralsScreen() {
               onPress={handleShare}
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12 }}
             >
-              <Ionicons name="share-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+              <Ionicons name="share-outline" size={20} color={Colors.white} style={{ marginEnd: 8 }} />
               <Text style={{ color: Colors.white, fontWeight: "500" }}>{t("customer.referral.share")}</Text>
             </TouchableOpacity>
           </View>
@@ -135,11 +135,11 @@ export default function ReferralsScreen() {
           <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginTop: 16 }}>
             <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{t("customer.referral.statsTitle")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
-              <View style={{ marginRight: 16, marginBottom: 8 }}>
+              <View style={{ marginEnd: 16, marginBottom: 8 }}>
                 <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_referrals}</Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{t("customer.referral.totalReferrals")}</Text>
               </View>
-              <View style={{ marginRight: 16, marginBottom: 8 }}>
+              <View style={{ marginEnd: 16, marginBottom: 8 }}>
                 <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.successful_referrals}</Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{t("customer.referral.successful")}</Text>
               </View>

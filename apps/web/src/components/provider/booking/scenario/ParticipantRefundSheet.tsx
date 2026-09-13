@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -42,6 +43,8 @@ export function ParticipantRefundSheet({
   maxAmount,
   onSuccess,
 }: ParticipantRefundSheetProps) {
+  const { t } = useTranslation();
+  const prefix = "web.provider.portal.participantRefund";
   const { hasPermission, isOwner } = usePermissions();
   const canProcessPayments = isOwner || hasPermission("process_payments");
   const [amount, setAmount] = useState("");
@@ -61,12 +64,12 @@ export function ParticipantRefundSheet({
 
   const handleSubmit = async () => {
     if (!canProcessPayments) {
-      toast.error("You do not have permission to issue refunds");
+      toast.error(t(`${prefix}.noPermissionToast`));
       return;
     }
     const parsed = Number(amount);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      toast.error("Enter a valid refund amount");
+      toast.error(t(`${prefix}.invalidAmount`));
       return;
     }
     setSaving(true);
@@ -76,11 +79,11 @@ export function ParticipantRefundSheet({
         reason: reason.trim() || undefined,
         refund_method: refundMethod,
       });
-      toast.success("Refund issued");
+      toast.success(t(`${prefix}.issued`));
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
-      toast.error(formatApiErrorMessage(error, "Failed to issue refund"));
+      toast.error(formatApiErrorMessage(error, t(`${prefix}.failed`)));
     } finally {
       setSaving(false);
     }
@@ -90,11 +93,11 @@ export function ParticipantRefundSheet({
     <BookingActionButton disabled={saving} onClick={handleSubmit}>
       {saving ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Processing…
+          <Loader2 className="me-2 h-4 w-4 animate-spin" />
+          {t(`${prefix}.processing`)}
         </>
       ) : (
-        "Issue refund"
+        t(`${prefix}.issueRefund`)
       )}
     </BookingActionButton>
   ) : undefined;
@@ -104,20 +107,20 @@ export function ParticipantRefundSheet({
       open={open}
       onOpenChange={onOpenChange}
       mode="edit"
-      title={participantName ? `Refund — ${participantName}` : "Participant refund"}
+      title={participantName ? t(`${prefix}.titleNamed`, { name: participantName }) : t(`${prefix}.title`)}
       footer={footer}
     >
       <div className="space-y-4 pb-4">
         {!canProcessPayments ? (
           <PermissionGateInline
             allowed={false}
-            message="You do not have permission to issue refunds."
+            message={t(`${prefix}.noPermission`)}
           />
         ) : (
         <>
         <BookingSectionCard>
           <BookingSectionLabel htmlFor="refund-amount" className="mb-2">
-            Amount
+            {t(`${prefix}.amount`)}
           </BookingSectionLabel>
           <Input
             id="refund-amount"
@@ -129,29 +132,29 @@ export function ParticipantRefundSheet({
             className="rounded-xl min-h-[44px]"
           />
           {maxAmount != null ? (
-            <p className="text-xs text-gray-500 mt-1">Max refundable: {maxAmount.toFixed(2)}</p>
+            <p className="text-xs text-gray-500 mt-1">{t(`${prefix}.maxRefundable`, { amount: maxAmount.toFixed(2) })}</p>
           ) : null}
         </BookingSectionCard>
 
         <BookingSectionCard>
-          <BookingSectionLabel className="mb-2">Refund method</BookingSectionLabel>
+          <BookingSectionLabel className="mb-2">{t(`${prefix}.refundMethod`)}</BookingSectionLabel>
           <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as typeof refundMethod)}>
             <SelectTrigger className="rounded-xl min-h-[44px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {paycloudEnabled && paycloudReady ? (
-                <SelectItem value="original">Original payment method</SelectItem>
+                <SelectItem value="original">{t(`${prefix}.originalMethod`)}</SelectItem>
               ) : null}
-              <SelectItem value="store_credit">Store credit</SelectItem>
-              <SelectItem value="cash">Cash / in person</SelectItem>
+              <SelectItem value="store_credit">{t(`${prefix}.storeCredit`)}</SelectItem>
+              <SelectItem value="cash">{t(`${prefix}.cash`)}</SelectItem>
             </SelectContent>
           </Select>
         </BookingSectionCard>
 
         <BookingSectionCard>
           <BookingSectionLabel htmlFor="refund-reason" className="mb-2">
-            Reason
+            {t(`${prefix}.reason`)}
           </BookingSectionLabel>
           <Textarea
             id="refund-reason"
@@ -159,7 +162,7 @@ export function ParticipantRefundSheet({
             onChange={(e) => setReason(e.target.value)}
             rows={3}
             className="rounded-xl"
-            placeholder="Optional reason for audit trail"
+            placeholder={t(`${prefix}.reasonPlaceholder`)}
           />
         </BookingSectionCard>
         </>

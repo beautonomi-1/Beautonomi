@@ -65,6 +65,7 @@ import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import Link from "next/link";
 import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaymentDialog";
 import { PAYCLOUD_SETUP_LABEL } from "@/lib/payments/paycloud-collect-cta";
+import { useTranslation } from "@beautonomi/i18n";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -138,6 +139,7 @@ export function GroupBookingDialog({
   providerId: externalProviderId,
   presentation = "dialog",
 }: GroupBookingDialogProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { provider: portalProvider } = useProviderPortal();
   const paymentLinkEnabled = useFeatureFlag("payment_link");
@@ -416,7 +418,7 @@ export function GroupBookingDialog({
     if (existingAppointments.length > 0 && !booking) {
       const first = existingAppointments[0];
       setFormData({
-        title: first.service_name || "Group Session",
+        title: first.service_name || t("web.provider.portal.groupBookingDialog.groupSession"),
         scheduled_date: first.scheduled_date,
         scheduled_time: first.scheduled_time,
         duration_minutes: first.duration_minutes,
@@ -493,7 +495,7 @@ export function GroupBookingDialog({
             return {
               id: String(product?.id ?? `existing-product-${index}`),
               productId: String(product?.product_id ?? product?.productId ?? ""),
-              productName: String(product?.product_name ?? product?.productName ?? "Product"),
+              productName: String(product?.product_name ?? product?.productName ?? t("web.provider.portal.groupBookingDialog.productFallback")),
               productVariantId: product?.product_variant_id ?? product?.productVariantId ?? null,
               productVariantName:
                 product?.product_variant_name ?? product?.productVariantName ?? undefined,
@@ -709,7 +711,7 @@ export function GroupBookingDialog({
       });
 
       if (!res.data?.valid) {
-        toast.error(res.data?.reason || "This address is outside your active service zones.");
+        toast.error(res.data?.reason || t("web.provider.portal.groupBookingDialog.addressOutsideZones"));
         return;
       }
 
@@ -726,15 +728,15 @@ export function GroupBookingDialog({
         travel_fee: Math.max(0, Number(res.data.travelFee || 0)),
       }));
     } catch (error) {
-      toast.error(error instanceof FetchError ? error.message : "Failed to calculate travel fee for this address.");
+      toast.error(error instanceof FetchError ? error.message : t("web.provider.portal.groupBookingDialog.travelFeeFailed"));
     } finally {
       setIsValidatingAddress(false);
     }
-  }, [providerId]);
+  }, [providerId, t]);
 
   // ─── Package handler ──────────────────────────────────────────────────
   const handleAddPackage = useCallback((pkg: typeof packages[0]) => {
-    if (!pkg.items?.length) { toast.error("Package has no items"); return; }
+    if (!pkg.items?.length) { toast.error(t("web.provider.portal.groupBookingDialog.packageHasNoItems")); return; }
     pkg.items.forEach((item: any) => {
       if (item.offering_id && item.offering) {
         const offering = item.offering;
@@ -746,7 +748,7 @@ export function GroupBookingDialog({
         } else {
           const pseudo: ServiceItem = {
             id: offering.id,
-            name: offering.variant_name || offering.title || offering.name || "Service",
+            name: offering.variant_name || offering.title || offering.name || t("web.provider.portal.groupBookingDialog.serviceFallback"),
             category_id: "",
             duration_minutes: offering.duration_minutes ?? 60,
             price: offering.price ?? 0,
@@ -763,8 +765,8 @@ export function GroupBookingDialog({
       }
     });
     setSelectedPackageId(pkg.id);
-    toast.success(`Package "${pkg.name}" applied`);
-  }, [services, products, participants, setParticipantService, addProduct]);
+    toast.success(t("web.provider.portal.groupBookingDialog.packageApplied", { name: pkg.name }));
+  }, [services, products, participants, setParticipantService, addProduct, t]);
 
   // ─── Pricing ──────────────────────────────────────────────────────────
   const participantServices = useMemo((): AppointmentService[] =>
@@ -830,12 +832,12 @@ export function GroupBookingDialog({
       for (let i = 0; i < participants.length; i++) {
         const ph = participants[i].client_phone?.trim();
         if (ph && !isCompleteE164(ph)) {
-          toast.error(`Participant ${i + 1}: enter a valid phone number or leave it blank.`);
+          toast.error(t("web.provider.portal.groupBookingDialog.invalidParticipantPhone", { n: i + 1 }));
           return;
         }
       }
       if (!formData.scheduled_date?.trim() || !formData.scheduled_time?.trim()) {
-        toast.error('Choose a date and time (use available slots or open "Manual date and time").');
+        toast.error(t("web.provider.portal.groupBookingDialog.chooseDateTime"));
         return;
       }
       const parsedStart = parseSelectedDatetimeInProviderTz(
@@ -844,11 +846,11 @@ export function GroupBookingDialog({
         portalProvider?.timezone,
       );
       if (Number.isNaN(parsedStart.getTime())) {
-        toast.error("Invalid date or time.");
+        toast.error(t("web.provider.portal.groupBookingDialog.invalidDateTime"));
         return;
       }
       if (participants.length === 0) {
-        toast.error("Add at least one participant before reviewing.");
+        toast.error(t("web.provider.portal.groupBookingDialog.addParticipantBeforeReview"));
         return;
       }
       setCreateStep("review");
@@ -857,7 +859,7 @@ export function GroupBookingDialog({
 
     if (participants.length > formData.max_participants) {
       toast.error(
-        `Too many participants. You have ${participants.length} but the session capacity is ${formData.max_participants}. Increase the limit in the Session Capacity section.`
+        t("web.provider.portal.groupBookingDialog.tooManyParticipants", { count: participants.length, max: formData.max_participants })
       );
       setCreateStep("form");
       return;
@@ -869,14 +871,14 @@ export function GroupBookingDialog({
       for (let i = 0; i < participants.length; i++) {
         const ph = participants[i].client_phone?.trim();
         if (ph && !isCompleteE164(ph)) {
-          toast.error(`Participant ${i + 1}: enter a valid phone number or leave it blank.`);
+          toast.error(t("web.provider.portal.groupBookingDialog.invalidParticipantPhone", { n: i + 1 }));
           setIsLoading(false);
           return;
         }
       }
 
       if (!formData.scheduled_date?.trim() || !formData.scheduled_time?.trim()) {
-        toast.error('Choose a date and time (use available slots or open "Manual date and time").');
+        toast.error(t("web.provider.portal.groupBookingDialog.chooseDateTime"));
         setIsLoading(false);
         return;
       }
@@ -886,7 +888,7 @@ export function GroupBookingDialog({
         portalProvider?.timezone,
       );
       if (Number.isNaN(parsedStart.getTime())) {
-        toast.error("Invalid date or time.");
+        toast.error(t("web.provider.portal.groupBookingDialog.invalidDateTime"));
         setIsLoading(false);
         return;
       }
@@ -913,7 +915,7 @@ export function GroupBookingDialog({
       }));
 
       const apiPayload: Record<string, unknown> = {
-        title: formData.title || formData.service_name || "Group Session",
+        title: formData.title || formData.service_name || t("web.provider.portal.groupBookingDialog.groupSession"),
         scheduled_at: scheduledAt,
         service_id: formData.service_id || undefined,
         staff_id: formData.team_member_id || undefined,
@@ -965,7 +967,7 @@ export function GroupBookingDialog({
 
       if (booking) {
         await providerApi.updateGroupBooking(booking.id, apiPayload as Partial<GroupBooking>);
-        toast.success("Group booking updated");
+        toast.success(t("web.provider.portal.groupBookingDialog.groupUpdated"));
       } else {
         const created = await providerApi.createGroupBooking(apiPayload as Partial<GroupBooking>);
         // §Group-booking-audit 2026-05 (auto mark_paid): when the provider
@@ -993,7 +995,7 @@ export function GroupBookingDialog({
           [];
         for (const warning of createWarnings) toast.warning(warning);
         if (createPaymentMethod === "paystack_terminal" && createdId) {
-          toast.success("Group booking created — preparing Paystack Terminal…");
+          toast.success(t("web.provider.portal.groupBookingDialog.createdPreparingPaystack"));
           onSuccess?.();
           onOpenChange(false);
           // Trigger prepare-collection in background and surface QR
@@ -1010,17 +1012,17 @@ export function GroupBookingDialog({
             if (terminal) {
               setPostCreatePaystackData({ expectedAmount: pricing.totalAmount, terminal });
             } else {
-              toast.info("Group created. Use the Payment Inbox to collect via Paystack Terminal.");
+              toast.info(t("web.provider.portal.groupBookingDialog.createdUsePaymentInbox"));
             }
           } catch {
-            toast.info("Group created. Use the Payment Inbox to collect via Paystack Terminal.");
+            toast.info(t("web.provider.portal.groupBookingDialog.createdUsePaymentInbox"));
           } finally {
             setIsPreparingTerminal(false);
           }
           return;
         }
         if (createPaymentMethod === "paycloud_terminal" && createdId) {
-          toast.success("Group booking created — collect payment on your card machine");
+          toast.success(t("web.provider.portal.groupBookingDialog.createdCollectOnMachine"));
           onSuccess?.();
           onOpenChange(false);
           setPostCreatePaycloudData({
@@ -1036,14 +1038,14 @@ export function GroupBookingDialog({
               `/api/provider/group-bookings/${createdId}?action=mark_paid`,
               { payment_method: methodToMark },
             );
-            toast.success("Group booking created and marked paid");
+            toast.success(t("web.provider.portal.groupBookingDialog.createdAndMarkedPaid"));
           } catch (markErr) {
             toast.error(
-              `Group created — payment not recorded (${markErr instanceof Error ? markErr.message : "Unknown error"}). Mark it paid from the detail page.`,
+              t("web.provider.portal.groupBookingDialog.createdPaymentNotRecorded", { detail: markErr instanceof Error ? markErr.message : t("web.provider.portal.groupBookingDialog.unknownError") }),
             );
           }
         } else {
-          toast.success("Group booking created");
+          toast.success(t("web.provider.portal.groupBookingDialog.groupCreated"));
         }
       }
       onSuccess?.();
@@ -1060,7 +1062,7 @@ export function GroupBookingDialog({
               || (error as { details?: string }).details
               || null)
           : null;
-      toast.error(detail || "Failed to save group booking");
+      toast.error(detail || t("web.provider.portal.groupBookingDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -1071,10 +1073,10 @@ export function GroupBookingDialog({
   const selectedService = services.find(s => s.id === formData.service_id);
   const isEditing = !!booking;
   const title = isEditing
-    ? "Edit Group Booking"
+    ? t("web.provider.portal.groupBookingDialog.titleEdit")
     : existingAppointments.length > 0
-      ? "Create Group from Appointments"
-      : "New Group Booking";
+      ? t("web.provider.portal.groupBookingDialog.titleFromAppointments")
+      : t("web.provider.portal.groupBookingDialog.titleNew");
 
   // ─── Service selection handler for participant ─────────────────────────
   const handleParticipantServiceSelect = (participantIdx: number, serviceId: string) => {
@@ -1127,13 +1129,13 @@ export function GroupBookingDialog({
             <h2 className="text-lg font-semibold text-gray-900 truncate">{title}</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               {participants.length > 0
-                ? `${participants.length} participant${participants.length !== 1 ? "s" : ""} · ${totalDuration} min · ${formatMoney(pricing.totalAmount)}`
-                : "Schedule multiple clients together"}
+                ? t("web.provider.portal.groupBookingDialog.headerSummary", { count: participants.length, duration: totalDuration, amount: formatMoney(pricing.totalAmount) })
+                : t("web.provider.portal.groupBookingDialog.scheduleMultiple")}
             </p>
           </div>
-          <div className="flex items-center gap-2 ml-3">
+          <div className="flex items-center gap-2 ms-3">
             <Badge variant="outline" className="text-xs border-purple-200 text-purple-700 bg-purple-50">
-              <Users className="w-3 h-3 mr-1" />Group
+              <Users className="w-3 h-3 me-1" />{t("web.provider.portal.groupBookingDialog.groupBadge")}
             </Badge>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)}>
               <X className="w-4 h-4 text-gray-500" />
@@ -1151,11 +1153,11 @@ export function GroupBookingDialog({
 
             {/* Title */}
             <div className="space-y-2">
-              <Label className="text-xs text-gray-500">Title / Group Name</Label>
+              <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.titleLabel")}</Label>
               <Input
                 value={formData.title}
                 onChange={e => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g. Bridal Party, Team Workshop..."
+                placeholder={t("web.provider.portal.groupBookingDialog.titlePlaceholder")}
                 className="h-10"
               />
             </div>
@@ -1165,33 +1167,33 @@ export function GroupBookingDialog({
             {/* ─── Location ──────────────────────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <MapPin className="w-4 h-4 text-gray-400" />Location
+                <MapPin className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.location")}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon", travel_fee: 0 })}
-                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  className={cn("p-3 border-2 rounded-xl text-start transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
                   <div className="flex items-center gap-2">
                     <Building2 className={cn("w-4 h-4", formData.location_type === "at_salon" ? "text-primary" : "text-gray-400")} />
-                    <div><div className="font-medium text-sm">At Salon</div><div className="text-[10px] text-gray-500">Your location</div></div>
+                    <div><div className="font-medium text-sm">{t("web.provider.portal.groupBookingDialog.atSalon")}</div><div className="text-[10px] text-gray-500">{t("web.provider.portal.groupBookingDialog.yourLocation")}</div></div>
                   </div>
                 </button>
                 <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_home" })}
-                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_home" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  className={cn("p-3 border-2 rounded-xl text-start transition-all", formData.location_type === "at_home" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
                   <div className="flex items-center gap-2">
                     <Home className={cn("w-4 h-4", formData.location_type === "at_home" ? "text-primary" : "text-gray-400")} />
-                    <div><div className="font-medium text-sm">At Home</div><div className="text-[10px] text-gray-500">Client location</div></div>
+                    <div><div className="font-medium text-sm">{t("web.provider.portal.groupBookingDialog.atHome")}</div><div className="text-[10px] text-gray-500">{t("web.provider.portal.groupBookingDialog.clientLocation")}</div></div>
                   </div>
                 </button>
               </div>
               {formData.location_type === "at_salon" && (
                 <div>
-                  <Label className="text-xs text-gray-500">Salon Location</Label>
+                  <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.salonLocation")}</Label>
                   <Select value={formData.location_id} onValueChange={v => setFormData({ ...formData, location_id: v })}>
-                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select location" /></SelectTrigger>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectLocation")} /></SelectTrigger>
                     <SelectContent>
                       {providerLocations.length > 0
                         ? providerLocations.map((loc: any) => <SelectItem key={loc.id} value={loc.id}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</SelectItem>)
-                        : <SelectItem value="main">Main Location</SelectItem>}
+                        : <SelectItem value="main">{t("web.provider.portal.groupBookingDialog.mainLocation")}</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1200,7 +1202,7 @@ export function GroupBookingDialog({
                 <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
                   <div>
                     <div className="mb-1 flex items-center justify-between">
-                      <Label className="text-xs text-gray-500">Address *</Label>
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.addressRequired")}</Label>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1208,13 +1210,13 @@ export function GroupBookingDialog({
                         className="h-7 px-2 text-xs"
                         onClick={() => setMapPickerOpen(true)}
                       >
-                        <MapPin className="mr-1 h-3 w-3" /> Drop pin
+                        <MapPin className="me-1 h-3 w-3" /> {t("web.provider.portal.groupBookingDialog.dropPin")}
                       </Button>
                     </div>
                     <AddressAutocomplete
                       value={formData.address_place_name || formData.address_line1}
                       inputId="group-booking-address"
-                      placeholder="Search street address..."
+                      placeholder={t("web.provider.portal.groupBookingDialog.searchStreetAddress")}
                       country="ZA"
                       defaultCountryName="South Africa"
                       onInputChange={(value) =>
@@ -1226,44 +1228,44 @@ export function GroupBookingDialog({
                     />
                     {isValidatingAddress && (
                       <p className="mt-1 flex items-center gap-1 text-[11px] text-blue-700">
-                        <Loader2 className="h-3 w-3 animate-spin" /> Calculating travel fee...
+                        <Loader2 className="h-3 w-3 animate-spin" /> {t("web.provider.portal.groupBookingDialog.calculatingTravelFee")}
                       </p>
                     )}
                     {formData.address_latitude != null && formData.address_longitude != null && (
                       <p className="mt-1 text-[11px] text-blue-700">
-                        Pin saved: {formData.address_latitude.toFixed(5)}, {formData.address_longitude.toFixed(5)}
-                        {formData.travel_fee > 0 ? ` · Travel fee ${formatMoney(formData.travel_fee)}` : ""}
+                        {t("web.provider.portal.groupBookingDialog.pinSaved", { lat: formData.address_latitude.toFixed(5), lng: formData.address_longitude.toFixed(5) })}
+                        {formData.travel_fee > 0 ? t("web.provider.portal.groupBookingDialog.travelFeeSuffix", { fee: formatMoney(formData.travel_fee) }) : ""}
                       </p>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label className="text-xs text-gray-500">City</Label>
-                      <Input value={formData.address_city} onChange={e => setFormData({ ...formData, address_city: e.target.value })} placeholder="City" className="mt-1 h-10" />
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.city")}</Label>
+                      <Input value={formData.address_city} onChange={e => setFormData({ ...formData, address_city: e.target.value })} placeholder={t("web.provider.portal.groupBookingDialog.cityPlaceholder")} className="mt-1 h-10" />
                     </div>
                     <div>
-                      <Label className="text-xs text-gray-500">Postal Code</Label>
-                      <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder="Postal code" className="mt-1 h-10" />
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.postalCode")}</Label>
+                      <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder={t("web.provider.portal.groupBookingDialog.postalCodePlaceholder")} className="mt-1 h-10" />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <Label className="text-xs text-gray-500">Province / State</Label>
-                      <Input value={formData.address_state} onChange={e => setFormData({ ...formData, address_state: e.target.value })} placeholder="Province" className="mt-1 h-10" />
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.provinceState")}</Label>
+                      <Input value={formData.address_state} onChange={e => setFormData({ ...formData, address_state: e.target.value })} placeholder={t("web.provider.portal.groupBookingDialog.provincePlaceholder")} className="mt-1 h-10" />
                     </div>
                     <div>
-                      <Label className="text-xs text-gray-500">Country</Label>
-                      <Input value={formData.address_country} onChange={e => setFormData({ ...formData, address_country: e.target.value })} placeholder="Country" className="mt-1 h-10" />
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.country")}</Label>
+                      <Input value={formData.address_country} onChange={e => setFormData({ ...formData, address_country: e.target.value })} placeholder={t("web.provider.portal.groupBookingDialog.countryPlaceholder")} className="mt-1 h-10" />
                     </div>
                   </div>
                   {/* Travel fee is auto-derived from the validated service zone — read-only. */}
                   {formData.travel_fee > 0 && (
                     <div>
-                      <Label className="text-xs text-gray-500">Travel Fee (auto-calculated)</Label>
+                      <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.travelFeeAuto")}</Label>
                       <div className="mt-1 h-10 flex items-center px-3 bg-blue-50 border border-blue-100 rounded-md text-sm font-medium text-blue-900">
                         {formatMoney(formData.travel_fee)}
                       </div>
-                      <p className="mt-1 text-[11px] text-blue-600">Derived from your active service zones for this address.</p>
+                      <p className="mt-1 text-[11px] text-blue-600">{t("web.provider.portal.groupBookingDialog.travelFeeDerived")}</p>
                     </div>
                   )}
                 </div>
@@ -1275,23 +1277,23 @@ export function GroupBookingDialog({
             {/* ─── Team Member & Default Service ──────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <Tag className="w-4 h-4 text-gray-400" />Service Details
+                <Tag className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.serviceDetails")}
               </div>
               <p className="text-xs text-gray-500">
-                Select a team member to check real availability slots. You can also pick a service to pre-fill all participant lines below — each can still be changed individually.
+                {t("web.provider.portal.groupBookingDialog.serviceDetailsHint")}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs text-gray-500">Team Member *</Label>
+                  <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.teamMemberRequired")}</Label>
                   <Select value={formData.team_member_id} onValueChange={v => setFormData({ ...formData, team_member_id: v })} required>
-                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select team member" /></SelectTrigger>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectTeamMember")} /></SelectTrigger>
                     <SelectContent>
                       {teamMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs text-gray-500">Pre-fill service for all participants</Label>
+                  <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.prefillService")}</Label>
                   <div className="relative mt-1">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
                     <Select
@@ -1306,24 +1308,24 @@ export function GroupBookingDialog({
                         });
                       }}
                     >
-                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select service (optional)" /></SelectTrigger>
+                      <SelectTrigger className="h-10 ps-8"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.selectServiceOptional")} /></SelectTrigger>
                       <SelectContent>
                         {services.filter(s => !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package").map(svc => (
                           <SelectItem key={svc.id} value={svc.id}>
                             <span className="truncate">{svc.name}</span>
-                            {svc.price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(svc.price)}</span>}
-                            {svc.service_type === "variant" && <Badge variant="outline" className="ml-1 text-[9px] h-4 px-1">Variant</Badge>}
+                            {svc.price > 0 && <span className="text-gray-400 ms-1">· {formatMoney(svc.price)}</span>}
+                            {svc.service_type === "variant" && <Badge variant="outline" className="ms-1 text-[9px] h-4 px-1">{t("web.provider.portal.groupBookingDialog.variant")}</Badge>}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="mt-1 text-[11px] text-gray-400">Selecting a service pre-fills it for all participants below. Each participant can still use a different service.</p>
+                  <p className="mt-1 text-[11px] text-gray-400">{t("web.provider.portal.groupBookingDialog.prefillServiceHint")}</p>
                 </div>
               </div>
               {(selectedTeamMember || selectedService) && (
                 <div className="flex flex-wrap gap-2">
-                  {selectedTeamMember && <Badge variant="secondary" className="text-xs"><User className="w-3 h-3 mr-1" />{selectedTeamMember.name}</Badge>}
+                  {selectedTeamMember && <Badge variant="secondary" className="text-xs"><User className="w-3 h-3 me-1" />{selectedTeamMember.name}</Badge>}
                   {selectedService && <Badge variant="secondary" className="text-xs">{selectedService.name}{selectedService.price > 0 && ` · ${formatMoney(selectedService.price)}`}</Badge>}
                 </div>
               )}
@@ -1334,18 +1336,18 @@ export function GroupBookingDialog({
             {/* ─── Schedule ─────────────────────────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <CalendarIcon className="w-4 h-4 text-gray-400" />Schedule
+                <CalendarIcon className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.schedule")}
               </div>
 
               {!formData.team_member_id && (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Select a team member to load real availability slots for this location.
+                  {t("web.provider.portal.groupBookingDialog.selectTeamMemberForSlots")}
                 </p>
               )}
 
               {formData.team_member_id && (
                 <div className="bg-purple-50/50 rounded-xl border border-purple-100 p-3">
-                  <p className="text-xs font-medium text-purple-900 mb-2">Available slots</p>
+                  <p className="text-xs font-medium text-purple-900 mb-2">{t("web.provider.portal.groupBookingDialog.availableSlots")}</p>
                   <AvailabilitySlotPicker
                     staffId={formData.team_member_id}
                     locationId={formData.location_id}
@@ -1367,22 +1369,22 @@ export function GroupBookingDialog({
                   onClick={() => setManualScheduleOpen(o => !o)}
                 >
                   <ChevronDown className={cn("w-3 h-3 transition-transform", manualScheduleOpen && "rotate-180")} />
-                  Manual date and time
+                  {t("web.provider.portal.groupBookingDialog.manualDateTime")}
                 </button>
               </div>
 
               {manualScheduleOpen && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-dashed border-gray-200">
                   <div>
-                    <Label className="text-xs text-gray-500">Date *</Label>
+                    <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.dateRequired")}</Label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
-                          className={cn("w-full justify-start text-left font-normal h-10 mt-1", !formData.scheduled_date && "text-muted-foreground")}
+                          className={cn("w-full justify-start text-start font-normal h-10 mt-1", !formData.scheduled_date && "text-muted-foreground")}
                         >
-                          <CalendarIcon className="mr-2 h-3.5 w-3.5 text-gray-400" />
-                          {formData.scheduled_date ? format(new Date(formData.scheduled_date + "T12:00:00"), "MMM d, yyyy") : "Pick a date"}
+                          <CalendarIcon className="me-2 h-3.5 w-3.5 text-gray-400" />
+                          {formData.scheduled_date ? format(new Date(formData.scheduled_date + "T12:00:00"), "MMM d, yyyy") : t("web.provider.portal.groupBookingDialog.pickDate")}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
@@ -1396,7 +1398,7 @@ export function GroupBookingDialog({
                     </Popover>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Time *</Label>
+                    <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.timeRequired")}</Label>
                     <Input
                       type="time"
                       value={formData.scheduled_time}
@@ -1406,7 +1408,7 @@ export function GroupBookingDialog({
                     />
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Duration (min) *</Label>
+                    <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.durationMinRequired")}</Label>
                     <Input
                       type="number"
                       value={formData.duration_minutes}
@@ -1423,7 +1425,7 @@ export function GroupBookingDialog({
               {!manualScheduleOpen && (
                 <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
                   <div>
-                    <Label className="text-xs text-gray-500">Duration (min) *</Label>
+                    <Label className="text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.durationMinRequired")}</Label>
                     <Input
                       type="number"
                       value={formData.duration_minutes}
@@ -1444,10 +1446,10 @@ export function GroupBookingDialog({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <Users className="w-4 h-4 text-gray-400" />Participants
+                  <Users className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.participants")}
                   <Badge variant="outline" className="text-[10px] h-5 px-1.5">{participants.length}</Badge>
                   {participants.length >= formData.max_participants && (
-                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5">Full</Badge>
+                    <Badge variant="destructive" className="text-[10px] h-5 px-1.5">{t("web.provider.portal.groupBookingDialog.full")}</Badge>
                   )}
                 </div>
                 <TooltipProvider delayDuration={150}>
@@ -1462,13 +1464,13 @@ export function GroupBookingDialog({
                           disabled={participants.length >= formData.max_participants}
                           className="h-8 text-xs"
                         >
-                          <Plus className="w-3.5 h-3.5 mr-1" />Add
+                          <Plus className="w-3.5 h-3.5 me-1" />{t("web.provider.portal.groupBookingDialog.add")}
                         </Button>
                       </span>
                     </TooltipTrigger>
                     {participants.length >= formData.max_participants && (
                       <TooltipContent side="left" className="text-xs">
-                        Session is at capacity ({formData.max_participants}). Increase the limit in the Session Capacity section below.
+                        {t("web.provider.portal.groupBookingDialog.capacityAddTooltip", { max: formData.max_participants })}
                       </TooltipContent>
                     )}
                   </Tooltip>
@@ -1479,23 +1481,22 @@ export function GroupBookingDialog({
                 // made to these rows are discarded — don't let the form imply
                 // otherwise.
                 <p className="text-xs text-amber-700">
-                  Saving updates the session details only. To change who is booked, or their
-                  service, price or notes, open the group and edit the participant there.
+                  {t("web.provider.portal.groupBookingDialog.editParticipantsHint")}
                 </p>
               ) : (
                 <p className="text-xs text-gray-500">
-                  Search for an existing client or enter details manually. One row per person — service, add-ons and price flow into the group total and accounting.
+                  {t("web.provider.portal.groupBookingDialog.addParticipantsHint")}
                 </p>
               )}
 
-              <div className="space-y-2 max-h-[480px] overflow-y-auto pr-0.5">
+              <div className="space-y-2 max-h-[480px] overflow-y-auto pe-0.5">
                 {participants.length === 0 ? (
                   <div className="text-center py-8 border-2 border-dashed rounded-xl">
                     <Users className="w-10 h-10 mx-auto text-gray-300 mb-2" />
-                    <p className="text-sm text-gray-500 mb-1">No participants yet</p>
-                    <p className="text-xs text-gray-400 mb-3">Add clients to this group booking</p>
+                    <p className="text-sm text-gray-500 mb-1">{t("web.provider.portal.groupBookingDialog.noParticipantsYet")}</p>
+                    <p className="text-xs text-gray-400 mb-3">{t("web.provider.portal.groupBookingDialog.addClientsHint")}</p>
                     <Button type="button" variant="outline" size="sm" onClick={handleAddParticipant} className="h-8 text-xs">
-                      <Plus className="w-3.5 h-3.5 mr-1" />Add Participant
+                      <Plus className="w-3.5 h-3.5 me-1" />{t("web.provider.portal.groupBookingDialog.addParticipant")}
                     </Button>
                   </div>
                 ) : (
@@ -1517,11 +1518,11 @@ export function GroupBookingDialog({
                               <span className="text-xs font-semibold text-purple-700">{index + 1}</span>
                             </div>
                             <span className="text-sm font-medium text-gray-700 truncate max-w-[160px]">
-                              {participant.client_name || `Participant ${index + 1}`}
+                              {participant.client_name || t("web.provider.portal.groupBookingDialog.participantN", { n: index + 1 })}
                             </span>
                             {participant.customer_id && (
                               <Badge variant="outline" className="text-[9px] h-4 border-purple-200 text-purple-700 bg-purple-50">
-                                Existing client
+                                {t("web.provider.portal.groupBookingDialog.existingClient")}
                               </Badge>
                             )}
                             {participant.variant_name && <Badge variant="outline" className="text-[9px] h-4">{participant.variant_name}</Badge>}
@@ -1537,12 +1538,12 @@ export function GroupBookingDialog({
                             <div className="relative">
                               <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
                               <Input
-                                placeholder="Search existing clients…"
+                                placeholder={t("web.provider.portal.groupBookingDialog.searchExistingClients")}
                                 value={clientSearch.query}
                                 onChange={e => searchClientsForParticipant(index, e.target.value)}
                                 onFocus={() => { if (clientSearch.query.length >= 2) setParticipantClientSearchState(index, { open: true }); }}
                                 onBlur={() => setTimeout(() => setParticipantClientSearchState(index, { open: false }), 200)}
-                                className="pl-7 h-8 text-xs bg-white"
+                                className="ps-7 h-8 text-xs bg-white"
                                 autoComplete="off"
                               />
                               {clientSearch.loading && <Loader2 className="absolute right-2 top-2 w-3.5 h-3.5 text-gray-400 animate-spin" />}
@@ -1553,7 +1554,7 @@ export function GroupBookingDialog({
                                   <button
                                     key={c.id}
                                     type="button"
-                                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-purple-50 transition-colors"
+                                    className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-purple-50 transition-colors"
                                     onMouseDown={e => e.preventDefault()}
                                     onClick={() => {
                                       setParticipants(prev => prev.map((p, i) => i !== index ? p : {
@@ -1578,7 +1579,7 @@ export function GroupBookingDialog({
                               </div>
                             )}
                             {clientSearch.open && clientSearch.query.length >= 2 && !clientSearch.loading && clientSearch.results.length === 0 && (
-                              <p className="mt-1 text-[10px] text-gray-400">No existing clients found — fill in details below.</p>
+                              <p className="mt-1 text-[10px] text-gray-400">{t("web.provider.portal.groupBookingDialog.noExistingClients")}</p>
                             )}
                           </div>
                         ) : (
@@ -1587,33 +1588,33 @@ export function GroupBookingDialog({
                             className="text-[10px] text-purple-600 hover:text-purple-800 underline underline-offset-2"
                             onClick={() => setParticipants(prev => prev.map((p, i) => i !== index ? p : { ...p, customer_id: undefined }))}
                           >
-                            Change client
+                            {t("web.provider.portal.groupBookingDialog.changeClient")}
                           </button>
                         )}
 
                         {/* Contact fields */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
-                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Name *</Label>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">{t("web.provider.portal.groupBookingDialog.nameRequired")}</Label>
                             <Input
                               ref={el => { participantNameRefs.current[index] = el; }}
                               value={participant.client_name}
                               onChange={e => handleParticipantChange(index, "client_name", e.target.value)}
-                              placeholder="Client name"
+                              placeholder={t("web.provider.portal.groupBookingDialog.clientNamePlaceholder")}
                               required
                               className="mt-0.5 h-9 text-sm"
                             />
                           </div>
                           <div>
-                            <PhoneInput label="Phone" inputId={`group-booking-participant-phone-${index}`} value={participant.client_phone} onChange={e164 => handleParticipantChange(index, "client_phone", e164)} className="mt-0 space-y-0.5" />
+                            <PhoneInput label={t("web.provider.portal.groupBookingDialog.phone")} inputId={`group-booking-participant-phone-${index}`} value={participant.client_phone} onChange={e164 => handleParticipantChange(index, "client_phone", e164)} className="mt-0 space-y-0.5" />
                           </div>
                           <div>
-                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Email</Label>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">{t("web.provider.portal.groupBookingDialog.email")}</Label>
                             <Input
                               type="email"
                               value={participant.client_email}
                               onChange={e => handleParticipantChange(index, "client_email", e.target.value)}
-                              placeholder="email@example.com"
+                              placeholder={t("web.provider.portal.groupBookingDialog.emailPlaceholder")}
                               className="mt-0.5 h-9 text-sm"
                               onKeyDown={e => {
                                 // Enter on last participant's email → add another
@@ -1625,18 +1626,18 @@ export function GroupBookingDialog({
                             />
                           </div>
                           <div>
-                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Service</Label>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">{t("web.provider.portal.groupBookingDialog.service")}</Label>
                             <Select
                               value={participant.service_id || formData.service_id}
                               onValueChange={v => handleParticipantServiceSelect(index, v)}
                             >
-                              <SelectTrigger className="mt-0.5 h-9 text-sm"><SelectValue placeholder="Service" /></SelectTrigger>
+                              <SelectTrigger className="mt-0.5 h-9 text-sm"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.service")} /></SelectTrigger>
                               <SelectContent className="z-[200001]">
                                 {filteredServices.map(svc => (
                                   <SelectItem key={svc.id} value={svc.id}>
                                     {svc.name}
-                                    {svc.service_type === "variant" && <span className="text-[10px] text-purple-500 ml-1">[Variant]</span>}
-                                    {svc.price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(svc.price)}</span>}
+                                    {svc.service_type === "variant" && <span className="text-[10px] text-purple-500 ms-1">{t("web.provider.portal.groupBookingDialog.variantTag")}</span>}
+                                    {svc.price > 0 && <span className="text-gray-400 ms-1">· {formatMoney(svc.price)}</span>}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1646,7 +1647,7 @@ export function GroupBookingDialog({
 
                         {/* Addons */}
                         {participant.addons.length > 0 && (
-                          <div className="pl-9 space-y-1 border-l-2 border-purple-200 ml-3">
+                          <div className="ps-9 space-y-1 border-s-2 border-purple-200 ms-3">
                             {participant.addons.map(addon => (
                               <div key={addon.id} className="flex items-center justify-between text-xs group/addon">
                                 <span className="text-gray-600">{addon.name}</span>
@@ -1665,12 +1666,12 @@ export function GroupBookingDialog({
                         {/* Notes for this guest only — the group note is separate */}
                         <div>
                           <Label className="text-[10px] text-gray-400 uppercase tracking-wider">
-                            Participant notes
+                            {t("web.provider.portal.groupBookingDialog.participantNotes")}
                           </Label>
                           <Input
                             value={participant.notes}
                             onChange={e => handleParticipantChange(index, "notes", e.target.value)}
-                            placeholder="Preferences, allergies, add-on instructions…"
+                            placeholder={t("web.provider.portal.groupBookingDialog.participantNotesPlaceholder")}
                             maxLength={2000}
                             className="mt-0.5 h-9 text-sm"
                           />
@@ -1685,14 +1686,14 @@ export function GroupBookingDialog({
                                 setAddonPickerFor({ participantIdx: index, catalogServiceId });
                                 loadServiceAddons(catalogServiceId);
                               }}>
-                              <Plus className="w-3 h-3" />Add extra
+                              <Plus className="w-3 h-3" />{t("web.provider.portal.groupBookingDialog.addExtra")}
                             </button>
-                            <span className="text-[10px] text-gray-400">{pDur} min</span>
+                            <span className="text-[10px] text-gray-400">{t("web.provider.portal.groupBookingDialog.minutes", { count: pDur })}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex items-center gap-1">
                               <span className="text-xs text-gray-400">R</span>
-                              <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-20 text-sm text-right" />
+                              <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-20 text-sm text-end" />
                               {participant.addons.length > 0 && (
                                 <span className="text-[10px] text-gray-400">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
                               )}
@@ -1705,7 +1706,7 @@ export function GroupBookingDialog({
                                 onClick={handleAddParticipant}
                                 className="h-8 text-xs border-purple-200 text-purple-700 hover:bg-purple-50"
                               >
-                                <Plus className="w-3 h-3 mr-1" />Add another
+                                <Plus className="w-3 h-3 me-1" />{t("web.provider.portal.groupBookingDialog.addAnother")}
                               </Button>
                             )}
                           </div>
@@ -1732,15 +1733,13 @@ export function GroupBookingDialog({
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                       <Lock className="w-4 h-4 text-gray-400" />
-                      Session Capacity
+                      {t("web.provider.portal.groupBookingDialog.sessionCapacity")}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Info className="w-3.5 h-3.5 text-gray-400 cursor-help" />
                         </TooltipTrigger>
                         <TooltipContent side="right" className="max-w-[240px] text-xs leading-relaxed">
-                          The maximum number of participants allowed in this session.
-                          Adding more participants will be blocked once this limit is reached.
-                          Set higher than your initial list to leave room for walk-ins.
+                          {t("web.provider.portal.groupBookingDialog.capacityTooltip")}
                         </TooltipContent>
                       </Tooltip>
                     </div>
@@ -1750,7 +1749,7 @@ export function GroupBookingDialog({
                       <div className="flex items-center gap-0 border border-gray-200 rounded-lg overflow-hidden">
                         <button
                           type="button"
-                          aria-label="Decrease capacity"
+                          aria-label={t("web.provider.portal.groupBookingDialog.decreaseCapacity")}
                           disabled={cap <= Math.max(1, currentCount)}
                           className="h-9 w-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           onClick={() =>
@@ -1764,7 +1763,7 @@ export function GroupBookingDialog({
                         </button>
                         <input
                           type="number"
-                          aria-label="Session capacity"
+                          aria-label={t("web.provider.portal.groupBookingDialog.sessionCapacityAria")}
                           value={formData.max_participants}
                           min={Math.max(1, currentCount)}
                           max={200}
@@ -1781,7 +1780,7 @@ export function GroupBookingDialog({
                         />
                         <button
                           type="button"
-                          aria-label="Increase capacity"
+                          aria-label={t("web.provider.portal.groupBookingDialog.increaseCapacity")}
                           disabled={cap >= 200}
                           className="h-9 w-9 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                           onClick={() =>
@@ -1805,18 +1804,18 @@ export function GroupBookingDialog({
                             ? "bg-amber-50 text-amber-700 border border-amber-200"
                             : "bg-green-50 text-green-700 border border-green-200",
                         )}>
-                          <span>{currentCount} / {cap} spots filled</span>
-                          {atCapacity && <span>· Full</span>}
-                          {nearCapacity && <span>· 1 left</span>}
+                          <span>{t("web.provider.portal.groupBookingDialog.spotsFilled", { current: currentCount, cap })}</span>
+                          {atCapacity && <span>{t("web.provider.portal.groupBookingDialog.fullDot")}</span>}
+                          {nearCapacity && <span>{t("web.provider.portal.groupBookingDialog.oneLeft")}</span>}
                           {!atCapacity && !nearCapacity && cap - currentCount > 1 && (
-                            <span>· {cap - currentCount} remaining</span>
+                            <span>{t("web.provider.portal.groupBookingDialog.remainingDot", { count: cap - currentCount })}</span>
                           )}
                         </div>
                       )}
 
                       {currentCount === 0 && (
                         <p className="text-xs text-gray-400">
-                          {cap} spot{cap !== 1 ? "s" : ""} available once you add participants.
+                          {t("web.provider.portal.groupBookingDialog.spotsAvailable", { count: cap })}
                         </p>
                       )}
                     </div>
@@ -1836,7 +1835,7 @@ export function GroupBookingDialog({
 
                     {atCapacity && (
                       <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5">
-                        Session is at capacity. Increase the limit above before adding more participants.
+                        {t("web.provider.portal.groupBookingDialog.atCapacityHint")}
                       </p>
                     )}
                   </div>
@@ -1849,7 +1848,7 @@ export function GroupBookingDialog({
             {/* ─── Products ──────────────────────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <ShoppingBag className="w-4 h-4 text-gray-400" />Products
+                <ShoppingBag className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.products")}
               </div>
 
               {groupProducts.length > 0 && (
@@ -1867,7 +1866,7 @@ export function GroupBookingDialog({
                           <span className="px-1.5 text-xs min-w-[20px] text-center">{prod.quantity}</span>
                           <button type="button" className="px-1.5 py-0.5 text-xs hover:bg-gray-100" onClick={() => updateProductQuantity(prod.id, prod.quantity + 1)}>+</button>
                         </div>
-                        <span className="text-xs text-gray-600 w-16 text-right">{formatMoney(prod.totalPrice)}</span>
+                        <span className="text-xs text-gray-600 w-16 text-end">{formatMoney(prod.totalPrice)}</span>
                         <button type="button" onClick={() => removeProduct(prod.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600">
                           <X className="w-3 h-3" />
                         </button>
@@ -1881,14 +1880,14 @@ export function GroupBookingDialog({
               <div className="space-y-2">
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
-                  <Input placeholder="Search products..." value={productSearchQuery}
+                  <Input placeholder={t("web.provider.portal.groupBookingDialog.searchProducts")} value={productSearchQuery}
                     onChange={e => {
                       setProductSearchQuery(e.target.value);
                       if (e.target.value.trim().length >= 2) loadProducts(e.target.value.trim());
                       else if (!e.target.value.trim() && products.length === 0) loadProducts();
                     }}
                     onFocus={() => { if (!productsLoadedRef.current && products.length === 0) loadProducts(); }}
-                    className="pl-8 h-9 text-sm" />
+                    className="ps-8 h-9 text-sm" />
                 </div>
                 <Select value="" onValueChange={v => {
                   const [pid, vid] = v.includes("::") ? v.split("::") : [v, null];
@@ -1900,21 +1899,21 @@ export function GroupBookingDialog({
                 }}
                   onOpenChange={o => { if (o && !productsLoadedRef.current && products.length === 0) loadProducts(); }}
                 >
-                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Add a product..." /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.addAProduct")} /></SelectTrigger>
                   <SelectContent className="z-[200001]">
                     {filteredProducts.flatMap(p => {
                       if (p.has_variants && p.variants?.length) {
                         return p.variants.map(v => (
                           <SelectItem key={`${p.id}::${v.id}`} value={`${p.id}::${v.id}`}>
                             {p.name} — {Object.values(v.option_values || {}).join(" / ")}
-                            <span className="text-gray-400 ml-1">· {formatMoney(v.retail_price)}</span>
+                            <span className="text-gray-400 ms-1">· {formatMoney(v.retail_price)}</span>
                           </SelectItem>
                         ));
                       }
                       return [(
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
-                          {p.retail_price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(p.retail_price)}</span>}
+                          {p.retail_price > 0 && <span className="text-gray-400 ms-1">· {formatMoney(p.retail_price)}</span>}
                         </SelectItem>
                       )];
                     })}
@@ -1929,20 +1928,20 @@ export function GroupBookingDialog({
             {packages.length > 0 && (
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                  <Package className="w-4 h-4 text-gray-400" />Packages
+                  <Package className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.packages")}
                 </div>
                 <Select value={selectedPackageId || ""} onValueChange={v => {
                   const pkg = packages.find(p => p.id === v);
                   if (pkg) handleAddPackage(pkg);
                 }}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Apply a package..." /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={t("web.provider.portal.groupBookingDialog.applyPackage")} /></SelectTrigger>
                   <SelectContent className="z-[200001]">
-                    {isLoadingPackages && <div className="flex items-center gap-2 p-2 text-xs text-gray-500"><Loader2 className="w-3 h-3 animate-spin" />Loading...</div>}
+                    {isLoadingPackages && <div className="flex items-center gap-2 p-2 text-xs text-gray-500"><Loader2 className="w-3 h-3 animate-spin" />{t("web.provider.portal.groupBookingDialog.loading")}</div>}
                     {packages.map(pkg => (
                       <SelectItem key={pkg.id} value={pkg.id}>
                         {pkg.name}
-                        {pkg.price != null && <span className="text-gray-400 ml-1">· {formatMoney(pkg.price)}</span>}
-                        {pkg.items?.length ? <span className="text-gray-400 ml-1">({pkg.items.length} items)</span> : null}
+                        {pkg.price != null && <span className="text-gray-400 ms-1">· {formatMoney(pkg.price)}</span>}
+                        {pkg.items?.length ? <span className="text-gray-400 ms-1">{t("web.provider.portal.groupBookingDialog.packageItemCount", { count: pkg.items.length })}</span> : null}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1955,32 +1954,32 @@ export function GroupBookingDialog({
             {/* ─── Notes ──────────────────────────────────────────── */}
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <StickyNote className="w-4 h-4 text-gray-400" />Notes
+                <StickyNote className="w-4 h-4 text-gray-400" />{t("web.provider.portal.groupBookingDialog.notes")}
               </div>
-              <Textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} placeholder="Add any notes about this group booking..." className="resize-none text-sm" />
+              <Textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} placeholder={t("web.provider.portal.groupBookingDialog.notesPlaceholder")} className="resize-none text-sm" />
             </div>
 
             {!booking ? (
               <>
                 <Separator />
                 <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
-                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500">{t("web.provider.portal.groupBookingDialog.payment")}</div>
                   <div className="flex flex-wrap gap-2">
                     {([
-                      { value: "pay_later", label: "Pay later" },
-                      { value: "cash", label: "Cash" },
+                      { value: "pay_later", label: t("web.provider.portal.groupBookingDialog.payLater") },
+                      { value: "cash", label: t("web.provider.portal.groupBookingDialog.cash") },
                       ...(manualCardEnabled
                         ? [{ value: "card" as const, label: manualCardCollectOptionLabel() }]
                         : []),
-                      { value: "yoco_pos", label: "Yoco terminal" },
+                      { value: "yoco_pos", label: t("web.provider.portal.groupBookingDialog.yocoTerminal") },
                       ...(paymentLinkEnabled
-                        ? [{ value: "payment_link", label: "Payment link" }]
+                        ? [{ value: "payment_link", label: t("web.provider.portal.groupBookingDialog.paymentLink") }]
                         : []),
                       ...(paystackTerminalEnabled
-                        ? [{ value: "paystack_terminal", label: "Paystack Terminal" }]
+                        ? [{ value: "paystack_terminal", label: t("web.provider.portal.groupBookingDialog.paystackTerminal") }]
                         : []),
                       ...(paycloudEnabled
-                        ? [{ value: "paycloud_terminal", label: "Card machine" }]
+                        ? [{ value: "paycloud_terminal", label: t("web.provider.portal.groupBookingDialog.cardMachine") }]
                         : []),
                     ] as const).map((m) => {
                       const isPaycloudSetupBlocked =
@@ -2017,20 +2016,19 @@ export function GroupBookingDialog({
                   </div>
                   {createPaymentMethod === "payment_link" ? (
                     <p className="text-xs text-gray-500">
-                      Each participant gets their own payment link as soon as the group is created.
-                      Keep participant notifications on so the links can be delivered.
+                      {t("web.provider.portal.groupBookingDialog.paymentLinkHint")}
                     </p>
                   ) : createPaymentMethod === "paystack_terminal" ? (
                     <p className="text-xs text-gray-500">
-                      After creating the group, a QR code will be shown for the customer to scan. Allocate the payment from the Paystack Payment Inbox.
+                      {t("web.provider.portal.groupBookingDialog.paystackHint")}
                     </p>
                   ) : createPaymentMethod === "paycloud_terminal" ? (
                     <p className="text-xs text-gray-500">
-                      After creating the group, collect payment on your card machine for the full session total.
+                      {t("web.provider.portal.groupBookingDialog.paycloudHint")}
                     </p>
                   ) : createPaymentMethod !== "pay_later" ? (
                     <p className="text-xs text-gray-500">
-                      The group will be marked paid immediately on every participant&apos;s booking after create.
+                      {t("web.provider.portal.groupBookingDialog.markedPaidHint")}
                     </p>
                   ) : null}
                 </div>
@@ -2042,9 +2040,9 @@ export function GroupBookingDialog({
                     className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                   />
                   <span className="text-sm">
-                    <span className="font-semibold text-gray-900">Notify participants</span>
+                    <span className="font-semibold text-gray-900">{t("web.provider.portal.groupBookingDialog.notifyParticipants")}</span>
                     <span className="mt-0.5 block text-xs text-gray-500">
-                      Sends email + push to each participant with a linked customer account.
+                      {t("web.provider.portal.groupBookingDialog.notifyParticipantsHint")}
                     </span>
                   </span>
                 </label>
@@ -2056,18 +2054,18 @@ export function GroupBookingDialog({
               <div className="bg-gray-50 rounded-xl p-3 border space-y-1.5">
                 {pricing.subtotal > 0 && (
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>Subtotal ({participants.length} participant{participants.length !== 1 ? "s" : ""}{groupProducts.length > 0 ? ` + ${groupProducts.length} product${groupProducts.length !== 1 ? "s" : ""}` : ""})</span>
+                    <span>{t("web.provider.portal.groupBookingDialog.subtotalWithDetails", { details: [t("web.provider.portal.groupBookingDialog.subtotalParticipants", { count: participants.length }), groupProducts.length > 0 ? t("web.provider.portal.groupBookingDialog.subtotalProducts", { count: groupProducts.length }) : ""].filter(Boolean).join(" ") })}</span>
                     <span>{formatMoney(pricing.subtotal)}</span>
                   </div>
                 )}
                 {formData.travel_fee > 0 && (
                   <div className="flex justify-between text-xs text-gray-500">
-                    <span>Travel fee</span>
+                    <span>{t("web.provider.portal.groupBookingDialog.travelFee")}</span>
                     <span>{formatMoney(formData.travel_fee)}</span>
                   </div>
                 )}
                 <div className="flex items-center justify-between pt-1 border-t border-gray-200">
-                  <div className="text-xs text-gray-600 font-medium">Total</div>
+                  <div className="text-xs text-gray-600 font-medium">{t("web.provider.portal.groupBookingDialog.total")}</div>
                   <div className="text-lg font-semibold text-gray-900">{formatMoney(pricing.totalAmount)}</div>
                 </div>
               </div>
@@ -2083,67 +2081,67 @@ export function GroupBookingDialog({
           <div className="border-t bg-gray-50 px-4 sm:px-6 py-4 space-y-4 max-h-[55vh] overflow-y-auto">
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
-                Session summary
+                {t("web.provider.portal.groupBookingDialog.sessionSummary")}
               </div>
               <div className="space-y-1 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">When</span>
+                  <span className="text-gray-600">{t("web.provider.portal.groupBookingDialog.when")}</span>
                   <span className="font-semibold text-gray-900">
                     {formData.scheduled_date} · {formData.scheduled_time}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Participants</span>
+                  <span className="text-gray-600">{t("web.provider.portal.groupBookingDialog.participants")}</span>
                   <span className="font-semibold text-gray-900">
                     {participants.length}
                     {" "}
                     <span className="text-xs font-normal text-gray-400">
-                      of {formData.max_participants} max
+                      {t("web.provider.portal.groupBookingDialog.ofMax", { max: formData.max_participants })}
                     </span>
                   </span>
                 </div>
                 {formData.max_participants - participants.length > 0 && (
                   <p className="text-xs text-gray-400">
-                    {formData.max_participants - participants.length} spot{formData.max_participants - participants.length !== 1 ? "s" : ""} still available after booking — you can add walk-ins later.
+                    {t("web.provider.portal.groupBookingDialog.reviewSpotsStill", { count: formData.max_participants - participants.length })}
                   </p>
                 )}
                 <div className="flex items-center justify-between border-t border-gray-100 pt-2 mt-2">
-                  <span className="text-base font-bold text-gray-900">Total</span>
+                  <span className="text-base font-bold text-gray-900">{t("web.provider.portal.groupBookingDialog.total")}</span>
                   <span className="text-base font-extrabold text-gray-900">{formatMoney(pricing.totalAmount)}</span>
                 </div>
               </div>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Payment</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">{t("web.provider.portal.groupBookingDialog.payment")}</div>
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium text-gray-900">
                   {createPaymentMethod === "pay_later"
-                    ? "Pay later"
+                    ? t("web.provider.portal.groupBookingDialog.payLater")
                     : createPaymentMethod === "cash"
-                      ? "Cash"
+                      ? t("web.provider.portal.groupBookingDialog.cash")
                       : createPaymentMethod === "card"
                         ? manualCardCollectOptionLabel()
                         : createPaymentMethod === "yoco_pos"
-                          ? "Yoco terminal"
+                          ? t("web.provider.portal.groupBookingDialog.yocoTerminal")
                           : createPaymentMethod === "paystack_terminal"
-                            ? "Paystack Terminal (QR)"
+                            ? t("web.provider.portal.groupBookingDialog.paystackTerminalQr")
                             : createPaymentMethod === "paycloud_terminal"
-                              ? "Card machine"
-                            : "Payment link"}
+                              ? t("web.provider.portal.groupBookingDialog.cardMachine")
+                            : t("web.provider.portal.groupBookingDialog.paymentLink")}
                 </span>
                 <button
                   type="button"
                   className="text-xs font-semibold text-primary hover:underline"
                   onClick={() => setCreateStep("form")}
                 >
-                  Change
+                  {t("web.provider.portal.groupBookingDialog.change")}
                 </button>
               </div>
               {createSendNotification ? (
-                <p className="mt-2 text-xs text-gray-500">Participants will be notified after create.</p>
+                <p className="mt-2 text-xs text-gray-500">{t("web.provider.portal.groupBookingDialog.participantsWillBeNotified")}</p>
               ) : (
-                <p className="mt-2 text-xs text-amber-700">Participant notifications are off for this group.</p>
+                <p className="mt-2 text-xs text-amber-700">{t("web.provider.portal.groupBookingDialog.notificationsOff")}</p>
               )}
             </div>
           </div>
@@ -2159,24 +2157,24 @@ export function GroupBookingDialog({
               disabled={isLoading}
               className="w-full sm:w-auto h-10"
             >
-              Back
+              {t("web.provider.portal.groupBookingDialog.back")}
             </Button>
           ) : (
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading} className="w-full sm:w-auto h-10">
-              Cancel
+              {t("web.provider.portal.groupBookingDialog.cancel")}
             </Button>
           )}
           <Button type="submit" form="group-booking-form" disabled={isLoading || isValidatingAddress || participants.length === 0}
             className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10">
             {isLoading
-              ? "Saving..."
+              ? t("web.provider.portal.groupBookingDialog.saving")
               : isValidatingAddress
-                ? "Checking address..."
+                ? t("web.provider.portal.groupBookingDialog.checkingAddress")
                 : booking
-                  ? "Update Group Booking"
+                  ? t("web.provider.portal.groupBookingDialog.updateGroupBooking")
                   : createStep === "review"
-                    ? "Confirm & create"
-                    : "Review & create"}
+                    ? t("web.provider.portal.groupBookingDialog.confirmAndCreate")
+                    : t("web.provider.portal.groupBookingDialog.reviewAndCreate")}
           </Button>
         </div>
 
@@ -2228,17 +2226,17 @@ export function GroupBookingDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <QrCode className="w-5 h-5 text-green-600" />
-              Paystack Terminal Payment
+              {t("web.provider.portal.groupBookingDialog.paystackTerminalPayment")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Show the QR code or share the payment link. Once the customer pays, allocate the payment from the Payment Inbox.
+              {t("web.provider.portal.groupBookingDialog.paystackQrDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {postCreatePaystackData && (
             <div className="space-y-4">
               {postCreatePaystackData.expectedAmount > 0 && (
                 <div className="rounded-xl bg-green-50 border border-green-200 p-4 text-center">
-                  <p className="text-xs text-green-700 mb-1">Amount due</p>
+                  <p className="text-xs text-green-700 mb-1">{t("web.provider.portal.groupBookingDialog.amountDue")}</p>
                   <p className="text-2xl font-bold text-green-800">
                     {postCreatePaystackData.expectedAmount.toLocaleString("en-ZA", { style: "currency", currency: "ZAR" })}
                   </p>
@@ -2249,13 +2247,13 @@ export function GroupBookingDialog({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={postCreatePaystackData.terminal.qr_url}
-                    alt="Paystack Terminal QR Code"
+                    alt={t("web.provider.portal.groupBookingDialog.paystackQrAlt")}
                     className="w-48 h-48 rounded-xl border border-gray-200"
                   />
                 </div>
               ) : null}
               <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-                Ask the customer to scan the QR or open the payment link. After Paystack confirms, the payment appears in the <strong>Payment Inbox</strong> for allocation.
+                {t("web.provider.portal.groupBookingDialog.paystackInboxHint")}
               </div>
               <div className="flex flex-col gap-2">
                 {(postCreatePaystackData.terminal.payment_link || postCreatePaystackData.terminal.terminal_url) && (
@@ -2265,11 +2263,11 @@ export function GroupBookingDialog({
                     className="gap-2"
                     onClick={() => {
                       const link = postCreatePaystackData.terminal.payment_link || postCreatePaystackData.terminal.terminal_url || "";
-                      navigator.clipboard.writeText(link).then(() => toast.success("Payment link copied")).catch(() => {});
+                      navigator.clipboard.writeText(link).then(() => toast.success(t("web.provider.portal.groupBookingDialog.paymentLinkCopied"))).catch(() => {});
                     }}
                   >
                     <Copy className="w-4 h-4" />
-                    Copy payment link
+                    {t("web.provider.portal.groupBookingDialog.copyPaymentLink")}
                   </Button>
                 )}
                 <Button
@@ -2282,13 +2280,13 @@ export function GroupBookingDialog({
                   }}
                 >
                   <ExternalLink className="w-4 h-4" />
-                  Go to Payment Inbox
+                  {t("web.provider.portal.groupBookingDialog.goToPaymentInbox")}
                 </Button>
               </div>
             </div>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPostCreatePaystackData(null)}>Close</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setPostCreatePaystackData(null)}>{t("web.provider.portal.groupBookingDialog.close")}</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -2315,8 +2313,8 @@ export function GroupBookingDialog({
       <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>
         <AlertDialogContent className="z-[200002] max-w-sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Choose a Variant</AlertDialogTitle>
-            <AlertDialogDescription>Select a variant for this service.</AlertDialogDescription>
+            <AlertDialogTitle>{t("web.provider.portal.groupBookingDialog.chooseVariant")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("web.provider.portal.groupBookingDialog.chooseVariantDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {variantPickerFor && loadingVariants[variantPickerFor.serviceId] && (
@@ -2324,7 +2322,7 @@ export function GroupBookingDialog({
             )}
             {variantPickerFor && (serviceVariants[variantPickerFor.serviceId] || []).map((v: any) => (
               <button key={v.id} type="button"
-                className="w-full text-left p-3 rounded-lg border hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                className="w-full text-start p-3 rounded-lg border hover:border-purple-300 hover:bg-purple-50 transition-colors"
                 onClick={() => {
                   const base = services.find(s => s.id === variantPickerFor!.serviceId);
                   if (base) {
@@ -2339,15 +2337,15 @@ export function GroupBookingDialog({
                 }}>
                 <div className="font-medium text-sm">{v.variant_name || v.name || v.title}</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {formatMoney(v.price ?? 0)} · {v.duration_minutes ?? 0} min
+                  {formatMoney(v.price ?? 0)} · {t("web.provider.portal.groupBookingDialog.minutes", { count: v.duration_minutes ?? 0 })}
                 </div>
               </button>
             ))}
             {variantPickerFor && !loadingVariants[variantPickerFor.serviceId] && (serviceVariants[variantPickerFor.serviceId] || []).length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">No variants found</p>
+              <p className="text-sm text-gray-500 text-center py-4">{t("web.provider.portal.groupBookingDialog.noVariantsFound")}</p>
             )}
           </div>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("web.provider.portal.groupBookingDialog.cancel")}</AlertDialogCancel>
         </AlertDialogContent>
       </AlertDialog>
 
@@ -2355,8 +2353,8 @@ export function GroupBookingDialog({
       <AlertDialog open={addonPickerFor !== null} onOpenChange={o => !o && setAddonPickerFor(null)}>
         <AlertDialogContent className="z-[200002] max-w-sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Add Extras</AlertDialogTitle>
-            <AlertDialogDescription>Select add-ons for this participant.</AlertDialogDescription>
+            <AlertDialogTitle>{t("web.provider.portal.groupBookingDialog.addExtras")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("web.provider.portal.groupBookingDialog.addExtrasDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {addonPickerFor && loadingAddons[addonPickerFor.catalogServiceId] && (
@@ -2368,7 +2366,7 @@ export function GroupBookingDialog({
               return (
                 <button key={addon.id} type="button" disabled={alreadyAdded}
                   className={cn(
-                    "w-full text-left p-3 rounded-lg border transition-colors",
+                    "w-full text-start p-3 rounded-lg border transition-colors",
                     alreadyAdded ? "opacity-50 cursor-not-allowed bg-gray-50" : "hover:border-purple-300 hover:bg-purple-50",
                   )}
                   onClick={() => {
@@ -2380,17 +2378,17 @@ export function GroupBookingDialog({
                   <div className="font-medium text-sm">{addon.title || addon.name}</div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {formatMoney(addon.price ?? 0)}
-                    {(addon.duration_minutes || addon.duration) ? ` · ${addon.duration_minutes || addon.duration} min` : ""}
+                    {(addon.duration_minutes || addon.duration) ? ` · ${t("web.provider.portal.groupBookingDialog.minutes", { count: addon.duration_minutes || addon.duration })}` : ""}
                   </div>
-                  {alreadyAdded && <div className="text-[10px] text-purple-500 mt-1">Already added</div>}
+                  {alreadyAdded && <div className="text-[10px] text-purple-500 mt-1">{t("web.provider.portal.groupBookingDialog.alreadyAdded")}</div>}
                 </button>
               );
             })}
             {addonPickerFor && !loadingAddons[addonPickerFor.catalogServiceId] && (serviceAddons[addonPickerFor.catalogServiceId] || []).length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-4">No add-ons available for this service</p>
+              <p className="text-sm text-gray-500 text-center py-4">{t("web.provider.portal.groupBookingDialog.noAddons")}</p>
             )}
           </div>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("web.provider.portal.groupBookingDialog.cancel")}</AlertDialogCancel>
         </AlertDialogContent>
       </AlertDialog>
     </>

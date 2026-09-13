@@ -986,6 +986,19 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+
+      try {
+        const { upsertPostEmbedding } = await import("@/lib/ai/embeddings");
+        const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
+        const environment = env === "production" ? "production" : env === "staging" ? "staging" : "development";
+        void upsertPostEmbedding(
+          (post as { id: string }).id,
+          String((post as { caption?: string | null }).caption ?? ""),
+          environment,
+        ).catch((err) => console.warn("[explore/posts] embedding upsert failed:", err));
+      } catch {
+        // embeddings optional
+      }
     }
 
     let createdOffering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;

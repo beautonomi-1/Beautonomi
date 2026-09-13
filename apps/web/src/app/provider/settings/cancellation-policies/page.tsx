@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ interface CancellationPolicy {
 }
 
 export default function CancellationPoliciesPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [policies, setPolicies] = useState<CancellationPolicy[]>([]);
@@ -53,10 +55,10 @@ export default function CancellationPoliciesPage() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load cancellation policies";
+          : t("web.provider.settings.pages.cancellation-policies.failedToLoadCancellationPolicies");
       setError(errorMessage);
       console.error("Error loading policies:", err);
     } finally {
@@ -70,22 +72,22 @@ export default function CancellationPoliciesPage() {
       
       // Validate policy
       if (!policy.name?.trim()) {
-        toast.error("Policy name is required");
+        toast.error(t("web.provider.settings.pages.cancellation-policies.policyNameIsRequired"));
         return;
       }
       
       if (policy.hours_before < 0) {
-        toast.error("Hours before must be 0 or greater");
+        toast.error(t("web.provider.settings.pages.cancellation-policies.hoursBeforeMustBe0Or"));
         return;
       }
       
       if (policy.refund_percentage < 0 || policy.refund_percentage > 100) {
-        toast.error("Refund percentage must be between 0 and 100");
+        toast.error(t("web.provider.settings.pages.cancellation-policies.refundPercentageMustBeBetween0"));
         return;
       }
 
       if (policy.fee_amount != null && policy.fee_amount < 0) {
-        toast.error("Fee amount must be 0 or greater");
+        toast.error(t("web.provider.settings.pages.cancellation-policies.feeAmountMustBe0Or"));
         return;
       }
 
@@ -94,16 +96,16 @@ export default function CancellationPoliciesPage() {
         policy.fee_amount != null &&
         policy.fee_amount > 100
       ) {
-        toast.error("Percentage fee cannot exceed 100%");
+        toast.error(t("web.provider.settings.pages.cancellation-policies.percentageFeeCannotExceed100"));
         return;
       }
 
       if (policy.id) {
         await fetcher.patch(`/api/provider/cancellation-policies/${policy.id}`, policy);
-        toast.success("Cancellation policy updated successfully");
+        toast.success(t("web.provider.settings.pages.cancellation-policies.cancellationPolicyUpdatedSuccessfully"));
       } else {
         await fetcher.post("/api/provider/cancellation-policies", policy);
-        toast.success("Cancellation policy created successfully");
+        toast.success(t("web.provider.settings.pages.cancellation-policies.cancellationPolicyCreatedSuccessfully"));
       }
       setShowDialog(false);
       setEditingPolicy(null);
@@ -111,7 +113,7 @@ export default function CancellationPoliciesPage() {
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to save cancellation policy";
+        : error?.error?.message || t("web.provider.settings.pages.cancellation-policies.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving policy:", error);
     } finally {
@@ -120,16 +122,16 @@ export default function CancellationPoliciesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this cancellation policy? This action cannot be undone.")) return;
+    if (!confirm(t("web.provider.settings.pages.cancellation-policies.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/cancellation-policies/${id}`);
-      toast.success("Cancellation policy deleted successfully");
+      toast.success(t("web.provider.settings.pages.cancellation-policies.cancellationPolicyDeletedSuccessfully"));
       await loadPolicies();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to delete cancellation policy";
+        : error?.error?.message || t("web.provider.settings.pages.cancellation-policies.failedToDelete");
       toast.error(errorMessage);
       console.error("Error deleting policy:", error);
     }
@@ -138,28 +140,28 @@ export default function CancellationPoliciesPage() {
   const handleSetDefault = async (id: string) => {
     try {
       await fetcher.patch(`/api/provider/cancellation-policies/${id}/set-default`);
-      toast.success("Default policy updated successfully");
+      toast.success(t("web.provider.settings.pages.cancellation-policies.defaultPolicyUpdatedSuccessfully"));
       await loadPolicies();
     } catch (error: any) {
       const errorMessage = error instanceof FetchError
         ? error.message
-        : error?.error?.message || "Failed to set default policy";
+        : error?.error?.message || t("web.provider.settings.pages.cancellation-policies.failedToSetDefault");
       toast.error(errorMessage);
       console.error("Error setting default:", error);
     }
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Cancellation Policies" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.cancellation-policies.cancellationPolicies") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
-        <LoadingTimeout loadingMessage="Loading cancellation policies..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.cancellation-policies.loadingCancellationPolicies")} />
       </SettingsDetailLayout>
     );
   }
@@ -168,10 +170,10 @@ export default function CancellationPoliciesPage() {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
         <EmptyState
-          title="Failed to load cancellation policies"
+          title={t("web.provider.settings.categories.clients.items.cancellationPolicies.title")}
           description={error}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadPolicies,
           }}
         />
@@ -182,15 +184,15 @@ export default function CancellationPoliciesPage() {
   return (
     <SettingsDetailLayout breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Cancellation Policies"
-        subtitle="Configure cancellation policies and fees for your bookings"
+        title={t("web.provider.settings.categories.clients.items.cancellationPolicies.title")}
+        subtitle={t("web.provider.settings.categories.clients.items.cancellationPolicies.description")}
         primaryAction={{
-          label: "Add Policy",
+          label: t("web.provider.settings.pages.cancellation-policies.addPolicy"),
           onClick: () => {
             setEditingPolicy(null);
             setShowDialog(true);
           },
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
@@ -198,24 +200,18 @@ export default function CancellationPoliciesPage() {
         <div className="flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
           <div>
-            <p className="text-sm text-blue-800 font-medium mb-1">How Cancellation Policies Work</p>
-            <p className="text-xs text-blue-700">
-              Customers can cancel for free within 15 minutes of booking, or more than the hours
-              below before their appointment — they receive a full refund to their Beautonomi wallet.
-              Cancellations inside that window are late: the refund percentage below applies to
-              amounts already paid. A cancellation fee only applies when the late refund percentage
-              is 0%. No-show fees are configured separately under Payment Settings.
-            </p>
+            <p className="text-sm text-blue-800 font-medium mb-1">{t("web.provider.settings.pages.cancellation-policies.howTitle")}</p>
+            <p className="text-xs text-blue-700">{t("web.provider.settings.pages.cancellation-policies.howBody")}</p>
           </div>
         </div>
       </div>
 
       {policies.length === 0 ? (
         <div className="bg-white border rounded-lg p-12 text-center">
-          <p className="text-gray-600 mb-4">No cancellation policies configured</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.settings.pages.cancellation-policies.empty")}</p>
           <Button onClick={() => setShowDialog(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Create First Policy
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.settings.pages.cancellation-policies.createFirst")}
           </Button>
         </div>
       ) : (
@@ -228,21 +224,21 @@ export default function CancellationPoliciesPage() {
                     <h3 className="text-lg font-semibold">{policy.name}</h3>
                     {policy.is_default && (
                       <span className="text-xs bg-primary text-white px-2 py-1 rounded">
-                        Default
+                        {t("web.provider.common.default")}
                       </span>
                     )}
                   </div>
                   <p className="text-sm text-gray-600">
-                    More than {policy.hours_before} hours before:{" "}
-                    <strong>full refund</strong> to the customer&apos;s wallet
+                    {t("web.provider.settings.pages.cancellation-policies.moreThanHours", { hours: policy.hours_before })}{" "}
+                    <strong>{t("web.provider.settings.pages.cancellation-policies.fullRefund")}</strong> {t("web.provider.settings.pages.cancellation-policies.toWallet")}
                   </p>
                   <p className="text-sm text-gray-600 mt-1">
-                    Within {policy.hours_before} hours (late cancellation):{" "}
-                    <strong>{policy.refund_percentage}% refund</strong> of amounts paid
+                    {t("web.provider.settings.pages.cancellation-policies.withinHours", { hours: policy.hours_before })}{" "}
+                    <strong>{t("web.provider.settings.pages.cancellation-policies.lateRefund", { pct: policy.refund_percentage })}</strong> {t("web.provider.settings.pages.cancellation-policies.ofAmountsPaid")}
                   </p>
                   {policy.refund_percentage === 0 && policy.fee_amount && policy.fee_amount > 0 && (
                     <p className="text-sm text-gray-600 mt-1">
-                      Late cancellation fee (when refund is 0%):{" "}
+                      {t("web.provider.settings.pages.cancellation-policies.lateFee")}{" "}
                       {policy.fee_type === "percentage"
                         ? `${policy.fee_amount}%`
                         : formatCurrency(policy.fee_amount ?? 0, tenantCurrency)}
@@ -256,7 +252,7 @@ export default function CancellationPoliciesPage() {
                       size="sm"
                       onClick={() => handleSetDefault(policy.id!)}
                     >
-                      Set Default
+                      {t("web.provider.common.setDefault")}
                     </Button>
                   )}
                   <Button
@@ -267,7 +263,7 @@ export default function CancellationPoliciesPage() {
                       setShowDialog(true);
                     }}
                   >
-                    Edit
+                    {t("web.provider.common.edit")}
                   </Button>
                   {!policy.is_default && (
                     <Button
@@ -313,6 +309,7 @@ function PolicyDialog({
   onSave: (policy: CancellationPolicy) => void;
   isSaving: boolean;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<CancellationPolicy>({
     name: "",
     hours_before: 24,
@@ -344,22 +341,22 @@ function PolicyDialog({
     
     // Validate form
     if (!formData.name.trim()) {
-      toast.error("Policy name is required");
+      toast.error(t("web.provider.settings.pages.cancellation-policies.policyNameIsRequired"));
       return;
     }
     
     if (formData.hours_before < 0) {
-      toast.error("Hours before must be 0 or greater");
+      toast.error(t("web.provider.settings.pages.cancellation-policies.hoursBeforeMustBe0Or"));
       return;
     }
     
     if (formData.refund_percentage < 0 || formData.refund_percentage > 100) {
-      toast.error("Refund percentage must be between 0 and 100");
+      toast.error(t("web.provider.settings.pages.cancellation-policies.refundPercentageMustBeBetween0"));
       return;
     }
     
     if (formData.fee_amount && formData.fee_amount < 0) {
-      toast.error("Fee amount must be 0 or greater");
+      toast.error(t("web.provider.settings.pages.cancellation-policies.feeAmountMustBe0Or"));
       return;
     }
 
@@ -368,7 +365,7 @@ function PolicyDialog({
       formData.fee_amount != null &&
       formData.fee_amount > 100
     ) {
-      toast.error("Percentage fee cannot exceed 100%");
+      toast.error(t("web.provider.settings.pages.cancellation-policies.percentageFeeCannotExceed100"));
       return;
     }
 
@@ -382,25 +379,25 @@ function PolicyDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{policy ? "Edit Policy" : "Create Cancellation Policy"}</DialogTitle>
+          <DialogTitle>{policy ? t("web.provider.settings.pages.cancellation-policies.editPolicy") : t("web.provider.settings.pages.cancellation-policies.createPolicy")}</DialogTitle>
           <DialogDescription>
-            Configure when customers can cancel and what refund they receive
+{t("web.provider.settings.pages.cancellation-policies.dialogDescription")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">Policy Name *</Label>
+            <Label htmlFor="name">{t("web.provider.settings.pages.cancellation-policies.policyNameLabel")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Flexible, Moderate, Strict"
+              placeholder={t("web.provider.settings.pages.cancellation-policies.eGFlexibleModerateStrict")}
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="hours_before">Hours Before Appointment *</Label>
+            <Label htmlFor="hours_before">{t("web.provider.settings.pages.cancellation-policies.hoursBeforeLabel")}</Label>
             <Input
               id="hours_before"
               type="number"
@@ -411,14 +408,11 @@ function PolicyDialog({
               }
               required
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Hours before the appointment when late-cancellation rules apply. Earlier cancellations
-              receive a full wallet refund.
-            </p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.cancellation-policies.hoursBeforeHint")}</p>
           </div>
 
           <div>
-            <Label htmlFor="refund_percentage">Refund Percentage *</Label>
+            <Label htmlFor="refund_percentage">{t("web.provider.settings.pages.cancellation-policies.refundPercentageLabel")}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id="refund_percentage"
@@ -436,14 +430,11 @@ function PolicyDialog({
               />
               <span className="text-sm text-gray-600">%</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Percentage of amounts paid refunded to the customer&apos;s wallet for late cancellations
-              (inside the window above).
-            </p>
+            <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.cancellation-policies.refundPercentageHint")}</p>
           </div>
 
           <div>
-            <Label htmlFor="fee_type">Cancellation Fee Type</Label>
+            <Label htmlFor="fee_type">{t("web.provider.settings.pages.cancellation-policies.feeTypeLabel")}</Label>
             <Select
               value={formData.fee_type}
               onValueChange={(value: "fixed" | "percentage") =>
@@ -454,15 +445,15 @@ function PolicyDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="fixed">Fixed Amount</SelectItem>
-                <SelectItem value="percentage">Percentage</SelectItem>
+                <SelectItem value="fixed">{t("web.provider.settings.pages.cancellation-policies.fixedAmount")}</SelectItem>
+                <SelectItem value="percentage">{t("web.provider.settings.pages.cancellation-policies.percentage")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {formData.fee_type && (
             <div>
-              <Label htmlFor="fee_amount">Cancellation Fee Amount</Label>
+              <Label htmlFor="fee_amount">{t("web.provider.settings.pages.cancellation-policies.feeAmountLabel")}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   id="fee_amount"
@@ -481,20 +472,17 @@ function PolicyDialog({
                   {formData.fee_type === "percentage" ? "%" : LAST_RESORT_CURRENCY}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Only used when the late refund percentage is 0%. Retained from amounts the customer
-                has already paid (capped to collected funds).
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.cancellation-policies.feeAmountHint")}</p>
             </div>
           )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" disabled={isSaving}>
-              <Save className="w-4 h-4 mr-2" />
-              {isSaving ? "Saving..." : policy ? "Update" : "Create"} Policy
+              <Save className="w-4 h-4 me-2" />
+              {isSaving ? t("web.provider.common.saving") : policy ? t("web.provider.settings.pages.cancellation-policies.updatePolicy") : t("web.provider.settings.pages.cancellation-policies.createPolicySubmit")}
             </Button>
           </div>
         </form>

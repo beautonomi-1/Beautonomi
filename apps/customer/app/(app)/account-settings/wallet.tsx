@@ -142,14 +142,14 @@ export default function WalletScreen() {
         { code },
       );
       if (res.error) {
-        Alert.alert(t("common.error"), res.error.message || "Failed to add gift card");
+        Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedAddGiftCard"));
       } else {
-        Alert.alert("Success", res.data?.message || "Gift card added to your wallet");
+        Alert.alert(t("customer.walletScreen.successTitle"), res.data?.message || t("customer.walletScreen.giftCardAddedDefault"));
         setPendingGiftCards((prev) => prev.filter((gc) => gc.code !== code));
         await Promise.all([load(), loadGiftCards()]);
       }
     } catch (e) {
-      Alert.alert(t("common.error"), e instanceof Error ? e.message : "Failed to add gift card");
+      Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.walletScreen.failedAddGiftCard"));
     } finally {
       setClaimingCode(null);
     }
@@ -208,7 +208,7 @@ export default function WalletScreen() {
     }
     
     if (paymentOption === "saved_card" && !selectedCardId) {
-      Alert.alert(t("common.error"), "Please select a saved card.");
+      Alert.alert(t("common.error"), t("customer.walletScreen.selectSavedCard"));
       return;
     }
 
@@ -368,7 +368,7 @@ export default function WalletScreen() {
 
   const redeemGiftCard = async () => {
     if (!giftCardCode.trim()) {
-      Alert.alert(t("common.error"), "Please enter a gift card code.");
+      Alert.alert(t("common.error"), t("customer.walletScreen.enterGiftCardCode"));
       return;
     }
     setToppingUp(true);
@@ -378,14 +378,14 @@ export default function WalletScreen() {
         { code: giftCardCode }
       );
       if (res.error) {
-        Alert.alert(t("common.error"), res.error.message || "Failed to redeem gift card");
+        Alert.alert(t("common.error"), res.error.message || t("customer.walletScreen.failedRedeemGiftCard"));
       } else {
-        Alert.alert("Success", res.data?.message || "Gift card redeemed to wallet successfully");
+        Alert.alert(t("customer.walletScreen.successTitle"), res.data?.message || t("customer.walletScreen.giftCardRedeemedDefault"));
         setGiftCardCode("");
         await Promise.all([load(), loadGiftCards()]);
       }
     } catch (e) {
-      Alert.alert(t("common.error"), e instanceof Error ? e.message : "Failed to redeem gift card");
+      Alert.alert(t("common.error"), e instanceof Error ? e.message : t("customer.walletScreen.failedRedeemGiftCard"));
     } finally {
       setToppingUp(false);
     }
@@ -479,7 +479,7 @@ export default function WalletScreen() {
                   {claimingCode === gc.code ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 13 }}>Add to wallet</Text>
+                    <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 13 }}>{t("customer.walletScreen.addToWallet")}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -488,31 +488,31 @@ export default function WalletScreen() {
         ) : null}
 
         <View style={{ marginTop: 24 }}>
-          <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Top Up Option</Text>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>{t("customer.walletScreen.topUpOptionTitle")}</Text>
           
           <View style={{ flexDirection: "row", marginBottom: 16 }}>
             {savedCards.length > 0 && (
               <TouchableOpacity
                 onPress={() => setPaymentOption("saved_card")}
-                style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: paymentOption === "saved_card" ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: paymentOption === "saved_card" ? "#FDF2F8" : Colors.white, marginRight: 8, alignItems: "center" }}
+                style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: paymentOption === "saved_card" ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: paymentOption === "saved_card" ? "#FDF2F8" : Colors.white, marginEnd: 8, alignItems: "center" }}
               >
                 <Ionicons name="card-outline" size={20} color={paymentOption === "saved_card" ? Colors.primary : Colors.gray[500]} />
-                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "saved_card" ? Colors.primary : Colors.gray[700] }}>Saved Card</Text>
+                <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "saved_card" ? Colors.primary : Colors.gray[700] }}>{t("customer.walletScreen.savedCardOption")}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               onPress={() => setPaymentOption("new_card")}
-              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: paymentOption === "new_card" ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: paymentOption === "new_card" ? "#FDF2F8" : Colors.white, marginRight: 8, alignItems: "center" }}
+              style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: paymentOption === "new_card" ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: paymentOption === "new_card" ? "#FDF2F8" : Colors.white, marginEnd: 8, alignItems: "center" }}
             >
               <Ionicons name="add-circle-outline" size={20} color={paymentOption === "new_card" ? Colors.primary : Colors.gray[500]} />
-              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "new_card" ? Colors.primary : Colors.gray[700] }}>New Card</Text>
+              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "new_card" ? Colors.primary : Colors.gray[700] }}>{t("customer.walletScreen.newCardOption")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setPaymentOption("gift_card")}
               style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: paymentOption === "gift_card" ? Colors.primary : Colors.gray[200], borderRadius: 12, backgroundColor: paymentOption === "gift_card" ? "#FDF2F8" : Colors.white, alignItems: "center" }}
             >
               <Ionicons name="gift-outline" size={20} color={paymentOption === "gift_card" ? Colors.primary : Colors.gray[500]} />
-              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "gift_card" ? Colors.primary : Colors.gray[700] }}>Gift Card</Text>
+              <Text style={{ marginTop: 4, fontSize: 12, fontWeight: "500", color: paymentOption === "gift_card" ? Colors.primary : Colors.gray[700] }}>{t("customer.walletScreen.giftCardOption")}</Text>
             </TouchableOpacity>
           </View>
 
@@ -539,7 +539,7 @@ export default function WalletScreen() {
                         style={{ flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: selected ? Colors.primary : Colors.gray[200], borderRadius: 12, marginBottom: 8, backgroundColor: selected ? "#FDF2F8" : Colors.white }}
                       >
                         <Ionicons name="gift" size={20} color={selected ? Colors.primary : Colors.gray[400]} />
-                        <View style={{ marginLeft: 12, flex: 1 }}>
+                        <View style={{ marginStart: 12, flex: 1 }}>
                           <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>
                             {formatMoney(Number(g.balance ?? 0), String(g.currency ?? currency))}
                           </Text>
@@ -556,7 +556,7 @@ export default function WalletScreen() {
               <TextInput
                 value={giftCardCode}
                 onChangeText={setGiftCardCode}
-                placeholder="Enter gift card code"
+                placeholder={t("customer.walletScreen.giftCardCodePlaceholder")}
                 style={{ backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900], marginBottom: 8 }}
                 placeholderTextColor={Colors.gray[400]}
                 autoCapitalize="characters"
@@ -569,7 +569,7 @@ export default function WalletScreen() {
                 {toppingUp ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={{ color: Colors.white, fontWeight: "600" }}>Redeem Gift Card</Text>
+                  <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("customer.walletScreen.redeemGiftCard")}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -590,7 +590,7 @@ export default function WalletScreen() {
                         style={{ flexDirection: "row", alignItems: "center", padding: 12, borderWidth: 1, borderColor: selectedCardId === c.id ? Colors.primary : Colors.gray[200], borderRadius: 12, marginBottom: 8, backgroundColor: Colors.white }}
                       >
                         <Ionicons name="card" size={24} color={selectedCardId === c.id ? Colors.primary : Colors.gray[400]} />
-                        <View style={{ marginLeft: 12, flex: 1 }}>
+                        <View style={{ marginStart: 12, flex: 1 }}>
                           <Text style={{ fontSize: 15, color: Colors.gray[900] }}>•••• {c.last4} ({c.brand})</Text>
                           {expiry ? (
                             <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 2 }}>
@@ -607,10 +607,10 @@ export default function WalletScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     style={{ paddingVertical: 6, alignSelf: "flex-start" }}
                     accessibilityRole="link"
-                    accessibilityLabel="Manage saved cards"
+                    accessibilityLabel={t("customer.walletScreen.manageSavedCards")}
                   >
                     <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: "600" }}>
-                      Manage saved cards
+                      {t("customer.walletScreen.manageSavedCards")}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -621,7 +621,7 @@ export default function WalletScreen() {
                   <TouchableOpacity
                     key={a}
                     onPress={() => setTopupAmount(String(a))}
-                    style={{ backgroundColor: Colors.white, borderWidth: 1, borderColor: topupAmount === String(a) ? Colors.primary : Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, marginBottom: 8 }}
+                    style={{ backgroundColor: Colors.white, borderWidth: 1, borderColor: topupAmount === String(a) ? Colors.primary : Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8, marginEnd: 8, marginBottom: 8 }}
                   >
                     <Text style={{ color: topupAmount === String(a) ? Colors.primary : Colors.gray[900], fontWeight: "500" }}>{formatMoney(a, currency)}</Text>
                   </TouchableOpacity>
@@ -649,7 +649,7 @@ export default function WalletScreen() {
               {toppingUp && topupStatus ? (
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 10 }}>
                   <ActivityIndicator size="small" color={Colors.primary} />
-                  <Text style={{ marginLeft: 8, fontSize: 13, color: Colors.gray[600] }}>{topupStatus}</Text>
+                  <Text style={{ marginStart: 8, fontSize: 13, color: Colors.gray[600] }}>{topupStatus}</Text>
                 </View>
               ) : null}
             </View>

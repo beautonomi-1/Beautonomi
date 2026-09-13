@@ -5,6 +5,7 @@ import { recordBookingOnlineChargeLedger } from "@/lib/bookings/record-booking-o
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { ensureWalletGiftBookingPayments } from "@/lib/bookings/ensure-wallet-gift-booking-payments";
 import { getCurrencyMeta } from "@beautonomi/utils";
+import { extractStripeExchangeRate } from "@/lib/fx/stripe-exchange-rate";
 
 type StripePaymentIntentLike = {
   id?: string;
@@ -70,6 +71,7 @@ export async function handleStripePaymentIntentSucceeded(
 
   const walletAmount = Number(intent.metadata?.wallet_amount_applied ?? 0) || 0;
   const giftCardAmount = Number(intent.metadata?.gift_card_amount_applied ?? 0) || 0;
+  const stripeExchangeRate = extractStripeExchangeRate(intent as Record<string, unknown>);
 
   const recorded = await recordBookingStripePayment(supabase, {
     bookingId,
@@ -79,6 +81,7 @@ export async function handleStripePaymentIntentSucceeded(
     amountMajor,
     currency,
     source: "stripe_webhook",
+    stripeExchangeRate,
   });
 
   if (!recorded.ok) {

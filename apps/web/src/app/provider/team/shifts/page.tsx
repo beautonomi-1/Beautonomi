@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -12,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2 } from "lucide-react";
 import { ShiftCreateEditDialog } from "./components/ShiftCreateEditDialog";
 import { toast } from "sonner";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 function formatLocalDate(d: Date): string {
   const y = d.getFullYear();
@@ -21,6 +23,7 @@ function formatLocalDate(d: Date): string {
 }
 
 export default function ProviderShifts() {
+  const { t } = useTranslation();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +50,7 @@ export default function ProviderShifts() {
       setTeamMembers(members);
     } catch (error) {
       console.error("Failed to load shifts:", error);
-      toast.error("Failed to load shifts");
+      toast.error(t("web.provider.shiftsPage.failedToLoad"));
     } finally {
       setIsLoading(false);
     }
@@ -103,19 +106,19 @@ export default function ProviderShifts() {
 
   const handleDeleteShift = async (shift: Shift) => {
     if (shift.source === "schedule") {
-      toast.error("Weekly schedule entries can only be edited in Staff Schedules");
+      toast.error(t("web.provider.shiftsPage.scheduleOnly"));
       return;
     }
     if (shift.source === "location") {
-      toast.error("This row inherits the location's operating hours. Add a date-specific shift to override it.");
+      toast.error(t("web.provider.shiftsPage.locationInherit"));
       return;
     }
     try {
       await providerApi.deleteShift(shift.id);
-      toast.success("Shift deleted");
+      toast.success(t("web.provider.shiftsPage.deleted"));
       loadData();
     } catch {
-      toast.error("Failed to delete shift");
+      toast.error(t("web.provider.shiftsPage.deleteFailed"));
     }
   };
 
@@ -156,7 +159,7 @@ export default function ProviderShifts() {
           is_recurring: isRecurring,
           recurring_pattern: isRecurring ? recurringPattern : null,
         });
-        toast.success("Shift updated");
+        toast.success(t("web.provider.shiftsPage.updated"));
       } else {
         await providerApi.createShift({
           team_member_id: formData.teamMemberId,
@@ -166,7 +169,7 @@ export default function ProviderShifts() {
           is_recurring: isRecurring,
           recurring_pattern: isRecurring ? recurringPattern : null,
         });
-        toast.success("Shift created");
+        toast.success(t("web.provider.shiftsPage.created"));
       }
       setIsCreateDialogOpen(false);
       setSelectedShift(null);
@@ -174,7 +177,7 @@ export default function ProviderShifts() {
       setSelectedDate("");
       loadData();
     } catch {
-      toast.error(selectedShift ? "Failed to update shift" : "Failed to create shift");
+      toast.error(selectedShift ? t("web.provider.shiftsPage.updateFailed") : t("web.provider.shiftsPage.createFailed"));
     }
   };
 
@@ -183,32 +186,30 @@ export default function ProviderShifts() {
   return (
     <div>
       <PageHeader
-        title="Scheduled Shifts"
-        subtitle="Manage your team's schedule"
+        title={t("web.provider.breadcrumb.scheduledShifts")}
+        subtitle={t("web.provider.shiftsPage.subtitle")}
         primaryAction={{
-          label: "Add Shift",
+          label: t("web.provider.shiftsPage.addShift"),
           onClick: () => handleAddShift(),
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
       <div className="mt-4 mb-2 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
         <p className="text-sm text-indigo-800">
-          <strong>How shifts work:</strong> Shifts define when each staff member is available for bookings.
-          You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00), one-off date overrides, or repeating shifts.
-          Staff with <strong>Custom Work Hours</strong> disabled in their settings will use the location&apos;s operating hours instead.
+          <strong>{t("web.provider.shiftsPage.howTitle")}</strong> {t("web.provider.shiftsPage.howBody")}
         </p>
         <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-indigo-700">
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded bg-primary/10 border border-primary/20" /> Date-specific shift
+            <span className="inline-block w-3 h-3 rounded bg-primary/10 border border-primary/20" /> {t("web.provider.shiftsPage.legendDate")}
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> Weekly schedule
+            <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> {t("web.provider.shiftsPage.legendWeekly")}
           </span>
           <span className="inline-flex items-center gap-1">
-            <span className="inline-block w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> Inherited from location operating hours
+            <span className="inline-block w-3 h-3 rounded bg-emerald-50 border border-emerald-200" /> {t("web.provider.shiftsPage.legendInherited")}
           </span>
-          <span>Repeating shifts show on every matching future week until their end rule.</span>
+          <span>{t("web.provider.shiftsPage.repeatingHint")}</span>
         </div>
       </div>
 
@@ -220,14 +221,14 @@ export default function ProviderShifts() {
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <Button variant="outline" onClick={goToToday}>
-              Today
+              {t("web.provider.common.dateRange.today")}
             </Button>
             <Button variant="outline" size="icon" onClick={() => navigateWeek("next")}>
               <ChevronRight className="w-4 h-4" />
             </Button>
-            <span className="ml-4 font-medium">
-              {weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} -{" "}
-              {weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            <span className="ms-4 font-medium">
+              {weekDays[0].toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric" })} -{" "}
+              {weekDays[6].toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric", year: "numeric" })}
             </span>
           </div>
         </div>
@@ -240,9 +241,9 @@ export default function ProviderShifts() {
         </SectionCard>
       ) : teamMembers.length === 0 ? (
         <SectionCard className="p-12 text-center">
-          <p className="text-gray-600 mb-4">No team members found</p>
+          <p className="text-gray-600 mb-4">{t("web.provider.shiftsPage.noTeamMembers")}</p>
           <Button variant="outline" onClick={() => window.location.href = "/provider/team/members"}>
-            Add Team Members
+            {t("web.provider.shiftsPage.addTeamMembers")}
           </Button>
         </SectionCard>
       ) : (
@@ -251,15 +252,15 @@ export default function ProviderShifts() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Team Member</TableHead>
+                  <TableHead>{t("web.provider.shiftsPage.teamMember")}</TableHead>
                   {weekDays.map((day, index) => (
                     <TableHead key={index} className="text-center min-w-[120px]">
                       <div className="flex flex-col">
                         <span className="text-xs text-gray-500">
-                          {day.toLocaleDateString("en-US", { weekday: "short" })}
+                          {day.toLocaleDateString(getDefaultMoneyLocale(), { weekday: "short" })}
                         </span>
                         <span className="font-medium">
-                          {day.toLocaleDateString("en-US", { day: "numeric", month: "short" })}
+                          {day.toLocaleDateString(getDefaultMoneyLocale(), { day: "numeric", month: "short" })}
                         </span>
                       </div>
                     </TableHead>
@@ -287,25 +288,25 @@ export default function ProviderShifts() {
                                     ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
                                     : "bg-primary/10 text-primary border-primary/20 text-xs";
                                 const editTitle = isLocation
-                                  ? "Inherited from location operating hours — add a date-specific shift to override"
+                                  ? t("web.provider.shiftsPage.inheritTitle")
                                   : isSchedule
-                                    ? "Override with date-specific shift"
-                                    : "Edit shift";
+                                    ? t("web.provider.shiftsPage.overrideTitle")
+                                    : t("web.provider.shiftsPage.editShift");
                                 return (
                                   <div
                                     key={`${shift.id}-${shift.date}`}
                                     className="flex items-center justify-center gap-1"
                                     title={
                                       isLocation
-                                        ? "Inherited from location operating hours"
+                                        ? t("web.provider.shiftsPage.inheritHours")
                                         : isSchedule
-                                          ? "Inherited from weekly schedule"
+                                          ? t("web.provider.shiftsPage.inheritWeekly")
                                           : undefined
                                     }
                                   >
                                     <Badge variant="outline" className={badgeClass}>
                                       {shift.start_time} - {shift.end_time}
-                                      {isLocation ? " · Inherited" : ""}
+                                      {isLocation ? ` · ${t("web.provider.shiftsPage.inherited")}` : ""}
                                     </Badge>
                                     <Button
                                       variant="ghost"
@@ -322,7 +323,7 @@ export default function ProviderShifts() {
                                         size="icon"
                                         className="h-5 w-5 text-red-400 hover:text-red-600"
                                         onClick={() => handleDeleteShift(shift)}
-                                        title="Delete shift"
+                                        title={t("web.provider.shiftsPage.deleteShift")}
                                       >
                                         <Trash2 className="w-3 h-3" />
                                       </Button>
@@ -335,7 +336,7 @@ export default function ProviderShifts() {
                                 size="sm"
                                 className="h-5 w-5 opacity-40 hover:opacity-100"
                                 onClick={() => handleAddShift(member.id, dateStr)}
-                                title="Add another shift"
+                                title={t("web.provider.shiftsPage.addAnother")}
                               >
                                 <Plus className="w-3 h-3" />
                               </Button>

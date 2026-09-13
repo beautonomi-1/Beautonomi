@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { sanitizeCategoryNameI18n } from "@/lib/categories/sanitize-category-name-i18n";
 
 const globalCategorySchema = z.object({
   name: z.string().min(1, "Category name is required"),
@@ -13,6 +14,7 @@ const globalCategorySchema = z.object({
   display_order: z.number().int().min(0).optional().default(0),
   is_featured: z.boolean().optional().default(false),
   is_active: z.boolean().optional().default(true),
+  name_i18n: z.record(z.string(), z.string()).optional(),
 });
 
 // Reserved for PATCH validation
@@ -98,7 +100,7 @@ export async function POST(request: NextRequest) {
       throw err;
     }
 
-    const { name, slug, description, icon, display_order, is_featured, is_active } = validated;
+    const { name, slug, description, icon, display_order, is_featured, is_active, name_i18n } = validated;
 
     // Normalize slug
     const normalizedSlug = slug.toLowerCase().trim();
@@ -118,19 +120,32 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error("Category with this slug already exists"), "Duplicate slug", 409);
     }
 
-    const { data: category, error } = await supabase
+    const localizedNames = sanitizeCategoryNameI18n(name_i18n);
+    if (!localizedNames.en) localizedNames.en = name;
+
+    const insertRow = {
+      name,
+      slug: normalizedSlug,
+      description: description || null,
+      icon: icon || null,
+      display_order: display_order ?? 0,
+      is_featured: is_featured ?? false,
+      is_active: is_active ?? true,
+      name_i18n: localizedNames,
+    };
+
+    let { data: category, error } = await supabase
       .from("global_service_categories")
-      .insert({
-        name,
-        slug: normalizedSlug,
-        description: description || null,
-        icon: icon || null,
-        display_order: display_order ?? 0,
-        is_featured: is_featured ?? false,
-        is_active: is_active ?? true,
-      })
+      .insert(insertRow)
       .select()
       .single();
+
+    if (error && /name_i18n/i.test(error.message ?? "")) {
+      const { name_i18n: _omit, ...withoutI18n } = insertRow;
+      const retry = await supabase.from("global_service_categories").insert(withoutI18n).select().single();
+      category = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       throw error;

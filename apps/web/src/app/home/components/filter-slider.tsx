@@ -230,7 +230,7 @@ const FilterSlider = () => {
           }`}
         >
           <div
-            className={`${isSmallScreen ? "flex" : "overflow-hidden mr-16 ml-8"}`}
+            className={`${isSmallScreen ? "flex" : "overflow-hidden me-16 ms-8"}`}
           >
             {isSmallScreen ? (
               Filter.map((item, index) => (
@@ -246,7 +246,7 @@ const FilterSlider = () => {
                 slidesToShow={8}
                 loop
                 setApi={setSliderApi}
-                contentClassName="mr-16 ml-8"
+                contentClassName="me-16 ms-8"
               >
                 {Filter.map((item, index) => (
                   <FilterItem
@@ -276,7 +276,7 @@ const FilterSlider = () => {
             </>
           )}
         </div>
-        <div className="hidden xl:flex w-full xl:w-1/4 flex-row items-center justify-end gap-2 md:gap-4 pr-6 lg:pr-[54px] z-20">
+        <div className="hidden xl:flex w-full xl:w-1/4 flex-row items-center justify-end gap-2 md:gap-4 pe-6 lg:pe-[54px] z-20">
           <div>
             <Button
               variant="outline"
@@ -288,7 +288,7 @@ const FilterSlider = () => {
                 alt=""
                 width={16}
                 height={16}
-                className="h-4 w-4 mr-2 group-hover:scale-110"
+                className="h-4 w-4 me-2 group-hover:scale-110"
               />
               <span className="group-hover:text-gray-700">Filters</span>
             </Button>

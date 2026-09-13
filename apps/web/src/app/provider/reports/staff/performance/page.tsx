@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
@@ -52,6 +53,7 @@ interface StaffPerformanceData {
 
 export default function StaffPerformanceReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -126,7 +128,7 @@ export default function StaffPerformanceReport() {
       const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-performance", exportCurrency);
       exportToCSV(exportData, "staff-performance-report");
     } else {
-      exportToPDF("staff-performance-report", "staff-performance-report", "Staff Performance Report");
+      exportToPDF("staff-performance-report", "staff-performance-report", t("web.provider.reports.pages.staff/performance.reportTitle"));
     }
   };
 
@@ -134,10 +136,10 @@ export default function StaffPerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Staff Performance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/performance.title") },
         ]}
       >
         <ReportSkeleton />
@@ -149,19 +151,19 @@ export default function StaffPerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Staff Performance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/performance.title") },
         ]}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Staff Performance"
-            subtitle="Ledger net by team member — aligned with Sales Summary"
+            title={t("web.provider.reports.pages.staff/performance.title")}
+            subtitle={t("web.provider.reports.pages.staff/performance.subtitle")}
           />
           <ReportSubscriptionRequired
-            feature="Staff performance"
+            feature={t("web.provider.reports.pages.staff/performance.feature")}
             message={subscriptionGateMessage}
           />
         </div>
@@ -173,15 +175,15 @@ export default function StaffPerformanceReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Staff Performance" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.staff/performance.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load staff performance data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.staff/performance.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -190,29 +192,29 @@ export default function StaffPerformanceReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Staff Performance" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.staff/performance.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="staff-performance-report">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
-            title="Staff Performance"
-            subtitle="Ledger net by team member — aligned with Sales Summary"
+            title={t("web.provider.reports.pages.staff/performance.title")}
+            subtitle={t("web.provider.reports.pages.staff/performance.subtitle")}
           />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => handleExport("csv")} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export CSV</span>
-              <span className="sm:hidden">CSV</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportCsv")}</span>
+              <span className="sm:hidden">{t("web.provider.common.csv")}</span>
             </Button>
             <Button variant="outline" onClick={() => handleExport("pdf")} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportPdf")}</span>
+              <span className="sm:hidden">{t("web.provider.common.pdf")}</span>
             </Button>
           </div>
         </div>
@@ -231,11 +233,11 @@ export default function StaffPerformanceReport() {
           <div className="flex gap-3 rounded-xl border border-violet-200/90 bg-violet-50/95 px-4 py-3 text-sm leading-relaxed text-violet-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" aria-hidden />
             <div>
-              <p className="font-medium text-violet-900">Facts & definitions</p>
+              <p className="font-medium text-violet-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
               <p className="mt-1">{data.basisNote}</p>
               {data.ledgerTransactionTypes?.length ? (
                 <p className="mt-2 text-xs text-violet-900/85">
-                  Ledger allocation includes: {data.ledgerTransactionTypes.join(", ")}
+                  {t("web.provider.reports.pages.staff/performance.ledgerIncludes", { types: data.ledgerTransactionTypes.join(", ") })}
                 </p>
               ) : null}
             </div>
@@ -246,8 +248,8 @@ export default function StaffPerformanceReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Team size</CardTitle>
-              <p className="text-xs text-gray-500">In report scope</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/performance.teamSize")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.staff/performance.inReportScope")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -261,13 +263,13 @@ export default function StaffPerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Unique appointments</CardTitle>
-              <p className="text-xs text-gray-500">Each booking once — not double-counted for co-staffed visits</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/performance.uniqueAppointments")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.staff/performance.uniqueAppointmentsHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums tracking-tight text-gray-900">
-                  {data.summary.uniqueAppointments ?? data.summary.totalBookings ?? "—"}
+                  {data.summary.uniqueAppointments ?? data.summary.totalBookings ?? t("web.provider.common.emDash")}
                 </p>
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50">
                   <CalendarRange className="h-5 w-5 text-teal-600" />
@@ -278,8 +280,8 @@ export default function StaffPerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Ledger net (total)</CardTitle>
-              <p className="text-xs text-gray-500">Sum of per-staff allocated net</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/performance.ledgerNetTotal")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.staff/performance.ledgerNetTotalHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -295,8 +297,8 @@ export default function StaffPerformanceReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg rating</CardTitle>
-              <p className="text-xs text-gray-500">Weighted by review count</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.staff/performance.avgRating")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.staff/performance.avgRatingHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -314,8 +316,8 @@ export default function StaffPerformanceReport() {
         {data.staffMembers?.length ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Ledger net by staff</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Horizontal bars — violet scale by share of top earner.</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.staff/performance.ledgerNetByStaff")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.staff/performance.ledgerNetByStaffHint")}</p>
             </CardHeader>
             <CardContent className="pt-2">
               <StaffLedgerBarChart
@@ -332,9 +334,9 @@ export default function StaffPerformanceReport() {
         {data.staffMembers && data.staffMembers.length > 0 ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Detail by team member</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.staff/performance.detailByMember")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Commission follows payroll rules (provider_earnings base). “Avg value” is ledger net ÷ that staff’s appointment count.
+                {t("web.provider.reports.pages.staff/performance.detailByMemberHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -342,26 +344,26 @@ export default function StaffPerformanceReport() {
                 <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">
-                      Staff Member
+                    <th className="text-start py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.staffMember")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Bookings
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.bookings")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Completed
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.completed")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Ledger net
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.ledgerNet")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Avg / appointment
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.avgPerAppointment")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Rating
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.rating")}
                     </th>
-                    <th className="text-right py-3 px-4 text-sm font-semibold text-gray-700">
-                      Commission
+                    <th className="text-end py-3 px-4 text-sm font-semibold text-gray-700">
+                      {t("web.provider.reports.pages.staff/performance.commission")}
                     </th>
                   </tr>
                 </thead>
@@ -377,50 +379,50 @@ export default function StaffPerformanceReport() {
                             {staff.staffName}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {staff.totalHours.toFixed(1)} hours
+                            {t("web.provider.reports.pages.staff/performance.hours", { hours: staff.totalHours.toFixed(1) })}
                           </p>
                           <div className="flex flex-wrap gap-1 mt-1">
                             {staff.commissionEnabled ? (
                               <Badge variant="secondary" className="text-[10px] font-normal">
-                                Commission
+                                {t("web.provider.reports.pages.staff/performance.commission")}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
-                                No commission
+                                {t("web.provider.reports.pages.staff/performance.noCommission")}
                               </Badge>
                             )}
                             {staff.tipsEnabled ? (
                               <Badge variant="secondary" className="text-[10px] font-normal">
-                                Tips
+                                {t("web.provider.settings.pages.team/commissions.tips")}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
-                                No tips
+                                {t("web.provider.reports.pages.staff/performance.noTips")}
                               </Badge>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="text-right py-3 px-4 text-sm text-gray-900">
+                      <td className="text-end py-3 px-4 text-sm text-gray-900">
                         {staff.totalBookings}
                       </td>
-                      <td className="text-right py-3 px-4 text-sm text-gray-900">
+                      <td className="text-end py-3 px-4 text-sm text-gray-900">
                         <div className="flex items-center justify-end gap-1">
                           <span>{staff.completedBookings}</span>
                           {staff.cancelledBookings > 0 && (
                             <span className="text-xs text-red-600">
-                              ({staff.cancelledBookings} cancelled)
+                              {t("web.provider.reports.pages.staff/performance.cancelledCount", { count: staff.cancelledBookings })}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="text-right py-3 px-4 text-sm font-semibold text-gray-900">
+                      <td className="text-end py-3 px-4 text-sm font-semibold text-gray-900">
                         {fmt(staff.totalRevenue)}
                       </td>
-                      <td className="text-right py-3 px-4 text-sm text-gray-600">
+                      <td className="text-end py-3 px-4 text-sm text-gray-600">
                         {fmt(staff.averageBookingValue)}
                       </td>
-                      <td className="text-right py-3 px-4">
+                      <td className="text-end py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
                           <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
                           <span className="text-sm text-gray-900">
@@ -431,7 +433,7 @@ export default function StaffPerformanceReport() {
                           </span>
                         </div>
                       </td>
-                      <td className="text-right py-3 px-4 text-sm font-semibold text-green-600">
+                      <td className="text-end py-3 px-4 text-sm font-semibold text-green-600">
                         {fmt(staff.commissionEarned)}
                       </td>
                     </tr>
@@ -444,14 +446,14 @@ export default function StaffPerformanceReport() {
         ) : (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Detail by team member</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.staff/performance.detailByMember")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Commission follows payroll rules (provider_earnings base). “Avg value” is ledger net ÷ that staff’s appointment count.
+                {t("web.provider.reports.pages.staff/performance.detailByMemberHint")}
               </p>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600 text-center py-8">
-                No staff performance data available for the selected period.
+                {t("web.provider.reports.pages.staff/performance.noStaffData")}
               </p>
             </CardContent>
           </Card>

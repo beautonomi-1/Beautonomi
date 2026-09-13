@@ -64,6 +64,7 @@ import { submitCreateBooking } from "./submitCreateBooking";
 import { SubscriptionRequiredSheet } from "../scenario/SubscriptionRequiredSheet";
 import { PermissionGateInline } from "../scenario/PermissionGateInline";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface DraftPayload {
   savedAt: number;
@@ -158,6 +159,8 @@ export function AppointmentCreateFlow({
   useProviderPortal();
   const { format: formatMoney } = useProviderMoneyFormat();
   const { hasPermission, isOwner } = usePermissions();
+  const { t } = useTranslation();
+  const ac = "web.provider.portal.appointmentCreate";
   const canCreateAppointments = isOwner || hasPermission("create_appointments");
 
   useEffect(() => {
@@ -338,12 +341,12 @@ export function AppointmentCreateFlow({
   const effectiveDiscountAmount = Math.max(manualDiscountAmount, discountAmount);
   const discountFromManual = manualDiscountAmount >= discountAmount && manualDiscountAmount > 0;
   const discountLabel = discountFromManual
-    ? "Manual discount"
+    ? t(`${ac}.manualDiscount`)
     : discountCode.trim()
-      ? `Promo (${discountCode.trim()})`
+      ? t(`${ac}.promoDiscount`, { code: discountCode.trim() })
       : selectedPackageId
-        ? "Package discount"
-        : "Discount";
+        ? t(`${ac}.packageDiscount`)
+        : t(`${ac}.discount`);
 
   const totals = useMemo(() => {
     const travelFee =
@@ -487,13 +490,13 @@ export function AppointmentCreateFlow({
       } | null;
       const payload = body?.data;
       if (payload && payload.available === false) {
-        const conflicts = payload.conflicts?.join(" ") ?? "Time slot unavailable";
+        const conflicts = payload.conflicts?.join(" ") ?? t(`${ac}.slotUnavailable`);
         setConflictMessage(conflicts);
         return;
       }
       setCreateStep("review");
     } catch {
-      setConflictMessage("Could not verify availability — check your connection and try again.");
+      setConflictMessage(t(`${ac}.availabilityCheckFailed`));
     } finally {
       setCheckingAvailability(false);
     }
@@ -501,7 +504,7 @@ export function AppointmentCreateFlow({
 
   const handleSubmit = async () => {
     if (!canCreateAppointments) {
-      toast.error("You do not have permission to create appointments");
+      toast.error(t(`${ac}.permissionDenied`));
       return;
     }
     if (createValidationError) {
@@ -553,7 +556,7 @@ export function AppointmentCreateFlow({
       }
 
       clearDraft();
-      toast.success(isRecurring ? "Repeating series created" : "Booking created");
+      toast.success(isRecurring ? t(`${ac}.seriesCreated`) : t(`${ac}.bookingCreated`));
       onSuccess?.(appointment);
       onRefresh?.();
       openSuccessMode(appointment.id, successPayload);
@@ -574,7 +577,7 @@ export function AppointmentCreateFlow({
         return;
       }
       const mapped = mapBookingCreateError(
-        err.message ?? formatApiErrorMessage(error, "Failed to create booking"),
+        err.message ?? formatApiErrorMessage(error, t(`${ac}.createFailed`)),
         code,
       );
       setConflictMessage(mapped.message);
@@ -593,20 +596,20 @@ export function AppointmentCreateFlow({
         <button
           type="button"
           onClick={() => setCreateStep("form")}
-          className="p-2 -ml-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-          aria-label="Back"
+          className="p-2 -ms-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+          aria-label={t(`${ac}.back`)}
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
       ) : null}
       <h2 className="text-lg font-semibold text-gray-900 flex-1 truncate">
-        {step === "review" ? "Review booking" : "New booking"}
+        {step === "review" ? t(`${ac}.reviewBooking`) : t(`${ac}.newBooking`)}
       </h2>
       <button
         type="button"
         onClick={handleClose}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t(`${ac}.close`)}
       >
         <X className="h-5 w-5" />
       </button>
@@ -621,11 +624,11 @@ export function AppointmentCreateFlow({
       >
         {checkingAvailability ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Checking…
+            <Loader2 className="me-2 h-4 w-4 animate-spin" />
+            {t(`${ac}.checking`)}
           </>
         ) : (
-          "Review booking"
+          t(`${ac}.reviewBooking`)
         )}
       </BookingActionButton>
     ) : (
@@ -635,11 +638,11 @@ export function AppointmentCreateFlow({
       >
         {isSaving ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Creating…
+            <Loader2 className="me-2 h-4 w-4 animate-spin" />
+            {t(`${ac}.creating`)}
           </>
         ) : (
-          "Confirm booking"
+          t(`${ac}.confirmBooking`)
         )}
       </BookingActionButton>
     );
@@ -658,7 +661,7 @@ export function AppointmentCreateFlow({
         {!canCreateAppointments ? (
           <PermissionGateInline
             allowed={false}
-            message="You do not have permission to create appointments."
+            message={t(`${ac}.permissionDeniedInline`)}
           />
         ) : null}
 
@@ -695,7 +698,7 @@ export function AppointmentCreateFlow({
           <div className="lg:grid lg:grid-cols-2 lg:gap-6 space-y-4 lg:space-y-0">
             <div className="space-y-4">
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Appointment type</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t(`${ac}.appointmentType`)}</BookingSectionLabel>
               <AppointmentKindSelector value={appointmentKind} onChange={setAppointmentKind} />
             </BookingSectionCard>
 
@@ -716,7 +719,7 @@ export function AppointmentCreateFlow({
               onClick={() => setNewClientOpen(true)}
               className="text-sm font-semibold text-primary touch-manipulation min-h-[44px] px-1 -mt-2"
             >
-              Create new client
+              {t(`${ac}.createNewClient`)}
             </button>
 
             {appointmentKind === "at_home" ? (
@@ -725,10 +728,10 @@ export function AppointmentCreateFlow({
 
             {locations.length > 1 ? (
               <BookingSectionCard>
-                <BookingSectionLabel className="mb-2">Location</BookingSectionLabel>
+                <BookingSectionLabel className="mb-2">{t(`${ac}.location`)}</BookingSectionLabel>
                 <Select value={locationId} onValueChange={setLocationId}>
                   <SelectTrigger className="rounded-xl min-h-[44px]">
-                    <SelectValue placeholder="Select location" />
+                    <SelectValue placeholder={t(`${ac}.selectLocation`)} />
                   </SelectTrigger>
                   <SelectContent>
                     {locations.map((loc) => (
@@ -754,10 +757,10 @@ export function AppointmentCreateFlow({
             <CreateProductsSection products={selectedProducts} onChange={setSelectedProducts} />
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Default staff</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t(`${ac}.defaultStaff`)}</BookingSectionLabel>
               <Select value={staffId} onValueChange={setStaffId}>
                 <SelectTrigger className="rounded-xl min-h-[44px]">
-                  <SelectValue placeholder="Select staff" />
+                  <SelectValue placeholder={t(`${ac}.selectStaff`)} />
                 </SelectTrigger>
                 <SelectContent>
                   {teamMembers.map((m) => (
@@ -768,12 +771,12 @@ export function AppointmentCreateFlow({
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500 mt-1">
-                Applied to new service lines; override per service above.
+                {t(`${ac}.defaultStaffHint`)}
               </p>
             </BookingSectionCard>
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Date & time</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t(`${ac}.dateAndTime`)}</BookingSectionLabel>
               <ProviderBookingDateTimePicker
                 date={date || new Date().toISOString().split("T")[0]}
                 startTime={startTime}
@@ -819,14 +822,14 @@ export function AppointmentCreateFlow({
             />
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Manual discount</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t(`${ac}.manualDiscount`)}</BookingSectionLabel>
               <div className="grid grid-cols-5 gap-2">
                 <div className="col-span-2">
                   <Input
                     type="number"
                     step="0.01"
                     min="0"
-                    placeholder="0.00"
+                    placeholder={t(`${ac}.amountPlaceholder`)}
                     value={manualDiscountAmount > 0 ? String(manualDiscountAmount) : ""}
                     onChange={(e) => setManualDiscountAmount(parseFloat(e.target.value) || 0)}
                     className="rounded-xl min-h-[44px]"
@@ -835,7 +838,7 @@ export function AppointmentCreateFlow({
                 <div className="col-span-3">
                   <Input
                     type="text"
-                    placeholder="Reason (optional)"
+                    placeholder={t(`${ac}.reasonOptional`)}
                     value={discountReason}
                     onChange={(e) => setDiscountReason(e.target.value)}
                     className="rounded-xl min-h-[44px]"
@@ -845,7 +848,7 @@ export function AppointmentCreateFlow({
             </BookingSectionCard>
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-2">Tip</BookingSectionLabel>
+              <BookingSectionLabel className="mb-2">{t(`${ac}.tip`)}</BookingSectionLabel>
               <div className="flex flex-wrap gap-2">
                 {[0, 0.05, 0.1, 0.2].map((pct) => {
                   const tipBase = Math.max(0, totals.subtotal - effectiveDiscountAmount);
@@ -863,7 +866,7 @@ export function AppointmentCreateFlow({
                           : "border-gray-200 bg-white text-gray-700",
                       )}
                     >
-                      {pct === 0 ? "None" : `${Math.round(pct * 100)}%`}
+                      {pct === 0 ? t(`${ac}.tipNone`) : `${Math.round(pct * 100)}%`}
                     </button>
                   );
                 })}
@@ -872,7 +875,7 @@ export function AppointmentCreateFlow({
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="Custom tip"
+                placeholder={t(`${ac}.customTip`)}
                 value={tipAmount > 0 ? String(tipAmount) : ""}
                 onChange={(e) => setTipAmount(parseFloat(e.target.value) || 0)}
                 className="rounded-xl min-h-[44px] mt-2"
@@ -896,13 +899,13 @@ export function AppointmentCreateFlow({
 
             <BookingSectionCard>
               <BookingSectionLabel htmlFor="notes" className="mb-2">
-                Notes
+                {t(`${ac}.notes`)}
               </BookingSectionLabel>
               <Textarea
                 id="notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional notes"
+                placeholder={t(`${ac}.notesPlaceholder`)}
                 rows={3}
                 className="rounded-xl"
               />
@@ -911,13 +914,13 @@ export function AppointmentCreateFlow({
             <MembershipPreviewPill customerId={clientId || undefined} subtotal={totals.subtotal} />
 
             <BookingSectionCard>
-              <BookingSectionLabel className="mb-3">Estimate</BookingSectionLabel>
+              <BookingSectionLabel className="mb-3">{t(`${ac}.estimate`)}</BookingSectionLabel>
               {totals.duration > 0 ? (
-                <BookingSummaryRow label="Duration" value={`${totals.duration} min`} />
+                <BookingSummaryRow label={t(`${ac}.duration`)} value={t(`${ac}.durationMin`, { count: totals.duration })} />
               ) : null}
-              <BookingSummaryRow label="Subtotal" value={formatMoney(totals.subtotal)} />
+              <BookingSummaryRow label={t(`${ac}.subtotal`)} value={formatMoney(totals.subtotal)} />
               {totals.travelFee > 0 ? (
-                <BookingSummaryRow label="Travel fee" value={formatMoney(totals.travelFee)} />
+                <BookingSummaryRow label={t(`${ac}.travelFee`)} value={formatMoney(totals.travelFee)} />
               ) : null}
               {totals.discountAmount > 0 ? (
                 <BookingSummaryRow
@@ -930,17 +933,17 @@ export function AppointmentCreateFlow({
                   label={
                     taxRate > 0
                       ? taxInclusive
-                        ? `VAT (${(Math.round(taxRate * 10000) / 100).toFixed(1)}% incl.)`
-                        : `Tax (${(Math.round(taxRate * 10000) / 100).toFixed(1)}%)`
-                      : "Tax"
+                        ? t(`${ac}.vatIncl`, { rate: (Math.round(taxRate * 10000) / 100).toFixed(1) })
+                        : t(`${ac}.taxWithRate`, { rate: (Math.round(taxRate * 10000) / 100).toFixed(1) })
+                      : t(`${ac}.tax`)
                   }
                   value={formatMoney(totals.taxAmount)}
                 />
               ) : null}
               {tipAmount > 0 ? (
-                <BookingSummaryRow label="Tip" value={formatMoney(tipAmount)} />
+                <BookingSummaryRow label={t(`${ac}.tip`)} value={formatMoney(tipAmount)} />
               ) : null}
-              <BookingSummaryRow label="Total" value={formatMoney(totals.totalAmount)} emphasize />
+              <BookingSummaryRow label={t(`${ac}.total`)} value={formatMoney(totals.totalAmount)} emphasize />
             </BookingSectionCard>
             </div>
 

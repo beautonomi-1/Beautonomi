@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useState } from "react";
 import { CheckCircle2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -37,14 +39,14 @@ export type VerificationHubStatus = {
   manual_available?: boolean;
 };
 
-function stepStatusLabel(status: string, locked?: boolean): string {
-  if (locked) return "Complete identity first";
-  if (status === "approved") return "Done";
-  if (status === "not_required") return "Not needed";
-  if (status === "pending_review") return "Under review";
-  if (status === "in_progress" || status === "session_created") return "In progress";
-  if (status === "rejected") return "Action needed";
-  return "Not started";
+function stepStatusLabel(status: string, locked: boolean | undefined, t: (key: string) => string): string {
+  if (locked) return t("web.provider.verificationHub.completeIdentityFirst");
+  if (status === "approved") return t("web.provider.verificationHub.done");
+  if (status === "not_required") return t("web.provider.verificationHub.notNeeded");
+  if (status === "pending_review") return t("web.provider.verificationHub.underReview");
+  if (status === "in_progress" || status === "session_created") return t("web.provider.verificationHub.inProgress");
+  if (status === "rejected") return t("web.provider.verificationHub.actionNeeded");
+  return t("web.provider.verificationHub.notStarted");
 }
 
 type Props = {
@@ -56,6 +58,7 @@ type Props = {
 export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSection }: Props) {
   const [expandedStep, setExpandedStep] = useState<VerificationStep | null>("person_kyc");
   const [kybLaunching, setKybLaunching] = useState(false);
+  const { t } = useTranslation();
 
   const plan = statusData.verification_plan;
   const payeeEntity = statusData.payee_entity;
@@ -68,7 +71,7 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
         { language_code: "en" },
       );
       const url = res.data?.url;
-      if (!url) throw new Error("No verification URL returned");
+      if (!url) throw new Error(t("web.provider.verificationHub.noUrl"));
       window.location.href = url;
     } finally {
       setKybLaunching(false);
@@ -93,17 +96,17 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
       {plan && (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold">Your verification</h2>
+            <h2 className="text-lg font-semibold">{t("web.provider.verificationHub.title")}</h2>
             {progress.total > 0 && (
               <span className="text-sm text-muted-foreground">
-                {progress.completed} of {progress.total} complete
+                {t("web.provider.verificationHub.progress", { completed: progress.completed, total: progress.total })}
               </span>
             )}
           </div>
 
           {plan.is_complete ? (
             <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-800">
-              You&apos;re verified — you can go live.
+{t("web.provider.verificationHub.verifiedLive")}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">{plan.effective_summary}</p>
@@ -123,7 +126,7 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                 <div key={step.step} className="rounded-xl border bg-card overflow-hidden">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-3 p-4 text-left"
+                    className="flex w-full items-center gap-3 p-4 text-start"
                     onClick={() => setExpandedStep(expanded ? null : step.step)}
                   >
                     <div
@@ -141,8 +144,8 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{step.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        {stepStatusLabel(step.status, step.locked)}
-                        {!step.required ? " · Optional" : ""}
+                        {stepStatusLabel(step.status, step.locked, t)}
+{!step.required ? t("web.provider.verificationHub.optional") : ""}
                       </p>
                     </div>
                     {expanded ? (
@@ -173,12 +176,12 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                       <p className="text-sm text-muted-foreground">{step.description}</p>
                       {canStartKyb && (
                         <Button type="button" onClick={() => void startBusinessVerification()} disabled={kybLaunching}>
-                          {kybLaunching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                          {step.status === "not_started" ? "Start business verification" : "Continue"}
+                          {kybLaunching && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
+                          {step.status === "not_started" ? t("web.provider.verificationHub.startBusiness") : t("common.continue")}
                         </Button>
                       )}
                       {step.status === "approved" && (
-                        <p className="text-sm font-medium text-green-700">Business verified</p>
+                        <p className="text-sm font-medium text-green-700">{t("web.provider.verificationHub.businessVerified")}</p>
                       )}
                     </div>
                   )}
@@ -187,7 +190,7 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                     <div className="border-t px-4 pb-4">
                       {manualUploadSection ?? (
                         <p className="py-3 text-sm text-muted-foreground">
-                          Upload identity documents from this screen when manual verification is enabled.
+{t("web.provider.verificationHub.manualUploadHint")}
                         </p>
                       )}
                     </div>
@@ -196,15 +199,13 @@ export function ProviderVerificationHub({ statusData, onRefresh, manualUploadSec
                   {expanded && step.step === "manual_business_review" && (
                     <div className="space-y-2 border-t p-4">
                       <p className="text-sm text-muted-foreground">
-                        Automated business verification is not available for your registration country.
-                        Email support with your company registration documents, or ask an admin to complete
-                        a manual business review.
+{t("web.provider.verificationHub.manualBusinessReview")}
                       </p>
                       {step.status === "approved" ? (
-                        <p className="text-sm font-medium text-green-700">Business review approved</p>
+                        <p className="text-sm font-medium text-green-700">{t("web.provider.verificationHub.businessReviewApproved")}</p>
                       ) : (
                         <p className="text-xs text-muted-foreground">
-                          Status: {stepStatusLabel(step.status)} — our team will update this after review.
+{t("web.provider.verificationHub.statusAfterReview", { status: stepStatusLabel(step.status, undefined, t) })}
                         </p>
                       )}
                     </div>

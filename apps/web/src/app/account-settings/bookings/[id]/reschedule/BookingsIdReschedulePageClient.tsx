@@ -13,6 +13,7 @@ import AvailabilityCalendar from "@/app/checkout/components/availability-calenda
 import { useTranslation } from "@beautonomi/i18n";
 import BackButton from "../../../components/back-button";
 import Breadcrumb from "../../../components/breadcrumb";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 export default function RescheduleBookingPage() {
   const { t } = useTranslation();
@@ -60,10 +61,10 @@ export default function RescheduleBookingPage() {
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.accountSettings.reschedule.timeout")
             : err instanceof FetchError
             ? err.message
-            : "Failed to load booking";
+            : t("web.accountSettings.reschedule.loadFailed");
         setError(errorMessage);
         console.error("Error loading booking:", err);
       } finally {
@@ -78,7 +79,7 @@ export default function RescheduleBookingPage() {
 
   const handleReschedule = async () => {
     if (!selectedDateTime || !booking) {
-      toast.error("Please select a new date and time");
+      toast.error(t("web.accountSettings.reschedule.selectDateTime"));
       return;
     }
 
@@ -94,13 +95,13 @@ export default function RescheduleBookingPage() {
 
       toast.success(
         response.data.requires_confirmation
-          ? "Reschedule request submitted. Provider will confirm the new time."
-          : "Booking rescheduled successfully"
+          ? t("web.accountSettings.reschedule.submittedPending")
+          : t("web.accountSettings.reschedule.success")
       );
       router.push(`/account-settings/bookings/${bookingId}`);
     } catch (err) {
       const errorMessage =
-        err instanceof FetchError ? err.message : "Failed to reschedule booking";
+        err instanceof FetchError ? err.message : t("web.accountSettings.reschedule.failed");
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -110,7 +111,7 @@ export default function RescheduleBookingPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading booking details..." />
+        <LoadingTimeout loadingMessage={t("web.accountSettings.reschedule.loading")} />
       </div>
     );
   }
@@ -119,10 +120,10 @@ export default function RescheduleBookingPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Booking not found"
-          description={error || "The booking you're looking for doesn't exist"}
+          title={t("web.accountSettings.reschedule.notFoundTitle")}
+          description={error || t("web.accountSettings.reschedule.notFoundDescription")}
           action={{
-            label: "Go Back",
+            label: t("web.accountSettings.bookings.goBack"),
             onClick: () => router.push("/account-settings/bookings"),
           }}
         />
@@ -132,28 +133,28 @@ export default function RescheduleBookingPage() {
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:px-8 py-4 md:py-6 lg:py-8">
-      <BackButton href={`/account-settings/bookings/${bookingId}`} label="Back to Booking" />
+      <BackButton href={`/account-settings/bookings/${bookingId}`} label={t("web.accountSettings.reschedule.backToBooking")} />
       <Breadcrumb 
         items={[
-          { label: "Account", href: "/account-settings" },
-          { label: "Bookings", href: "/account-settings/bookings" },
-          { label: `Booking #${booking.booking_number}`, href: `/account-settings/bookings/${bookingId}` },
-          { label: "Reschedule" }
+          { label: t("web.accountSettings.bookings.breadcrumbAccount"), href: "/account-settings" },
+          { label: t("web.accountSettings.bookings.breadcrumbBookings"), href: "/account-settings/bookings" },
+          { label: t("web.accountSettings.bookings.bookingNumber", { number: booking.booking_number }), href: `/account-settings/bookings/${bookingId}` },
+          { label: t("web.accountSettings.reschedule.breadcrumbReschedule") }
         ]} 
       />
 
-      <h1 className="text-2xl md:text-3xl font-semibold mb-4 md:mb-6 text-gray-900">Reschedule Booking</h1>
+      <h1 className="text-2xl md:text-3xl font-semibold mb-4 md:mb-6 text-gray-900">{t("web.accountSettings.reschedule.title")}</h1>
 
       {/* Current Booking Info */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-4 md:mb-6">
-        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Current Appointment</h2>
+        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.reschedule.currentAppointment")}</h2>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <Calendar className="w-5 h-5 text-gray-400" />
             <div>
-              <p className="text-sm text-gray-600">Date</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.date")}</p>
               <p className="font-medium">
-                {new Date(booking.scheduled_at).toLocaleDateString("en-US", {
+                {new Date(booking.scheduled_at).toLocaleDateString(getDefaultMoneyLocale(), {
                   weekday: "long",
                   year: "numeric",
                   month: "long",
@@ -165,9 +166,9 @@ export default function RescheduleBookingPage() {
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-gray-400" />
             <div>
-              <p className="text-sm text-gray-600">Time</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.bookings.time")}</p>
               <p className="font-medium">
-                {new Date(booking.scheduled_at).toLocaleTimeString("en-US", {
+                {new Date(booking.scheduled_at).toLocaleTimeString(getDefaultMoneyLocale(), {
                   hour: "2-digit",
                   minute: "2-digit",
                   hour12: true,
@@ -180,7 +181,7 @@ export default function RescheduleBookingPage() {
 
       {/* New Date/Time Selection */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-4 md:mb-6">
-        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Select New Date & Time</h2>
+        <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">{t("web.accountSettings.reschedule.selectNewDateTime")}</h2>
         {policyHoursBefore != null && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-md p-3 mb-4">
             {t("customer.mobile.screens.bookingDetail.reschedulePolicyNote", {
@@ -219,19 +220,20 @@ export default function RescheduleBookingPage() {
         />
         {selectedDateTime && (
           <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-gray-600 mb-1">Selected time:</p>
+            <p className="text-sm text-gray-600 mb-1">{t("web.accountSettings.reschedule.selectedTime")}</p>
             <p className="font-medium">
-              {selectedDateTime.toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}{" "}
-              at{" "}
-              {selectedDateTime.toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
+              {t("web.accountSettings.reschedule.selectedDateTime", {
+                date: selectedDateTime.toLocaleDateString(getDefaultMoneyLocale(), {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                }),
+                time: selectedDateTime.toLocaleTimeString(getDefaultMoneyLocale(), {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                }),
               })}
             </p>
           </div>
@@ -245,14 +247,14 @@ export default function RescheduleBookingPage() {
           onClick={() => router.push(`/account-settings/bookings/${bookingId}`)}
           className="w-full sm:flex-1"
         >
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           onClick={handleReschedule}
           disabled={!selectedDateTime || isSubmitting}
           className="w-full sm:flex-1 bg-gray-900 text-white hover:bg-gray-800"
         >
-          {isSubmitting ? "Rescheduling..." : "Confirm Reschedule"}
+          {isSubmitting ? t("web.accountSettings.reschedule.rescheduling") : t("web.accountSettings.reschedule.confirmReschedule")}
         </Button>
       </div>
       </div>

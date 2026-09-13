@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { useCookieConsent } from "@/providers/CookieConsentProvider";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
+import { isBookingEmbedSurface } from "@/lib/booking/embed-host";
 
 const COPY = {
   bannerTitle: "Cookies help us keep Beautonomi running smoothly",
@@ -78,6 +79,15 @@ export default function CookieConsentExperience() {
   const idFunctional = `${baseId}-functional`;
   const idMarketing = `${baseId}-marketing`;
   const headingId = `${baseId}-dialog-title`;
+  const [hideForEmbed, setHideForEmbed] = useState(false);
+  const [embedChecked, setEmbedChecked] = useState(false);
+
+  useEffect(() => {
+    setHideForEmbed(isBookingEmbedSurface());
+    setEmbedChecked(true);
+  }, []);
+
+  if (!embedChecked || hideForEmbed) return null;
 
   const bannerVisible = showBanner && !preferencesOpen;
 
@@ -179,15 +189,15 @@ export default function CookieConsentExperience() {
           }}
         >
           <div className="flex min-h-0 flex-1 flex-col">
-            <DialogHeader className="space-y-2 px-4 pb-2 pt-5 text-left sm:px-6 sm:pt-6">
+            <DialogHeader className="space-y-2 px-4 pb-2 pt-5 text-start sm:px-6 sm:pt-6">
               <DialogTitle
                 id={headingId}
                 tabIndex={-1}
-                className="pr-10 text-xl font-semibold tracking-tight text-gray-900 outline-none"
+                className="pe-10 text-xl font-semibold tracking-tight text-gray-900 outline-none"
               >
                 {COPY.modalTitle}
               </DialogTitle>
-              <DialogDescription id={`${baseId}-modal-desc`} className="text-left text-sm leading-relaxed text-gray-600">
+              <DialogDescription id={`${baseId}-modal-desc`} className="text-start text-sm leading-relaxed text-gray-600">
                 {COPY.modalIntro}{" "}
                 <Link
                   href="/cookie-policy"

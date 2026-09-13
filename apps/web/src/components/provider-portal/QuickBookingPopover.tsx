@@ -20,6 +20,7 @@ import type { TeamMember, ServiceItem } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 import { 
   Calendar, 
   Clock, 
@@ -58,6 +59,7 @@ export function QuickBookingPopover({
   onSuccess,
   onOpenFullDialog,
 }: QuickBookingPopoverProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -72,7 +74,6 @@ export function QuickBookingPopover({
     scheduled_time: selectedTime,
   });
 
-  // Load services when popover opens
   useEffect(() => {
     if (open) {
       loadServices();
@@ -87,7 +88,6 @@ export function QuickBookingPopover({
     }
   }, [open, selectedTeamMemberId, selectedTime]);
 
-  // Search clients
   useEffect(() => {
     const searchClients = async () => {
       if (clientSearchQuery.length >= 2) {
@@ -140,7 +140,7 @@ export function QuickBookingPopover({
       const selectedMember = teamMembers.find((m) => m.id === formData.team_member_id);
 
       await providerApi.createAppointment({
-        client_name: formData.client_name || "Walk-in",
+        client_name: formData.client_name || t("web.provider.portal.quickBookingPopover.walkIn"),
         team_member_id: formData.team_member_id,
         team_member_name: selectedMember?.name || "",
         service_id: formData.service_id,
@@ -175,15 +175,15 @@ export function QuickBookingPopover({
         side="right"
         sideOffset={8}
       >
-        {/* Header */}
         <div className="px-4 py-3 border-b bg-gradient-to-r from-[#1a1f3c] to-[#252a4a] text-white rounded-t-lg">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Quick Book</h3>
+            <h3 className="font-semibold">{t("web.provider.portal.quickBookingPopover.title")}</h3>
             <Button 
               variant="ghost" 
               size="icon" 
               className="h-7 w-7 text-white/70 hover:text-white hover:bg-white/10"
               onClick={() => setOpen(false)}
+              aria-label={t("web.provider.portal.quickBookingPopover.close")}
             >
               <X className="w-4 h-4" />
             </Button>
@@ -200,12 +200,10 @@ export function QuickBookingPopover({
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-4 space-y-4">
-          {/* Client Search */}
           <div>
             <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Client
+              {t("web.provider.portal.quickBookingPopover.client")}
             </Label>
             {selectedClient ? (
               <div className="mt-1.5 flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border">
@@ -235,13 +233,13 @@ export function QuickBookingPopover({
               <div className="mt-1.5 relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
-                  placeholder="Search or type name..."
+                  placeholder={t("web.provider.portal.quickBookingPopover.searchPlaceholder")}
                   value={clientSearchQuery || formData.client_name}
                   onChange={(e) => {
                     setClientSearchQuery(e.target.value);
                     setFormData({ ...formData, client_name: e.target.value });
                   }}
-                  className="pl-9 h-10"
+                  className="ps-9 h-10"
                 />
                 {clientSearchResults.length > 0 && (
                   <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
@@ -249,7 +247,7 @@ export function QuickBookingPopover({
                       <button
                         key={client.id}
                         type="button"
-                        className="w-full px-3 py-2.5 text-left hover:bg-gray-50 flex items-center gap-2"
+                        className="w-full px-3 py-2.5 text-start hover:bg-gray-50 flex items-center gap-2"
                         onClick={() => handleSelectClient(client)}
                       >
                         <Avatar className="w-7 h-7">
@@ -273,17 +271,16 @@ export function QuickBookingPopover({
             )}
           </div>
 
-          {/* Service Selection */}
           <div>
             <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              Service
+              {t("web.provider.portal.quickBookingPopover.service")}
             </Label>
             <Select
               value={formData.service_id}
               onValueChange={(value) => setFormData({ ...formData, service_id: value })}
             >
               <SelectTrigger className="mt-1.5 h-10">
-                <SelectValue placeholder="Select service" />
+                <SelectValue placeholder={t("web.provider.portal.quickBookingPopover.selectService")} />
               </SelectTrigger>
               <SelectContent>
                 {services.map((service) => (
@@ -291,7 +288,10 @@ export function QuickBookingPopover({
                     <div className="flex items-center justify-between w-full gap-4">
                       <span>{service.name}</span>
                       <span className="text-xs text-gray-500">
-                        {service.duration_minutes}min · R{service.price}
+                        {t("web.provider.portal.quickBookingPopover.serviceMeta", {
+                          minutes: service.duration_minutes,
+                          price: service.price,
+                        })}
                       </span>
                     </div>
                   </SelectItem>
@@ -300,17 +300,16 @@ export function QuickBookingPopover({
             </Select>
           </div>
 
-          {/* Staff Member */}
           <div>
             <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              With
+              {t("web.provider.portal.quickBookingPopover.with")}
             </Label>
             <Select
               value={formData.team_member_id}
               onValueChange={(value) => setFormData({ ...formData, team_member_id: value })}
             >
               <SelectTrigger className="mt-1.5 h-10">
-                <SelectValue placeholder="Select staff" />
+                <SelectValue placeholder={t("web.provider.portal.quickBookingPopover.selectStaff")} />
               </SelectTrigger>
               <SelectContent>
                 {teamMembers.map((member) => (
@@ -329,22 +328,24 @@ export function QuickBookingPopover({
             </Select>
           </div>
 
-          {/* Summary */}
           {selectedService && (
             <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Duration</span>
-                <span className="font-medium">{selectedService.duration_minutes} min</span>
+                <span className="text-gray-600">{t("web.provider.portal.quickBookingPopover.duration")}</span>
+                <span className="font-medium">
+                  {t("web.provider.portal.quickBookingPopover.durationMin", {
+                    minutes: selectedService.duration_minutes,
+                  })}
+                </span>
               </div>
               <div className="flex items-center justify-between text-sm mt-1">
-                <span className="text-gray-600">Price</span>
+                <span className="text-gray-600">{t("web.provider.portal.quickBookingPopover.price")}</span>
                 <span className="font-bold text-primary">R{selectedService.price.toFixed(2)}</span>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-4 py-3 border-t bg-gray-50 flex gap-2">
           <Button
             variant="outline"
@@ -355,8 +356,8 @@ export function QuickBookingPopover({
               onOpenFullDialog?.();
             }}
           >
-            <Plus className="w-4 h-4 mr-1.5" />
-            More Options
+            <Plus className="w-4 h-4 me-1.5" />
+            {t("web.provider.portal.quickBookingPopover.moreOptions")}
           </Button>
           <Button
             size="sm"
@@ -365,11 +366,11 @@ export function QuickBookingPopover({
             disabled={isLoading || !formData.service_id}
           >
             {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+              <Loader2 className="w-4 h-4 animate-spin me-1.5" />
             ) : (
-              <ChevronRight className="w-4 h-4 mr-1.5" />
+              <ChevronRight className="w-4 h-4 me-1.5" />
             )}
-            Book
+            {t("web.provider.portal.quickBookingPopover.book")}
           </Button>
         </div>
       </PopoverContent>

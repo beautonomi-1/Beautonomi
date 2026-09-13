@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import PlatformLogo from "../platform/PlatformLogo";
 import { fetcher } from "@/lib/http/fetcher";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AboutUsContent {
   section_key: string;
@@ -19,6 +20,7 @@ interface AboutUsModalProps {
 }
 
 export default function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
+  const { t } = useTranslation();
   const [content, setContent] = useState<AboutUsContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -56,12 +58,12 @@ export default function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
       <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto z-[9999] rounded-none sm:rounded-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-xl sm:text-2xl font-semibold flex flex-col sm:flex-row items-center gap-2 sm:gap-3">
-            <PlatformLogo alt="Beautonomi Logo" className="w-24 sm:w-32" />
-            <span>About Beautonomi</span>
+            <PlatformLogo alt={t("web.global.aboutUsModal.logoAlt")} className="w-24 sm:w-32" />
+            <span>{t("web.global.aboutUsModal.title")}</span>
           </DialogTitle>
         </DialogHeader>
         {isLoading ? (
-          <div className="py-8 text-center text-gray-500">Loading...</div>
+          <div className="py-8 text-center text-gray-500">{t("common.loading")}</div>
         ) : (
           <div className="space-y-4 sm:space-y-6 py-2 sm:py-4">
             {mainSections.map((section) => (
@@ -76,7 +78,7 @@ export default function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                 {content.find((item) => item.section_key === "contact_intro") && (
                   <>
                     <h3 className="text-base sm:text-lg font-semibold mb-2">
-                      {content.find((item) => item.section_key === "contact_intro")?.title || "Contact Us"}
+                      {content.find((item) => item.section_key === "contact_intro")?.title || t("web.global.aboutUsModal.contactUs")}
                     </h3>
                     <p className="text-sm sm:text-base text-gray-600 mb-2">
                       {content.find((item) => item.section_key === "contact_intro")?.content}
@@ -105,20 +107,20 @@ export default function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
 
             {content.length === 0 && !isLoading && (
               <div className="py-8 text-center text-gray-500">
-                No content available at the moment.
+                {t("web.global.aboutUsModal.empty")}
               </div>
             )}
 
             <div className="pt-4 border-t">
               <p className="text-sm text-gray-500 text-center">
-                © {new Date().getFullYear()} Beautonomi. All rights reserved.
+                {t("web.global.aboutUsModal.copyright", { year: new Date().getFullYear() })}
               </p>
             </div>
           </div>
         )}
         <div className="flex justify-end pt-4 border-t">
           <Button onClick={onClose} className="bg-[#FF0077] hover:bg-[#E6006A] text-white">
-            Close
+            {t("common.close")}
           </Button>
         </div>
       </DialogContent>

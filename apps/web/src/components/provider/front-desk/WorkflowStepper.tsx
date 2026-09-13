@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,7 +13,7 @@ const STEPS = [
   { id: "checkout", labels: ["ready_to_pay", "completed", "cancelled"] },
 ] as const;
 
-const STEP_LABELS = ["Arrived", "In Service", "Checkout"] as const;
+const STEP_LABEL_KEYS = ["web.providerExtras.arrived", "web.provider.portal.waitingRoom.inService", "web.provider.portal.checkoutDialog.checkout"] as const;
 
 function getStepIndex(badge: string): number {
   if (badge === "needs_confirmation") return -1;
@@ -41,12 +43,13 @@ interface WorkflowStepperProps {
 }
 
 export function WorkflowStepper({ currentBadge, className }: WorkflowStepperProps) {
+  const { t } = useTranslation();
   if (currentBadge === "needs_confirmation") {
     return (
       <div className={cn("space-y-3", className)}>
-        <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50">Workflow</p>
+        <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50">{t("web.providerExtras.workflow")}</p>
         <p className="text-sm font-semibold text-amber-950 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2.5">
-          Confirm this booking first to unlock check-in, at-home arrival, and service steps.
+          {t("web.providerExtras.confirmBookingFirst")}
         </p>
       </div>
     );
@@ -57,13 +60,13 @@ export function WorkflowStepper({ currentBadge, className }: WorkflowStepperProp
   return (
     <div className={cn("space-y-4", className)}>
       <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50">
-        Workflow
+        {t("web.providerExtras.workflow")}
       </p>
       <div className="flex items-center gap-2">
-        {STEP_LABELS.map((label, i) => {
+        {STEP_LABEL_KEYS.map((labelKey, i) => {
           const isComplete = i <= currentStep;
           return (
-            <React.Fragment key={label}>
+<React.Fragment key={labelKey}>
               <div
                 className={cn(
                   "flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-500",
@@ -74,7 +77,7 @@ export function WorkflowStepper({ currentBadge, className }: WorkflowStepperProp
               >
                 <StepIcon isActive={isComplete} stepNum={i + 1} />
               </div>
-              {i < STEP_LABELS.length - 1 && (
+              {i < STEP_LABEL_KEYS.length - 1 && (
                 <div
                   className={cn(
                     "flex-1 h-0.5 min-w-[20px] rounded-full transition-all duration-500",
@@ -87,7 +90,7 @@ export function WorkflowStepper({ currentBadge, className }: WorkflowStepperProp
         })}
       </div>
       <p className="text-sm font-semibold text-[#0F172A]">
-        {STEP_LABELS[currentStep]}
+{t(STEP_LABEL_KEYS[currentStep])}
       </p>
     </div>
   );

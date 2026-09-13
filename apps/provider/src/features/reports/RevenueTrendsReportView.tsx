@@ -2,6 +2,7 @@
  * Revenue trends: ledger net vs scheduled visits with factual basis copy.
  */
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 import { StatCard } from "@/components/ui/StatCard";
@@ -17,18 +18,36 @@ function omitKeys(obj: Record<string, unknown>, keys: string[]): Record<string, 
   return next;
 }
 
-function formatBucket(periodStr: string, gran: string | undefined): string {
+const MONTH_KEYS = [
+  "monthJan",
+  "monthFeb",
+  "monthMar",
+  "monthApr",
+  "monthMay",
+  "monthJun",
+  "monthJul",
+  "monthAug",
+  "monthSep",
+  "monthOct",
+  "monthNov",
+  "monthDec",
+] as const;
+
+function formatBucket(
+  periodStr: string,
+  gran: string | undefined,
+  rv: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (!gran) return periodStr;
   if (gran === "month" && /^\d{4}-\d{2}$/.test(periodStr)) {
     const [y, m] = periodStr.split("-");
     const mi = parseInt(m, 10);
-    if (!Number.isFinite(mi)) return periodStr;
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return `${months[mi - 1]} ${y}`;
+    if (!Number.isFinite(mi) || mi < 1 || mi > 12) return periodStr;
+    return rv("monthYear", { month: rv(MONTH_KEYS[mi - 1]), year: y });
   }
   if (gran === "year") return periodStr.slice(0, 4);
   if (gran === "week" && /^\d{4}-\d{2}-\d{2}$/.test(periodStr)) {
-    return `Week ${periodStr}`;
+    return rv("weekBucket", { period: periodStr });
   }
   return periodStr;
 }
@@ -57,6 +76,10 @@ function isTrendsPayload(data: unknown): data is TrendsPayload {
 }
 
 export function RevenueTrendsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const rv = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.revenueTrendsReport.${key}`, opts) as string;
+
   if (!isTrendsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -87,8 +110,7 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
     <View>
       <View style={twStyle("mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2.5")}>
         <Text style={twStyle("text-xs leading-5 text-indigo-950")}>
-          Ledger line uses finance_transactions (earnings, travel, tips) by recognition date. Visit counts use appointment
-          dates (excl. cancelled & no-show). They are different bases — spread does not imply causation.
+          {rv("basisIntro")}
         </Text>
       </View>
 
@@ -98,13 +120,13 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
 
       {range ? (
         <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-          {range.fromYmd} → {range.toYmd} · {range.timezone.replace(/_/g, " ")}
+          {rv("dateRange", { from: range.fromYmd, to: range.toYmd, tz: range.timezone.replace(/_/g, " ") })}
         </Text>
       ) : null}
 
       <ReportResponsiveStatRow>
         <StatCard
-          title="Ledger net"
+          title={rv("ledgerNet")}
           value={formatCurrency(data.totalRevenue ?? 0)}
           icon="wallet-outline"
           iconColor="#7c3aed"
@@ -112,7 +134,7 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
           compact
         />
         <StatCard
-          title="Visits"
+          title={rv("visits")}
           value={String(data.totalBookings ?? 0)}
           icon="calendar-outline"
           iconColor="#0d9488"
@@ -120,7 +142,7 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
           compact
         />
         <StatCard
-          title="Avg / bucket"
+          title={rv("avgBucket")}
           value={formatCurrency(data.averageRevenue ?? 0)}
           icon="albums-outline"
           iconColor="#d97706"
@@ -128,11 +150,11 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
           compact
         />
         <StatCard
-          title="Δ prior bucket"
+          title={rv("deltaPriorBucket")}
           value={
             prior
               ? `${(data.revenueGrowth ?? 0) >= 0 ? "+" : ""}${(data.revenueGrowth ?? 0).toFixed(1)}%`
-              : "—"
+              : rv("emptyValue")
           }
           icon="trending-up"
           iconColor="#059669"
@@ -143,28 +165,31 @@ export function RevenueTrendsReportView({ data }: { data: unknown }) {
 
       {prior ? (
         <Text style={twStyle("mt-2 text-[11px] text-gray-500")}>
-          vs prior: {formatBucket(prior.previousPeriod, gran)} → {formatBucket(prior.currentPeriod, gran)}
+          {rv("vsPrior", {
+            previous: formatBucket(prior.previousPeriod, gran, rv),
+            current: formatBucket(prior.currentPeriod, gran, rv),
+          })}
         </Text>
       ) : null}
 
       {trends.length > 0 ? (
         <View style={twStyle("mt-5")}>
-          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>By bucket</Text>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>{rv("byBucket")}</Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-3 py-2")}>
-            {trends.map((t, i) => {
-              const pct = maxRev > 0 ? (t.revenue / maxRev) * 100 : 0;
+            {trends.map((row, i) => {
+              const pct = maxRev > 0 ? (row.revenue / maxRev) * 100 : 0;
               return (
-                <View key={`${t.period}-${i}`} style={twStyle("border-b border-gray-50 py-2.5 last:border-b-0")}>
+                <View key={`${row.period}-${i}`} style={twStyle("border-b border-gray-50 py-2.5 last:border-b-0")}>
                   <View style={twStyle("mb-1 flex-row justify-between gap-2")}>
                     <Text style={twStyle("flex-1 text-sm font-medium text-gray-900")} numberOfLines={2}>
-                      {formatBucket(t.period, gran)}
+                      {formatBucket(row.period, gran, rv)}
                     </Text>
                     <Text style={twStyle("text-sm font-semibold tabular-nums text-gray-900")}>
-                      {formatCurrency(t.revenue)}
+                      {formatCurrency(row.revenue)}
                     </Text>
                   </View>
                   <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                    {t.bookings} visit{t.bookings !== 1 ? "s" : ""}
+                    {rv("visitCount", { count: row.bookings })}
                   </Text>
                   <View style={twStyle("h-2 overflow-hidden rounded-full bg-gray-100")}>
                     <View style={[{ width: `${Math.max(pct, 2)}%` }, twStyle("h-full rounded-full bg-violet-500")]} />

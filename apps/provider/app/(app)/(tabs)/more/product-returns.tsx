@@ -10,6 +10,7 @@ import {
   Pressable,
   TextInput,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -23,6 +24,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ReturnRequest {
   id: string;
@@ -43,18 +45,37 @@ interface ReturnsListResponse {
 }
 
 const STATUS_OPTIONS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
-  { value: "item_received", label: "Received" },
-  { value: "refunded", label: "Refunded" },
-];
+  { value: "", labelKey: "statusAll" },
+  { value: "pending", labelKey: "statusPending" },
+  { value: "approved", labelKey: "statusApproved" },
+  { value: "rejected", labelKey: "statusRejected" },
+  { value: "item_received", labelKey: "statusReceived" },
+  { value: "refunded", labelKey: "statusRefunded" },
+] as const;
+
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  pending: "statusPending",
+  approved: "statusApproved",
+  rejected: "statusRejected",
+  item_received: "statusReceived",
+  refunded: "statusRefunded",
+};
 
 const PRODUCT_RETURNS_REALTIME_TABLES = ["product_return_requests"] as const;
 
 /** Content-only for use in Orders hub (Returns tab). */
 export function ProductReturnsContent() {
+  const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.productReturns.${key}`, opts) as string,
+    [t],
+  );
+  const statusLabel = useCallback(
+    (status: string) =>
+      STATUS_LABEL_KEYS[status] ? pr(STATUS_LABEL_KEYS[status]) : status.replace(/_/g, " "),
+    [pr],
+  );
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
@@ -109,7 +130,7 @@ export function ProductReturnsContent() {
       const body = { action, ...extra };
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       patchReturn(`/api/provider/returns/${detail.id}`, body).then(({ error: err }) => {
-        if (err) Alert.alert("Error", err);
+        if (err) Alert.alert(pr("errorTitle"), err);
         else {
           setViewReturn(null);
           setDetail(null);
@@ -117,13 +138,13 @@ export function ProductReturnsContent() {
         }
       });
     },
-    [detail, patchReturn, refresh]
+    [detail, patchReturn, refresh, pr]
   );
 
   const getActions = (status: string): { action: string; label: string }[] => {
-    if (status === "pending") return [{ action: "approve", label: "Approve" }, { action: "reject", label: "Reject" }];
-    if (status === "approved") return [{ action: "mark_received", label: "Mark item received" }];
-    if (status === "item_received") return [{ action: "process_refund", label: "Process refund" }];
+    if (status === "pending") return [{ action: "approve", label: pr("actionApprove") }, { action: "reject", label: pr("actionReject") }];
+    if (status === "approved") return [{ action: "mark_received", label: pr("actionMarkReceived") }];
+    if (status === "item_received") return [{ action: "process_refund", label: pr("actionProcessRefund") }];
     return [];
   };
 
@@ -149,12 +170,12 @@ export function ProductReturnsContent() {
           <TouchableOpacity
             key={opt.value || "all"}
             onPress={() => setStatusFilter(opt.value)}
-            style={[twStyle(`rounded-full px-3 py-1.5 ${statusFilter === opt.value ? "bg-red-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
+            style={[twStyle(`rounded-full px-3 py-1.5 ${statusFilter === opt.value ? "bg-red-600" : "bg-gray-100"}`), { marginEnd: 8, marginBottom: 8 }]}
           >
             <Text
               style={twStyle(`text-xs font-medium ${statusFilter === opt.value ? "text-white" : "text-gray-700"}`)}
             >
-              {opt.label}
+              {pr(opt.labelKey)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -172,9 +193,9 @@ export function ProductReturnsContent() {
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-red-100")}>
               <Ionicons name="arrow-undo-outline" size={32} color="#ef4444" />
             </View>
-            <Text style={twStyle("text-center font-semibold text-gray-900")}>No return requests</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>{pr("emptyTitle")}</Text>
             <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
-              {statusFilter ? `No returns with status "${statusFilter}".` : "Return requests will appear here."}
+              {statusFilter ? pr("emptyFilter", { status: statusLabel(statusFilter) }) : pr("emptyHint")}
             </Text>
           </View>
         ) : (
@@ -188,7 +209,7 @@ export function ProductReturnsContent() {
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-red-100")}>
                 <Ionicons name="arrow-undo-outline" size={20} color="#ef4444" />
               </View>
-              <View style={twStyle("ml-3 flex-1 min-w-0")}>
+              <View style={twStyle("ms-3 flex-1 min-w-0")}>
                 <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                   {r.order?.order_number ?? r.id.slice(0, 8)}
                 </Text>
@@ -196,12 +217,12 @@ export function ProductReturnsContent() {
                   {r.product_name}
                 </Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                  {r.customer?.full_name ?? "Customer"}
+                  {r.customer?.full_name ?? pr("customerFallback")}
                   {r.refund_amount != null ? ` · ${formatCurrency(Number(r.refund_amount))}` : ""}
                 </Text>
-                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{r.status.replace(/_/g, " ")}</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{statusLabel(r.status)}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
           ))
         )}
@@ -211,8 +232,8 @@ export function ProductReturnsContent() {
         <BottomSheet
           visible={!!viewReturn}
           onClose={() => setViewReturn(null)}
-          title={detail?.order?.order_number ?? "Return"}
-          subtitle={detail?.customer?.full_name ?? "Return request"}
+          title={detail?.order?.order_number ?? pr("sheetTitle")}
+          subtitle={detail?.customer?.full_name ?? pr("sheetSubtitle")}
         >
           {loadingDetail ? (
             <View style={twStyle("items-center py-6")}>
@@ -221,33 +242,33 @@ export function ProductReturnsContent() {
           ) : detail ? (
             <>
               <View style={twStyle("mb-3 flex-row flex-wrap")}>
-                <View style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginRight: 8, marginBottom: 8 }]}>
-                  <Text style={twStyle("text-xs font-medium text-gray-700")}>{detail.status.replace(/_/g, " ")}</Text>
+                <View style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginEnd: 8, marginBottom: 8 }]}>
+                  <Text style={twStyle("text-xs font-medium text-gray-700")}>{statusLabel(detail.status)}</Text>
                 </View>
               </View>
               <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>
-                {detail.product_name} {detail.quantity && detail.quantity > 1 ? `(x${detail.quantity})` : ""}
+                {detail.product_name} {detail.quantity && detail.quantity > 1 ? pr("qtySuffix", { count: detail.quantity }) : ""}
               </Text>
               {detail.reason ? (
-                <Text style={twStyle("mb-1 text-sm text-gray-600")}>Reason: {detail.reason.replace(/_/g, " ")}</Text>
+                <Text style={twStyle("mb-1 text-sm text-gray-600")}>{pr("reasonLabel", { reason: detail.reason.replace(/_/g, " ") })}</Text>
               ) : null}
               {detail.description ? (
                 <Text style={twStyle("mb-3 text-sm text-gray-500 italic")}>{`"${detail.description}"`}</Text>
               ) : null}
               {detail.refund_amount != null && (
                 <Text style={twStyle("mb-3 text-sm font-medium text-gray-900")}>
-                  Refund amount: {formatCurrency(Number(detail.refund_amount))}
+                  {pr("refundAmount", { amount: formatCurrency(Number(detail.refund_amount)) })}
                 </Text>
               )}
               {/* Return method chooser only surfaces when approval is a valid action */}
               {getActions(detail.status).some((a) => a.action === "approve") && (
                 <View style={{ marginBottom: 12 }}>
-                  <Text style={twStyle("mb-2 text-xs font-medium uppercase text-gray-500")}>Return method</Text>
+                  <Text style={twStyle("mb-2 text-xs font-medium uppercase text-gray-500")}>{pr("returnMethod")}</Text>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     {([
-                      { value: "drop_off", label: "Drop off" },
-                      { value: "courier", label: "Ship back" },
-                      { value: "not_required", label: "Not required" },
+                      { value: "drop_off", labelKey: "methodDropOff" },
+                      { value: "courier", labelKey: "methodCourier" },
+                      { value: "not_required", labelKey: "methodNotRequired" },
                     ] as const).map((opt) => {
                       const selected = returnMethod === opt.value;
                       return (
@@ -265,7 +286,7 @@ export function ProductReturnsContent() {
                               `text-center text-sm font-medium ${selected ? "text-emerald-700" : "text-gray-700"}`,
                             )}
                           >
-                            {opt.label}
+                            {pr(opt.labelKey)}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -276,12 +297,12 @@ export function ProductReturnsContent() {
               {getActions(detail.status).some((a) => a.action === "process_refund") && (
                 <View style={{ marginBottom: 12 }}>
                   <Text style={twStyle("mb-2 text-xs font-medium uppercase text-gray-500")}>
-                    Refund method
+                    {pr("refundMethod")}
                   </Text>
                   <View style={{ flexDirection: "row", gap: 8 }}>
                     {([
-                      { value: "store_credit", label: "Wallet credit" },
-                      { value: "cash", label: "Cash in person" },
+                      { value: "store_credit", labelKey: "payoutWallet" },
+                      { value: "cash", labelKey: "payoutCash" },
                     ] as const).map((opt) => {
                       const selected = refundPayoutMethod === opt.value;
                       return (
@@ -297,7 +318,7 @@ export function ProductReturnsContent() {
                               `text-center text-sm font-medium ${selected ? "text-emerald-700" : "text-gray-700"}`,
                             )}
                           >
-                            {opt.label}
+                            {pr(opt.labelKey)}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -330,7 +351,7 @@ export function ProductReturnsContent() {
                 </TouchableOpacity>
               ))}
               {getActions(detail.status).length === 0 && (
-                <Text style={twStyle("text-sm text-gray-500")}>No further actions for this status.</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{pr("noFurtherActions")}</Text>
               )}
             </>
           ) : null}
@@ -340,18 +361,18 @@ export function ProductReturnsContent() {
       <Modal visible={rejectNoteModal} transparent animationType="fade" onRequestClose={() => setRejectNoteModal(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setRejectNoteModal(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Reject return</Text>
-            <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>Add a note for the customer (optional):</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>{pr("rejectTitle")}</Text>
+            <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>{pr("rejectHint")}</Text>
             <TextInput
               value={rejectNote}
               onChangeText={setRejectNote}
-              placeholder="e.g. Item was used, outside return window"
+              placeholder={pr("rejectPlaceholder")}
               multiline
               style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 72, textAlignVertical: "top", marginBottom: 16 }}
             />
             <View style={{ flexDirection: "row", gap: 10 }}>
               <TouchableOpacity onPress={() => setRejectNoteModal(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
-                <Text style={{ fontWeight: "600", color: "#374151" }}>Cancel</Text>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>{pr("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -360,7 +381,7 @@ export function ProductReturnsContent() {
                 }}
                 style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
               >
-                <Text style={{ fontWeight: "600", color: "#fff" }}>Reject</Text>
+                <Text style={{ fontWeight: "600", color: "#fff" }}>{pr("reject")}</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -371,9 +392,11 @@ export function ProductReturnsContent() {
 }
 
 export default function ProductReturnsScreen() {
+  const { t } = useTranslation();
+  const pr = (key: string) => t(`provider.mobile.screens.productReturns.${key}`) as string;
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Returns & Refunds" showBack subtitle="Return requests" />
+      <ScreenHeader title={pr("title")} showBack subtitle={pr("subtitle")} />
       <ProductReturnsContent />
     </ScreenContainer>
   );

@@ -9,6 +9,8 @@ export type TenantRegionConfig = {
   defaultTimezone: string;
   regionDisplayName: string;
   phoneCountryCode: string;
+  /** BCP-47-ish codes from `regions.supported_languages` when configured. */
+  supportedLanguages: string[];
   /** `public.regions.id` when `tenants.region_code` matches an active row (migration 377). Used for region_secrets / gateways. */
   regionId: string | null;
   /** `region_settings.settings` JSON overlay for this region (optional keys: phone_country_code, region_display_name, …). */
@@ -61,11 +63,18 @@ export async function getTenantRegionConfig(tenantId: string): Promise<TenantReg
     regionCodeKey
       ? supabase
           .from("regions")
-          .select("id, name")
+          .select("id, name, supported_languages, default_language")
           .eq("code", regionCodeKey)
           .eq("is_active", true)
           .maybeSingle()
-      : Promise.resolve({ data: null as { id: string; name: string } | null }),
+      : Promise.resolve({
+          data: null as {
+            id: string;
+            name: string;
+            supported_languages?: string[] | null;
+            default_language?: string | null;
+          } | null,
+        }),
   ]);
 
   if (countryError) {
@@ -77,9 +86,14 @@ export async function getTenantRegionConfig(tenantId: string): Promise<TenantReg
 
   let regionId: string | null = null;
   let regionSettings: Record<string, unknown> | undefined;
+  let supportedLanguages: string[] = [];
 
   if (region?.id) {
     regionId = region.id;
+    const rawSupported = (region as { supported_languages?: string[] | null }).supported_languages;
+    if (Array.isArray(rawSupported) && rawSupported.length > 0) {
+      supportedLanguages = rawSupported.map((c) => String(c).trim()).filter(Boolean);
+    }
     const { data: rs } = await supabase
       .from("region_settings")
       .select("settings")
@@ -102,6 +116,10 @@ export async function getTenantRegionConfig(tenantId: string): Promise<TenantReg
   const regionDisplayName =
     displayFromSettings || country?.name || tenant.name || region?.name || "South Africa";
 
+  // Leave `supportedLanguages` empty when the region has no allowlist.
+  // Empty means Wave A for *suggestions* (`languagesForMarket`). Pickers show
+  // every bundled locale so tourists can still choose German on .co.za.
+
   return {
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
@@ -111,6 +129,7 @@ export async function getTenantRegionConfig(tenantId: string): Promise<TenantReg
     defaultTimezone: tenant.default_timezone,
     regionDisplayName,
     phoneCountryCode,
+    supportedLanguages,
     regionId,
     ...(regionSettings && Object.keys(regionSettings).length > 0 ? { regionSettings } : {}),
   };

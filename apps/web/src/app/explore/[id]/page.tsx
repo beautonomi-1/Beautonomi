@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { fetchExplorePost } from "@/lib/explore/fetch-posts";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import ExplorePostPageClient from "./ExplorePostPageClient";
 
 export const revalidate = 300;
@@ -20,12 +22,14 @@ export async function generateMetadata({
   const post = await fetchExplorePost(id);
   const origin = await getPublicSiteOriginFromHeaders();
   const canonical = `/explore/${id}`;
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
 
   if (!post) {
     return {
-      title: "Post not found | Beautonomi",
-      description: "This explore post is unavailable on Beautonomi.",
-      alternates: { canonical, languages: getHreflangAlternateUrls(canonical) },
+      title: t("web.seo.exploreNotFoundTitle") as string,
+      description: t("web.seo.exploreNotFoundDescription") as string,
+      alternates: { canonical, languages: await hreflangForPath(canonical) },
     };
   }
 
@@ -47,7 +51,7 @@ export async function generateMetadata({
   return {
     title,
     description,
-    alternates: { canonical, languages: getHreflangAlternateUrls(canonical) },
+    alternates: { canonical, languages: await hreflangForPath(canonical) },
     openGraph: {
       type: primaryMedia && isVideoUrl(primaryMedia) ? "video.other" : "article",
       title,

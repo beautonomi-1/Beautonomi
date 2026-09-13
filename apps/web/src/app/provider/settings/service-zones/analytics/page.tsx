@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -48,6 +49,7 @@ interface AnalyticsData {
 }
 
 export default function ServiceZoneAnalyticsPage() {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const localeTag = useTenantLocaleTag();
@@ -73,7 +75,7 @@ export default function ServiceZoneAnalyticsPage() {
       setAnalytics(response.data);
     } catch (err) {
       setAnalytics(null);
-      setError(err instanceof Error ? err.message : "Failed to load analytics");
+      setError(err instanceof Error ? err.message : t("web.provider.settings.pages.service-zones/analytics.couldNotLoadZoneAnalytics"));
       console.error("Error loading analytics:", err);
     } finally {
       setIsLoading(false);
@@ -88,17 +90,17 @@ export default function ServiceZoneAnalyticsPage() {
   };
 
   const breadcrumbs = [
-    { label: "Home", href: "/" },
-    { label: "Provider", href: "/provider" },
-    { label: "Settings", href: "/provider/settings" },
-    { label: "Service Zones", href: "/provider/settings/service-zones" },
-    { label: "Analytics" },
+    { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+    { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+    { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+    { label: t("web.provider.settings.pages.service-zones/analytics.serviceZones"), href: "/provider/settings/service-zones" },
+    { label: t("web.provider.settings.pages.service-zones/analytics.analytics") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout breadcrumbs={breadcrumbs}>
-        <LoadingTimeout loadingMessage="Loading analytics..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.service-zones/analytics.loadingAnalytics")} />
       </SettingsDetailLayout>
     );
   }
@@ -106,8 +108,8 @@ export default function ServiceZoneAnalyticsPage() {
   return (
     <SettingsDetailLayout breadcrumbs={breadcrumbs}>
       <PageHeader
-        title="Service Zone Analytics"
-        subtitle="Track performance and bookings by service zone"
+        title={t("web.provider.settings.pages.service-zones/analytics.serviceZoneAnalytics")}
+        subtitle={t("web.provider.settings.pages.service-zones/analytics.trackPerformanceAndBookingsByService")}
       />
 
       <div className="space-y-6">
@@ -115,7 +117,7 @@ export default function ServiceZoneAnalyticsPage() {
         <SectionCard>
           <div className="flex flex-col sm:flex-row gap-4 items-end">
             <div className="flex-1">
-              <Label htmlFor="start_date">Start Date</Label>
+              <Label htmlFor="start_date">{t("web.provider.common.startDate")}</Label>
               <Input
                 id="start_date"
                 type="date"
@@ -124,7 +126,7 @@ export default function ServiceZoneAnalyticsPage() {
               />
             </div>
             <div className="flex-1">
-              <Label htmlFor="end_date">End Date</Label>
+              <Label htmlFor="end_date">{t("web.provider.common.endDate")}</Label>
               <Input
                 id="end_date"
                 type="date"
@@ -133,8 +135,8 @@ export default function ServiceZoneAnalyticsPage() {
               />
             </div>
             <Button onClick={loadAnalytics} className="bg-primary hover:bg-primary-hover">
-              <Calendar className="w-4 h-4 mr-2" />
-              Apply Filter
+              <Calendar className="w-4 h-4 me-2" />
+              {t("web.provider.common.applyFilter")}
             </Button>
           </div>
         </SectionCard>
@@ -142,16 +144,16 @@ export default function ServiceZoneAnalyticsPage() {
         {error ? (
           <SectionCard>
             <EmptyReportState
-              title="Could not load zone analytics"
+              title={t("web.provider.settings.pages.service-zones/analytics.couldNotLoadZoneAnalytics")}
               description={error}
-              action={{ label: "Try again", onClick: loadAnalytics }}
+              action={{ label: t("web.provider.settings.pages.service-zones/analytics.tryAgain"), onClick: loadAnalytics }}
             />
           </SectionCard>
         ) : !analytics ? (
           <SectionCard>
             <EmptyReportState
-              title="No analytics data"
-              description="Adjust the date range or add service zones to see performance."
+              title={t("web.provider.settings.pages.service-zones/analytics.noAnalyticsData")}
+              description={t("web.provider.settings.pages.service-zones/analytics.adjustDates")}
             />
           </SectionCard>
         ) : (
@@ -160,10 +162,10 @@ export default function ServiceZoneAnalyticsPage() {
               <SectionCard>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Zones</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.totalZones")}</p>
                     <p className="text-2xl font-bold">{analytics.summary.total_zones}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {analytics.summary.active_zones} active
+                      {t("web.provider.settings.pages.service-zones/analytics.activeCount", { count: analytics.summary.active_zones })}
                     </p>
                   </div>
                   <MapPin className="w-8 h-8 text-primary" />
@@ -173,9 +175,9 @@ export default function ServiceZoneAnalyticsPage() {
               <SectionCard>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Bookings</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.totalBookings")}</p>
                     <p className="text-2xl font-bold">{analytics.summary.total_at_home_bookings}</p>
-                    <p className="text-xs text-gray-500 mt-1">At-home bookings</p>
+                    <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.service-zones/analytics.atHomeBookings")}</p>
                   </div>
                   <TrendingUp className="w-8 h-8 text-blue-500" />
                 </div>
@@ -184,12 +186,12 @@ export default function ServiceZoneAnalyticsPage() {
               <SectionCard>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Revenue</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.totalRevenue")}</p>
                     <p className="text-2xl font-bold">
                       {formatCurrency(analytics.summary.total_revenue)}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Avg: {formatCurrency(analytics.summary.average_booking_value)}
+                      {t("web.provider.settings.pages.service-zones/analytics.avg", { amount: formatCurrency(analytics.summary.average_booking_value) })}
                     </p>
                   </div>
                   <DollarSign className="w-8 h-8 text-green-500" />
@@ -199,11 +201,11 @@ export default function ServiceZoneAnalyticsPage() {
               <SectionCard>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Travel Fees</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.travelFees")}</p>
                     <p className="text-2xl font-bold">
                       {formatCurrency(analytics.summary.total_travel_fees)}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">Total collected</p>
+                    <p className="text-xs text-gray-500 mt-1">{t("web.provider.settings.pages.service-zones/analytics.totalCollected")}</p>
                   </div>
                   <MapPin className="w-8 h-8 text-orange-500" />
                 </div>
@@ -212,10 +214,10 @@ export default function ServiceZoneAnalyticsPage() {
 
             {/* Zone Details */}
             <SectionCard>
-              <h3 className="text-lg font-semibold mb-4">Zone Performance</h3>
+              <h3 className="text-lg font-semibold mb-4">{t("web.provider.settings.pages.service-zones/analytics.zonePerformance")}</h3>
               {analytics.zones.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">
-                  No bookings found in selected period
+{t("web.provider.settings.pages.service-zones/analytics.noBookingsPeriod")}
                 </p>
               ) : (
                 <div className="space-y-4">
@@ -229,38 +231,38 @@ export default function ServiceZoneAnalyticsPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-semibold">{zone.zone_name}</h4>
                             <Badge variant={zone.is_active ? "default" : "secondary"}>
-                              {zone.is_active ? "Active" : "Inactive"}
+                              {zone.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
                             </Badge>
                             <Badge variant="outline">{zone.zone_type}</Badge>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-end">
                           <p className="text-lg font-bold text-primary">
                             {formatCurrency(zone.total_revenue)}
                           </p>
-                          <p className="text-xs text-gray-500">Total Revenue</p>
+                          <p className="text-xs text-gray-500">{t("web.provider.settings.pages.service-zones/analytics.totalRevenue")}</p>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                         <div>
-                          <p className="text-sm text-gray-600">Bookings</p>
+                          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.bookings")}</p>
                           <p className="text-lg font-semibold">{zone.total_bookings}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">Completed</p>
+                          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.completed")}</p>
                           <p className="text-lg font-semibold text-green-600">
                             {zone.completed_bookings}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">Completion Rate</p>
+                          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.completionRate")}</p>
                           <p className="text-lg font-semibold">
                             {zone.completion_rate.toFixed(1)}%
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600">Travel Fees</p>
+                          <p className="text-sm text-gray-600">{t("web.provider.settings.pages.service-zones/analytics.travelFees")}</p>
                           <p className="text-lg font-semibold">
                             {formatCurrency(zone.total_travel_fees)}
                           </p>
@@ -270,7 +272,7 @@ export default function ServiceZoneAnalyticsPage() {
                       {zone.cancelled_bookings > 0 && (
                         <div className="mt-2">
                           <p className="text-xs text-red-600">
-                            {zone.cancelled_bookings} cancelled booking(s)
+                            {t("web.provider.settings.pages.service-zones/analytics.cancelledCount", { count: zone.cancelled_bookings })}
                           </p>
                         </div>
                       )}

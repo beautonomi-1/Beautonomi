@@ -1,5 +1,6 @@
 import { View, Text } from "react-native";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 export interface PayoutReconciliation {
   recognized_payoutable_earnings: number;
@@ -28,9 +29,12 @@ function money(amount: number, currency: string): string {
  * directly and ignore the hold period / pending requests). Mirrors the web finance page.
  */
 export function PayoutReconciliationCard({ reconciliation, currency, payoutHoldDays }: Props) {
+  const { t } = useTranslation();
+  const prc = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.components.payoutReconciliation.${key}`, opts) as string;
   const Row = ({ label, value, muted }: { label: string; value: number; muted?: boolean }) => (
     <View style={twStyle("flex-row items-center justify-between py-1")}>
-      <Text style={twStyle(`flex-1 pr-3 text-xs ${muted ? "text-gray-500" : "text-gray-700"}`)}>{label}</Text>
+      <Text style={twStyle(`flex-1 pe-3 text-xs ${muted ? "text-gray-500" : "text-gray-700"}`)}>{label}</Text>
       <Text style={twStyle(`text-xs font-medium ${muted ? "text-gray-500" : "text-gray-900"}`)}>
         {money(value, currency)}
       </Text>
@@ -39,36 +43,39 @@ export function PayoutReconciliationCard({ reconciliation, currency, payoutHoldD
 
   return (
     <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-      <Text style={twStyle("text-sm font-semibold text-gray-900")}>How your available balance is calculated</Text>
+      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{prc("title")}</Text>
       <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-        Revenue reports can read higher than withdrawable because they include cash you collected directly.
-        Full bridge:
+        {prc("intro")}
       </Text>
       <View style={twStyle("mt-3")}>
-        <Row label="Recognized payoutable earnings (net of refunds)" value={reconciliation.recognized_payoutable_earnings} />
+        <Row label={prc("recognizedEarnings")} value={reconciliation.recognized_payoutable_earnings} />
         {reconciliation.excluded_provider_collected > 0 ? (
           <Row
-            label="Excluded: cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly (not held by us)"
+            label={prc("excludedCollected")}
             value={reconciliation.excluded_provider_collected}
             muted
           />
         ) : null}
         <Row
-          label={`− On hold${payoutHoldDays && payoutHoldDays > 0 ? ` (clears ${payoutHoldDays} days after each booking)` : ""}`}
+          label={
+            payoutHoldDays && payoutHoldDays > 0
+              ? prc("onHoldWithDays", { count: payoutHoldDays })
+              : prc("onHold")
+          }
           value={reconciliation.on_hold}
           muted
         />
-        <Row label="− Pending / processing requests" value={reconciliation.pending_payouts} muted />
-        <Row label="− Already paid out" value={reconciliation.already_paid_out} muted />
+        <Row label={prc("pendingRequests")} value={reconciliation.pending_payouts} muted />
+        <Row label={prc("alreadyPaidOut")} value={reconciliation.already_paid_out} muted />
         <View style={twStyle("mt-2 flex-row items-center justify-between border-t border-gray-100 pt-2")}>
-          <Text style={twStyle("text-sm font-semibold text-gray-900")}>= Available to withdraw</Text>
+          <Text style={twStyle("text-sm font-semibold text-gray-900")}>{prc("available")}</Text>
           <Text style={twStyle("text-sm font-bold text-emerald-600")}>
             {money(reconciliation.available_balance, currency)}
           </Text>
         </View>
       </View>
       <Text style={twStyle("mt-3 text-[10px] text-gray-400")}>
-        Subscription and ads are billed to your card separately and never reduce this balance.
+        {prc("footer")}
       </Text>
     </View>
   );

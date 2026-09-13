@@ -2,6 +2,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-
 import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM, RADIUS_BUTTON } from "@/constants/layout";
 import { Colors } from "@/constants/colors";
 import { useThemedColors } from "@/hooks/useThemedColors";
+import { useTranslation } from "@beautonomi/i18n";
 import { MiniBrandLoader } from "@/components/MiniBrandLoader";
 
 interface ScreenFrameProps {
@@ -45,6 +46,7 @@ export function ScreenFrame({
   // Light/Dark/System picker a real visible effect across stack screens
   // without having to rewrite every individual screen at once.
   const themed = useThemedColors();
+  const { t } = useTranslation();
   if (loading) {
     if (skeleton) {
       return (
@@ -77,10 +79,10 @@ export function ScreenFrame({
             onPress={onRetry}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS_BUTTON }}
             accessibilityRole="button"
-            accessibilityLabel="Retry"
-            accessibilityHint="Attempts to reload the content"
+            accessibilityLabel={t("common.retry")}
+            accessibilityHint={t("customer.mobile.screens.screenFrame.retryHint")}
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{t("common.retry")}</Text>
           </TouchableOpacity>
         )}
       </View>

@@ -51,6 +51,8 @@ export function getBookingLifecycleDisplay(input: {
   paymentStatus?: string | null;
   /** Optional — outstanding balance is checked alongside `paymentStatus` when resolving `pending_payment`. */
   outstandingBalance?: number | null;
+  /** Derived customer list hint from `/api/me/bookings` (`lifecycle_hint`). */
+  lifecycleHint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null;
 }): BookingLifecycleDisplay {
   const status = resolveEffectiveBookingLifecycleStatus({
     status: input.status,
@@ -58,6 +60,17 @@ export function getBookingLifecycleDisplay(input: {
     outstandingBalance: input.outstandingBalance,
   });
   const providerName = input.providerName?.trim() || "your provider";
+
+  if (input.lifecycleHint === "awaiting_close_out") {
+    return {
+      label: "Waiting for salon to close out",
+      title: "Waiting for salon to close out",
+      description: `${providerName} still needs to complete this appointment on their side.`,
+      tone: "warning",
+      isAwaitingProviderConfirmation: false,
+      isPaymentInProgress: false,
+    };
+  }
 
   if (status === "pending_payment") {
     return {

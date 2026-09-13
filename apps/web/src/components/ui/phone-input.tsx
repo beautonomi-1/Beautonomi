@@ -21,6 +21,7 @@ import {
 } from "@/lib/phone-input-countries";
 import { useDefaultPhoneDialCode } from "@/hooks/use-default-phone-dial";
 import { Check, ChevronDown, Phone, Search } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PhoneInputProps {
   value?: string;
@@ -112,40 +113,13 @@ function CountryFlagImage({
   );
 }
 
-/** Muted helper: what to type (no country code), tuned per region. */
-function nationalFormatHint(iso: string | undefined, dial: string): string {
-  const u = iso?.toUpperCase() ?? "";
-  if (u === "ZA") {
-    return `South Africa first: national digits only (omit +27). Example: 82 123 4567 or 082 123 4567.`;
-  }
-  if (u === "US" || u === "CA") {
-    return `Format: 10 digits, area code first — omit ${dial}.`;
-  }
-  if (u === "GB") {
-    return `Format: UK number without ${dial}. Example: 7700 900123.`;
-  }
-  if (u === "AU" || u === "NZ") {
-    return `Format: national number only — omit ${dial}. Spaces optional.`;
-  }
-  if (u === "IN") {
-    return `Format: 10-digit mobile without ${dial}.`;
-  }
-  if (u === "NG" || u === "KE" || u === "GH") {
-    return `Format: national mobile digits only — omit ${dial}.`;
-  }
-  if (u === "DE" || u === "FR" || u === "NL" || u === "ES" || u === "IT" || u === "PT") {
-    return `Format: national number without ${dial}. Drop any leading 0 if your country uses one.`;
-  }
-  return `Format: enter your number without the country code (${dial}). Digits and spaces only.`;
-}
-
 export function PhoneInput({
   value = "",
   onChange,
   onCountryCodeChange,
   label,
   required = false,
-  placeholder = "Phone number",
+  placeholder,
   className,
   disabled = false,
   defaultCountryCode,
@@ -153,7 +127,8 @@ export function PhoneInput({
   inputId = "phone-input",
   inputAriaLabel,
 }: PhoneInputProps) {
-  const visibleLabel = label === "" ? null : (label ?? "Phone Number");
+  const { t } = useTranslation();
+  const visibleLabel = label === "" ? null : (label ?? t("web.global.phoneInput.defaultLabel"));
   const overrideDial =
     defaultCountryCode != null && String(defaultCountryCode).trim().startsWith("+")
       ? String(defaultCountryCode).trim()
@@ -286,10 +261,19 @@ export function PhoneInput({
     return normalizePhoneToE164(phoneNumber.trim(), dialDigits) ?? "";
   }, [phoneNumber, selectedDial]);
 
-  const formatHelperText = useMemo(
-    () => nationalFormatHint(selectedIsoCode, selectedDial),
-    [selectedIsoCode, selectedDial]
-  );
+  const formatHelperText = useMemo(() => {
+    const u = selectedIsoCode?.toUpperCase() ?? "";
+    if (u === "ZA") return t("web.global.phoneInput.hintZa");
+    if (u === "US" || u === "CA") return t("web.global.phoneInput.hintUsCa", { dial: selectedDial });
+    if (u === "GB") return t("web.global.phoneInput.hintGb", { dial: selectedDial });
+    if (u === "AU" || u === "NZ") return t("web.global.phoneInput.hintAuNz", { dial: selectedDial });
+    if (u === "IN") return t("web.global.phoneInput.hintIn", { dial: selectedDial });
+    if (u === "NG" || u === "KE" || u === "GH") return t("web.global.phoneInput.hintNgKeGh", { dial: selectedDial });
+    if (u === "DE" || u === "FR" || u === "NL" || u === "ES" || u === "IT" || u === "PT") {
+      return t("web.global.phoneInput.hintEu", { dial: selectedDial });
+    }
+    return t("web.global.phoneInput.hintDefault", { dial: selectedDial });
+  }, [selectedIsoCode, selectedDial, t]);
 
   const applyCountry = useCallback(
     (iso: string) => {
@@ -336,7 +320,9 @@ export function PhoneInput({
   };
 
   const nationalPlaceholder =
-    selectedDial === "+27" ? "82 123 4567" : placeholder;
+    selectedDial === "+27"
+      ? t("web.global.phoneInput.zaExample")
+      : (placeholder ?? t("web.global.phoneInput.placeholder"));
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -362,18 +348,18 @@ export function PhoneInput({
               type="button"
               disabled={disabled || countriesLoading}
               className={cn(
-                "flex w-full min-w-0 items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 text-left transition-colors",
+                "flex w-full min-w-0 items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 text-start transition-colors",
                 "hover:bg-gray-50/80 dark:border-neutral-700 dark:bg-neutral-950 dark:hover:bg-neutral-900/80",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/25",
                 (disabled || countriesLoading) && "cursor-not-allowed opacity-60"
               )}
               aria-expanded={countryOpen}
               aria-haspopup="listbox"
-              aria-label="Country or region"
+              aria-label={t("web.global.phoneInput.countryOrRegionA11y")}
             >
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-neutral-400">
-                  Country code
+{t("web.global.phoneInput.countryCode")}
                 </span>
                 <span className="flex min-w-0 items-center gap-2.5 text-[15px] font-medium text-gray-900 dark:text-neutral-100">
                   {selectedCountry ? (
@@ -387,7 +373,7 @@ export function PhoneInput({
                       </span>
                     </>
                   ) : (
-                    <span className="text-gray-500">Choose country…</span>
+                    <span className="text-gray-500">{t("web.global.phoneInput.chooseCountry")}</span>
                   )}
                 </span>
               </div>
@@ -424,14 +410,14 @@ export function PhoneInput({
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
-                    placeholder="Search countries or codes…"
+                    placeholder={t("web.global.phoneInput.searchPlaceholder")}
                     value={countrySearch}
                     onChange={(e) => setCountrySearch(e.target.value)}
                     className={cn(
-                      "h-10 rounded-lg border-gray-200 bg-gray-50/80 pl-9 text-sm dark:border-neutral-700 dark:bg-neutral-900",
+                      "h-10 rounded-lg border-gray-200 bg-gray-50/80 ps-9 text-sm dark:border-neutral-700 dark:bg-neutral-900",
                       "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
                     )}
-                    aria-label="Search countries"
+                    aria-label={t("web.global.phoneInput.searchA11y")}
                   />
                 </div>
               </div>
@@ -443,13 +429,13 @@ export function PhoneInput({
               >
                 <div
                   role="listbox"
-                  aria-label="Countries"
+                  aria-label={t("web.global.phoneInput.countriesA11y")}
                   className="p-1"
                   onWheel={(e) => e.stopPropagation()}
                 >
                   {filteredCountries.length === 0 ? (
                     <p className="px-3 py-6 text-center text-sm text-gray-500 dark:text-neutral-400">
-                      No countries match “{countrySearch.trim()}”.
+{t("web.global.phoneInput.noMatch", { query: countrySearch.trim() })}
                     </p>
                   ) : (
                     filteredCountries.map((country) => {
@@ -462,7 +448,7 @@ export function PhoneInput({
                           aria-selected={selected}
                           onClick={() => applyCountry(country.code)}
                           className={cn(
-                            "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                            "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm transition-colors",
                             "hover:bg-gray-100 dark:hover:bg-neutral-800/90",
                             selected && "bg-primary/5 dark:bg-primary/10"
                           )}
@@ -515,7 +501,7 @@ export function PhoneInput({
         ) : null}
 
         {!validationError && isCompleteE164(composedE164Preview) ? (
-          <p className="text-xs font-medium text-emerald-600/85 dark:text-emerald-400/90">Number looks valid.</p>
+          <p className="text-xs font-medium text-emerald-600/85 dark:text-emerald-400/90">{t("web.global.phoneInput.numberLooksValid")}</p>
         ) : null}
 
         {(validationError || !isCompleteE164(composedE164Preview)) && (

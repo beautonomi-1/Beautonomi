@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -36,6 +37,7 @@ interface Location {
 }
 
 export default function ProviderLocations() {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState<Location[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,10 +78,10 @@ export default function ProviderLocations() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load locations";
+          : t("web.provider.settings.pages.locations.failedToLoadLocations");
       setError(errorMessage);
       console.error("Error loading locations:", err);
     } finally {
@@ -88,21 +90,21 @@ export default function ProviderLocations() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this location?")) return;
+    if (!confirm(t("web.provider.settings.pages.locations.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/locations/${id}`);
-      toast.success("Location deleted successfully");
+      toast.success(t("web.provider.settings.pages.locations.locationDeleted"));
       loadLocations();
     } catch {
-      toast.error("Failed to delete location");
+      toast.error(t("web.provider.settings.pages.locations.failedToDeleteLocation"));
     }
   };
 
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading locations..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.locations.loadingLocations")} />
       </div>
     );
   }
@@ -113,31 +115,31 @@ export default function ProviderLocations() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-semibold mb-2">Locations</h1>
-            <p className="text-gray-600">Manage your business locations</p>
+            <h1 className="text-3xl font-semibold mb-2">{t("web.provider.settings.pages.locations.locations")}</h1>
+            <p className="text-gray-600">{t("web.provider.settings.pages.locations.manageYourBusinessLocations")}</p>
           </div>
           <Button onClick={() => setShowAddModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Location
+            <Plus className="w-4 h-4 me-2" />
+{t("web.provider.settings.pages.locations.addLocation")}
           </Button>
         </div>
 
         {/* Locations List */}
         {error ? (
           <EmptyState
-            title="Failed to load locations"
+title={t("web.provider.settings.pages.locations.failedToLoadLocations")}
             description={error}
             action={{
-              label: "Retry",
+label: t("web.provider.common.retry"),
               onClick: loadLocations,
             }}
           />
         ) : locations.length === 0 ? (
           <EmptyState
-            title="No locations yet"
-            description="Add your first business location to get started"
+title={t("web.provider.settings.pages.locations.noLocationsYet")}
+description={t("web.provider.settings.pages.locations.addFirst")}
             action={{
-              label: "Add Location",
+label: t("web.provider.settings.pages.locations.addLocation"),
               onClick: () => setShowAddModal(true),
             }}
           />
@@ -194,6 +196,7 @@ function ZoneSuggestionsModal({
   onClose: () => void;
   onSelectZone: (zoneId: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={true} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -203,9 +206,9 @@ function ZoneSuggestionsModal({
               <Sparkles className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <DialogTitle>Service Zone Suggestions</DialogTitle>
+<DialogTitle>{t("web.provider.settings.pages.locations.serviceZoneSuggestions")}</DialogTitle>
               <DialogDescription className="mt-1">
-                We found {zones.length} zone{zones.length !== 1 ? "s" : ""} matching your location. Select zones to start offering at-home services.
+{t("web.provider.settings.pages.locations.zonesMatching", { count: zones.length })}
               </DialogDescription>
             </div>
           </div>
@@ -222,16 +225,16 @@ function ZoneSuggestionsModal({
                   <h3 className="font-semibold text-lg mb-1">{zone.name}</h3>
                   <p className="text-sm text-blue-700 mb-2">{zone.match_reason}</p>
                   <p className="text-xs text-gray-600">
-                    Type: {zone.zone_type === "postal_code" ? "Postal Code" : 
-                           zone.zone_type === "city" ? "City" :
-                           zone.zone_type === "radius" ? "Radius" : "Polygon"}
+Type: {zone.zone_type === "postal_code" ? t("web.provider.onboarding.leftover2.postalCodeType") :
+                           zone.zone_type === "city" ? t("web.provider.onboarding.leftover2.cityType") :
+                           zone.zone_type === "radius" ? t("web.provider.onboarding.zones.radius") : t("web.provider.settings.pages.locations.polygon")}
                   </p>
                 </div>
                 <Button
                   onClick={() => onSelectZone(zone.id)}
-                  className="bg-primary hover:bg-primary-hover text-white ml-4"
+                  className="bg-primary hover:bg-primary-hover text-white ms-4"
                 >
-                  Select Zone
+{t("web.provider.settings.pages.locations.selectZone")}
                 </Button>
               </div>
             </div>
@@ -240,7 +243,7 @@ function ZoneSuggestionsModal({
 
         <div className="flex gap-2 justify-end pt-4 border-t">
           <Button variant="outline" onClick={onClose}>
-            Maybe Later
+{t("web.provider.settings.pages.locations.maybeLater")}
           </Button>
           <Button
             onClick={() => {
@@ -248,7 +251,7 @@ function ZoneSuggestionsModal({
             }}
             className="bg-primary hover:bg-primary-hover text-white"
           >
-            View All Zones
+{t("web.provider.settings.pages.locations.viewAllZones")}
           </Button>
         </div>
       </DialogContent>
@@ -265,6 +268,7 @@ function LocationCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-4">
@@ -325,12 +329,12 @@ function LocationCard({
               : "bg-gray-100 text-gray-800"
           }`}
         >
-          {location.is_active ? "Active" : "Inactive"}
+          {location.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
         </span>
         {location.operating_hours && (
           <div className="flex items-center gap-1 text-xs text-gray-600">
             <Clock className="w-3 h-3" />
-            <span>Hours set</span>
+            <span>{t("web.provider.settings.pages.locations.hoursSet")}</span>
           </div>
         )}
       </div>
@@ -347,6 +351,7 @@ function LocationModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: location?.name || "",
     address_line1: location?.address_line1 || "",
@@ -389,23 +394,23 @@ function LocationModal({
     
     // Client-side validation for required fields
     if (!formData.name?.trim()) {
-      toast.error("Location name is required");
+      toast.error(t("web.provider.settings.pages.locations.nameRequired"));
       return;
     }
     if (!formData.address_line1?.trim()) {
-      toast.error("Address is required");
+      toast.error(t("web.provider.settings.pages.locations.addressRequiredToast"));
       return;
     }
     if (!formData.city?.trim()) {
-      toast.error("City is required");
+      toast.error(t("web.provider.settings.pages.locations.cityRequiredToast"));
       return;
     }
     if (!formData.country?.trim()) {
-      toast.error("Country is required");
+      toast.error(t("web.provider.settings.pages.locations.countryRequiredToast"));
       return;
     }
     if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.settings.pages.locations.enterAValidPhoneNumberOr"));
       return;
     }
 
@@ -434,7 +439,7 @@ function LocationModal({
         response = await fetcher.post<{ data: any }>("/api/provider/locations", submitData);
       }
 
-      toast.success(location ? "Location updated" : "Location added");
+      toast.success(location ? t("web.provider.settings.pages.locations.locationUpdated") : t("web.provider.settings.pages.locations.locationAdded"));
       
       // Check if zone suggestions are available
       if (response.data?._metadata?.has_zone_suggestions && response.data?._metadata?.suggested_zones?.length > 0) {
@@ -445,7 +450,7 @@ function LocationModal({
       
       onSave();
     } catch (error: unknown) {
-      toastPlanGateError(error, "Failed to save location");
+      toastPlanGateError(error, t("web.provider.settings.pages.locations.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -456,36 +461,36 @@ function LocationModal({
       <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
         <div className="flex-shrink-0 px-6 pt-6 pb-2 border-b border-gray-100">
           <h2 className="text-xl font-semibold text-gray-900">
-            {location ? "Edit Location" : "Add Location"}
+            {location ? t("web.provider.settings.pages.locations.editLocation") : t("web.provider.settings.pages.locations.addLocation")}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Type an address and select a suggestion to fill city, state, postal code and coordinates.
+{t("web.provider.settings.pages.locations.addressHint")}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             <div>
-              <Label htmlFor="name">Location name *</Label>
+              <Label htmlFor="name">{t("web.provider.settings.pages.locations.locationName")}</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Main Salon, Branch Location, etc."
+                placeholder={t("web.provider.settings.pages.locations.namePlaceholder")}
                 className="mt-1.5"
                 required
               />
             </div>
 
             <div>
-              <Label htmlFor="address">Address *</Label>
+              <Label htmlFor="address">{t("web.provider.settings.pages.locations.addressRequired")}</Label>
               <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-                Select a suggestion to autofill city, state, postal code and coordinates.
+{t("web.provider.settings.pages.locations.autofillHint")}
               </p>
               <AddressAutocomplete
                 value={formData.address_line1}
                 onChange={handleAddressSelect}
-                placeholder="Start typing an address..."
+                placeholder={t("web.provider.settings.pages.locations.startTypingAnAddress")}
                 country={formData.country || "ZA"}
                 className="relative z-[1]"
                 required
@@ -493,19 +498,19 @@ function LocationModal({
             </div>
 
             <div>
-              <Label htmlFor="address_line2">Apt/Suite (optional)</Label>
+              <Label htmlFor="address_line2">{t("web.provider.settings.pages.locations.aptSuiteOptional")}</Label>
               <Input
                 id="address_line2"
                 value={formData.address_line2}
                 onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
-                placeholder="Apt 4B, Suite 201, etc."
+                placeholder={t("web.provider.settings.pages.locations.aptPlaceholder")}
                 className="mt-1.5"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="city">City *</Label>
+                <Label htmlFor="city">{t("web.provider.settings.pages.locations.cityRequired")}</Label>
                 <Input
                   id="city"
                   value={formData.city}
@@ -515,7 +520,7 @@ function LocationModal({
                 />
               </div>
               <div>
-                <Label htmlFor="state">State/Province</Label>
+                <Label htmlFor="state">{t("web.provider.settings.pages.locations.stateProvince")}</Label>
                 <Input
                   id="state"
                   value={formData.state}
@@ -527,7 +532,7 @@ function LocationModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="postal_code">Postal code</Label>
+                <Label htmlFor="postal_code">{t("web.provider.settings.pages.locations.postalCode")}</Label>
                 <Input
                   id="postal_code"
                   value={formData.postal_code}
@@ -536,7 +541,7 @@ function LocationModal({
                 />
               </div>
               <div>
-                <Label htmlFor="country">Country *</Label>
+                <Label htmlFor="country">{t("web.provider.settings.pages.locations.countryRequired")}</Label>
                 <Input
                   id="country"
                   value={formData.country}
@@ -550,7 +555,7 @@ function LocationModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <PhoneInput
-                  label="Phone"
+                  label={t("web.provider.common.phone")}
                   inputId="provider-location-form-phone"
                   value={formData.phone}
                   onChange={(e164) => setFormData({ ...formData, phone: e164 })}
@@ -558,7 +563,7 @@ function LocationModal({
                 />
               </div>
               <div>
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("web.provider.common.email")}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -577,19 +582,19 @@ function LocationModal({
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                 className="rounded border-gray-300 text-primary focus:ring-primary"
               />
-              <Label htmlFor="is_active" className="font-normal">Active (visible to customers)</Label>
+              <Label htmlFor="is_active" className="font-normal">{t("web.provider.settings.pages.locations.activeVisible")}</Label>
             </div>
           </div>
 
           <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex gap-3 justify-end">
             <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isSaving || !formData.name?.trim() || !formData.address_line1?.trim() || !formData.city?.trim() || !formData.country?.trim()}
             >
-              {isSaving ? "Saving..." : location ? "Update" : "Add"}
+              {isSaving ? t("web.provider.common.saving") : location ? t("web.provider.common.update") : t("web.provider.common.add")}
             </Button>
           </div>
         </form>

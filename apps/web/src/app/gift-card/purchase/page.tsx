@@ -250,7 +250,7 @@ export default function GiftCardPurchasePage() {
                       key={template.id}
                       type="button"
                       onClick={() => setSelectedTemplateId(template.id)}
-                      className={`overflow-hidden rounded-xl border text-left transition ${
+                      className={`overflow-hidden rounded-xl border text-start transition ${
                         selected ? "border-gray-900 ring-2 ring-gray-900" : "border-gray-200 hover:border-gray-400"
                       }`}
                       aria-pressed={selected}

@@ -144,6 +144,42 @@ export async function fetchExplorePost(id: string): Promise<ExplorePost | null> 
   } as ExplorePost;
 }
 
+async function rowsToExplorePosts(
+  rows: Array<Record<string, unknown>>,
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+): Promise<ExplorePost[]> {
+  const providerIds = [...new Set(rows.map((r) => r.provider_id as string))];
+  const { data: provData } = await supabase
+    .from("providers")
+    .select("id, business_name, slug")
+    .in("id", providerIds);
+  type ProvRow = { id: string; business_name?: string; slug?: string };
+  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
+
+  return rows.map((r) => {
+    const p = provMap.get(r.provider_id as string);
+    return {
+      id: r.id,
+      provider_id: r.provider_id,
+      provider: {
+        business_name: p?.business_name ?? "",
+        slug: p?.slug ?? "",
+      },
+      created_by_user_id: r.created_by_user_id,
+      caption: r.caption,
+      media_urls: ((r.media_urls as string[]) || []).map(getMediaPublicUrl),
+      status: r.status,
+      published_at: r.published_at,
+      like_count: (r.like_count as number) ?? 0,
+      comment_count: (r.comment_count as number) ?? 0,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      is_saved: false,
+      is_liked: false,
+    } as ExplorePost;
+  });
+}
+
 /**
  * Server-side fetch of related posts (excluding given post id).
  */
@@ -157,6 +193,43 @@ export async function fetchRelatedPosts(
   } catch {
     return [];
   }
+
+  try {
+    const { data: source } = await supabase
+      .from("explore_posts")
+      .select("caption")
+      .eq("id", excludeId)
+      .maybeSingle();
+    const caption = (source as { caption?: string } | null)?.caption ?? "";
+    if (caption.trim()) {
+      const { fetchSimilarPosts } = await import("@/lib/ai/embeddings");
+      const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
+      const environment =
+        env === "production" ? "production" : env === "staging" ? "staging" : "development";
+      const matches = await fetchSimilarPosts(excludeId, caption, limit, environment);
+      if (matches.length > 0) {
+        const ids = matches.map((m) => m.post_id);
+        const { data: rows } = await supabase
+          .from("explore_posts")
+          .select(
+            "id, provider_id, created_by_user_id, caption, media_urls, status, published_at, like_count, comment_count, created_at, updated_at",
+          )
+          .in("id", ids)
+          .eq("status", "published")
+          .eq("is_hidden", false);
+        if (rows?.length) {
+          const order = new Map(ids.map((id, i) => [id, i]));
+          const sorted = [...rows].sort(
+            (a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999),
+          );
+          return rowsToExplorePosts(sorted.slice(0, limit), supabase);
+        }
+      }
+    }
+  } catch {
+    // fall back to recency
+  }
+
   const { data: rows, error } = await supabase
     .from("explore_posts")
     .select(
@@ -171,34 +244,5 @@ export async function fetchRelatedPosts(
 
   if (error || !rows?.length) return [];
 
-  const providerIds = [...new Set(rows.map((r: any) => r.provider_id))];
-  const { data: provData } = await supabase
-    .from("providers")
-    .select("id, business_name, slug")
-    .in("id", providerIds);
-  type ProvRow = { id: string; business_name?: string; slug?: string };
-  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
-
-  return rows.map((r: any) => {
-    const p = provMap.get(r.provider_id);
-    return {
-      id: r.id,
-      provider_id: r.provider_id,
-      provider: {
-        business_name: p?.business_name ?? "",
-        slug: p?.slug ?? "",
-      },
-      created_by_user_id: r.created_by_user_id,
-      caption: r.caption,
-      media_urls: (r.media_urls || []).map(getMediaPublicUrl),
-      status: r.status,
-      published_at: r.published_at,
-      like_count: r.like_count ?? 0,
-      comment_count: r.comment_count ?? 0,
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-      is_saved: false,
-      is_liked: false,
-    } as ExplorePost;
-  });
+  return rowsToExplorePosts(rows, supabase);
 }

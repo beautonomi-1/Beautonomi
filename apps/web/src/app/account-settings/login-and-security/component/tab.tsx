@@ -36,6 +36,7 @@ import {
   maskEmailForDisplay,
   maskPhoneForDisplay,
 } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import type { LoginAndSecurityInitial } from "../fetch-login-and-security-initial";
 
 type AuthSecurityState = NonNullable<LoginAndSecurityInitial["profile"]["auth_security"]>;
@@ -59,19 +60,21 @@ function maskProfilePhone(phone: string): string {
 // the TabsContent blocks are retained below so re-enabling is a one-line
 // change.
 const tabs = [
-  { value: "step1", label: "LOGIN" },
+  { value: "step1" },
 ];
 
 const LoginAccount = ({
   initial,
   accountHomeHref = "/account-settings",
-  accountHomeLabel = "Account",
+  accountHomeLabel,
 }: {
   initial: LoginAndSecurityInitial | null;
   accountHomeHref?: string;
   accountHomeLabel?: string;
 }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
+  const homeLabel = accountHomeLabel ?? t("web.accountSettings.account");
   const [activeTab, setActiveTab] = useState("step1");
   const [showPasswordUpdate, setShowPasswordUpdate] = useState(false);
   const [passwordData, setPasswordData] = useState({
@@ -203,22 +206,26 @@ const LoginAccount = ({
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return "Never";
+    if (!dateString) return t("web.accountSettings.loginAndSecurity.never");
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays === 0) return t("web.accountSettings.loginAndSecurity.today");
+    if (diffDays === 1) return t("web.accountSettings.loginAndSecurity.yesterday");
+    if (diffDays < 7) return t("web.accountSettings.loginAndSecurity.daysAgo", { count: diffDays });
     if (diffDays < 30) {
       const weeks = Math.floor(diffDays / 7);
-      return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+      return weeks > 1
+        ? t("web.accountSettings.loginAndSecurity.weeksAgo", { count: weeks })
+        : t("web.accountSettings.loginAndSecurity.weekAgo", { count: weeks });
     }
     if (diffDays < 365) {
       const months = Math.floor(diffDays / 30);
-      return `${months} month${months > 1 ? 's' : ''} ago`;
+      return months > 1
+        ? t("web.accountSettings.loginAndSecurity.monthsAgo", { count: months })
+        : t("web.accountSettings.loginAndSecurity.monthAgo", { count: months });
     }
     return date.toLocaleDateString();
   };
@@ -251,22 +258,22 @@ const LoginAccount = ({
     e.preventDefault();
     
     if ((!isSettingFirstPassword && !passwordData.currentPassword) || !passwordData.newPassword || !passwordData.confirmPassword) {
-      toast.error("All fields are required");
+      toast.error(t("web.accountSettings.loginAndSecurity.allFieldsRequired"));
       return;
     }
 
     if (isSettingFirstPassword && !passwordData.nonce.trim()) {
-      toast.error("Enter the verification code before setting a password");
+      toast.error(t("web.accountSettings.loginAndSecurity.enterCodeBeforePassword"));
       return;
     }
 
     if (passwordData.newPassword.length < minimumPasswordLength) {
-      toast.error(`New password must be at least ${minimumPasswordLength} characters long`);
+      toast.error(t("web.accountSettings.loginAndSecurity.passwordMinLength", { min: minimumPasswordLength }));
       return;
     }
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.error("New password and confirm password do not match");
+      toast.error(t("web.accountSettings.loginAndSecurity.passwordsMismatch"));
       return;
     }
 
@@ -278,7 +285,7 @@ const LoginAccount = ({
         nonce: isSettingFirstPassword ? passwordData.nonce.trim() : undefined,
         newPassword: passwordData.newPassword,
       });
-      toast.success(isSettingFirstPassword ? "Password set successfully" : "Password updated successfully");
+      toast.success(isSettingFirstPassword ? t("web.accountSettings.loginAndSecurity.passwordSet") : t("web.accountSettings.loginAndSecurity.passwordUpdated"));
       setShowPasswordUpdate(false);
       setPasswordData({
         currentPassword: "",
@@ -288,7 +295,7 @@ const LoginAccount = ({
       });
       void loadPasswordInfo();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to update password");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.updatePasswordFailed"));
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -296,20 +303,20 @@ const LoginAccount = ({
 
   const handleForgotPassword = async () => {
     if (!user?.email || authSecurity?.email_is_placeholder) {
-      toast.error("Email address not found");
+      toast.error(t("web.accountSettings.loginAndSecurity.emailNotFound"));
       return;
     }
     try {
       await resetPassword(user.email);
-      toast.success("Password reset email sent. Please check your inbox.");
+      toast.success(t("web.accountSettings.loginAndSecurity.resetEmailSent"));
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send password reset email");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.resetEmailFailed"));
     }
   };
 
   const handleRequestPasswordNonce = async () => {
     if (!canVerifyWithCode) {
-      toast.error("Add a verified email or phone number before setting a password.");
+      toast.error(t("web.accountSettings.loginAndSecurity.addContactBeforePassword"));
       return;
     }
     setIsRequestingPasswordNonce(true);
@@ -317,9 +324,9 @@ const LoginAccount = ({
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.reauthenticate();
       if (error) throw error;
-      toast.success("Verification code sent. Enter it below to set your password.");
+      toast.success(t("web.accountSettings.loginAndSecurity.passwordNonceSent"));
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.sendCodeFailed"));
     } finally {
       setIsRequestingPasswordNonce(false);
     }
@@ -328,7 +335,7 @@ const LoginAccount = ({
   const handleSendEmailVerification = async () => {
     const email = newEmail.trim().toLowerCase();
     if (!email || !isMailableEmail(email)) {
-      toast.error("Enter a valid email address");
+      toast.error(t("web.accountSettings.loginAndSecurity.enterValidEmail"));
       return;
     }
     setIsSendingEmail(true);
@@ -339,9 +346,9 @@ const LoginAccount = ({
       setPendingEmailForOtp(email);
       setEmailOtpCode("");
       setEmailStep("enter_otp");
-      toast.success("Verification code sent to your email.");
+      toast.success(t("web.accountSettings.loginAndSecurity.emailCodeSent"));
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.sendCodeFailed"));
     } finally {
       setIsSendingEmail(false);
     }
@@ -366,9 +373,9 @@ const LoginAccount = ({
       setPendingEmailForOtp("");
       setEmailOtpCode("");
       setNewEmail("");
-      toast.success("Email address updated successfully.");
+      toast.success(t("web.accountSettings.loginAndSecurity.emailUpdated"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.loginAndSecurity.verificationFailed"));
     } finally {
       setIsVerifyingEmailOtp(false);
     }
@@ -385,9 +392,9 @@ const LoginAccount = ({
       setPendingPhoneE164(normalized);
       setPhoneStep("enter_otp");
       setPhoneOtpCode("");
-      toast.success("Verification code sent to your phone.");
+      toast.success(t("web.accountSettings.loginAndSecurity.phoneCodeSent"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to send code");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.loginAndSecurity.sendPhoneCodeFailed"));
     } finally {
       setIsSendingPhoneOtp(false);
     }
@@ -413,9 +420,9 @@ const LoginAccount = ({
       setPhoneStep("enter_phone");
       setPendingPhoneE164("");
       setPhoneOtpCode("");
-      toast.success("Phone number updated successfully.");
+      toast.success(t("web.accountSettings.loginAndSecurity.phoneUpdated"));
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
+      toast.error(err instanceof Error ? err.message : t("web.accountSettings.loginAndSecurity.verificationFailed"));
     } finally {
       setIsVerifyingPhoneOtp(false);
     }
@@ -423,15 +430,15 @@ const LoginAccount = ({
 
   const handleDeactivate = async () => {
     if (!authSecurityLoaded) {
-      toast.error("Still loading account security settings. Please try again.");
+      toast.error(t("web.accountSettings.loginAndSecurity.securityLoading"));
       return;
     }
     if (hasPassword && !deactivateData.password) {
-      toast.error("Password is required to deactivate your account");
+      toast.error(t("web.accountSettings.loginAndSecurity.passwordRequiredDeactivate"));
       return;
     }
     if (!hasPassword && !deactivateData.verificationNonce.trim()) {
-      toast.error("Enter the verification code to deactivate your account");
+      toast.error(t("web.accountSettings.loginAndSecurity.codeRequiredDeactivate"));
       return;
     }
 
@@ -442,11 +449,11 @@ const LoginAccount = ({
         verificationNonce: hasPassword ? undefined : deactivateData.verificationNonce.trim(),
         reason: deactivateData.reason || null,
       });
-      toast.success("Account deactivated successfully");
+      toast.success(t("web.accountSettings.loginAndSecurity.deactivated"));
       // Redirect to home with deactivated flag so user sees reactivate banner
       window.location.href = "/?deactivated=true";
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to deactivate account");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.deactivateFailed"));
     } finally {
       setIsDeactivating(false);
     }
@@ -454,7 +461,7 @@ const LoginAccount = ({
 
   const handleRequestDeactivateNonce = async () => {
     if (!canVerifyWithCode) {
-      toast.error("Add a verified email or phone number before deactivating this account.");
+      toast.error(t("web.accountSettings.loginAndSecurity.addContactBeforeDeactivate"));
       return;
     }
     setIsRequestingDeactivateNonce(true);
@@ -464,14 +471,14 @@ const LoginAccount = ({
       if (error) throw error;
       toast.success(deactivateOtpDestination.codeSentMessage);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to send verification code");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.loginAndSecurity.sendCodeFailed"));
     } finally {
       setIsRequestingDeactivateNonce(false);
     }
   };
 
   const handleGlobalSignOut = async () => {
-    if (!window.confirm("This will end every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Are you sure?")) {
+    if (!window.confirm(t("web.accountSettings.loginAndSecurity.globalSignOutConfirm"))) {
       return;
     }
     setIsSigningOutGlobal(true);
@@ -481,11 +488,11 @@ const LoginAccount = ({
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "Could not sign out everywhere");
+        throw new Error(errorData.error || t("web.accountSettings.loginAndSecurity.signOutEverywhereFailed"));
       }
       await signOut();
     } catch (error: any) {
-      toast.error(error.message || "Could not sign out everywhere");
+      toast.error(error.message || t("web.accountSettings.loginAndSecurity.signOutEverywhereFailed"));
     } finally {
       setIsSigningOutGlobal(false);
     }
@@ -497,8 +504,8 @@ const LoginAccount = ({
         <BackButton href={accountHomeHref} />
         <Breadcrumb 
           items={[
-            { label: accountHomeLabel, href: accountHomeHref },
-            { label: "Login & security" }
+            { label: homeLabel, href: accountHomeHref },
+            { label: t("web.accountSettings.loginAndSecurity.title") }
           ]} 
         />
         
@@ -506,9 +513,9 @@ const LoginAccount = ({
         <div
           className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
         >
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Login & security</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">{t("web.accountSettings.loginAndSecurity.title")}</h1>
           <p className="text-sm md:text-base text-gray-600 font-light">
-            Manage your password, email, phone, and login preferences
+            {t("web.accountSettings.loginAndSecurity.subtitle")}
           </p>
         </div>
 
@@ -525,7 +532,7 @@ const LoginAccount = ({
                       : "border-b-2 border-transparent text-sm text-gray-500 hover:text-primary"
                   }`}
                 >
-                  {tab.label}
+                  {t("web.accountSettings.loginAndSecurity.tabLogin")}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -540,11 +547,11 @@ const LoginAccount = ({
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Password</h2>
+                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">{t("web.accountSettings.loginAndSecurity.password")}</h2>
                     <p className="text-sm text-gray-500 font-light">
                       {isSettingFirstPassword
-                        ? "No password set yet"
-                        : `Last updated ${formatDate(passwordLastUpdated)}`}
+                        ? t("web.accountSettings.loginAndSecurity.noPasswordSet")
+                        : t("web.accountSettings.loginAndSecurity.lastUpdated", { date: formatDate(passwordLastUpdated) })}
                     </p>
                   </div>
                   <Button
@@ -552,7 +559,11 @@ const LoginAccount = ({
                     onClick={handleUpdateClick}
                     className="text-primary border-primary hover:bg-primary hover:text-white"
                   >
-                    {showPasswordUpdate ? "Cancel" : hasPassword ? "Update" : "Set password"}
+                    {showPasswordUpdate
+                      ? t("web.accountSettings.loginAndSecurity.cancel")
+                      : hasPassword
+                        ? t("web.accountSettings.loginAndSecurity.update")
+                        : t("web.accountSettings.loginAndSecurity.setPassword")}
                   </Button>
                 </div>
 
@@ -565,17 +576,17 @@ const LoginAccount = ({
                       {isSettingFirstPassword ? (
                         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                           <p className="text-sm text-gray-700">
-                            This account uses one-time codes or social login. Send a verification code to your verified email or phone, then choose a password.
+                            {t("web.accountSettings.loginAndSecurity.setPasswordIntro")}
                           </p>
                           {!canVerifyWithCode && (
                             <p className="mt-2 text-sm text-red-600">
-                              Add and verify an email or phone number before setting a password.
+                              {t("web.accountSettings.loginAndSecurity.addVerifyBeforePassword")}
                             </p>
                           )}
                           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                             <div className="flex-1">
                               <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Verification code
+                                {t("web.accountSettings.loginAndSecurity.verificationCode")}
                               </label>
                               <Input
                                 value={passwordData.nonce}
@@ -586,7 +597,7 @@ const LoginAccount = ({
                                 inputMode="numeric"
                                 autoComplete="one-time-code"
                                 required
-                                placeholder="Enter code"
+                                placeholder={t("web.accountSettings.loginAndSecurity.enterCode")}
                               />
                             </div>
                             <Button
@@ -595,14 +606,16 @@ const LoginAccount = ({
                               onClick={handleRequestPasswordNonce}
                               disabled={isRequestingPasswordNonce || !canVerifyWithCode}
                             >
-                              {isRequestingPasswordNonce ? "Sending..." : "Send code"}
+                              {isRequestingPasswordNonce
+                                ? t("web.accountSettings.loginAndSecurity.sending")
+                                : t("web.accountSettings.loginAndSecurity.sendCode")}
                             </Button>
                           </div>
                         </div>
                       ) : (
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Current Password
+                            {t("web.accountSettings.loginAndSecurity.currentPassword")}
                           </label>
                           <Input
                             type="password"
@@ -612,20 +625,20 @@ const LoginAccount = ({
                             }
                             className="w-full backdrop-blur-sm bg-white/60 border-white/40"
                             required
-                            placeholder="Enter your current password"
+                            placeholder={t("web.accountSettings.loginAndSecurity.currentPasswordPlaceholder")}
                           />
                           <button
                             type="button"
                             onClick={handleForgotPassword}
                             className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors"
                           >
-                            Forgot password?
+                            {t("web.accountSettings.loginAndSecurity.forgotPassword")}
                           </button>
                         </div>
                       )}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          New Password
+                          {t("web.accountSettings.loginAndSecurity.newPassword")}
                         </label>
                         <Input
                           type="password"
@@ -636,13 +649,13 @@ const LoginAccount = ({
                           className="w-full backdrop-blur-sm bg-white/60 border-white/40"
                           required
                           minLength={minimumPasswordLength}
-                          placeholder={`Enter new password (min ${minimumPasswordLength} characters)`}
+                          placeholder={t("web.accountSettings.loginAndSecurity.newPasswordPlaceholder", { min: minimumPasswordLength })}
                         />
-                        <p className="text-xs text-gray-500 mt-1">Must be at least {minimumPasswordLength} characters long</p>
+                        <p className="text-xs text-gray-500 mt-1">{t("web.accountSettings.loginAndSecurity.mustBeMinLength", { min: minimumPasswordLength })}</p>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Confirm Password
+                          {t("web.accountSettings.loginAndSecurity.confirmPassword")}
                         </label>
                         <Input
                           type="password"
@@ -652,7 +665,7 @@ const LoginAccount = ({
                           }
                           className="w-full backdrop-blur-sm bg-white/60 border-white/40"
                           required
-                          placeholder="Confirm your new password"
+                          placeholder={t("web.accountSettings.loginAndSecurity.confirmPasswordPlaceholder")}
                         />
                       </div>
                       <div className="flex justify-start">
@@ -662,8 +675,8 @@ const LoginAccount = ({
                           className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isUpdatingPassword
-                            ? isSettingFirstPassword ? "Setting..." : "Updating..."
-                            : isSettingFirstPassword ? "Set Password" : "Update Password"}
+                            ? isSettingFirstPassword ? t("web.accountSettings.loginAndSecurity.setting") : t("web.accountSettings.loginAndSecurity.updating")
+                            : isSettingFirstPassword ? t("web.accountSettings.loginAndSecurity.setPasswordCta") : t("web.accountSettings.loginAndSecurity.updatePasswordCta")}
                         </button>
                       </div>
                     </form>
@@ -678,7 +691,7 @@ const LoginAccount = ({
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <Mail className="w-5 h-5 text-primary" />
-                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Email</h2>
+                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">{t("web.accountSettings.loginAndSecurity.email")}</h2>
                   </div>
                   <Button
                     variant="outline"
@@ -688,11 +701,11 @@ const LoginAccount = ({
                     }}
                     className="text-primary border-primary hover:bg-primary hover:text-white"
                   >
-                    Change email
+                    {t("web.accountSettings.loginAndSecurity.changeEmail")}
                   </Button>
                 </div>
                 <p className="text-sm text-gray-600 font-light">
-                  {profileEmail || "Not set"}
+                  {profileEmail || t("web.accountSettings.loginAndSecurity.notSet")}
                 </p>
               </div>
 
@@ -703,7 +716,7 @@ const LoginAccount = ({
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2">
                     <Phone className="w-5 h-5 text-primary" />
-                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Phone</h2>
+                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">{t("web.accountSettings.loginAndSecurity.phone")}</h2>
                   </div>
                   <Button
                     variant="outline"
@@ -715,11 +728,11 @@ const LoginAccount = ({
                     }}
                     className="text-primary border-primary hover:bg-primary hover:text-white"
                   >
-                    Change phone
+                    {t("web.accountSettings.loginAndSecurity.changePhone")}
                   </Button>
                 </div>
                 <p className="text-sm text-gray-600 font-light">
-                  {profilePhone || "Not set"}
+                  {profilePhone || t("web.accountSettings.loginAndSecurity.notSet")}
                 </p>
               </div>
 
@@ -735,9 +748,9 @@ const LoginAccount = ({
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Active sessions</h2>
+                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">{t("web.accountSettings.loginAndSecurity.activeSessions")}</h2>
                     <p className="text-sm text-gray-600 font-light">
-                      Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in.
+                      {t("web.accountSettings.loginAndSecurity.activeSessionsBody")}
                     </p>
                   </div>
                   <Button
@@ -746,7 +759,9 @@ const LoginAccount = ({
                     disabled={isSigningOutGlobal}
                     className="text-gray-900 border-gray-300 hover:bg-gray-50"
                   >
-                    {isSigningOutGlobal ? "Signing out..." : "Sign out from all devices"}
+                    {isSigningOutGlobal
+                      ? t("web.accountSettings.loginAndSecurity.signingOut")
+                      : t("web.accountSettings.loginAndSecurity.signOutAllDevices")}
                   </Button>
                 </div>
               </div>
@@ -757,9 +772,9 @@ const LoginAccount = ({
               >
                 <div className="flex justify-between items-center">
                   <div>
-                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Account</h2>
+                    <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">{t("web.accountSettings.loginAndSecurity.account")}</h2>
                     <p className="text-sm text-gray-600 font-light">
-                      Deactivate your account if you no longer want to use Beautonomi
+                      {t("web.accountSettings.loginAndSecurity.deactivateBody")}
                     </p>
                   </div>
                   <Button
@@ -767,7 +782,7 @@ const LoginAccount = ({
                     onClick={() => setShowDeactivateDialog(true)}
                     className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
                   >
-                    Deactivate
+                    {t("web.accountSettings.loginAndSecurity.deactivate")}
                   </Button>
                 </div>
               </div>
@@ -781,25 +796,25 @@ const LoginAccount = ({
                 <div className="flex items-center gap-3 mb-4">
                   <Shield className="w-6 h-6 text-primary" />
                   <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
-                    {securityCopy?.title ?? "Keeping your account secure"}
+                    {securityCopy?.title ?? t("web.accountSettings.loginAndSecurity.secureTitle")}
                   </h2>
                 </div>
                 <p className="mb-4 text-sm font-light text-gray-600 leading-relaxed">
-                  {securityCopy?.body ?? "We regularly review accounts to make sure they're as secure as possible. We'll also let you know if there's more we can do to increase the security of your account."}
+                  {securityCopy?.body ?? t("web.accountSettings.loginAndSecurity.secureBody")}
                 </p>
                 <div className="space-y-3">
                   <Link 
                     href={securityCopy?.safety_tips_customer?.url ?? "/help#customer"}
                     className="text-primary hover:text-primary-hover text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
                   >
-                    <span>{securityCopy?.safety_tips_customer?.label ?? "Safety tips for customers"}</span>
+                    <span>{securityCopy?.safety_tips_customer?.label ?? t("web.accountSettings.loginAndSecurity.safetyTipsCustomer")}</span>
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                   <Link 
                     href={securityCopy?.safety_tips_provider?.url ?? "/help#provider"}
                     className="text-primary hover:text-primary-hover text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
                   >
-                    <span>{securityCopy?.safety_tips_provider?.label ?? "Safety tips for providers"}</span>
+                    <span>{securityCopy?.safety_tips_provider?.label ?? t("web.accountSettings.loginAndSecurity.safetyTipsProvider")}</span>
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                 </div>
@@ -819,30 +834,30 @@ const LoginAccount = ({
       <Dialog open={showEmailDialog} onOpenChange={(open) => { if (!open) { setEmailStep("enter_email"); setPendingEmailForOtp(""); setEmailOtpCode(""); setNewEmail(""); } setShowEmailDialog(open); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change email</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">{t("web.accountSettings.loginAndSecurity.changeEmail")}</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
               {emailStep === "enter_email"
-                ? `Enter your new email. We'll send a ${SUPABASE_AUTH_OTP_LENGTH}-digit verification code.`
-                : `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to your email.`}
+                ? t("web.accountSettings.loginAndSecurity.emailDialogDescEnter", { digits: SUPABASE_AUTH_OTP_LENGTH })
+                : t("web.accountSettings.loginAndSecurity.emailDialogDescOtp", { digits: SUPABASE_AUTH_OTP_LENGTH })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {emailStep === "enter_email" ? (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">New email address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{t("web.accountSettings.loginAndSecurity.newEmailAddress")}</label>
                 <Input
                   type="email"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  placeholder={t("web.accountSettings.loginAndSecurity.emailPlaceholder")}
                   className="backdrop-blur-sm bg-white/60 border-white/40"
                 />
               </div>
             ) : (
               <div>
-                <p className="text-sm font-medium text-gray-900 mb-1">Enter verification code</p>
+                <p className="text-sm font-medium text-gray-900 mb-1">{t("web.accountSettings.loginAndSecurity.enterVerificationCode")}</p>
                 <p className="mb-3 text-sm text-gray-600">
-                  {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmailForOtp}
+                  {t("web.accountSettings.loginAndSecurity.emailCodeSentTo", { digits: SUPABASE_AUTH_OTP_LENGTH, email: pendingEmailForOtp })}
                 </p>
                 <OtpDigitInput
                   length={SUPABASE_AUTH_OTP_LENGTH}
@@ -855,7 +870,7 @@ const LoginAccount = ({
                   }}
                   disabled={isVerifyingEmailOtp}
                   autoFocus
-                  label="Email verification code"
+                  label={t("web.accountSettings.loginAndSecurity.emailOtpLabel")}
                 />
               </div>
             )}
@@ -873,7 +888,7 @@ const LoginAccount = ({
                   }}
                   className="border-gray-300 hover:bg-gray-50"
                 >
-                  Back
+                  {t("web.accountSettings.loginAndSecurity.back")}
                 </Button>
                 <Button
                   type="button"
@@ -881,19 +896,19 @@ const LoginAccount = ({
                   disabled={isVerifyingEmailOtp || !isCompleteSupabaseSmsOtp(emailOtpCode)}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
-                  {isVerifyingEmailOtp ? "Verifying…" : "Verify & save"}
+                  {isVerifyingEmailOtp ? t("web.accountSettings.loginAndSecurity.verifying") : t("web.accountSettings.loginAndSecurity.verifyAndSave")}
                 </Button>
               </>
             ) : (
               <>
-                <Button type="button" variant="outline" onClick={() => setShowEmailDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setShowEmailDialog(false)} className="border-gray-300 hover:bg-gray-50">{t("web.accountSettings.loginAndSecurity.cancel")}</Button>
                 <Button
                   type="button"
                   onClick={() => void handleSendEmailVerification()}
                   disabled={isSendingEmail || !newEmail.trim()}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
-                  {isSendingEmail ? "Sending…" : "Send verification code"}
+                  {isSendingEmail ? t("web.accountSettings.loginAndSecurity.sendingEllipsis") : t("web.accountSettings.loginAndSecurity.sendVerificationCode")}
                 </Button>
               </>
             )}
@@ -905,11 +920,17 @@ const LoginAccount = ({
       <Dialog open={showPhoneDialog} onOpenChange={(open) => { if (!open) { setPhoneStep("enter_phone"); setPendingPhoneE164(""); setPhoneOtpCode(""); setDialogPhoneValue(""); } setShowPhoneDialog(open); }}>
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
           <DialogHeader>
-            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change phone number</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">{t("web.accountSettings.loginAndSecurity.changePhoneNumber")}</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
               {phoneStep === "enter_phone"
-                ? `Enter your new phone number. We'll SMS a ${SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`
-                : `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to your phone.`}
+                ? t("web.accountSettings.loginAndSecurity.phoneDialogDescEnter", {
+                    digits: SUPABASE_AUTH_OTP_LENGTH,
+                    minutes: Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60)),
+                    minuteLabel: Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1
+                      ? t("web.accountSettings.loginAndSecurity.minute")
+                      : t("web.accountSettings.loginAndSecurity.minutes"),
+                  })
+                : t("web.accountSettings.loginAndSecurity.phoneDialogDescOtp", { digits: SUPABASE_AUTH_OTP_LENGTH })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -917,17 +938,17 @@ const LoginAccount = ({
               <PhoneInput
                 inputId="account-settings-change-phone"
                 label=""
-                inputAriaLabel="New phone number"
+                inputAriaLabel={t("web.accountSettings.loginAndSecurity.newPhoneNumber")}
                 value={dialogPhoneValue}
                 onChange={(v) => setDialogPhoneValue(v)}
-                placeholder="Phone number"
+                placeholder={t("web.accountSettings.loginAndSecurity.phonePlaceholder")}
                 className="backdrop-blur-sm bg-white/60 border-white/40"
               />
             ) : (
               <div>
-                <p className="text-sm font-medium text-gray-900 mb-1">Enter verification code</p>
+                <p className="text-sm font-medium text-gray-900 mb-1">{t("web.accountSettings.loginAndSecurity.enterVerificationCode")}</p>
                 <p className="mb-3 text-sm text-gray-600">
-                  {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                  {t("web.accountSettings.loginAndSecurity.smsCodeHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                 </p>
                 <OtpDigitInput
                   length={SUPABASE_AUTH_OTP_LENGTH}
@@ -940,7 +961,7 @@ const LoginAccount = ({
                   }}
                   disabled={isVerifyingPhoneOtp}
                   autoFocus
-                  label="Phone verification code"
+                  label={t("web.accountSettings.loginAndSecurity.phoneOtpLabel")}
                 />
               </div>
             )}
@@ -954,7 +975,7 @@ const LoginAccount = ({
                   onClick={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); }}
                   className="border-gray-300 hover:bg-gray-50"
                 >
-                  Back
+                  {t("web.accountSettings.loginAndSecurity.back")}
                 </Button>
                 <Button
                   type="button"
@@ -962,12 +983,12 @@ const LoginAccount = ({
                   disabled={isVerifyingPhoneOtp || !isCompleteSupabaseSmsOtp(phoneOtpCode)}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
-                  {isVerifyingPhoneOtp ? "Verifying…" : "Verify & save"}
+                  {isVerifyingPhoneOtp ? t("web.accountSettings.loginAndSecurity.verifying") : t("web.accountSettings.loginAndSecurity.verifyAndSave")}
                 </Button>
               </>
             ) : (
               <>
-                <Button type="button" variant="outline" onClick={() => setShowPhoneDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
+                <Button type="button" variant="outline" onClick={() => setShowPhoneDialog(false)} className="border-gray-300 hover:bg-gray-50">{t("web.accountSettings.loginAndSecurity.cancel")}</Button>
                 <Button
                   type="button"
                   onClick={() => {
@@ -977,7 +998,7 @@ const LoginAccount = ({
                   disabled={isSendingPhoneOtp || !dialogPhoneValue.trim() || !normalizeFullPhoneToE164(dialogPhoneValue)}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
-                  {isSendingPhoneOtp ? "Sending…" : "Send code"}
+                  {isSendingPhoneOtp ? t("web.accountSettings.loginAndSecurity.sendingEllipsis") : t("web.accountSettings.loginAndSecurity.sendCode")}
                 </Button>
               </>
             )}
@@ -990,25 +1011,25 @@ const LoginAccount = ({
         <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">
-              Deactivate Your Account
+              {t("web.accountSettings.loginAndSecurity.deactivateTitle")}
             </DialogTitle>
             <DialogDescription asChild>
               <div className="text-sm text-gray-600 font-light">
-                This will deactivate your account. You can reactivate later by{" "}
+                {t("web.accountSettings.loginAndSecurity.deactivateDialogBefore")}{" "}
                 <a href="/reactivate" className="underline font-medium text-primary hover:no-underline">
-                  visiting the reactivate page
+                  {t("web.accountSettings.loginAndSecurity.visitingReactivatePage")}
                 </a>{" "}
-                or logging in again.
+                {t("web.accountSettings.loginAndSecurity.deactivateDialogAfter")}
               </div>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {!authSecurityLoaded ? (
-              <p className="text-sm text-gray-600">Loading verification options…</p>
+              <p className="text-sm text-gray-600">{t("web.accountSettings.loginAndSecurity.loadingVerification")}</p>
             ) : hasPassword ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Enter your password to confirm
+                  {t("web.accountSettings.loginAndSecurity.enterPasswordToConfirm")}
                 </label>
                 <Input
                   type="password"
@@ -1016,7 +1037,7 @@ const LoginAccount = ({
                   onChange={(e) =>
                     setDeactivateData({ ...deactivateData, password: e.target.value })
                   }
-                  placeholder="Your password"
+                  placeholder={t("web.accountSettings.loginAndSecurity.yourPassword")}
                   required
                   className="backdrop-blur-sm bg-white/60 border-white/40"
                 />
@@ -1024,19 +1045,19 @@ const LoginAccount = ({
             ) : (
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <p className="text-sm text-gray-700">
-                  Confirm this sensitive action with a one-time code. {deactivateOtpDestination.sendButtonHint}.
+                  {t("web.accountSettings.loginAndSecurity.deactivateOtpHint", { hint: deactivateOtpDestination.sendButtonHint })}
                 </p>
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Verification code
+                      {t("web.accountSettings.loginAndSecurity.verificationCode")}
                     </label>
                     <Input
                       value={deactivateData.verificationNonce}
                       onChange={(e) =>
                         setDeactivateData({ ...deactivateData, verificationNonce: e.target.value.replace(/\D/g, "") })
                       }
-                      placeholder="Enter code"
+                      placeholder={t("web.accountSettings.loginAndSecurity.enterCode")}
                       inputMode="numeric"
                       autoComplete="one-time-code"
                       className="backdrop-blur-sm bg-white/60 border-white/40"
@@ -1048,14 +1069,16 @@ const LoginAccount = ({
                     onClick={handleRequestDeactivateNonce}
                     disabled={isRequestingDeactivateNonce || !canVerifyWithCode}
                   >
-                    {isRequestingDeactivateNonce ? "Sending..." : "Send code"}
+                    {isRequestingDeactivateNonce
+                      ? t("web.accountSettings.loginAndSecurity.sending")
+                      : t("web.accountSettings.loginAndSecurity.sendCode")}
                   </Button>
                 </div>
               </div>
             )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reason (optional)
+                {t("web.accountSettings.loginAndSecurity.reasonOptional")}
               </label>
               <textarea
                 value={deactivateData.reason}
@@ -1064,15 +1087,15 @@ const LoginAccount = ({
                 }
                 className="w-full px-3 py-2 border border-white/40 rounded-lg backdrop-blur-sm bg-white/60 resize-none focus:outline-none focus:ring-2 focus:ring-primary"
                 rows={3}
-                placeholder="Tell us why you're deactivating your account (optional)"
+                placeholder={t("web.accountSettings.loginAndSecurity.reasonPlaceholder")}
               />
             </div>
             <div className="bg-yellow-50/80 border border-yellow-200/60 rounded-lg p-3 backdrop-blur-sm">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> Your account will be deactivated immediately. To reactivate, go to the{" "}
-                  <a href="/reactivate" className="underline font-medium hover:no-underline">reactivate page</a> or log in again.
+                  <strong>{t("web.accountSettings.loginAndSecurity.note")}</strong> {t("web.accountSettings.loginAndSecurity.deactivateNoteBefore")}{" "}
+                  <a href="/reactivate" className="underline font-medium hover:no-underline">{t("web.accountSettings.loginAndSecurity.reactivatePage")}</a> {t("web.accountSettings.loginAndSecurity.deactivateNoteAfter")}
                 </p>
               </div>
             </div>
@@ -1087,7 +1110,7 @@ const LoginAccount = ({
               }}
               className="border-gray-300 hover:bg-gray-50"
             >
-              Cancel
+              {t("web.accountSettings.loginAndSecurity.cancel")}
             </Button>
             <button
               type="button"
@@ -1099,7 +1122,9 @@ const LoginAccount = ({
               }
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isDeactivating ? "Deactivating..." : "Deactivate Account"}
+              {isDeactivating
+                ? t("web.accountSettings.loginAndSecurity.deactivating")
+                : t("web.accountSettings.loginAndSecurity.deactivateAccountCta")}
             </button>
           </DialogFooter>
         </DialogContent>

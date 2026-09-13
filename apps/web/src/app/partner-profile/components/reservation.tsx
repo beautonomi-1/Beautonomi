@@ -64,7 +64,7 @@ const Reservation = ({
             <div>
               <Label
                 htmlFor="check-in"
-                className="ml-3 text-[10px] font-bold Beautonomi-bold"
+                className="ms-3 text-[10px] font-bold Beautonomi-bold"
               >
                 CHECK-IN
               </Label>
@@ -95,7 +95,7 @@ const Reservation = ({
             <div>
               <Label
                 htmlFor="check-out"
-                className="ml-3 text-[10px] font-bold Beautonomi-bold"
+                className="ms-3 text-[10px] font-bold Beautonomi-bold"
               >
                 CHECK-OUT
               </Label>
@@ -124,7 +124,7 @@ const Reservation = ({
             </div>
           </div>
           <div className="border-none">
-            <Label className="pl-3">Guests</Label>
+            <Label className="ps-3">Guests</Label>
             <Select>
               <SelectTrigger className="w-full border-none -mt-2">
                 <SelectValue placeholder="guest" className="border-none" />

@@ -37,6 +37,7 @@ import {
   resolveOneSignalAppId,
 } from "@/lib/onesignal-client";
 import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
+import { useTranslation } from "@beautonomi/i18n";
 
 const STEPS = ["welcome", "notifications"] as const;
 
@@ -295,6 +296,7 @@ function StepHeader({
   illustration,
   stepKey,
   reduceMotion,
+  np,
 }: {
   stepIndex: number;
   title: string;
@@ -302,6 +304,7 @@ function StepHeader({
   illustration: ReactNode;
   stepKey: string;
   reduceMotion: boolean;
+  np: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   return (
     <>
@@ -315,7 +318,7 @@ function StepHeader({
           marginBottom: 20,
         }}
       >
-        Step {stepIndex + 1} of {STEPS.length}
+        {np("stepOf", { current: stepIndex + 1, total: STEPS.length })}
       </Text>
       <AnimatedIllustration stepKey={stepKey} reduceMotion={reduceMotion}>
         <IllustrationFrame>{illustration}</IllustrationFrame>
@@ -328,7 +331,10 @@ function StepHeader({
   );
 }
 
-async function requestOneSignalPush(userId: string): Promise<void> {
+async function requestOneSignalPush(
+  userId: string,
+  np: (key: string) => string,
+): Promise<void> {
   try {
     const appId = (await resolveOneSignalAppId()) || ONE_SIGNAL_APP_ID || "";
     if (!appId) return;
@@ -337,8 +343,8 @@ async function requestOneSignalPush(userId: string): Promise<void> {
     if (!accepted) {
       await showPermissionRecoveryAlert(
         {
-          title: "Notifications are off",
-          message: "Turn on notifications in Settings to receive bookings, messages, payout updates, and urgent alerts.",
+          title: np("notificationsOffTitle"),
+          message: np("notificationsOffBody"),
         },
         { openSettings: openAppNotificationSettings },
       );
@@ -349,6 +355,8 @@ async function requestOneSignalPush(userId: string): Promise<void> {
 }
 
 export function NativePermissionsOnboarding() {
+  const { t } = useTranslation();
+  const np = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.nativePermissions.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
   const { session, user } = useAuth();
   const { gate, markOnboardingFinished } = useNativePermissionsOnboardingGate();
@@ -379,12 +387,12 @@ export function NativePermissionsOnboarding() {
   const onContinueNotifications = useCallback(async () => {
     setBusy(true);
     try {
-      if (user?.id) await requestOneSignalPush(user.id);
+      if (user?.id) await requestOneSignalPush(user.id, np);
     } finally {
       setBusy(false);
       await finish();
     }
-  }, [finish, user?.id]);
+  }, [finish, user?.id, t]);
 
   if (!visible) return null;
 
@@ -420,13 +428,14 @@ export function NativePermissionsOnboarding() {
                 stepIndex={stepIndex}
                 stepKey={step}
                 reduceMotion={reduceMotion}
+                np={np}
                 illustration={<WelcomeIllustration />}
-                title="Set up Beautonomi Provider"
-                body="Turn on notifications so you never miss bookings, messages, and payout updates. Location and photo access are requested later when you use those features."
+                title={np("welcomeTitle")}
+                body={np("welcomeBody")}
               />
               <View style={{ marginTop: 28 }}>
-                <BenefitRow text="New bookings, on-demand requests, and messages" />
-                <BenefitRow text="Payout and time-sensitive alerts" />
+                <BenefitRow text={np("benefitBookings")} />
+                <BenefitRow text={np("benefitPayouts")} />
               </View>
             </View>
           )}
@@ -437,9 +446,10 @@ export function NativePermissionsOnboarding() {
                 stepIndex={stepIndex}
                 stepKey={step}
                 reduceMotion={reduceMotion}
+                np={np}
                 illustration={<BellIllustration />}
-                title="Don’t miss a booking"
-                body="Notifications alert you to new bookings, on-demand requests, client messages, payouts, and time-sensitive updates."
+                title={np("notificationsTitle")}
+                body={np("notificationsBody")}
               />
             </View>
           )}
@@ -453,9 +463,9 @@ export function NativePermissionsOnboarding() {
               reduceMotion={reduceMotion}
               style={primaryButtonStyle}
               accessibilityRole="button"
-              accessibilityLabel="Continue setup"
+              accessibilityLabel={np("continueSetupA11y")}
             >
-              <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Continue</Text>
+              <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>{np("continue")}</Text>
             </ScalePressable>
           )}
 
@@ -466,12 +476,12 @@ export function NativePermissionsOnboarding() {
               reduceMotion={reduceMotion}
               style={primaryButtonStyle}
               accessibilityRole="button"
-              accessibilityLabel="Continue"
+              accessibilityLabel={np("continueA11y")}
             >
               {busy ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
-                <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>Continue</Text>
+                <Text style={{ color: Colors.white, fontSize: 17, fontWeight: "600" }}>{np("continue")}</Text>
               )}
             </ScalePressable>
           )}

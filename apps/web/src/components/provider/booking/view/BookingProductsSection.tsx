@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import type { Appointment } from "@/lib/provider-portal/types";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { ShoppingBag } from "lucide-react";
@@ -23,6 +25,7 @@ interface BookingProductsSectionProps {
 
 export function BookingProductsSection({ appointment }: BookingProductsSectionProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { t } = useTranslation();
   const raw = appointment as unknown as Record<string, unknown>;
   const lines = (raw.products as ProductLine[] | undefined) ?? [];
 
@@ -32,11 +35,11 @@ export function BookingProductsSection({ appointment }: BookingProductsSectionPr
     <BookingSectionCard>
       <BookingSectionLabel className="mb-3 flex items-center gap-1.5">
         <ShoppingBag className="h-4 w-4" />
-        Products
+        {t("web.provider.bookings.detail.products.title")}
       </BookingSectionLabel>
       <ul className="space-y-2 text-sm">
         {lines.map((line, index) => {
-          const name = line.product_name ?? line.productName ?? "Product";
+          const name = line.product_name ?? line.productName ?? t("web.provider.bookings.detail.products.fallback");
           const variant = line.product_variant_name ?? line.productVariantName;
           const label = variant ? `${name} · ${variant}` : name;
           const qty = Number(line.quantity ?? 1);

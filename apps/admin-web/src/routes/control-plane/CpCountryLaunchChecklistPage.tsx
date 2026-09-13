@@ -6,6 +6,7 @@
  * primary gateway + secrets, currency catalog entry.
  */
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { adminApi } from "@/lib/adminClient";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -24,6 +25,7 @@ type CheckItem = {
   label: string;
   ok: boolean;
   detail?: string;
+  href?: string;
 };
 
 type ChecklistResult = {
@@ -148,6 +150,11 @@ export function CpCountryLaunchChecklistPage() {
                   {item.detail && (
                     <p className="text-xs text-muted-foreground font-mono">{item.detail}</p>
                   )}
+                  {item.href && !item.ok ? (
+                    <Link to={item.href} className="text-xs text-indigo-600 hover:underline">
+                      Open FX rates desk
+                    </Link>
+                  ) : null}
                 </div>
                 <span
                   className={`shrink-0 text-sm font-semibold ${

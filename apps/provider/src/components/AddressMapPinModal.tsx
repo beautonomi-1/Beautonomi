@@ -7,6 +7,7 @@ import { View, Text, Modal, TouchableOpacity, ActivityIndicator, StyleSheet } fr
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { getBackendUrl, withWebApiTenantHeaders } from "@/config/public-env";
 
@@ -183,6 +184,8 @@ export function AddressMapPinModal({
   onPickCoordinates,
   initialCoordinate,
 }: AddressMapPinModalProps) {
+  const { t } = useTranslation();
+  const mp = (key: string) => t(`provider.mobile.components.addressMapPin.${key}`) as string;
   const webRef = useRef<WebView>(null);
   const mapSessionRef = useRef(0);
   const [mapConfigState, setMapConfigState] = useState<"idle" | "loading" | "ready" | "missing">("idle");
@@ -305,15 +308,15 @@ export function AddressMapPinModal({
               const parsed = place ? parseV6Feature(place) : null;
               if (parsed) {
                 lastPreviewRef.current = { lat, lng, resolved: parsed };
-                setCurrentAddressName(parsed.place_name || "Unknown Location");
+                setCurrentAddressName(parsed.place_name || mp("unknownLocation"));
               } else {
                 lastPreviewRef.current = null;
-                setCurrentAddressName("Unknown Location");
+                setCurrentAddressName(mp("unknownLocation"));
               }
             } catch {
               if (requestId === geocodeRequestIdRef.current) {
                 lastPreviewRef.current = null;
-                setCurrentAddressName("Unknown Location");
+                setCurrentAddressName(mp("unknownLocation"));
               }
             } finally {
               if (requestId === geocodeRequestIdRef.current) {
@@ -340,7 +343,7 @@ export function AddressMapPinModal({
         /* ignore non-JSON */
       }
     },
-    [clearPreviewWork, onPickCoordinates, onClose, resolvePinAddress],
+    [clearPreviewWork, onPickCoordinates, onClose, resolvePinAddress, t],
   );
 
   return (
@@ -349,18 +352,17 @@ export function AddressMapPinModal({
         {mapConfigState === "loading" || (mapConfigState === "ready" && !html) ? (
           <View style={styles.centerMessage}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>Loading map…</Text>
+            <Text style={styles.loadingText}>{mp("loadingMap")}</Text>
           </View>
         ) : mapConfigState === "missing" ? (
           <View style={styles.centerMessage}>
             <Ionicons name="map-outline" size={48} color={Colors.gray[400]} />
-            <Text style={styles.missingTitle}>Map not configured</Text>
+            <Text style={styles.missingTitle}>{mp("mapNotConfigured")}</Text>
             <Text style={styles.missingBody}>
-              Add a public Mapbox token in admin (Mapbox settings). You can still set your address using search or
-              current location.
+              {mp("mapNotConfiguredBody")}
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.secondaryBtn} accessibilityRole="button">
-              <Text style={styles.secondaryBtnText}>Close</Text>
+              <Text style={styles.secondaryBtnText}>{mp("close")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -383,17 +385,17 @@ export function AddressMapPinModal({
             onPress={onClose}
             style={styles.iconButton}
             accessibilityRole="button"
-            accessibilityLabel="Close map"
+            accessibilityLabel={mp("closeMapA11y")}
           >
             <Ionicons name="close" size={26} color={Colors.gray[800]} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginHorizontal: 8 }}>
             <Text style={styles.hint} numberOfLines={1} adjustsFontSizeToFit>
               {confirming
-                ? "Confirming location..."
+                ? mp("confirmingLocation")
                 : isFetchingAddress
-                  ? "Locating..."
-                  : currentAddressName || "Tap map or drag pin"}
+                  ? mp("locating")
+                  : currentAddressName || mp("tapMapOrDragPin")}
             </Text>
           </View>
           <View style={{ width: 44 }} />
@@ -409,14 +411,14 @@ export function AddressMapPinModal({
               disabled={confirming}
               style={[styles.confirmBtn, confirming && styles.confirmBtnDisabled]}
               accessibilityRole="button"
-              accessibilityLabel="Use this location"
+              accessibilityLabel={mp("useThisLocation")}
             >
               {confirming ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <>
-                  <Ionicons name="checkmark-circle" size={22} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={styles.confirmText}>Use this location</Text>
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" style={{ marginEnd: 8 }} />
+                  <Text style={styles.confirmText}>{mp("useThisLocation")}</Text>
                 </>
               )}
             </TouchableOpacity>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ interface CustomerVisibilitySettings {
 }
 
 export default function ProviderCustomerVisibilitySettings() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<CustomerVisibilitySettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -42,10 +44,10 @@ export default function ProviderCustomerVisibilitySettings() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load customer visibility settings";
+          : t("web.provider.settings.pages.customer-visibility.failedToLoadCustomerVisibilitySettings");
       setError(errorMessage);
       console.error("Error loading customer visibility settings:", err);
     } finally {
@@ -59,14 +61,14 @@ export default function ProviderCustomerVisibilitySettings() {
     setIsSaving(true);
     try {
       await fetcher.patch("/api/provider/customer-visibility", settings);
-      toast.success("Customer visibility settings updated successfully!");
+      toast.success(t("web.provider.settings.pages.customer-visibility.customerVisibilitySettingsUpdatedSuccessfully"));
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to save customer visibility settings";
+          : t("web.provider.settings.pages.customer-visibility.failedToSave");
       toast.error(errorMessage);
       console.error("Error saving customer visibility settings:", err);
     } finally {
@@ -77,7 +79,7 @@ export default function ProviderCustomerVisibilitySettings() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading customer visibility settings..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.customer-visibility.loadingCustomerVisibilitySettings")} />
       </div>
     );
   }
@@ -86,10 +88,10 @@ export default function ProviderCustomerVisibilitySettings() {
     return (
       <div className="container mx-auto px-4 py-8">
         <EmptyState
-          title="Failed to load settings"
-          description={error || "Unable to load customer visibility settings data"}
+          title={t("web.provider.settings.categories.clients.items.customerVisibility.title")}
+          description={error || t("web.provider.settings.pages.customer-visibility.unableToLoad")}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadSettings,
           }}
         />
@@ -101,13 +103,13 @@ export default function ProviderCustomerVisibilitySettings() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
       <div className="container mx-auto px-4 py-8">
         <PageHeader
-          title="Customer Visibility"
-          subtitle="Control how customer and salon information is displayed"
+          title={t("web.provider.settings.categories.clients.items.customerVisibility.title")}
+          subtitle={t("web.provider.settings.categories.clients.items.customerVisibility.description")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Settings", href: "/provider/settings" },
-            { label: "Customer Visibility" }
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+            { label: t("web.provider.settings.pages.customer-visibility.customerVisibility") }
           ]}
         />
 
@@ -117,9 +119,9 @@ export default function ProviderCustomerVisibilitySettings() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <Label className="text-lg font-medium">Show Customer List to Salon</Label>
+                  <Label className="text-lg font-medium">{t("web.provider.settings.pages.customer-visibility.showCustomerList")}</Label>
                   <p className="text-sm text-gray-600">
-                    Allow salon staff to see a list of customers who have booked services
+{t("web.provider.settings.pages.customer-visibility.showCustomerListHint")}
                   </p>
                 </div>
                 <Switch
@@ -131,8 +133,8 @@ export default function ProviderCustomerVisibilitySettings() {
               </div>
 
               {settings.show_customer_list_to_salon && (
-                <div className="ml-0 mt-4 p-4 bg-gray-50 rounded-lg">
-                  <Label className="text-sm font-medium mb-3 block">Customer Visibility Mode</Label>
+                <div className="ms-0 mt-4 p-4 bg-gray-50 rounded-lg">
+                  <Label className="text-sm font-medium mb-3 block">{t("web.provider.settings.pages.customer-visibility.customerVisibilityMode")}</Label>
                   <RadioGroup
                     value={settings.customer_visibility_mode}
                     onValueChange={(value) =>
@@ -145,22 +147,22 @@ export default function ProviderCustomerVisibilitySettings() {
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="all" id="customer_all" />
                       <Label htmlFor="customer_all" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Show All Customers</span>
-                        <p className="text-xs text-gray-500">Display all customers who have ever booked</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.showAllCustomers")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.showAllCustomersHint")}</p>
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="booked_only" id="customer_booked" />
                       <Label htmlFor="customer_booked" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Booked Customers Only</span>
-                        <p className="text-xs text-gray-500">Only show customers with active or upcoming bookings</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.bookedCustomersOnly")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.bookedCustomersOnlyHint")}</p>
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="none" id="customer_none" />
                       <Label htmlFor="customer_none" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Hide Customer List</span>
-                        <p className="text-xs text-gray-500">Do not show customer list to salon staff</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.hideCustomerList")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.hideCustomerListHint")}</p>
                       </Label>
                     </div>
                   </RadioGroup>
@@ -172,9 +174,9 @@ export default function ProviderCustomerVisibilitySettings() {
             <div className="pt-6 border-t">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <Label className="text-lg font-medium">Show Salon List to Customers</Label>
+                  <Label className="text-lg font-medium">{t("web.provider.settings.pages.customer-visibility.showSalonList")}</Label>
                   <p className="text-sm text-gray-600">
-                    Allow customers to see a list of salons they have booked with
+{t("web.provider.settings.pages.customer-visibility.showSalonListHint")}
                   </p>
                 </div>
                 <Switch
@@ -186,8 +188,8 @@ export default function ProviderCustomerVisibilitySettings() {
               </div>
 
               {settings.show_salon_list_to_customer && (
-                <div className="ml-0 mt-4 p-4 bg-gray-50 rounded-lg">
-                  <Label className="text-sm font-medium mb-3 block">Salon Visibility Mode</Label>
+                <div className="ms-0 mt-4 p-4 bg-gray-50 rounded-lg">
+                  <Label className="text-sm font-medium mb-3 block">{t("web.provider.settings.pages.customer-visibility.salonVisibilityMode")}</Label>
                   <RadioGroup
                     value={settings.salon_visibility_mode}
                     onValueChange={(value) =>
@@ -200,22 +202,22 @@ export default function ProviderCustomerVisibilitySettings() {
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="all" id="salon_all" />
                       <Label htmlFor="salon_all" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Show All Salons</span>
-                        <p className="text-xs text-gray-500">Display all salons the customer has interacted with</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.showAllSalons")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.showAllSalonsHint")}</p>
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="booked_only" id="salon_booked" />
                       <Label htmlFor="salon_booked" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Booked Salons Only</span>
-                        <p className="text-xs text-gray-500">Only show salons with active or upcoming bookings</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.bookedSalonsOnly")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.bookedSalonsOnlyHint")}</p>
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 p-2 border rounded-md">
                       <RadioGroupItem value="none" id="salon_none" />
                       <Label htmlFor="salon_none" className="flex-1 cursor-pointer">
-                        <span className="font-medium">Hide Salon List</span>
-                        <p className="text-xs text-gray-500">Do not show salon list to customers</p>
+                        <span className="font-medium">{t("web.provider.settings.pages.customer-visibility.hideSalonList")}</span>
+                        <p className="text-xs text-gray-500">{t("web.provider.settings.pages.customer-visibility.hideSalonListHint")}</p>
                       </Label>
                     </div>
                   </RadioGroup>
@@ -225,8 +227,8 @@ export default function ProviderCustomerVisibilitySettings() {
 
             <div className="flex justify-end pt-6 border-t">
               <Button onClick={handleSave} disabled={isSaving}>
-                <Save className="w-4 h-4 mr-2" />
-                {isSaving ? "Saving..." : "Save Settings"}
+                <Save className="w-4 h-4 me-2" />
+                {isSaving ? t("web.provider.common.saving") : t("web.provider.common.saveSettings")}
               </Button>
             </div>
           </div>

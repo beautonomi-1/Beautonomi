@@ -59,6 +59,7 @@ import { PayCloudPaymentDialog } from "@/components/provider-portal/PayCloudPaym
 import { PaycloudCollectButton } from "@/components/provider-portal/PaycloudCollectButton";
 import { usePaycloudCollectReady } from "@/hooks/usePaycloudCollectReady";
 import { computeWalletGiftCoverageOutstanding } from "@/lib/bookings/provider-booking-finance";
+import { isCloseOutBookingsDeepLink } from "@/lib/bookings/lifecycle-close-out";
 import { paycloudTipIncludedInChargeAmount } from "@/lib/payments/paycloud-booking-charge";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { BookingSheetHost, useProviderBookingMobileShell } from "@/components/provider/booking";
@@ -79,6 +80,8 @@ import {
   type ProviderBookingAction,
 } from "@/lib/provider-booking/action-policy";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useTranslation } from "@beautonomi/i18n";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 type DateRange = "today" | "week" | "month" | "all_time";
@@ -114,6 +117,7 @@ export function BookingsClient({
   initialBookings: ProviderBookingListItem[] | null;
   initialError: string | null;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedLocationId, provider } = useProviderPortal();
@@ -134,15 +138,20 @@ export function BookingsClient({
   // (always "table") to avoid React error #418. We rehydrate from
   // localStorage after mount so user preferences still persist.
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const openCloseOutQueue = isCloseOutBookingsDeepLink(searchParams);
   useEffect(() => {
     try {
+      if (openCloseOutQueue && mobileBookingShell) {
+        setViewMode("day");
+        return;
+      }
       const stored = localStorage.getItem(VIEW_STORAGE_KEY) as ViewMode | null;
       if (stored === "table" || stored === "cards" || stored === "day") setViewMode(stored);
       else if (mobileBookingShell && window.matchMedia("(max-width: 767px)").matches) {
         setViewMode("day");
       }
     } catch {}
-  }, [mobileBookingShell]);
+  }, [mobileBookingShell, openCloseOutQueue]);
   const handleViewChange = useCallback((v: ViewMode) => {
     setViewMode(v);
     try { localStorage.setItem(VIEW_STORAGE_KEY, v); } catch {}
@@ -295,10 +304,10 @@ export function BookingsClient({
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
             ? err.message
-            : "Failed to load bookings";
+            : t("web.provider.bookings.loadFailed");
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -353,14 +362,14 @@ export function BookingsClient({
 
       if (newStatus === "completed") {
         await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, {});
-        toast.success("Service completed");
+        toast.success(t("web.provider.bookings.toast.serviceCompleted"));
         loadBookings();
         if (booking) {
           const firstService = (booking.services as { offering_name?: string; service_name?: string; offering_id?: string }[] | undefined)?.[0];
           setPendingCompletion({
             id: booking.id,
-            customer_name: booking.customer_name ?? "Customer",
-            service_name: firstService?.offering_name || firstService?.service_name || "Appointment",
+            customer_name: booking.customer_name ?? t("web.provider.common.customer"),
+            service_name: firstService?.offering_name || firstService?.service_name || t("web.provider.common.appointment"),
             offering_id: firstService?.offering_id,
           });
         }
@@ -369,7 +378,7 @@ export function BookingsClient({
 
       if (newStatus === "started") {
         await fetcher.post(`/api/provider/bookings/${bookingId}/start-service`, {});
-        toast.success("Service started");
+        toast.success(t("web.provider.bookings.toast.serviceStarted"));
         loadBookings();
         return;
       }
@@ -377,14 +386,14 @@ export function BookingsClient({
       if (newStatus === "start_journey") {
         const payload = journeyEtaMinutes != null ? { eta_minutes: journeyEtaMinutes } : {};
         await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, payload);
-        toast.success("Journey started");
+        toast.success(t("web.provider.bookings.toast.journeyStarted"));
         loadBookings();
         return;
       }
 
       if (newStatus === "mark_arrived") {
         await fetcher.post(`/api/provider/bookings/${bookingId}/arrive`, {});
-        toast.success("Arrival marked");
+        toast.success(t("web.provider.bookings.toast.arrivalMarked"));
         loadBookings();
         return;
       }
@@ -395,19 +404,19 @@ export function BookingsClient({
       );
 
       if (response.conflict) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.toast.bookingChanged"));
         return;
       }
 
-      toast.success("Booking status updated");
+      toast.success(t("web.provider.bookings.toast.statusUpdated"));
       loadBookings();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.toast.bookingChanged"));
       } else {
-        toast.error(err instanceof Error ? err.message : "Failed to update booking status");
+        toast.error(err instanceof Error ? err.message : t("web.provider.bookings.toast.statusUpdateFailed"));
       }
     }
   };
@@ -416,15 +425,15 @@ export function BookingsClient({
     try {
       setConflictError(null);
       await fetcher.post(`/api/provider/bookings/bulk`, { action, booking_ids: bookingIds });
-      toast.success(`Bulk ${action} completed for ${bookingIds.length} booking(s)`);
+      toast.success(t("web.provider.bookings.toast.bulkCompleted", { action, count: bookingIds.length }));
       setSelectedBookings(new Set());
       loadBookings();
     } catch (err) {
       if (err instanceof FetchError && err.status === 409) {
-        setConflictError("This booking changed, reload");
-        toast.error("This booking changed, reload");
+        setConflictError(t("web.provider.bookings.toast.bookingChanged"));
+        toast.error(t("web.provider.bookings.toast.bookingChanged"));
       } else {
-        toast.error(`Failed to ${action} bookings`);
+        toast.error(t("web.provider.bookings.toast.bulkFailed", { action }));
       }
     }
   };
@@ -475,7 +484,7 @@ export function BookingsClient({
 
   const runPrimaryBookingAction = (booking: ProviderBookingListItem, action: ProviderBookingAction) => {
     if (!actionAllowedByPermission(action)) {
-      toast.error("You do not have permission for this action");
+      toast.error(t("web.provider.common.permissionDenied"));
       return;
     }
     void runWithPendingAction(booking.id, async () => {
@@ -545,6 +554,10 @@ export function BookingsClient({
       customer_name: b.customer_name,
       total_amount: b.total_amount,
       payment_status: b.payment_status,
+      customer_running_late_at: (b as { customer_running_late_at?: string | null })
+        .customer_running_late_at,
+      customer_running_late_minutes: (b as { customer_running_late_minutes?: number | null })
+        .customer_running_late_minutes,
       services: (b.services as HubScheduleBooking["services"]) ?? [],
     }));
   }, [filteredBookings]);
@@ -647,11 +660,11 @@ export function BookingsClient({
   }, [bookings, hasMounted, statsRange]);
 
   const statsRangeLabel = useMemo(() => {
-    if (statsRange === "today") return "Today";
-    if (statsRange === "week") return "This Week";
-    if (statsRange === "month") return "This Month";
-    return "All Time";
-  }, [statsRange]);
+    if (statsRange === "today") return t("web.provider.common.statsRange.today");
+    if (statsRange === "week") return t("web.provider.common.statsRange.thisWeek");
+    if (statsRange === "month") return t("web.provider.common.statsRange.thisMonth");
+    return t("web.provider.common.statsRange.allTime");
+  }, [statsRange, t]);
 
   // Paginated slice for current tab
   const getPagedItems = useCallback((items: ProviderBookingListItem[]) => {
@@ -682,11 +695,11 @@ export function BookingsClient({
       id: booking.id,
       booking_id: booking.id,
       ref_number: booking.booking_number || "",
-      client_name: booking.customer_name || "Customer",
+      client_name: booking.customer_name || t("web.provider.common.customer"),
       service_id: firstService.offering_id || firstService.service_id || "",
-      service_name: firstService.offering_name || firstService.service_name || "Service",
-      scheduled_date: new Date(booking.scheduled_at).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
-      scheduled_time: new Date(booking.scheduled_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+      service_name: firstService.offering_name || firstService.service_name || t("web.provider.common.service"),
+      scheduled_date: new Date(booking.scheduled_at).toLocaleDateString(getDefaultMoneyLocale(), { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+      scheduled_time: new Date(booking.scheduled_at).toLocaleTimeString(getDefaultMoneyLocale(), { hour: "2-digit", minute: "2-digit" }),
       duration_minutes: firstService.duration_minutes || firstService.duration || 60,
       price: booking.total_amount || 0,
       status: booking.status as any,
@@ -825,12 +838,14 @@ export function BookingsClient({
   };
 
   const getServiceMode = (b: ProviderBookingListItem) =>
-    b.location_type === "at_home" ? "House call" : "At salon";
+    b.location_type === "at_home"
+      ? t("web.provider.common.locationType.houseCall")
+      : t("web.provider.common.locationType.atSalon");
 
   const getServiceNames = (b: ProviderBookingListItem): string => {
     const svcs = b.services as any[] | undefined;
     if (!svcs || svcs.length === 0) return "—";
-    return svcs.map((s) => s.offering_name || "Service").join(", ");
+    return svcs.map((s) => s.offering_name || t("web.provider.common.service")).join(", ");
   };
 
   // §Hydration 2026-04: stable placeholder during SSR prevents #418 from
@@ -839,19 +854,19 @@ export function BookingsClient({
   const fmtDate = (iso?: string | null) => {
     if (!iso || !hasMounted) return "—";
     try {
-      return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return new Date(iso).toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric" });
     } catch { return "—"; }
   };
   const fmtTime = (iso?: string | null) => {
     if (!iso || !hasMounted) return "—";
     try {
-      return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+      return new Date(iso).toLocaleTimeString(getDefaultMoneyLocale(), { hour: "2-digit", minute: "2-digit" });
     } catch { return "—"; }
   };
   const fmtDateLong = (iso?: string | null) => {
     if (!iso || !hasMounted) return "—";
     try {
-      return new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      return new Date(iso).toLocaleDateString(getDefaultMoneyLocale(), { weekday: "short", month: "short", day: "numeric" });
     } catch { return "—"; }
   };
 
@@ -884,7 +899,12 @@ export function BookingsClient({
     const totalPages = Math.ceil(items.length / pageSize);
 
     if (items.length === 0) {
-      return <EmptyState title="No bookings found" description="No bookings match the current filters" />;
+      return (
+        <EmptyState
+          title={t("web.provider.bookings.emptyTitle")}
+          description={t("web.provider.bookings.emptyDescription")}
+        />
+      );
     }
 
     return (
@@ -898,22 +918,22 @@ export function BookingsClient({
                 <TableHeader className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur supports-[backdrop-filter]:bg-gray-50/70 shadow-[inset_0_-1px_0_rgba(0,0,0,0.06)]">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-10 py-3">
-                      <span className="sr-only">Select</span>
+                      <span className="sr-only">{t("web.provider.bookings.list.select")}</span>
                     </TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Ref</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Client</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Service</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">When</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Mode</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Team</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 text-right">Price</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Status</TableHead>
-                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 text-right">Actions</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.bookings.list.ref")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.appointmentReview.client")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.common.service")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.bookings.groupView.when")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.bookings.list.mode")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.sidebar.sections.team")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 text-end">{t("web.provider.catalogueProducts.price")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{t("web.provider.common.statusLabel")}</TableHead>
+                    <TableHead className="py-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500 text-end">{t("web.provider.common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paged.map((b, idx) => {
-                    const name = b.customer_name || "Customer";
+                    const name = b.customer_name || t("web.provider.common.customer");
                     const palette = getAvatarPalette(name);
                     const isSel = selectedBookings.has(b.id);
                     const primaryAction = primaryBookingAction(b);
@@ -936,7 +956,7 @@ export function BookingsClient({
                               setSelectedBookings(s);
                             }}
                             className="p-1 rounded hover:bg-gray-100"
-                            aria-label={isSel ? "Deselect booking" : "Select booking"}
+                            aria-label={isSel ? t("web.provider.bookings.deselectBooking") : t("web.provider.bookings.selectBooking")}
                           >
                             {isSel ? (
                               <CheckSquare className="w-4 h-4 text-primary" />
@@ -958,7 +978,7 @@ export function BookingsClient({
                                 <div className="font-medium text-sm text-gray-900 truncate">{name}</div>
                                 {(b as any).is_group_booking ? (
                                   <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                                    Group
+                                    {t("web.provider.bookings.detail.badges.group")}
                                   </span>
                                 ) : null}
                               </div>
@@ -991,16 +1011,16 @@ export function BookingsClient({
                         </TableCell>
                         <TableCell className="py-3">
                           <span className={"text-sm " + (b.staff_name ? "font-medium text-gray-800" : "text-gray-400 italic")}>
-                            {b.staff_name || "Unassigned"}
+                            {b.staff_name || t("web.provider.common.unassigned")}
                           </span>
                         </TableCell>
-                        <TableCell className="py-3 text-right">
+                        <TableCell className="py-3 text-end">
                           <Money amount={b.total_amount || 0} className="font-semibold text-gray-900 tabular-nums" />
                         </TableCell>
                         <TableCell className="py-3">
                           <AppointmentStatusBadge status={b.status} />
                         </TableCell>
-                        <TableCell className="py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <TableCell className="py-3 text-end" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             {primaryAction && (
                               <Button
@@ -1026,8 +1046,8 @@ export function BookingsClient({
                                 size="sm"
                                 onClick={() => handleYocoPayment(b)}
                                 className="text-[11px] h-7 px-2 border-gray-200 text-gray-700 hover:bg-gray-50"
-                                title="Take payment"
-                                aria-label="Take payment"
+                                title={t("web.provider.bookings.takePayment")}
+                                aria-label={t("web.provider.bookings.takePayment")}
                               >
                                 <CreditCard className="w-3.5 h-3.5" />
                               </Button>
@@ -1037,9 +1057,9 @@ export function BookingsClient({
                               size="sm"
                               onClick={() => openBookingDetails(b)}
                               className="text-[11px] h-7 px-2 text-gray-600"
-                              aria-label="Details"
+                              aria-label={t("web.provider.bookings.details")}
                             >
-                              Details
+                              {t("web.provider.bookings.details")}
                             </Button>
                           </div>
                         </TableCell>
@@ -1079,13 +1099,13 @@ export function BookingsClient({
                     </button>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <h3 className="font-semibold text-gray-900 truncate">{b.customer_name || "Customer"}</h3>
+                        <h3 className="font-semibold text-gray-900 truncate">{b.customer_name || t("web.provider.common.customer")}</h3>
                         {b.customer_identity_verified ? (
                           <VerifiedBadge verified iconOnly />
                         ) : null}
                         {(b as any).is_group_booking ? (
                           <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800">
-                            Group
+                            {t("web.provider.bookings.detail.badges.group")}
                           </span>
                         ) : null}
                       </div>
@@ -1097,34 +1117,34 @@ export function BookingsClient({
 
                 <div className="grid grid-cols-2 gap-2 text-sm py-2 border-t border-gray-100">
                   <div>
-                    <span className="text-gray-500 text-xs">Service</span>
+                    <span className="text-gray-500 text-xs">{t("web.provider.common.service")}</span>
                     <p className="font-medium truncate" title={getServiceNames(b)}>{getServiceNames(b)}</p>
                   </div>
                   <div>
-                    <span className="text-gray-500 text-xs">Team Member</span>
+                    <span className="text-gray-500 text-xs">{t("web.provider.portal.newSaleDialog.teamMember")}</span>
                     <p className={b.staff_name ? "font-medium" : "text-gray-400 italic"}>
-                      {b.staff_name || "Unassigned"}
+                      {b.staff_name || t("web.provider.common.unassigned")}
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500 text-xs">Date</span>
+                    <span className="text-gray-500 text-xs">{t("web.provider.common.date")}</span>
                     <p className="font-medium" suppressHydrationWarning>
                       {fmtDateLong(b.scheduled_at)}
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500 text-xs">Time</span>
+                    <span className="text-gray-500 text-xs">{t("web.provider.common.time")}</span>
                     <p className="font-medium" suppressHydrationWarning>
                       {fmtTime(b.scheduled_at)}
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500 text-xs">Service Mode</span>
+                    <span className="text-gray-500 text-xs">{t("web.provider.bookings.list.serviceMode")}</span>
                     <p className="font-medium">{getServiceMode(b)}</p>
                   </div>
                   {b.location_name && (
                     <div>
-                      <span className="text-gray-500 text-xs">Location</span>
+                      <span className="text-gray-500 text-xs">{t("web.provider.common.location")}</span>
                       <p className="font-medium truncate">{b.location_name}</p>
                     </div>
                   )}
@@ -1132,7 +1152,7 @@ export function BookingsClient({
 
                 <div className="flex items-center justify-between pt-3 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
                   <div>
-                    <span className="text-xs text-gray-500">Total</span>
+                    <span className="text-xs text-gray-500">{t("web.provider.bookings.groupFinancials.total")}</span>
                     <p className="font-bold text-lg"><Money amount={b.total_amount || 0} /></p>
                   </div>
                   <div className="flex gap-1.5">
@@ -1152,11 +1172,11 @@ export function BookingsClient({
                       />
                     ) : shouldShowPayButton(b) && yocoEnabled ? (
                       <Button variant="outline" size="sm" onClick={() => handleYocoPayment(b)} className="gap-1 text-xs h-9">
-                        <CreditCard className="w-3 h-3" /> Pay
+                        <CreditCard className="w-3 h-3" /> {t("web.provider.bookings.pay")}
                       </Button>
                     ) : null}
                     <Button variant="ghost" size="sm" onClick={() => openBookingDetails(b)} className="text-xs h-9">
-                      Details
+                      {t("web.provider.bookings.details")}
                     </Button>
                   </div>
                 </div>
@@ -1179,7 +1199,7 @@ export function BookingsClient({
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading bookings..." />
+        <LoadingTimeout loadingMessage={t("web.provider.bookings.loading")} />
       </div>
     );
   }
@@ -1189,12 +1209,12 @@ export function BookingsClient({
       <div className="w-full max-w-full overflow-x-hidden">
         <div className="flex items-center justify-between mb-2">
           <PageHeader
-            title="Bookings"
-            subtitle="Manage all your customer bookings and appointments"
+            title={t("web.provider.bookings.pageTitle")}
+            subtitle={t("web.provider.bookings.pageSubtitle")}
             breadcrumbs={[
-              { label: "Home", href: "/" },
-              { label: "Provider", href: "/provider" },
-              { label: "Bookings" },
+              { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+              { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+              { label: t("web.provider.common.breadcrumbBookings") },
             ]}
           />
           {canCreateAppointments && (
@@ -1209,9 +1229,9 @@ export function BookingsClient({
               }}
               className="provider-btn-brand px-5"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">New Appointment</span>
-              <span className="sm:hidden">New</span>
+              <Plus className="w-4 h-4 me-2" />
+              <span className="hidden sm:inline">{t("web.provider.bookings.newAppointment")}</span>
+              <span className="sm:hidden">{t("web.provider.bookings.newShort")}</span>
             </Button>
           )}
         </div>
@@ -1221,10 +1241,10 @@ export function BookingsClient({
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
             {([
-              ["today", "Today"],
-              ["week", "Week"],
-              ["month", "Month"],
-              ["all", "All"],
+              ["today", t("web.provider.common.dateRange.today")],
+              ["week", t("web.provider.common.dateRange.week")],
+              ["month", t("web.provider.common.dateRange.month")],
+              ["all", t("web.provider.common.all")],
             ] as Array<[StatsRange, string]>).map(([value, label]) => (
               <button
                 key={value}
@@ -1245,7 +1265,7 @@ export function BookingsClient({
           {isRefreshing && (
             <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-gray-500">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live
+              {t("web.provider.common.live")}
             </span>
           )}
         </div>
@@ -1258,19 +1278,19 @@ export function BookingsClient({
           />
           <StatTile
             icon={<CalendarClock className="w-4 h-4" />}
-            label="Pending"
+            label={t("web.provider.common.status.pending")}
             value={statsSnapshot.pendingCount.toLocaleString()}
             tone={statsSnapshot.pendingCount > 0 ? "amber" : "slate"}
           />
           <StatTile
             icon={<PlayCircle className="w-4 h-4" />}
-            label="In progress"
+            label={t("web.provider.bookings.inProgressLabel")}
             value={statsSnapshot.inProgressCount.toLocaleString()}
             tone={statsSnapshot.inProgressCount > 0 ? "violet" : "slate"}
           />
           <StatTile
             icon={<Banknote className="w-4 h-4" />}
-            label={`${statsRangeLabel} revenue`}
+            label={t("web.provider.common.statsRange.revenue", { range: statsRangeLabel })}
             value={<Money amount={statsSnapshot.revenue} />}
             tone="brand"
           />
@@ -1284,8 +1304,8 @@ export function BookingsClient({
               <button
                 onClick={() => handleViewChange("day")}
                 className={`p-2 ${viewMode === "day" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
-                title="Day view"
-                aria-label="Day view"
+                title={t("web.provider.common.viewMode.day")}
+                aria-label={t("web.provider.common.viewMode.day")}
                 aria-pressed={viewMode === "day"}
               >
                 <Calendar className="w-4 h-4" />
@@ -1294,8 +1314,8 @@ export function BookingsClient({
             <button
               onClick={() => handleViewChange("table")}
               className={`p-2 ${viewMode === "table" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
-              title="Table view"
-              aria-label="Table view"
+              title={t("web.provider.common.viewMode.table")}
+              aria-label={t("web.provider.common.viewMode.table")}
               aria-pressed={viewMode === "table"}
             >
               <List className="w-4 h-4" />
@@ -1303,8 +1323,8 @@ export function BookingsClient({
             <button
               onClick={() => handleViewChange("cards")}
               className={`p-2 ${viewMode === "cards" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
-              title="Card view"
-              aria-label="Card view"
+              title={t("web.provider.common.viewMode.cards")}
+              aria-label={t("web.provider.common.viewMode.cards")}
               aria-pressed={viewMode === "cards"}
             >
               <LayoutGrid className="w-4 h-4" />
@@ -1354,6 +1374,7 @@ export function BookingsClient({
             onBookingsRefresh={() => loadBookings(true)}
             stalePendingCount={stalePendingCount}
             pendingActionIds={pendingActionIds}
+            openCloseOutQueue={openCloseOutQueue}
           />
         ) : (
           <>
@@ -1371,10 +1392,10 @@ export function BookingsClient({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
-              placeholder="Search by client, service, or ref number..."
+              placeholder={t("web.provider.bookings.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 min-h-[44px]"
+              className="ps-10 min-h-[44px]"
             />
           </div>
           <Select value={dateRange} onValueChange={(v) => setDateRange(v as DateRange)}>
@@ -1382,35 +1403,35 @@ export function BookingsClient({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">Month to Date</SelectItem>
-              <SelectItem value="all_time">All Time</SelectItem>
+              <SelectItem value="today">{t("web.provider.common.dateRange.today")}</SelectItem>
+              <SelectItem value="week">{t("web.provider.common.dateRange.thisWeek")}</SelectItem>
+              <SelectItem value="month">{t("web.provider.common.dateRange.monthToDate")}</SelectItem>
+              <SelectItem value="all_time">{t("web.provider.common.dateRange.allTime")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as BookingStatus)}>
             <SelectTrigger className="w-full md:w-48 min-h-[44px]">
-              <SelectValue placeholder="Status" />
+              <SelectValue placeholder={t("web.provider.bookings.statusPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-              <SelectItem value="no_show">No Show</SelectItem>
+              <SelectItem value="all">{t("web.provider.common.allStatuses")}</SelectItem>
+              <SelectItem value="pending">{t("web.provider.common.status.pending")}</SelectItem>
+              <SelectItem value="confirmed">{t("web.provider.common.status.confirmed")}</SelectItem>
+              <SelectItem value="in_progress">{t("web.provider.common.status.inProgress")}</SelectItem>
+              <SelectItem value="completed">{t("web.provider.common.status.completed")}</SelectItem>
+              <SelectItem value="cancelled">{t("web.provider.common.status.cancelled")}</SelectItem>
+              <SelectItem value="no_show">{t("web.provider.common.status.noShow")}</SelectItem>
             </SelectContent>
           </Select>
           {locations.length > 0 && (
             <Select value={locationFilter} onValueChange={setLocationFilter}>
               <SelectTrigger className="w-full md:w-56 min-h-[44px]">
-                <SelectValue placeholder="Location" />
+                <SelectValue placeholder={t("web.provider.bookings.locationPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All locations</SelectItem>
+                <SelectItem value="all">{t("web.provider.common.allLocations")}</SelectItem>
                 {locations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id}>{loc.name || "Location"}</SelectItem>
+                  <SelectItem key={loc.id} value={loc.id}>{loc.name || t("web.provider.common.location")}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1420,9 +1441,9 @@ export function BookingsClient({
         {/* Bookings with status tabs */}
         {error ? (
           <EmptyState
-            title="Failed to load bookings"
+            title={t("web.provider.bookings.loadFailed")}
             description={error}
-            action={{ label: "Retry", onClick: () => loadBookings() }}
+            action={{ label: t("web.provider.common.retry"), onClick: () => loadBookings() }}
           />
         ) : (
           <Tabs defaultValue="all" className="w-full max-w-full overflow-x-hidden" onValueChange={() => setPage(1)}>
@@ -1433,13 +1454,13 @@ export function BookingsClient({
               <div className="min-w-max sm:min-w-0">
                 <TabsList className="inline-flex h-auto w-full sm:w-auto gap-1 sm:gap-2 bg-transparent p-0 sm:p-1 sm:bg-muted rounded-none sm:rounded-md border-b border-gray-200 sm:border-b-0">
                   {([
-                    ["all", "All", filteredBookings.length],
-                    ["pending", "Pending", groupedBookings.pending.length],
-                    ["confirmed", "Confirmed", groupedBookings.confirmed.length],
-                    ["in_progress", "In Progress", groupedBookings.in_progress.length],
-                    ["completed", "Completed", groupedBookings.completed.length],
-                    ["cancelled", "Cancelled", groupedBookings.cancelled.length],
-                    ["no_show", "No Shows", groupedBookings.no_show.length],
+                    ["all", t("web.provider.common.all"), filteredBookings.length],
+                    ["pending", t("web.provider.common.status.pending"), groupedBookings.pending.length],
+                    ["confirmed", t("web.provider.common.status.confirmed"), groupedBookings.confirmed.length],
+                    ["in_progress", t("web.provider.common.status.inProgress"), groupedBookings.in_progress.length],
+                    ["completed", t("web.provider.common.status.completed"), groupedBookings.completed.length],
+                    ["cancelled", t("web.provider.common.status.cancelled"), groupedBookings.cancelled.length],
+                    ["no_show", t("web.provider.common.status.noShows"), groupedBookings.no_show.length],
                   ] as const).map(([value, label, count]) => (
                     <TabsTrigger
                       key={value}
@@ -1489,12 +1510,12 @@ export function BookingsClient({
         <Dialog open={journeyDialog != null} onOpenChange={(open) => !open && setJourneyDialog(null)}>
           <DialogContent className="rounded-2xl max-w-sm">
             <DialogHeader>
-              <DialogTitle>Start journey</DialogTitle>
+              <DialogTitle>{t("web.provider.bookings.startJourneyTitle")}</DialogTitle>
             </DialogHeader>
             <EtaPicker value={journeyEtaMinutes} onChange={setJourneyEtaMinutes} />
             <DialogFooter>
               <Button variant="outline" onClick={() => setJourneyDialog(null)}>
-                Cancel
+                {t("web.provider.common.cancel")}
               </Button>
               <Button
                 onClick={() => {
@@ -1504,7 +1525,7 @@ export function BookingsClient({
                   void handleStatusChange(target.id, "start_journey", target.version);
                 }}
               >
-                Start journey
+                {t("web.provider.bookings.startJourneyAction")}
               </Button>
             </DialogFooter>
           </DialogContent>

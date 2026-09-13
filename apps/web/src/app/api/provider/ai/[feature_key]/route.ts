@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { callGemini } from "@/lib/ai/gemini";
+import { callLlm } from "@/lib/ai/call-llm";
+import { entitlementTierToRouterTier } from "@/lib/ai/tier";
+import { resolveAiRuntime } from "@/lib/ai/resolve-runtime";
 import { getProviderContext, formatCapsuleForPrompt } from "@/lib/ai/provider-context";
 import { enforceAiBudget, logAiUsage } from "@/lib/ai/enforce-budget";
 import { checkProviderAiEntitlement } from "@/lib/ai/entitlements";
@@ -98,12 +100,21 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const userInput = typeof (body as { input?: unknown }).input === "string" ? (body as { input: string }).input : "";
 
+    const admin = getSupabaseAdmin();
+    const { data: providerMetaEarly } = await admin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tenantId = (providerMetaEarly as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
     const budget = await enforceAiBudget({
       feature_key,
       actor_user_id: user.id,
       provider_id: providerId,
       role: user.role ?? "provider_staff",
       environment: ENVIRONMENT,
+      tenant_id: tenantId,
     });
     if (budget.allowed === false) {
       if (budget.fallback_mode === "templates_only") {
@@ -134,7 +145,6 @@ export async function POST(
       );
     }
 
-    const admin = getSupabaseAdmin();
     const { data: aiConfigRow } = await admin
       .from("ai_module_config")
       .select("cache_ttl_seconds")
@@ -144,15 +154,8 @@ export async function POST(
       (aiConfigRow as { cache_ttl_seconds?: number } | null)?.cache_ttl_seconds ?? 86_400,
     );
 
-    const { data: geminiRow } = await admin
-      .from("gemini_integration_config")
-      .select("api_key_secret, default_model")
-      .eq("environment", ENVIRONMENT)
-      .eq("enabled", true)
-      .maybeSingle();
-
-    const apiKey = (geminiRow as { api_key_secret?: string } | null)?.api_key_secret;
-    if (!apiKey) {
+    const runtime = await resolveAiRuntime(ENVIRONMENT, null);
+    if (!runtime.config.enabled) {
       return errorResponse("AI not configured", "CONFIG", 503);
     }
 
@@ -171,7 +174,10 @@ export async function POST(
     const system = `${systemText}\n\n${contextBlock}`;
     const userPrompt = userInput ? `${baseUserPrompt}\n\nAdditional context: ${userInput}` : baseUserPrompt;
 
-    const model = (geminiRow as { default_model?: string })?.default_model ?? codeTemplate.model;
+    const model =
+      dbTemplate?.modelId ??
+      codeTemplate.model ??
+      runtime.config.defaultModelId;
     const cacheKeyHash = buildAiCacheKeyHash(feature_key, providerId, `${promptVersion}:${userPrompt}:${model}`);
     const cached = await readAiCache<Record<string, unknown>>(cacheKeyHash);
     if (cached) {
@@ -190,30 +196,79 @@ export async function POST(
       return successResponse(cached);
     }
 
-    const result = await callGemini({
-      apiKey,
-      model,
+    if (runtime.emergency.stopAllCalls || runtime.emergency.forceTemplateFallback) {
+      const fallback = buildFeatureFallback({
+        featureKey: feature_key,
+        capsule,
+        input: userInput,
+        reason: "ai_kill_switch",
+      });
+      if (fallback) {
+        emitAiFeatureCalled(user.id, {
+          feature_key,
+          provider_id: providerId,
+          cache_hit: false,
+          fallback: true,
+          fallback_reason: "ai_kill_switch",
+          success: true,
+          model: null,
+          template_source: templateSource,
+          tokens_in: 0,
+          tokens_out: 0,
+          cost_usd: 0,
+        });
+        return successResponse(fallback);
+      }
+    }
+
+    const bodyImages = (body as { image_url?: string }).image_url;
+    const images =
+      feature_key === "ai.provider.look_describe" && typeof bodyImages === "string"
+        ? [{ url: bodyImages }]
+        : undefined;
+
+    const startedAt = Date.now();
+    const result = await callLlm({
       system,
       user: userPrompt,
       temperature: 0.3,
       maxTokens: entitlementCheck.entitlement?.max_tokens ?? 600,
       schema: outputSchema,
       providerId,
+      tenantId,
+      environment: ENVIRONMENT,
       featureKey: feature_key,
+      modelId: model,
+      task: "drafting",
+      riskTier: (() => {
+        const t = entitlementTierToRouterTier(entitlementCheck.entitlement?.model_tier);
+        if (t === "pro") return 2;
+        if (t === "flash") return 1;
+        return 0;
+      })(),
+      images,
     });
+    const latencyMs = Date.now() - startedAt;
 
-    const costEstimate = await estimateCostUsd(model, result.tokensIn, result.tokensOut);
+    const costEstimate = await estimateCostUsd(result.model || model, result.tokensIn, result.tokensOut);
 
     await logAiUsage({
       actor_user_id: user.id,
       provider_id: providerId,
       feature_key,
-      model,
+      model: result.model || model,
       tokens_in: result.tokensIn,
       tokens_out: result.tokensOut,
       cost_estimate: costEstimate,
       success: result.success,
       error_code: result.errorCode ?? null,
+      tenant_id: tenantId,
+      model_provider: result.modelProvider,
+      runtime: result.runtime,
+      gateway: result.gateway,
+      latency_ms: latencyMs,
+      fallback_used: Boolean(result.failoverModel),
+      breaker_tripped: Boolean(result.breakerTripped),
     });
 
     emitAiFeatureCalled(user.id, {
@@ -222,7 +277,7 @@ export async function POST(
       cache_hit: false,
       fallback: false,
       success: result.success,
-      model,
+      model: result.model || model,
       template_source: templateSource,
       tokens_in: result.tokensIn,
       tokens_out: result.tokensOut,
@@ -231,9 +286,27 @@ export async function POST(
     });
 
     if (!result.success) {
-      if (result.errorCode === "GEMINI_RATE_LIMITED") {
+      const rateLimited =
+        result.errorCode === "GEMINI_RATE_LIMITED" || result.errorCode === "LLM_RATE_LIMITED";
+      if (rateLimited) {
         return errorResponse("Too many AI requests, please retry shortly", "RATE_LIMITED", 429);
       }
+      if (result.errorCode === "LLM_BLOCKED_BY_KILL_SWITCH") {
+        const fallback = buildFeatureFallback({
+          featureKey: feature_key,
+          capsule,
+          input: userInput,
+          reason: "ai_kill_switch",
+        });
+        if (fallback) return successResponse(fallback);
+      }
+      const fallback = buildFeatureFallback({
+        featureKey: feature_key,
+        capsule,
+        input: userInput,
+        reason: result.errorCode ?? "ai_error",
+      });
+      if (fallback) return successResponse(fallback);
       return errorResponse(result.errorCode ?? "AI request failed", "AI_ERROR", 502);
     }
 

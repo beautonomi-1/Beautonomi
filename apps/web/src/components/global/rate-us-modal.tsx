@@ -11,6 +11,7 @@ import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
 import { getDefaultPublicAppsResponse, NATIVE_STORE } from "@/lib/store/native-app-store";
 import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface RateUsModalProps {
   isOpen: boolean;
@@ -26,6 +27,7 @@ interface AppStoreInfo {
 }
 
 export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
+  const { t } = useTranslation();
   const [_platform, setPlatform] = useState<'ios' | 'android' | 'huawei' | null>(null);
   const [appStoreInfo, setAppStoreInfo] = useState<AppStoreInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -180,6 +182,25 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
     setAppStoreInfo(store);
   };
 
+  const storeLabel = (platform: "ios" | "android" | "huawei") => {
+    if (platform === "ios") {
+      return {
+        name: t("web.global.shareAppModal.appStore"),
+        buttonText: t("web.global.rateUsModal.rateOnAppStore"),
+      };
+    }
+    if (platform === "huawei") {
+      return {
+        name: t("web.global.shareAppModal.huaweiAppGallery"),
+        buttonText: t("web.global.rateUsModal.rateOnAppGallery"),
+      };
+    }
+    return {
+      name: t("web.global.shareAppModal.googlePlay"),
+      buttonText: t("web.global.rateUsModal.rateOnGooglePlay"),
+    };
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-[95vw] sm:max-w-lg z-[9999] p-0 border-0 bg-transparent shadow-none">
@@ -205,10 +226,14 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
               transition={{ delay: 0.1 }}
             >
               <DialogTitle className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 mb-2">
-                Enjoying Beautonomi?
+                {t("web.global.rateUsModal.title")}
               </DialogTitle>
               <p className="text-sm md:text-base font-light text-gray-600 mt-2">
-                Your feedback helps us improve! Please take a moment to rate us on the {appStoreInfo?.name || 'App Store'}.
+                {t("web.global.rateUsModal.subtitle", {
+                  store: appStoreInfo
+                    ? storeLabel(appStoreInfo.platform).name
+                    : t("web.global.shareAppModal.appStore"),
+                })}
               </p>
             </motion.div>
           </DialogHeader>
@@ -241,7 +266,7 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
               transition={{ delay: 0.3 }}
               className="mb-6"
             >
-              <p className="text-xs font-medium text-gray-500 mb-3 text-center">Select your app store:</p>
+              <p className="text-xs font-medium text-gray-500 mb-3 text-center">{t("web.global.rateUsModal.selectStore")}</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {availableStores.map((store) => (
                   <motion.button
@@ -257,12 +282,12 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
                   >
                     <Image
                       src={store.icon}
-                      alt={store.name}
+                      alt={storeLabel(store.platform).name}
                       className="h-4 w-4"
                       width={16}
                       height={16}
                     />
-                    <span className="text-xs font-medium">{store.name}</span>
+                    <span className="text-xs font-medium">{storeLabel(store.platform).name}</span>
                   </motion.button>
                 ))}
               </div>
@@ -283,13 +308,13 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
                 >
                   <Image
                     src={appStoreInfo.icon}
-                    alt={appStoreInfo.name}
-                    className="h-5 w-5 mr-2"
+                    alt={storeLabel(appStoreInfo.platform).name}
+                    className="h-5 w-5 me-2"
                     width={20}
                     height={20}
                   />
-                  {appStoreInfo.buttonText}
-                  <ExternalLink className="w-4 h-4 ml-2" />
+                  {storeLabel(appStoreInfo.platform).buttonText}
+                  <ExternalLink className="w-4 h-4 ms-2" />
                 </Button>
               </motion.div>
             ) : (
@@ -298,8 +323,8 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
                 className="w-full bg-gray-200 text-gray-400 cursor-not-allowed h-12"
                 size="lg"
               >
-                <Smartphone className="w-5 h-5 mr-2 animate-pulse" />
-                Loading...
+                <Smartphone className="w-5 h-5 me-2 animate-pulse" />
+                {t("common.loading")}
               </Button>
             )}
             
@@ -313,7 +338,7 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
                 className="w-full border-gray-200 hover:bg-gray-50 text-gray-700 h-12 text-base font-medium"
                 size="lg"
               >
-                Maybe Later
+                {t("web.global.rateUsModal.maybeLater")}
               </Button>
             </motion.div>
           </div>

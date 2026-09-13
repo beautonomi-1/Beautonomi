@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -41,15 +42,15 @@ interface PackageUsageData {
   }>;
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  usage: "Usage",
-  uniqueClients: "Clients",
-  topClients: "Top clients",
-};
-
 export default function PackageUsageReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency } = useReportCurrency();
+  const basisLabels: Record<string, string> = {
+    usage: t("web.provider.reports.pages.packages/usage.basisUsage"),
+    uniqueClients: t("web.provider.reports.pages.packages/usage.basisClients"),
+    topClients: t("web.provider.reports.pages.packages/usage.basisTopClients"),
+  };
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date(),
@@ -109,10 +110,10 @@ export default function PackageUsageReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package usage" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/usage.title") },
         ]}
       >
         <ReportSkeleton />
@@ -124,15 +125,15 @@ export default function PackageUsageReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package usage" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/usage.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Package usage" />
-          <ReportSubscriptionRequired feature="Package usage" />
+          <PageHeader title={t("web.provider.reports.pages.packages/usage.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.packages/usage.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -142,15 +143,15 @@ export default function PackageUsageReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package usage" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/usage.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load package usage data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.packages/usage.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -163,21 +164,21 @@ export default function PackageUsageReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Package usage" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.packages/usage.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Package usage"
-          subtitle="Booking-event counts per package and distinct clients — same inclusion rules as sales, without revenue calculation."
+          title={t("web.provider.reports.pages.packages/usage.title")}
+          subtitle={t("web.provider.reports.pages.packages/usage.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              Export
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -190,13 +191,13 @@ export default function PackageUsageReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+              {data.timezone ? <span>{t("web.provider.reports.common.timezoneDot", { tz: data.timezone })}</span> : null}
               {data.fromYmd && data.toYmd ? (
                 <span>
-                  Window · {data.fromYmd} – {data.toYmd}
+                  {t("web.provider.reports.common.windowDot", { from: data.fromYmd, to: data.toYmd })}
                 </span>
               ) : null}
             </div>
@@ -206,12 +207,12 @@ export default function PackageUsageReport() {
         {basisEntries.length > 0 ? (
           <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+              <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-violet-950/95">
               {basisEntries.map(([k, v]) => (
                 <p key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{basisLabels[k] ?? k} · </span>
                   {v}
                 </p>
               ))}
@@ -222,20 +223,20 @@ export default function PackageUsageReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Package booking events</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.packages/usage.packageBookingEvents")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{data.totalPackagesUsed}</p>
                 <Package className="h-5 w-5 shrink-0 text-blue-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500 leading-snug">Sum of usage increments across all packages.</p>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">{t("web.provider.reports.pages.packages/usage.packageBookingEventsHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Distinct clients</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.packages/usage.distinctClients")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -243,7 +244,7 @@ export default function PackageUsageReport() {
                 <Users className="h-5 w-5 shrink-0 text-purple-600" />
               </div>
               <p className="mt-2 text-xs text-gray-500 leading-snug">
-                Individual bookings + group participants (customer_id union).
+{t("web.provider.reports.pages.packages/usage.distinctClientsHint")}
               </p>
             </CardContent>
           </Card>
@@ -251,14 +252,14 @@ export default function PackageUsageReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>By package</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.packages/usage.byPackage")}</CardTitle>
             <p className="text-sm font-normal text-gray-500 mt-1">
-              unique clients = distinct customers with at least one qualifying booking for that package.
+              {t("web.provider.reports.pages.packages/usage.byPackageHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.packageUsage.length === 0 ? (
-              <EmptyReportState title="No usage" description="No qualifying package usage in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.packages/usage.noUsage")} description={t("web.provider.reports.pages.packages/usage.noUsageDesc")} />
             ) : (
               <div className="space-y-2">
                 {data.packageUsage.map((pkg, index) => (
@@ -273,11 +274,11 @@ export default function PackageUsageReport() {
                       <div className="min-w-0">
                         <p className="font-medium text-gray-900 truncate">{pkg.packageName}</p>
                         <p className="text-sm text-gray-600">
-                          {pkg.uniqueClientsCount} clients · {pkg.averageUsagePerClient.toFixed(1)} avg uses / client
+                          {t("web.provider.reports.pages.packages/usage.clientsAvg", { clients: pkg.uniqueClientsCount, avg: pkg.averageUsagePerClient.toFixed(1) })}
                         </p>
                       </div>
                     </div>
-                    <p className="font-semibold tabular-nums text-gray-900 shrink-0">{pkg.totalUsage} uses</p>
+                    <p className="font-semibold tabular-nums text-gray-900 shrink-0">{t("web.provider.reports.pages.packages/usage.uses", { count: pkg.totalUsage })}</p>
                   </div>
                 ))}
               </div>
@@ -288,8 +289,8 @@ export default function PackageUsageReport() {
         {data.topClients.length > 0 && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Top clients by package bookings</CardTitle>
-              <p className="text-sm font-normal text-gray-500 mt-1">Up to 20 — counts package-included bookings per customer.</p>
+              <CardTitle>{t("web.provider.reports.pages.packages/usage.topClients")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500 mt-1">{t("web.provider.reports.pages.packages/usage.topClientsHint")}</p>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
@@ -307,7 +308,7 @@ export default function PackageUsageReport() {
                         <p className="text-sm text-gray-600 truncate">{client.email}</p>
                       </div>
                     </div>
-                    <p className="font-semibold tabular-nums text-gray-900 shrink-0">{client.packagesUsed} bookings</p>
+                    <p className="font-semibold tabular-nums text-gray-900 shrink-0">{t("web.provider.reports.pages.packages/usage.bookingsCount", { count: client.packagesUsed })}</p>
                   </div>
                 ))}
               </div>

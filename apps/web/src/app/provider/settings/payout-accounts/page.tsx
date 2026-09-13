@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -63,6 +64,7 @@ interface Bank {
 }
 
 export default function PayoutAccountsPage() {
+  const { t } = useTranslation();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,7 +101,7 @@ export default function PayoutAccountsPage() {
       setBanks(banksList);
     } catch (err) {
       console.error("Error loading banks:", err);
-      toast.error("Failed to load bank list");
+      toast.error(t("web.provider.settings.pages.payout-accounts.failedToLoadBankList"));
     } finally {
       setIsLoadingBanks(false);
     }
@@ -119,7 +121,7 @@ export default function PayoutAccountsPage() {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to load payout accounts";
+          : t("web.provider.settings.pages.payout-accounts.failedToLoadPayoutAccounts");
       setError(errorMessage);
       console.error("Error loading accounts:", err);
     } finally {
@@ -151,29 +153,29 @@ export default function PayoutAccountsPage() {
     const errors: Record<string, string> = {};
 
     if (!formData.account_number.trim()) {
-      errors.account_number = "Account number is required";
+      errors.account_number = t("web.provider.settings.pages.payout-accounts.accountNumberRequired");
     } else if (formData.account_number.length < 8 || formData.account_number.length > 20) {
-      errors.account_number = "Account number must be between 8 and 20 digits";
+      errors.account_number = t("web.provider.settings.pages.payout-accounts.accountNumberLength");
     } else if (!/^\d+$/.test(formData.account_number)) {
-      errors.account_number = "Account number must contain only digits";
+      errors.account_number = t("web.provider.settings.pages.payout-accounts.accountNumberDigitsOnly");
     }
 
     if (!formData.country) {
-      errors.country = "Country is required";
+      errors.country = t("web.provider.settings.pages.payout-accounts.countryRequired");
     }
 
     if (!formData.bank_code) {
-      errors.bank_code = "Bank is required";
+      errors.bank_code = t("web.provider.settings.pages.payout-accounts.bankRequired");
     }
 
     if (!formData.account_name.trim()) {
-      errors.account_name = "Account name is required";
+      errors.account_name = t("web.provider.settings.pages.payout-accounts.accountNameRequired");
     } else if (formData.account_name.length < 2) {
-      errors.account_name = "Account name must be at least 2 characters";
+      errors.account_name = t("web.provider.settings.pages.payout-accounts.accountNameMinLength");
     }
 
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = "Invalid email address";
+      errors.email = t("web.provider.settings.pages.payout-accounts.invalidEmailAddress");
     }
 
     setFormErrors(errors);
@@ -184,13 +186,13 @@ export default function PayoutAccountsPage() {
     if (!formData.account_number.trim() || !formData.bank_code) {
       setFormErrors({
         ...formErrors,
-        account_number: !formData.account_number ? "Enter account number to verify" : "",
-        bank_code: !formData.bank_code ? "Select bank to verify" : "",
+        account_number: !formData.account_number ? t("web.provider.settings.pages.payout-accounts.enterAccountNumberToVerify") : "",
+        bank_code: !formData.bank_code ? t("web.provider.settings.pages.payout-accounts.selectBankToVerify") : "",
       });
       return;
     }
     if (formData.account_number.length < 8 || formData.account_number.length > 20) {
-      setFormErrors({ ...formErrors, account_number: "Account number must be 8-20 digits" });
+      setFormErrors({ ...formErrors, account_number: t("web.provider.settings.pages.payout-accounts.accountNumber8To20") });
       return;
     }
     try {
@@ -209,13 +211,13 @@ export default function PayoutAccountsPage() {
         setFormData((prev) => ({ ...prev, account_name: name }));
         setVerifiedAccountName(name);
         setFormErrors((prev) => ({ ...prev, account_name: "" }));
-        toast.success("Account verified — name auto-filled");
+        toast.success(t("web.provider.settings.pages.payout-accounts.accountVerifiedNameAutoFilled"));
       }
     } catch (err: any) {
       const msg =
         err instanceof FetchError
           ? err.message
-          : err?.details?.[0]?.message || "Verification unavailable for this bank";
+          : err?.details?.[0]?.message || t("web.provider.settings.pages.payout-accounts.verificationUnavailable");
       setVerifyError(msg);
     } finally {
       setIsVerifying(false);
@@ -249,7 +251,7 @@ export default function PayoutAccountsPage() {
       });
 
       invalidateSetupStatusCache();
-      toast.success("Bank account added successfully");
+      toast.success(t("web.provider.settings.pages.payout-accounts.bankAccountAddedSuccessfully"));
       setShowAddDialog(false);
       setFormData({
         country: "ZA",
@@ -278,7 +280,7 @@ export default function PayoutAccountsPage() {
         );
         if (alreadySaved) {
           invalidateSetupStatusCache();
-          toast.success("Bank account is already saved. Your list has been refreshed.");
+          toast.success(t("web.provider.settings.pages.payout-accounts.bankAccountIsAlreadySavedYour"));
           setShowAddDialog(false);
           setFormData({
             country: "ZA",
@@ -301,7 +303,7 @@ export default function PayoutAccountsPage() {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : err?.details?.[0]?.message || "Failed to add bank account";
+          : err?.details?.[0]?.message || t("web.provider.settings.pages.payout-accounts.failedToAddBankAccount");
       toast.error(errorMessage);
       console.error("Error adding account:", err);
     } finally {
@@ -310,16 +312,16 @@ export default function PayoutAccountsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this bank account? This action cannot be undone.")) {
+    if (!confirm(t("web.provider.settings.pages.payout-accounts.confirmRemoveBankAccount"))) {
       return;
     }
 
     try {
       await fetcher.delete(`/api/provider/payout-accounts/${id}`);
-      toast.success("Bank account removed");
+      toast.success(t("web.provider.settings.pages.payout-accounts.bankAccountRemoved"));
       loadAccounts();
     } catch {
-      toast.error("Failed to remove bank account");
+      toast.error(t("web.provider.settings.pages.payout-accounts.failedToRemoveBankAccount"));
     }
   };
 
@@ -327,10 +329,10 @@ export default function PayoutAccountsPage() {
     try {
       await fetcher.patch(`/api/provider/payout-accounts/${id}`, { active: true });
       invalidateSetupStatusCache();
-      toast.success("Bank account activated");
+      toast.success(t("web.provider.settings.pages.payout-accounts.bankAccountActivated"));
       loadAccounts();
     } catch {
-      toast.error("Failed to update bank account");
+      toast.error(t("web.provider.settings.pages.payout-accounts.failedToUpdateBankAccount"));
     }
   };
 
@@ -338,64 +340,64 @@ export default function PayoutAccountsPage() {
     try {
       await fetcher.patch(`/api/provider/payout-accounts/${id}`, { is_primary: true });
       invalidateSetupStatusCache();
-      toast.success("Primary payout account updated");
+      toast.success(t("web.provider.settings.pages.payout-accounts.primaryPayoutAccountUpdated"));
       loadAccounts();
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to set primary account";
+      const msg = err instanceof FetchError ? err.message : t("web.provider.settings.pages.payout-accounts.failedToSetPrimaryAccount");
       toast.error(msg);
     }
   };
 
   const breadcrumbs = [
-    { label: "More", href: "/provider/more" },
-    { label: "Payment setup", href: "/provider/payment-setup" },
-    { label: "Payout Accounts" },
+    { label: t("web.provider.settings.pages.payout-accounts.more"), href: "/provider/more" },
+    { label: t("web.provider.settings.pages.payout-accounts.paymentSetup"), href: "/provider/payment-setup" },
+    { label: t("web.provider.settings.pages.payout-accounts.payoutAccounts") },
   ];
 
   if (isLoading) {
     return (
       <SettingsDetailLayout
-        title="Payout Accounts"
-        subtitle="Manage your bank accounts for receiving payouts"
+        title={t("web.provider.settings.categories.sales.items.payoutAccounts.title")}
+        subtitle={t("web.provider.settings.categories.sales.items.payoutAccounts.description")}
         breadcrumbs={breadcrumbs}
       >
-        <LoadingTimeout loadingMessage="Loading payout accounts..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.payout-accounts.loadingPayoutAccounts")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Payout Accounts"
-      subtitle="Add and manage bank accounts where you'll receive payouts"
+      title={t("web.provider.settings.pages.payout-accounts.payoutAccounts")}
+      subtitle={t("web.provider.settings.pages.payout-accounts.addAndManageBankAccountsWhere")}
       breadcrumbs={breadcrumbs}
     >
       <div className="mb-4 flex flex-wrap gap-2">
         <Button variant="outline" size="sm" asChild>
           <Link href="/provider/finance?tab=payouts" className="inline-flex items-center gap-1.5">
             <ArrowUpRight className="h-3.5 w-3.5" />
-            Payout history &amp; request
+            {t("web.provider.settings.pages.payout-accounts.payoutHistoryRequest")}
           </Link>
         </Button>
         <Button variant="outline" size="sm" asChild>
           <Link href="/provider/payouts/statements" className="inline-flex items-center gap-1.5">
             <FileText className="h-3.5 w-3.5" />
-            Payout statements
+            {t("web.provider.settings.pages.payout-accounts.payoutStatements")}
           </Link>
         </Button>
         <Button variant="outline" size="sm" asChild>
           <Link href="/provider/reports/payments/payouts" className="inline-flex items-center gap-1.5">
-            Ledger earnings report
+            {t("web.provider.settings.pages.payout-accounts.ledgerEarningsReport")}
           </Link>
         </Button>
       </div>
-      <SectionCard title="Bank Accounts" className="w-full">
+      <SectionCard title={t("web.provider.settings.pages.payout-accounts.bankAccounts")} className="w-full">
         {error && !accounts.length ? (
           <EmptyState
-            title="Failed to load accounts"
+            title={t("web.provider.settings.pages.payout-accounts.failedToLoadAccounts")}
             description={error}
             action={{
-              label: "Retry",
+              label: t("web.provider.common.retry"),
               onClick: loadAccounts,
             }}
           />
@@ -404,9 +406,9 @@ export default function PayoutAccountsPage() {
             <AlertCircle className="w-4 h-4 text-gray-600" />
             <AlertDescription className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-gray-900 mb-1">No bank accounts added</p>
+                <p className="text-sm font-medium text-gray-900 mb-1">{t("web.provider.settings.pages.payout-accounts.noBankAccountsAdded")}</p>
                 <p className="text-sm text-gray-600">
-                  Add a bank account to receive payouts from your earnings
+                  {t("web.provider.settings.pages.payout-accounts.addBankAccountToReceive")}
                 </p>
               </div>
               <Button
@@ -414,8 +416,8 @@ export default function PayoutAccountsPage() {
                 className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
                 onClick={() => setShowAddDialog(true)}
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Bank Account
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.settings.pages.payout-accounts.addBankAccount")}
               </Button>
             </AlertDescription>
           </Alert>
@@ -423,15 +425,15 @@ export default function PayoutAccountsPage() {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <p className="text-sm text-gray-600">
-                {accounts.length} bank account{accounts.length !== 1 ? "s" : ""}
+                {t("web.provider.settings.pages.payout-accounts.bankAccountCount", { count: accounts.length })}
               </p>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setShowAddDialog(true)}
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Bank Account
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.settings.pages.payout-accounts.addBankAccount")}
               </Button>
             </div>
 
@@ -454,25 +456,25 @@ export default function PayoutAccountsPage() {
                             <p className="font-medium text-sm">{account.account_name}</p>
                             {account.is_primary && (
                               <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
-                                Primary
+                                {t("web.provider.settings.pages.payout-accounts.primary")}
                               </Badge>
                             )}
                             {account.active ? (
                               <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300">
-                                <CheckCircle2 className="w-3 h-3 mr-1" />
-                                Active
+                                <CheckCircle2 className="w-3 h-3 me-1" />
+                                {t("web.provider.settings.pages.payout-accounts.active")}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="bg-gray-100 text-gray-600">
-                                Inactive
+                                {t("web.provider.settings.pages.payout-accounts.inactive")}
                               </Badge>
                             )}
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
-                            {account.bank_name || "Bank"} • •••• {account.account_number_last4}
+                            {account.bank_name || t("web.provider.settings.pages.payout-accounts.bank")} • •••• {account.account_number_last4}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {account.currency} • Added {new Date(account.created_at).toLocaleDateString()}
+                            {account.currency} • {t("web.provider.settings.pages.payout-accounts.addedOn", { date: new Date(account.created_at).toLocaleDateString() })}
                           </p>
                         </div>
                       </div>
@@ -484,7 +486,7 @@ export default function PayoutAccountsPage() {
                           variant="outline"
                           onClick={() => handleSetPrimary(account.id)}
                         >
-                          Set Primary
+                          {t("web.provider.settings.pages.payout-accounts.setPrimary")}
                         </Button>
                       )}
                       {!account.active && (
@@ -493,7 +495,7 @@ export default function PayoutAccountsPage() {
                           variant="outline"
                           onClick={() => handleSetActive(account.id)}
                         >
-                          Activate
+                          {t("web.provider.settings.pages.payout-accounts.activate")}
                         </Button>
                       )}
                       <Button
@@ -503,7 +505,7 @@ export default function PayoutAccountsPage() {
                         disabled={account.is_primary && accounts.length === 1}
                         title={
                           account.is_primary && accounts.length === 1
-                            ? "Add another account before removing your only payout account"
+                            ? t("web.provider.settings.pages.payout-accounts.cannotRemoveOnlyAccount")
                             : undefined
                         }
                       >
@@ -522,17 +524,17 @@ export default function PayoutAccountsPage() {
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Bank Account</DialogTitle>
+            <DialogTitle>{t("web.provider.settings.pages.payout-accounts.addBankAccount")}</DialogTitle>
             <DialogDescription>
               {showVerifyAccountButton
-                ? "Add a bank account to receive payouts. Optionally verify your account number to auto-fill the account name."
-                : "Add a bank account to receive payouts. Enter the account holder name exactly as it appears on your bank statement."}
+                ? t("web.provider.settings.pages.payout-accounts.addAccountVerifyHint")
+                : t("web.provider.settings.pages.payout-accounts.addAccountManualHint")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="country">
-                Country <span className="text-red-500">*</span>
+                {t("web.provider.settings.pages.payout-accounts.country")} <span className="text-red-500">*</span>
               </Label>
               <Select
                 value={formData.country}
@@ -548,7 +550,7 @@ export default function PayoutAccountsPage() {
                 }}
               >
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select country" />
+                  <SelectValue placeholder={t("web.provider.settings.pages.payout-accounts.selectCountry")} />
                 </SelectTrigger>
                 <SelectContent>
                   {PAYOUT_COUNTRIES.map((c) => (
@@ -562,17 +564,17 @@ export default function PayoutAccountsPage() {
                 <p className="text-xs text-red-600 mt-1">{formErrors.country}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Select your bank account country for correct bank list
+                {t("web.provider.settings.pages.payout-accounts.selectBankCountryHint")}
               </p>
             </div>
 
             <div>
               <Label htmlFor="bank_code">
-                Bank <span className="text-red-500">*</span>
+                {t("web.provider.settings.pages.payout-accounts.bankLabel")} <span className="text-red-500">*</span>
               </Label>
               {isLoadingBanks ? (
                 <div className="mt-1 p-3 border rounded-md text-sm text-gray-500">
-                  Loading banks...
+                  {t("web.provider.settings.pages.payout-accounts.loadingBanks")}
                 </div>
               ) : (
                 <Select
@@ -585,7 +587,7 @@ export default function PayoutAccountsPage() {
                   }}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select your bank" />
+                    <SelectValue placeholder={t("web.provider.settings.pages.payout-accounts.selectYourBank")} />
                   </SelectTrigger>
                   <SelectContent>
                     {banks.map((bank) => (
@@ -603,7 +605,7 @@ export default function PayoutAccountsPage() {
 
             <div>
               <Label htmlFor="account_number">
-                Account Number <span className="text-red-500">*</span>
+                {t("web.provider.settings.pages.payout-accounts.accountNumber")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="account_number"
@@ -616,7 +618,7 @@ export default function PayoutAccountsPage() {
                   setVerifiedAccountName(null);
                   setVerifyError(null);
                 }}
-                placeholder="Enter account number"
+                placeholder={t("web.provider.settings.pages.payout-accounts.enterAccountNumber")}
                 className="mt-1"
                 maxLength={20}
               />
@@ -624,7 +626,7 @@ export default function PayoutAccountsPage() {
                 <p className="text-xs text-red-600 mt-1">{formErrors.account_number}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Enter your bank account number (8-20 digits)
+                {t("web.provider.settings.pages.payout-accounts.accountNumberHint")}
               </p>
               {showVerifyAccountButton ? (
                 <>
@@ -643,22 +645,22 @@ export default function PayoutAccountsPage() {
                   >
                     {isVerifying ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Verifying...
+                        <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                        {t("web.provider.settings.pages.payout-accounts.verifying")}
                       </>
                     ) : verifiedAccountName ? (
                       <>
-                        <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
-                        Verified
+                        <CheckCircle2 className="w-4 h-4 me-2 text-green-600" />
+                        {t("web.provider.settings.pages.payout-accounts.verified")}
                       </>
                     ) : (
-                      "Verify Account (optional)"
+                      t("web.provider.settings.pages.payout-accounts.verifyAccountOptional")
                     )}
                   </Button>
                   {verifyError && (
                     <p className="text-xs text-amber-700 mt-1.5 flex items-start gap-1">
                       <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      {verifyError}. You can still enter your account name manually below.
+                      {verifyError}. {t("web.provider.settings.pages.payout-accounts.enterNameManually")}
                     </p>
                   )}
                 </>
@@ -667,7 +669,7 @@ export default function PayoutAccountsPage() {
 
             <div>
               <Label htmlFor="account_name">
-                Account Name <span className="text-red-500">*</span>
+                {t("web.provider.settings.pages.payout-accounts.accountName")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="account_name"
@@ -684,19 +686,19 @@ export default function PayoutAccountsPage() {
                     setVerifiedAccountName(null);
                   }
                 }}
-                placeholder="Enter account holder name"
+                placeholder={t("web.provider.settings.pages.payout-accounts.enterAccountHolderName")}
                 className="mt-1"
               />
               {formErrors.account_name && (
                 <p className="text-xs text-red-600 mt-1">{formErrors.account_name}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Name as it appears on your bank account
+                {t("web.provider.settings.pages.payout-accounts.accountNameHint")}
               </p>
             </div>
 
             <div>
-              <Label htmlFor="email">Email (Optional)</Label>
+              <Label htmlFor="email">{t("web.provider.settings.pages.payout-accounts.emailOptional")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -705,25 +707,25 @@ export default function PayoutAccountsPage() {
                   setFormData({ ...formData, email: e.target.value });
                   setFormErrors({ ...formErrors, email: "" });
                 }}
-                placeholder="your@email.com"
+                placeholder={t("web.provider.settings.pages.payout-accounts.yourEmailCom")}
                 className="mt-1"
               />
               {formErrors.email && (
                 <p className="text-xs text-red-600 mt-1">{formErrors.email}</p>
               )}
               <p className="text-xs text-gray-500 mt-1">
-                Email for payout notifications (optional)
+                {t("web.provider.settings.pages.payout-accounts.emailPayoutHint")}
               </p>
             </div>
 
             <div>
-              <Label htmlFor="description">Description (Optional)</Label>
+              <Label htmlFor="description">{t("web.provider.settings.pages.payout-accounts.descriptionOptional")}</Label>
               <Input
                 id="description"
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="e.g., Main business account"
+                placeholder={t("web.provider.settings.pages.payout-accounts.eGMainBusinessAccount")}
                 className="mt-1"
               />
             </div>
@@ -731,9 +733,9 @@ export default function PayoutAccountsPage() {
             <Alert className="bg-blue-50 border-blue-200">
               <AlertCircle className="w-4 h-4 text-blue-600" />
               <AlertDescription className="text-blue-800 text-sm">
-                Make sure the account name matches exactly as it appears on your bank statement.
+                {t("web.provider.settings.pages.payout-accounts.matchBankStatement")}
                 {showVerifyAccountButton
-                  ? " Account verification is optional — if it's unavailable for your bank, enter the name manually."
+                  ? t("web.provider.settings.pages.payout-accounts.verificationOptionalSuffix")
                   : null}
               </AlertDescription>
             </Alert>
@@ -757,7 +759,7 @@ export default function PayoutAccountsPage() {
               }}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button
               onClick={handleAddAccount}
@@ -766,13 +768,13 @@ export default function PayoutAccountsPage() {
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Adding...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                  {t("web.provider.settings.pages.payout-accounts.adding")}
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Account
+                  <Plus className="w-4 h-4 me-2" />
+                  {t("web.provider.settings.pages.payout-accounts.addAccount")}
                 </>
               )}
             </Button>

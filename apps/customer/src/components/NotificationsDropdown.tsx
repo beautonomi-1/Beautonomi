@@ -35,6 +35,7 @@ import {
 } from "@/lib/notifications";
 import { haptic } from "@/lib/haptics";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const RECENT_LIMIT = 10;
 
@@ -223,8 +224,8 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerTitleBlock}>
-              <Text style={styles.title}>Notifications</Text>
-              <Text style={styles.swipeHint}>Swipe left on a row to delete</Text>
+              <Text style={styles.title}>{t("customer.mobile.components.notificationsDropdown.title")}</Text>
+              <Text style={styles.swipeHint}>{t("customer.mobile.components.notificationsDropdown.swipeHint")}</Text>
             </View>
             {hasUnread && (
               <TouchableOpacity
@@ -234,13 +235,13 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
                 }}
                 disabled={markingRead}
                 hitSlop={12}
-                accessibilityLabel="Mark all as read"
+                accessibilityLabel={t("customer.mobile.components.notificationsDropdown.markAllReadA11y")}
                 style={{ opacity: markingRead ? 0.5 : 1 }}
               >
                 {markingRead ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
-                  <Text style={styles.markAllRead}>Mark all read</Text>
+                  <Text style={styles.markAllRead}>{t("customer.mobile.components.notificationsDropdown.markAllRead")}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -254,15 +255,15 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
           ) : error && list.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Ionicons name="cloud-offline-outline" size={32} color={Colors.gray[300]} />
-              <Text style={styles.emptyText}>Couldn’t load notifications</Text>
+              <Text style={styles.emptyText}>{t("customer.mobile.components.notificationsDropdown.loadFailed")}</Text>
               <TouchableOpacity onPress={() => void load()} hitSlop={12} style={{ marginTop: 8 }}>
-                <Text style={styles.markAllRead}>Retry</Text>
+                <Text style={styles.markAllRead}>{t("customer.mobile.components.notificationsDropdown.retry")}</Text>
               </TouchableOpacity>
             </View>
           ) : list.length === 0 ? (
             <View style={styles.emptyWrap}>
               <Ionicons name="notifications-off-outline" size={32} color={Colors.gray[300]} />
-              <Text style={styles.emptyText}>No notifications yet</Text>
+              <Text style={styles.emptyText}>{t("customer.mobile.components.notificationsDropdown.empty")}</Text>
             </View>
           ) : (
             <View style={styles.scrollRoot}>
@@ -284,7 +285,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
                       activeOpacity={0.7}
                       onPress={() => handleItemPress(n)}
                       style={[styles.row, !n.is_read && styles.rowUnread]}
-                      accessibilityHint="Swipe left to delete. Opens related screen."
+                      accessibilityHint={t("customer.mobile.components.notificationsDropdown.swipeDeleteHint")}
                     >
                       {!n.is_read && <View style={styles.unreadDot} />}
                       <View style={styles.rowContent}>
@@ -292,7 +293,7 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
                         <Text style={styles.rowMessage} numberOfLines={2}>{n.message}</Text>
                         <Text style={styles.rowTime}>{formatNotificationTime(n.created_at)}</Text>
                       </View>
-                      <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+                      <DirectionalIcon name="chevron-forward" size={16} color={Colors.gray[400]} />
                     </TouchableOpacity>
                   </SwipeableNotificationRow>
                 ))}
@@ -305,9 +306,9 @@ export function NotificationsDropdown({ visible, onClose }: NotificationsDropdow
             onPress={handleViewAll}
             style={styles.viewAllButton}
             activeOpacity={0.8}
-            accessibilityLabel="View all notifications"
+            accessibilityLabel={t("customer.mobile.components.notificationsDropdown.viewAll")}
           >
-            <Text style={styles.viewAllText}>View all notifications</Text>
+            <Text style={styles.viewAllText}>{t("customer.mobile.components.notificationsDropdown.viewAll")}</Text>
             <Ionicons name="open-outline" size={18} color={Colors.primary} />
           </TouchableOpacity>
         </View>
@@ -346,7 +347,7 @@ const styles = StyleSheet.create({
   headerTitleBlock: {
     flex: 1,
     minWidth: 0,
-    paddingRight: 12,
+    paddingEnd: 12,
   },
   title: {
     fontSize: 18,
@@ -402,7 +403,7 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: Colors.primary,
-    marginRight: 10,
+    marginEnd: 10,
   },
   rowContent: {
     flex: 1,

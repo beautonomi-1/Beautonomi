@@ -346,6 +346,9 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
         default_language: tenantRegionConfig.defaultLanguage,
         timezone: tenantRegionConfig.defaultTimezone,
         phone_country_code: tenantRegionConfig.phoneCountryCode,
+        ...(tenantRegionConfig.supportedLanguages.length > 0
+          ? { supported_languages: tenantRegionConfig.supportedLanguages }
+          : {}),
         ...(tenantRegionConfig.regionId ? { region_id: tenantRegionConfig.regionId } : {}),
         ...(gatewayName ? { payment_gateway: gatewayName } : {}),
         ...(gatewayNativeMinVersion

@@ -36,7 +36,7 @@ import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddr
 import type { AddressPickerSelection } from "@/components/AddressPicker";
 import { api } from "@/lib/api-client";
 import { FadeIn } from "@/components/FadeIn";
-import { useTranslation } from "@beautonomi/i18n";
+import { useTranslation, translatePublicCategoryLabel } from "@beautonomi/i18n";
 import type { PublicProviderCard } from "@/types/api";
 import {
   HOME_SECTION_MARGIN_BOTTOM,
@@ -48,6 +48,7 @@ import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
 import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useSafetySettings } from "@/hooks/useSafetySettings";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const GAP = 16;
 
@@ -95,14 +96,14 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  addressBarIconMargin: { marginRight: 8 },
+  addressBarIconMargin: { marginEnd: 8 },
   addressBarText: {
     color: "white",
     fontWeight: "500",
     fontSize: 16,
     flexShrink: 1,
   },
-  addressBarChevron: { marginLeft: 8 },
+  addressBarChevron: { marginStart: 8 },
   navRow: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -221,7 +222,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  sectionTitleStarMargin: { marginLeft: 4 },
+  sectionTitleStarMargin: { marginStart: 4 },
   viewMoreRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -232,13 +233,13 @@ const styles = StyleSheet.create({
     color: Colors.gray[900],
     textDecorationLine: "underline",
   },
-  viewMoreIcon: { marginLeft: 4 },
+  viewMoreIcon: { marginStart: 4 },
   sectionContainer: { marginBottom: HOME_SECTION_MARGIN_BOTTOM },
   horizontalCardsContent: {
     paddingHorizontal: 16,
     flexDirection: "row",
   },
-  cardWrapper: { marginRight: GAP },
+  cardWrapper: { marginEnd: GAP },
   errorBox: {
     backgroundColor: "#FEF2F2",
     borderWidth: 1,
@@ -262,12 +263,15 @@ const SectionHeader = memo(function SectionHeader({
   onViewMore,
   contentPadding,
   isFirst,
+  showStars,
 }: {
   title: string;
   onViewMore?: () => void;
   contentPadding: number;
   isFirst?: boolean;
+  showStars?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <View
       style={[
@@ -280,7 +284,7 @@ const SectionHeader = memo(function SectionHeader({
         <Text style={{ fontSize: HOME_SECTION_TITLE_FONT_SIZE, fontWeight: "400", color: Colors.gray[900] }}>
           {title}
         </Text>
-        {title === "Top Rated" ? (
+        {showStars ? (
           <View style={styles.sectionTitleStarMargin}>
             <Text style={{ color: "#FACC15", fontSize: 12 }}>★★★</Text>
           </View>
@@ -291,11 +295,11 @@ const SectionHeader = memo(function SectionHeader({
           onPress={onViewMore}
           style={styles.viewMoreRow}
           accessibilityRole="button"
-          accessibilityLabel={`View more ${title}`}
-          accessibilityHint={`Shows all providers in the ${title} section`}
+          accessibilityLabel={t("customer.mobile.screens.homeTab.viewMoreA11y", { title })}
+          accessibilityHint={t("customer.mobile.screens.homeTab.viewMoreHint", { title })}
         >
-          <Text style={styles.viewMoreText}>View More</Text>
-          <Ionicons name="arrow-forward" size={12} color="black" style={styles.viewMoreIcon} />
+          <Text style={styles.viewMoreText}>{t("customer.mobile.screens.homeTab.viewMore")}</Text>
+          <DirectionalIcon name="arrow-forward" size={12} color="black" style={styles.viewMoreIcon} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -325,6 +329,7 @@ const ProviderSection = memo(function ProviderSection({
   feedOriginLng?: number | null;
   sponsoredListingLabel?: string;
 }) {
+  const { t } = useTranslation();
   if (providers.length === 0) return null;
 
   return (
@@ -334,13 +339,14 @@ const ProviderSection = memo(function ProviderSection({
         onViewMore={onViewMore}
         contentPadding={contentPadding}
         isFirst={isFirst}
+        showStars={badge === "topRated"}
       />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.horizontalCardsContent, { paddingHorizontal: contentPadding }]}
         accessibilityRole="list"
-        accessibilityLabel={`${title} providers`}
+        accessibilityLabel={t("customer.mobile.screens.homeTab.sectionProvidersA11y", { title })}
       >
         {providers.slice(0, 8).map((p) => (
           <View key={p.id} style={[styles.cardWrapper, { width: cardWidth }]}>
@@ -377,6 +383,7 @@ const CategoryPill = memo(function CategoryPill({
   onPress?: () => void;
   imagePriority?: "low" | "normal" | "high";
 }) {
+  const { t } = useTranslation();
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -386,14 +393,14 @@ const CategoryPill = memo(function CategoryPill({
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 9999,
-        marginRight: 12,
+        marginEnd: 12,
         borderBottomWidth: active ? 2 : 0,
         borderBottomColor: active ? Colors.primary : "transparent",
       }}
       accessibilityRole="button"
-      accessibilityLabel={`${label} category`}
+      accessibilityLabel={t("customer.mobile.screens.homeTab.categoryA11y", { label })}
       accessibilityState={{ selected: active }}
-      accessibilityHint={`Filter providers by ${label} category`}
+      accessibilityHint={t("customer.mobile.screens.homeTab.categoryHint", { label })}
     >
       {imageUri ? (
         <Image
@@ -401,7 +408,7 @@ const CategoryPill = memo(function CategoryPill({
           style={{
             width: 18,
             height: 18,
-            marginRight: 6,
+            marginEnd: 6,
             opacity: active ? 1 : 0.52,
           }}
           contentFit="contain"
@@ -413,7 +420,7 @@ const CategoryPill = memo(function CategoryPill({
           name={ionIcon}
           size={16}
           color={active ? Colors.primary : Colors.gray[500]}
-          style={{ marginRight: 6 }}
+          style={{ marginEnd: 6 }}
         />
       ) : null}
       <Text
@@ -431,7 +438,7 @@ const CategoryPill = memo(function CategoryPill({
 
 export default function HomeScreen() {
   useScreenTracking("Home");
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   useEffect(() => {
     trackHomeView();
   }, []);
@@ -502,8 +509,11 @@ export default function HomeScreen() {
   const hasAnimatedRef = useRef(false);
 
   const adsDisclosureLabel = useMemo(
-    () => (String(data?.ads_disclosure_label ?? "Sponsored").trim() || "Sponsored"),
-    [data?.ads_disclosure_label],
+    () => {
+      const fallback = t("customer.mobile.screens.homeTab.sponsoredFallback");
+      return String(data?.ads_disclosure_label ?? fallback).trim() || fallback;
+    },
+    [data?.ads_disclosure_label, t],
   );
 
   const handleCategoryPress = useCallback((cat: string) => {
@@ -540,7 +550,7 @@ export default function HomeScreen() {
     async (payload: SaveAddressPayload) => {
       const res = await api.post<{ id: string; address_line1: string; city: string; latitude?: number; longitude?: number }>("/api/me/addresses", payload);
       if (res.error) {
-        throw new Error(res.error.message ?? "Failed to save address");
+        throw new Error(res.error.message ?? t("customer.mobile.screens.homeTab.saveAddressError"));
       }
       const created = res.data;
       setSelectedAddress({
@@ -551,7 +561,7 @@ export default function HomeScreen() {
       });
       await reloadAddresses();
     },
-    [setSelectedAddress, reloadAddresses],
+    [setSelectedAddress, reloadAddresses, t],
   );
 
   const handleSaveAndUseWithError = useCallback(
@@ -583,7 +593,11 @@ export default function HomeScreen() {
 
   const addressLabel =
     selectedAddress?.displayName ??
-    (shouldUseGps && locationLoading ? "Detecting location…" : coords ? "Current location" : "Select address");
+    (shouldUseGps && locationLoading
+      ? t("customer.mobile.screens.homeTab.detectingLocation")
+      : coords
+        ? t("customer.mobile.screens.homeTab.currentLocation")
+        : t("customer.mobile.screens.homeTab.selectAddress"));
 
   if (loading && !data) {
     return (
@@ -609,8 +623,8 @@ export default function HomeScreen() {
                 style={styles.addressBarButton}
                 onPress={() => setAddressPickerVisible(true)}
                 accessibilityRole="button"
-                accessibilityLabel="Select address"
-                accessibilityHint="Opens address selector to choose your location"
+                accessibilityLabel={t("customer.mobile.screens.homeTab.selectAddress")}
+                accessibilityHint={t("customer.mobile.screens.homeTab.selectAddressHint")}
               >
                 <Ionicons name="location" size={20} color="white" style={styles.addressBarIconMargin} />
                 <Text style={styles.addressBarText} numberOfLines={2} ellipsizeMode="tail">
@@ -640,8 +654,8 @@ export default function HomeScreen() {
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/home")}
               accessibilityRole="image"
-              accessibilityLabel="Beautonomi home"
-              style={{ paddingVertical: 6, paddingHorizontal: 4, marginLeft: -4, borderRadius: 12 }}
+              accessibilityLabel={t("customer.mobile.screens.homeTab.beautonomiHomeA11y")}
+              style={{ paddingVertical: 6, paddingHorizontal: 4, marginStart: -4, borderRadius: 12 }}
             >
               <BeautonomiWordmark size={28} showText={false} />
             </TouchableOpacity>
@@ -652,24 +666,26 @@ export default function HomeScreen() {
             <TouchableOpacity
               style={[styles.navTab, styles.navTabActive, { paddingHorizontal: navTabPadH }]}
               accessibilityRole="button"
-              accessibilityLabel="Home tab"
+              accessibilityLabel={t("customer.mobile.screens.homeTab.homeA11y")}
               accessibilityState={{ selected: true }}
             >
               <Ionicons name="home" size={20} color={Colors.primary} />
-              <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "600" }]}>Home</Text>
+              <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "600" }]}>
+                {t("customer.mobile.screens.homeTab.home")}
+              </Text>
             </TouchableOpacity>
             {!hideExploreFeed ? (
             <TouchableOpacity
               style={[styles.navTab, { paddingHorizontal: navTabPadH }]}
               onPress={() => router.push("/(app)/(tabs)/explore")}
               accessibilityRole="button"
-              accessibilityLabel="Explore tab"
-              accessibilityHint="Navigate to the Explore feed"
+              accessibilityLabel={t("customer.mobile.screens.homeTab.exploreA11y")}
+              accessibilityHint={t("customer.mobile.screens.homeTab.exploreHint")}
               accessibilityState={{ selected: false }}
             >
               <Ionicons name="compass-outline" size={20} color={Colors.gray[500]} />
               <Text style={[styles.navTabLabelExplore, { color: Colors.gray[500], fontWeight: "500" }]}>
-                Explore
+                {t("customer.mobile.screens.homeTab.explore")}
               </Text>
             </TouchableOpacity>
             ) : null}
@@ -689,8 +705,8 @@ export default function HomeScreen() {
                 router.push("/(app)/(tabs)/saved" as any);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Saved"
-              accessibilityHint="Open saved providers, products, and posts"
+              accessibilityLabel={t("customer.mobile.screens.homeTab.savedA11y")}
+              accessibilityHint={t("customer.mobile.screens.homeTab.savedHint")}
               style={styles.navIconBtn}
             >
               <Ionicons name="heart-outline" size={22} color="#374151" />
@@ -701,8 +717,8 @@ export default function HomeScreen() {
                 setNotificationsDropdownVisible(true);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Notifications"
-              accessibilityHint="Show recent notifications"
+              accessibilityLabel={t("customer.mobile.screens.homeTab.notificationsA11y")}
+              accessibilityHint={t("customer.mobile.screens.homeTab.notificationsHint")}
               style={styles.navIconBtn}
             >
               <Ionicons name="notifications-outline" size={22} color="#374151" />
@@ -722,7 +738,7 @@ export default function HomeScreen() {
                   }}
                 >
                   <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {unreadCount > 99 ? t("customer.mobile.screens.homeTab.badgeOverflow") : unreadCount}
                   </Text>
                 </View>
               ) : null}
@@ -737,41 +753,44 @@ export default function HomeScreen() {
             contentContainerStyle={[styles.categoryScrollContent, { paddingHorizontal: contentPadding }]}
             style={styles.categoryScroll}
             accessibilityRole="list"
-            accessibilityLabel="Category filters"
+            accessibilityLabel={t("customer.mobile.screens.homeTab.categoryFiltersA11y")}
           >
             <CategoryPill
-              label="All"
+              label={t("customer.mobile.screens.homeTab.categoryAll")}
               active={activeCategory === "All"}
               ionIcon="apps-outline"
               onPress={() => handleCategoryPress("All")}
             />
             {categoriesLoading ? (
-              <Text style={styles.categoryLoadingText}>Loading categories…</Text>
+              <Text style={styles.categoryLoadingText}>{t("customer.mobile.screens.homeTab.loadingCategories")}</Text>
             ) : categoriesError && globalCategories.length === 0 ? (
               <View style={styles.categoryErrorRow}>
                 <Text style={styles.categoryErrorText} numberOfLines={2}>
                   {categoriesError === "Failed to fetch"
-                    ? "Can't load categories. Check your connection."
+                    ? t("customer.mobile.screens.homeTab.categoriesLoadFailed")
                     : categoriesError}
                 </Text>
                 <TouchableOpacity
                   onPress={() => void reloadCategories()}
                   style={styles.categoryRetryButton}
                   accessibilityRole="button"
-                  accessibilityLabel="Retry loading categories"
+                  accessibilityLabel={t("customer.mobile.screens.homeTab.retryCategoriesA11y")}
                 >
-                  <Text style={styles.categoryRetryText}>Retry</Text>
+                  <Text style={styles.categoryRetryText}>{t("customer.mobile.screens.homeTab.retry")}</Text>
                 </TouchableOpacity>
               </View>
             ) : globalCategories.length === 0 ? (
-              <Text style={styles.categoryLoadingText}>No categories available</Text>
+              <Text style={styles.categoryLoadingText}>{t("customer.mobile.screens.homeTab.noCategoriesAvailable")}</Text>
             ) : (
               globalCategories.map((cat, idx) => {
                 const remote = getGlobalCategoryImageUri(cat.icon ?? cat.icon_name);
                 return (
                   <CategoryPill
                     key={cat.id}
-                    label={cat.name}
+                    label={translatePublicCategoryLabel(t, cat.slug, cat.name, {
+                      language: i18n.language,
+                      nameI18n: cat.name_i18n,
+                    })}
                     active={activeCategory === cat.name}
                     imageUri={remote}
                     imagePriority={idx < 4 ? "high" : "normal"}
@@ -799,17 +818,17 @@ export default function HomeScreen() {
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>
                 {error === "Failed to fetch"
-                  ? "Can't connect. Check your internet and try again."
+                  ? t("customer.mobile.screens.homeTab.providersLoadFailed")
                   : error}
               </Text>
               <TouchableOpacity
                 onPress={() => refetch()}
                 style={styles.retryButton}
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading providers"
-                accessibilityHint="Attempts to reload the provider list"
+                accessibilityLabel={t("customer.mobile.screens.homeTab.retryProvidersA11y")}
+                accessibilityHint={t("customer.mobile.screens.homeTab.retryProvidersHint")}
               >
-                <Text style={styles.retryText}>Retry</Text>
+                <Text style={styles.retryText}>{t("customer.mobile.screens.homeTab.retry")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -824,7 +843,7 @@ export default function HomeScreen() {
             const sections = (
               <View>
                 <ProviderSection
-                  title="Top Rated"
+                  title={t("customer.mobile.screens.homeTab.topRated")}
                   providers={data.topRated || []}
                   badge="topRated"
                   cardWidth={cardWidth}
@@ -846,7 +865,7 @@ export default function HomeScreen() {
                   onViewMore={() => router.push("/(app)/more-providers/sponsored")}
                 />
                 <ProviderSection
-                  title="Nearest Providers"
+                  title={t("customer.mobile.screens.homeTab.nearestProviders")}
                   providers={data.nearest || []}
                   badge="nearest"
                   cardWidth={cardWidth}
@@ -856,7 +875,7 @@ export default function HomeScreen() {
                   onViewMore={() => router.push("/(app)/more-providers/nearest")}
                 />
                 <ProviderSection
-                  title="Hottest Picks"
+                  title={t("customer.mobile.screens.homeTab.hottestPicks")}
                   providers={data.hottest || []}
                   badge="hottest"
                   cardWidth={cardWidth}
@@ -866,7 +885,7 @@ export default function HomeScreen() {
                   onViewMore={() => router.push("/(app)/more-providers/hottest")}
                 />
                 <ProviderSection
-                  title="Upcoming Talent"
+                  title={t("customer.mobile.screens.homeTab.upcomingTalent")}
                   providers={data.upcoming || []}
                   badge="upcoming"
                   cardWidth={cardWidth}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { View, Text, TouchableOpacity, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import {
@@ -29,6 +30,9 @@ export function BookingReferencePanel({
   audience = "customer",
   onContactSupport,
 }: Props) {
+  const { t } = useTranslation();
+  const rp = (key: string, opts?: Record<string, string>) =>
+    t(`customer.mobile.components.bookingReferencePanel.${key}`, opts) as string;
   const number = String(bookingNumber ?? "").trim();
   const prompt = getBookingSupportPrompt({
     status,
@@ -69,7 +73,7 @@ export function BookingReferencePanel({
         paddingVertical: 7,
       }}
       accessibilityRole="button"
-      accessibilityLabel={`Copy ${label}`}
+      accessibilityLabel={rp("copyA11y", { label })}
     >
       <Ionicons
         name={copied === which ? "checkmark" : "copy-outline"}
@@ -77,7 +81,7 @@ export function BookingReferencePanel({
         color={copied === which ? "#16a34a" : Colors.gray[700]}
       />
       <Text style={{ fontSize: 12, fontWeight: "600", color: copied === which ? "#16a34a" : Colors.gray[700] }}>
-        {copied === which ? "Copied" : "Copy"}
+        {copied === which ? rp("copied") : rp("copy")}
       </Text>
     </TouchableOpacity>
   );
@@ -97,7 +101,7 @@ export function BookingReferencePanel({
           <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], textTransform: "uppercase", letterSpacing: 0.4 }}>
-                Booking number
+                {rp("bookingNumber")}
               </Text>
               <Text
                 selectable
@@ -106,7 +110,7 @@ export function BookingReferencePanel({
                 {number}
               </Text>
             </View>
-            <CopyChip which="number" text={number} label="Booking number" />
+            <CopyChip which="number" text={number} label={rp("bookingNumber")} />
           </View>
         ) : null}
 
@@ -124,7 +128,7 @@ export function BookingReferencePanel({
         >
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], textTransform: "uppercase", letterSpacing: 0.4 }}>
-              Booking ID
+              {rp("bookingId")}
             </Text>
             <Text
               selectable
@@ -138,18 +142,18 @@ export function BookingReferencePanel({
               {bookingId}
             </Text>
           </View>
-          <CopyChip which="id" text={bookingId} label="Booking ID" />
+          <CopyChip which="id" text={bookingId} label={rp("bookingId")} />
         </View>
 
         {number ? (
           <TouchableOpacity
-            onPress={() => void copy(supportLabel, "both", "Booking reference")}
+            onPress={() => void copy(supportLabel, "both", rp("bookingReference"))}
             style={{ marginTop: 12, alignSelf: "flex-end" }}
             accessibilityRole="button"
-            accessibilityLabel="Copy booking number and ID"
+            accessibilityLabel={rp("copyBothA11y")}
           >
             <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500] }}>
-              {copied === "both" ? "Number and ID copied" : "Copy number and ID"}
+              {copied === "both" ? rp("numberAndIdCopied") : rp("copyNumberAndId")}
             </Text>
           </TouchableOpacity>
         ) : null}
@@ -170,7 +174,7 @@ export function BookingReferencePanel({
             name="help-circle-outline"
             size={20}
             color={urgent ? "#B45309" : Colors.gray[500]}
-            style={{ marginRight: 10, marginTop: 1 }}
+            style={{ marginEnd: 10, marginTop: 1 }}
           />
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 15, fontWeight: "700", color: urgent ? "#78350F" : Colors.gray[900] }}>
@@ -195,10 +199,10 @@ export function BookingReferencePanel({
                 paddingVertical: 10,
               }}
               accessibilityRole="button"
-              accessibilityLabel="Contact support"
+              accessibilityLabel={rp("contactSupport")}
             >
               <Text style={{ fontSize: 14, fontWeight: "600", color: urgent ? "#fff" : Colors.gray[800] }}>
-                Contact support
+                {rp("contactSupport")}
               </Text>
             </TouchableOpacity>
           </View>

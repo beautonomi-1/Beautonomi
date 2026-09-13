@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -28,6 +29,7 @@ export function WaitlistQuickBookSheet({
   date,
   onSuccess,
 }: WaitlistQuickBookSheetProps) {
+  const { t } = useTranslation();
   const [matches, setMatches] = useState<WaitlistMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<WaitlistMatch | null>(null);
@@ -56,21 +58,21 @@ export function WaitlistQuickBookSheet({
 
   return (
     <>
-      <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="view" title="Waitlist quick book">
+      <BookingBottomSheet open={open} onOpenChange={onOpenChange} mode="view" title={t("web.waitlistQuickBook.title")}>
         <div className="space-y-3 pb-4">
           {loading ? (
             <div className="flex justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
             </div>
           ) : matches.length === 0 ? (
-            <p className="text-sm text-gray-500 py-6 text-center">No waitlist matches for this date.</p>
+            <p className="text-sm text-gray-500 py-6 text-center">{t("web.waitlistQuickBook.empty")}</p>
           ) : (
             matches.map((m) => (
               <BookingSectionCard key={m.waitlist_entry_id}>
                 <p className="font-semibold text-gray-900">{m.client_name}</p>
                 <p className="text-sm text-gray-600">{m.service_name}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {m.available_slots.length} slot{m.available_slots.length === 1 ? "" : "s"} · score {m.match_score}
+                  {t("web.waitlistQuickBook.slotsScore", { count: m.available_slots.length, score: m.match_score })}
                 </p>
                 <BookingActionButton
                   className="mt-3"
@@ -81,7 +83,7 @@ export function WaitlistQuickBookSheet({
                     setModalOpen(true);
                   }}
                 >
-                  Quick book
+                  {t("web.waitlistQuickBook.quickBook")}
                 </BookingActionButton>
               </BookingSectionCard>
             ))

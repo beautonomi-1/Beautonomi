@@ -20,7 +20,7 @@ export function ReportBasisFootnote({ basisNote, reportBasis, compact }: Props) 
       )}
     >
       <Ionicons name="information-circle-outline" size={compact ? 18 : 20} color="#0369a1" style={{ marginTop: 1 }} />
-      <Text style={twStyle(`ml-2 flex-1 text-sky-950 ${compact ? "text-xs leading-4" : "text-sm leading-5"}`)}>
+      <Text style={twStyle(`ms-2 flex-1 text-sky-950 ${compact ? "text-xs leading-4" : "text-sm leading-5"}`)}>
         {text}
       </Text>
     </View>

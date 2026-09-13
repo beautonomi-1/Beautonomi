@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **475** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **479** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -115,6 +115,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 28 | `/admin/provider-subscriptions` | W2 | finance | Y | `GET /api/admin/provider-subscriptions` | |
 | 29 | `/admin/subscription-revenue` | W2 | finance | Y | `GET /api/admin/subscription-metrics` | |
 | 29a | `/admin/paystack-terminal` | W2 | finance | Y (superadmin only) | `GET /api/admin/paystack-terminal/terminals`, `GET /api/admin/paystack-terminal/payments`, `GET/POST /api/admin/paystack-terminal/setup-requests`, `POST /api/admin/paystack-terminal/terminals`, `POST /api/admin/paystack-terminal/payments/sync`, `PATCH /api/admin/paystack-terminal/payments/:id`, `PATCH /api/admin/paystack-terminal/terminals/:id/assets`, `POST /api/admin/paystack-terminal/terminals/:id/poster` | **SPA:** [`PaystackTerminalOperationsPage`](../../apps/admin-web/src/routes/finance/PaystackTerminalOperationsPage.tsx). Superadmin-only operations console for terminal registry sync/import, payment exception resolution, setup-request fulfillment, asset updates, and poster uploads. |
+| 29b | `/admin/fx-rates` | W2 | finance | Y | `GET/POST/DELETE /api/admin/finance/fx-rates`; `GET .../history`; `GET .../audit`; `POST .../refresh` | **SPA:** [`FxRatesPage`](../../apps/admin-web/src/routes/finance/FxRatesPage.tsx). Platform FX reference desk (not tenant-scoped). AuthZ `ADMIN_SECTION_FINANCE`. |
 | 30 | `/admin/reports/revenue` | W2 | finance | N | `GET /api/admin/reports/revenue`, export | |
 | 31 | `/admin/reports/bookings` | W2 | finance | N | `GET /api/admin/reports/bookings`, export | |
 | 32 | `/admin/reports/providers` | W2 | finance | N | `GET /api/admin/reports/providers`, export | |
@@ -301,6 +302,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-07-27 | **Taxonomy / CI:** Added `GET /api/admin/paycloud-operations/payments/[id]` (**458** rows) — support diagnostics for a single PayCloud payment (intent result, webhooks, terminal metadata). SPA: [`PaycloudPaymentDetailModal`](../../apps/admin-web/src/routes/integrations/PaycloudPaymentDetailModal.tsx). §4 row **61e**. |
 | 2026-08-15 | **Taxonomy / CI:** Added **2** rows for courier shipping integration (`GET/PATCH /api/admin/integrations/shipping`, `POST .../shipping/probe`). SPA: [`ShippingIntegrationPage`](../../apps/admin-web/src/routes/integrations/ShippingIntegrationPage.tsx). §1.1 inventory **474**; §4 row **61g**. |
 | 2026-08-19 | **Taxonomy / CI:** Added `GET /api/admin/user-blocks` (`ADMIN_SECTION_USERS_TRUST`, `resolveAdminApiTenantId`). SPA: [`UserBlocksListPage`](../../apps/admin-web/src/routes/trust/UserBlocksListPage.tsx) at `/admin/user-blocks`. §1.1 inventory **475**; §4 row **17b**. |
+| 2026-09-13 | **Taxonomy / CI:** Added FX reference desk routes (`GET/POST/DELETE /api/admin/finance/fx-rates`, `GET .../history`, `GET .../audit`, `POST .../refresh`). SPA: [`FxRatesPage`](../../apps/admin-web/src/routes/finance/FxRatesPage.tsx) at `/admin/fx-rates`. §1.1 inventory **479**; §4 row **29b**. |
 
 ---
 

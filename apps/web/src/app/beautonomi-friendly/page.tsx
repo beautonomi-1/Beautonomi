@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -8,7 +9,6 @@ import GetStarted from "./components/get-started";
 import OtherCities from "./components/other-cities";
 import FAQ from "@/components/global/faq";
 import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
 export interface FriendlyPageContent {
   [sectionKey: string]: {
@@ -17,16 +17,6 @@ export interface FriendlyPageContent {
     metadata: Record<string, unknown>;
   };
 }
-
-export const metadata: Metadata = {
-  title: "Beautonomi Friendly",
-  description:
-    "Discover how Beautonomi makes beauty services more accessible and customer-friendly.",
-  alternates: {
-    canonical: "/beautonomi-friendly",
-    languages: getHreflangAlternateUrls("/beautonomi-friendly"),
-  },
-};
 
 export const revalidate = 300;
 
@@ -50,5 +40,13 @@ const Page = async () => {
     </div>
   );
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/beautonomi-friendly",
+    titleKey: "web.seo.beautonomiFriendlyTitle",
+    descriptionKey: "web.seo.beautonomiFriendlyDescription",
+  });
+}
 
 export default Page;

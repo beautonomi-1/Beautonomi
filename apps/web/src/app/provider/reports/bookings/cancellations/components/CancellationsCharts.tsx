@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useMemo } from "react";
 import {
   BarChart,
@@ -20,6 +21,7 @@ export function CancellationsDailyChart({
 }: {
   rows: Array<{ date: string; count: number }>;
 }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows.map((r) => ({
@@ -30,7 +32,7 @@ export function CancellationsDailyChart({
   );
 
   if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No cancellations to chart for this range.</p>;
+    return <p className="py-8 text-center text-sm text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.noCancellationsToChart")}</p>;
   }
 
   return (
@@ -54,6 +56,7 @@ export function CancellationsReasonsChart({
 }: {
   rows: Array<{ reason: string; count: number; percentage: number }>;
 }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows.slice(0, 10).map((r) => ({
@@ -69,7 +72,7 @@ export function CancellationsReasonsChart({
   );
 
   if (data.length === 0) {
-    return <p className="py-6 text-center text-sm text-gray-500">No reasons recorded.</p>;
+    return <p className="py-6 text-center text-sm text-gray-500">{t("web.provider.reports.pages.bookings/cancellations.noReasonsRecorded")}</p>;
   }
 
   return (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { View, Alert } from "react-native";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -48,6 +49,9 @@ function settingsToEditorValue(s: TravelFeeSettings): OnboardingTravelFees {
 }
 
 export default function TravelFeesScreen() {
+  const { t } = useTranslation();
+  const tf = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.travelFees.${key}`, opts) as string;
   const { data: settings, loading, refresh } = useApi<TravelFeeSettings>("/api/provider/travel-fees");
   const { data: platformLimits } = useApi<PlatformTravelLimits>(
     "/api/provider/travel-fees/platform-limits",
@@ -90,15 +94,21 @@ export default function TravelFeesScreen() {
       if (pricingModel === "per_km") {
         if (r < platformLimits.provider_min_rate_per_km || r > platformLimits.provider_max_rate_per_km) {
           Alert.alert(
-            "Error",
-            `Rate per km must be between ${platformLimits.provider_min_rate_per_km} and ${platformLimits.provider_max_rate_per_km}`,
+            tf("errorTitle"),
+            tf("rateRange", {
+              min: platformLimits.provider_min_rate_per_km,
+              max: platformLimits.provider_max_rate_per_km,
+            }),
           );
           return;
         }
         if (m < platformLimits.provider_min_minimum_fee || m > platformLimits.provider_max_minimum_fee) {
           Alert.alert(
-            "Error",
-            `Minimum fee must be between ${platformLimits.provider_min_minimum_fee} and ${platformLimits.provider_max_minimum_fee}`,
+            tf("errorTitle"),
+            tf("minFeeRange", {
+              min: platformLimits.provider_min_minimum_fee,
+              max: platformLimits.provider_max_minimum_fee,
+            }),
           );
           return;
         }
@@ -119,18 +129,18 @@ export default function TravelFeesScreen() {
         payload.free_within_km = value.free_within_km;
       } else {
         if (!allowTiered) {
-          Alert.alert("Error", "Tiered pricing is not enabled for your platform.");
+          Alert.alert(tf("errorTitle"), tf("tieredDisabled"));
           return;
         }
         const tiers = value.tiers ?? [];
         if (tiers.length === 0) {
-          Alert.alert("Error", "Add at least one distance tier");
+          Alert.alert(tf("errorTitle"), tf("addTier"));
           return;
         }
         const sorted = [...tiers].sort((a, b) => a.max_km - b.max_km);
         for (let i = 1; i < sorted.length; i++) {
           if (sorted[i].max_km <= sorted[i - 1].max_km) {
-            Alert.alert("Error", "Tiers must be in ascending order by max km");
+            Alert.alert(tf("errorTitle"), tf("tiersAscending"));
             return;
           }
         }
@@ -138,7 +148,7 @@ export default function TravelFeesScreen() {
       }
     }
     const { error } = await saveSettings("/api/provider/travel-fees", payload);
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(tf("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDirty(false);
@@ -152,13 +162,13 @@ export default function TravelFeesScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Travel Fees" showBack subtitle="Fees for at-home services" />
+      <ScreenHeader title={tf("title")} showBack subtitle={tf("subtitle")} />
 
       {stats && (
         <View style={twStyle("mb-4 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="This Month"
+              title={tf("thisMonth")}
               value={formatCurrency(stats.total_travel_fees_month)}
               icon="car-outline"
               iconColor="#22c55e"
@@ -166,9 +176,9 @@ export default function TravelFeesScreen() {
               compact
             />
           </View>
-          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
             <StatCard
-              title="Avg Fee"
+              title={tf("avgFee")}
               value={formatCurrency(stats.avg_fee)}
               icon="calculator-outline"
               iconColor="#6366f1"
@@ -178,7 +188,7 @@ export default function TravelFeesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Trips"
+              title={tf("trips")}
               value={String(stats.total_trips)}
               icon="navigate-outline"
               iconColor="#f59e0b"
@@ -198,7 +208,7 @@ export default function TravelFeesScreen() {
         providerCustomizationAllowed={allowCustomization}
       />
 
-      <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
+      <ActionButton label={tf("saveSettings")} onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
       <View style={twStyle("h-8")} />
     </ScreenContainer>
   );

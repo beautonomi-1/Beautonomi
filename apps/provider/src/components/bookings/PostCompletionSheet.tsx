@@ -49,6 +49,11 @@ export function PostCompletionSheet({
 }: PostCompletionSheetProps) {
   const router = useRouter();
   const { t } = useTranslation();
+  const pc = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.postCompletion." + key, opts) as string,
+    [t],
+  );
   const { user } = useAuth();
   const [step, setStep] = useState<PostCompletionStep>(initialStep);
   const [rateStars, setRateStars] = useState(0);
@@ -77,7 +82,7 @@ export function PostCompletionSheet({
     const qs = new URLSearchParams({
       create: "1",
       addToGallery: "1",
-      caption: `Fresh ${primaryServiceName}`,
+      caption: pc("freshCaption", { name: primaryServiceName }),
       ...(primaryOfferingId ? { offeringId: primaryOfferingId } : {}),
       bookingId,
       returnTo: "booking",
@@ -88,7 +93,7 @@ export function PostCompletionSheet({
 
   const submitRating = async () => {
     if (rateStars < 1) {
-      setRateError("Select a rating (1–5 stars).");
+      setRateError(pc("selectRating"));
       return;
     }
     setSubmittingRate(true);
@@ -100,7 +105,7 @@ export function PostCompletionSheet({
         comment: rateComment.trim() || undefined,
       });
       if (res.error) {
-        setRateError(res.error.message || "Failed to submit rating.");
+        setRateError(res.error.message || pc("submitFailed"));
         return;
       }
       submittedStarsRef.current = rateStars;
@@ -141,7 +146,7 @@ export function PostCompletionSheet({
       }
       setTimeout(() => markSeen(), 800);
     } catch (e: unknown) {
-      setRateError(e instanceof Error ? e.message : "Failed to submit rating.");
+      setRateError(e instanceof Error ? e.message : pc("submitFailed"));
     } finally {
       setSubmittingRate(false);
     }
@@ -162,53 +167,53 @@ export function PostCompletionSheet({
         >
           {step === "choose" ? (
             <>
-              <Text style={{ fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 8 }}>Booking complete</Text>
+              <Text style={{ fontSize: 20, fontWeight: "700", textAlign: "center", marginBottom: 8 }}>{pc("completeTitle")}</Text>
               {providerPointsEarned && providerPointsEarned > 0 ? (
                 <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 16 }}>
-                  You earned {providerPointsEarned} points.
+                  {pc("pointsEarned", { count: providerPointsEarned })}
                 </Text>
               ) : null}
               <TouchableOpacity
                 onPress={() => setStep("photo")}
                 style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Add a photo of your work</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("addPhoto")}</Text>
               </TouchableOpacity>
               {!hasExistingRating ? (
                 <TouchableOpacity
                   onPress={() => setStep("rate")}
                   style={{ borderWidth: 1.5, borderColor: Colors.primary, paddingVertical: 13, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
                 >
-                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>Rate this client</Text>
+                  <Text style={{ color: Colors.primary, fontWeight: "600" }}>{pc("rateClient")}</Text>
                 </TouchableOpacity>
               ) : null}
               <TouchableOpacity onPress={markSeen} style={{ paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ color: Colors.gray[500] }}>Done for now</Text>
+                <Text style={{ color: Colors.gray[500] }}>{pc("doneForNow")}</Text>
               </TouchableOpacity>
             </>
           ) : null}
 
           {step === "photo" ? (
             <>
-              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Show off your work</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>{pc("showOffTitle")}</Text>
               <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>
-                Post to Explore to reach new clients. You can also add it to your gallery.
+                {pc("showOffBody")}
               </Text>
               <TouchableOpacity
                 onPress={goToExplorePhoto}
                 style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 14, alignItems: "center", marginBottom: 10 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Open Explore</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("openExplore")}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setStep(hasExistingRating ? "choose" : "rate")} style={{ paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ color: Colors.primary }}>{hasExistingRating ? "Back" : "Skip to rate client"}</Text>
+                <Text style={{ color: Colors.primary }}>{hasExistingRating ? (t("common.back") as string) : pc("skipToRate")}</Text>
               </TouchableOpacity>
             </>
           ) : null}
 
           {step === "rate" ? (
             <>
-              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Rate this client</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>{pc("rateClient")}</Text>
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 8, marginBottom: 12 }}>
                 {[1, 2, 3, 4, 5].map((n) => (
                   <TouchableOpacity key={n} onPress={() => setRateStars(n)}>
@@ -219,7 +224,7 @@ export function PostCompletionSheet({
               <TextInput
                 value={rateComment}
                 onChangeText={setRateComment}
-                placeholder="Optional comment"
+                placeholder={pc("optionalComment")}
                 multiline
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 10, padding: 10, minHeight: 72, marginBottom: 12 }}
               />
@@ -232,11 +237,11 @@ export function PostCompletionSheet({
                 {submittingRate ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>Submit rating</Text>
+                  <Text style={{ color: "#fff", fontWeight: "700" }}>{pc("submitRating")}</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setStep("choose")} style={{ paddingVertical: 12, alignItems: "center" }}>
-                <Text style={{ color: Colors.gray[500] }}>Back</Text>
+                <Text style={{ color: Colors.gray[500] }}>{t("common.back") as string}</Text>
               </TouchableOpacity>
             </>
           ) : null}
@@ -244,7 +249,7 @@ export function PostCompletionSheet({
           {step === "done" ? (
             <View style={{ alignItems: "center", paddingVertical: 16 }}>
               <Ionicons name="checkmark-circle" size={48} color={Colors.primary} />
-              <Text style={{ marginTop: 12, fontSize: 16, fontWeight: "600" }}>Thanks!</Text>
+              <Text style={{ marginTop: 12, fontSize: 16, fontWeight: "600" }}>{pc("thanks")}</Text>
             </View>
           ) : null}
         </Pressable>

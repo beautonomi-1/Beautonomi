@@ -1,10 +1,13 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import Link from "next/link";
 import Image from "next/image";
 import type { ProductOrder } from "./order-list-types";
+import { formatCurrency } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-50 text-yellow-700",
@@ -17,15 +20,15 @@ const STATUS_COLORS: Record<string, string> = {
   refunded: "bg-gray-50 text-gray-700",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending: "Pending",
-  confirmed: "Confirmed",
-  processing: "Processing",
-  ready_for_collection: "Ready for Collection",
-  shipped: "Shipped",
-  delivered: "Delivered",
-  cancelled: "Cancelled",
-  refunded: "Refunded",
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  pending: "web.accountSettings.orders.statusPending",
+  confirmed: "web.accountSettings.orders.statusConfirmed",
+  processing: "web.accountSettings.orders.statusProcessing",
+  ready_for_collection: "web.accountSettings.orders.statusReadyForCollection",
+  shipped: "web.accountSettings.orders.statusShipped",
+  delivered: "web.accountSettings.orders.statusDelivered",
+  cancelled: "web.accountSettings.orders.statusCancelled",
+  refunded: "web.accountSettings.orders.statusRefunded",
 };
 
 export default function OrderHistoryPage({
@@ -34,6 +37,7 @@ export default function OrderHistoryPage({
   initialAllTabOrders: ProductOrder[];
 }) {
   const locale = useTenantLocaleTag();
+  const { t } = useTranslation();
   const initialSnapshot = useRef(initialAllTabOrders);
   const [orders, setOrders] = useState<ProductOrder[]>(() => initialAllTabOrders);
   const [loading, setLoading] = useState(false);
@@ -71,17 +75,17 @@ export default function OrderHistoryPage({
   }, [fetchOrders, filter]);
 
   const TABS = [
-    { key: "", label: "All" },
-    { key: "pending", label: "Pending" },
-    { key: "confirmed", label: "Active" },
-    { key: "delivered", label: "Completed" },
-    { key: "cancelled", label: "Cancelled" },
+    { key: "", label: t("web.accountSettings.orders.tabAll") },
+    { key: "pending", label: t("web.accountSettings.orders.tabPending") },
+    { key: "confirmed", label: t("web.accountSettings.orders.tabActive") },
+    { key: "delivered", label: t("web.accountSettings.orders.tabCompleted") },
+    { key: "cancelled", label: t("web.accountSettings.orders.tabCancelled") },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">My Product Orders</h1>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">{t("web.accountSettings.orders.title")}</h1>
 
         <div className="mb-6 flex gap-2">
           {TABS.map((t) => (
@@ -99,16 +103,16 @@ export default function OrderHistoryPage({
 
         {loading ? (
           <div className="flex items-center justify-center py-24">
-            <p className="text-sm text-gray-500">Loading…</p>
+            <p className="text-sm text-gray-500">{t("web.accountSettings.orders.loading")}</p>
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-gray-400">
             <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
-            <p className="text-lg font-medium">No orders yet</p>
+            <p className="text-lg font-medium">{t("web.accountSettings.orders.empty")}</p>
             <Link href="/shop" className="mt-4 rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white hover:bg-pink-700">
-              Shop Now
+{t("web.accountSettings.orders.shopNow")}
             </Link>
           </div>
         ) : (
@@ -144,26 +148,26 @@ export default function OrderHistoryPage({
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-gray-900">{order.order_number}</span>
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${STATUS_COLORS[order.status] ?? "bg-gray-50 text-gray-600"}`}>
-                          {STATUS_LABELS[order.status] ?? order.status}
+                          {STATUS_LABEL_KEYS[order.status] ? t(STATUS_LABEL_KEYS[order.status]) : order.status}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-500">{order.provider?.business_name}</p>
                       <div className="mt-2 flex items-center justify-between">
                         <span className="text-xs text-gray-400">
-                          {itemCount} item{itemCount !== 1 ? "s" : ""} · {date}
+                          {t("web.accountSettings.orders.itemCount", { count: itemCount, date })}
                         </span>
                         <span className="text-lg font-bold text-pink-600">
-                          R{Number(order.total_amount).toFixed(2)}
+                          {formatCurrency(Number(order.total_amount))}
                         </span>
                       </div>
                       {order.returns && order.returns.length > 0 && (
                         <p className="mt-2 text-xs font-semibold text-red-600">
-                          Return {order.returns[0].status}
+{t("web.accountSettings.orders.returnStatus", { status: order.returns[0].status })}
                         </p>
                       )}
                       {order.tracking_number && (
                         <p className="mt-2 text-xs text-blue-600">
-                          Tracking: {order.tracking_number}
+{t("web.accountSettings.orders.tracking", { number: order.tracking_number })}
                         </p>
                       )}
                     </div>

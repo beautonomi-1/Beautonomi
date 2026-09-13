@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -23,6 +24,7 @@ type MeProfile = {
 };
 
 export default function ProviderPersonalProfilePage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo");
@@ -31,7 +33,7 @@ export default function ProviderPersonalProfilePage() {
   const [saving, setSaving] = useState(false);
   const [about, setAbout] = useState("");
   const [biographyTitle, setBiographyTitle] = useState("");
-  const [displayName, setDisplayName] = useState("Your profile");
+  const [displayName, setDisplayName] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -47,12 +49,12 @@ export default function ProviderPersonalProfilePage() {
         setDisplayName(
           profile.preferred_name?.trim() ||
             profile.full_name?.trim() ||
-            "Your profile",
+            t("web.provider.pages.account/personal-profile.fallbackName"),
         );
       } catch (err) {
         if (!cancelled) {
           toast.error(
-            err instanceof FetchError ? err.message : "Failed to load profile",
+            err instanceof FetchError ? err.message : t("web.provider.pages.account/personal-profile.loadFailed"),
           );
         }
       } finally {
@@ -62,16 +64,16 @@ export default function ProviderPersonalProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const handleSave = useCallback(async () => {
     const trimmed = about.trim();
     if (!trimmed) {
-      toast.error("Add a short bio so customers know who they're booking with.");
+      toast.error(t("web.provider.pages.account/personal-profile.bioRequired"));
       return;
     }
     if (trimmed.length > HARD_LIMIT) {
-      toast.error(`Bio is too long. Keep it under ${HARD_LIMIT} characters.`);
+      toast.error(t("web.provider.pages.account/personal-profile.bioTooLong", { max: HARD_LIMIT }));
       return;
     }
 
@@ -81,80 +83,80 @@ export default function ProviderPersonalProfilePage() {
         about: trimmed,
         biography_title: biographyTitle.trim() || null,
       });
-      toast.success("Personal profile saved");
+      toast.success(t("web.provider.pages.account/personal-profile.saved"));
       if (returnTo) {
         router.push(returnTo);
       } else {
         router.back();
       }
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to save profile");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.account/personal-profile.saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [about, biographyTitle, returnTo, router]);
+  }, [about, biographyTitle, returnTo, router, t]);
 
   if (loading) {
     return (
       <SettingsDetailLayout
-        title="Personal Profile"
+        title={t("web.provider.pages.account/personal-profile.title")}
         breadcrumbs={[
-          { label: "Provider", href: "/provider" },
-          { label: "Account", href: "/provider/account/profile" },
-          { label: "Personal Profile" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.settings.tabs.account"), href: "/provider/account/profile" },
+          { label: t("web.provider.pages.account/personal-profile.title") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading your profile…" />
+<LoadingTimeout loadingMessage={t("web.provider.pages.account/personal-profile.loading")} />
       </SettingsDetailLayout>
     );
   }
 
   return (
     <SettingsDetailLayout
-      title="Personal Profile"
+      title={t("web.provider.pages.account/personal-profile.title")}
       breadcrumbs={[
-        { label: "Provider", href: "/provider" },
-        { label: "Account", href: "/provider/account/profile" },
-        { label: "Personal Profile" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.settings.tabs.account"), href: "/provider/account/profile" },
+        { label: t("web.provider.pages.account/personal-profile.title") },
       ]}
     >
       <div className="max-w-2xl space-y-6">
-        <SectionCard title={displayName} description="How customers see you as a freelancer">
+<SectionCard title={displayName || t("web.provider.pages.account/personal-profile.fallbackName")} description={t("web.provider.pages.account/personal-profile.subtitle")}>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="biography_title">Headline (optional)</Label>
+<Label htmlFor="biography_title">{t("web.provider.pages.account/personal-profile.headline")}</Label>
               <Input
                 id="biography_title"
                 value={biographyTitle}
                 onChange={(e) => setBiographyTitle(e.target.value)}
-                placeholder="e.g. Mobile nail artist · Cape Town"
+placeholder={t("web.provider.pages.account/personal-profile.headlinePlaceholder")}
                 className="mt-1"
               />
             </div>
             <div>
-              <Label htmlFor="about">About you</Label>
+<Label htmlFor="about">{t("web.provider.pages.account/personal-profile.aboutYou")}</Label>
               <Textarea
                 id="about"
                 value={about}
                 onChange={(e) => setAbout(e.target.value)}
-                placeholder="Tell customers about your experience, style, and what makes you unique…"
+placeholder={t("web.provider.pages.account/personal-profile.aboutPlaceholder")}
                 rows={6}
                 className="mt-1"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                {about.trim().length}/{HARD_LIMIT} characters
+{t("web.provider.pages.account/personal-profile.charCount", { count: about.trim().length, limit: HARD_LIMIT })}
                 {about.trim().length > 0 && about.trim().length < SOFT_LIMIT
-                  ? " — we recommend at least 200 characters for a strong profile."
+                  ? t("web.provider.pages.account/personal-profile.softLimitHint")
                   : ""}
               </p>
             </div>
             <div className="flex gap-3">
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? "Saving…" : "Save profile"}
+{saving ? t("web.provider.common.savingEllipsis") : t("web.provider.pages.account/personal-profile.saveProfile")}
               </Button>
               {returnTo ? (
                 <Button variant="outline" onClick={() => router.push(returnTo)}>
-                  Back to checklist
+{t("web.provider.pages.account/personal-profile.backToChecklist")}
                 </Button>
               ) : null}
             </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { renderWithI18n as render, screen, waitFor } from "@/test-utils/render-with-i18n";
 import React from "react";
 import MyReturnsPage from "../ReturnsPageClient";
 import type { ReturnRequestListItem } from "../return-list-types";

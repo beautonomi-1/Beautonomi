@@ -7,6 +7,13 @@
     "pnpm": ">=10.33.0"
   },
   "pnpm": {
+    "packageExtensions": {
+      "react-native-worklets": {
+        "dependencies": {
+          "@babel/types": "^7.29.0"
+        }
+      }
+    },
     "overrides": {
       "@sentry/core": "10.50.0",
       "react": "19.1.0",
@@ -21,7 +28,7 @@
       "lodash-es": "4.18.0",
       "rollup": "4.59.0",
       "serialize-javascript": "7.0.3",
-      "tar": "7.5.11",
+      "tar": "7.5.22",
       "undici": "6.27.0",
       "jsdom": "24.1.3",
       "flatted": "3.4.2",
@@ -47,6 +54,7 @@
       "brace-expansion@5": "5.0.9",
       "js-yaml@3": "3.15.2",
       "js-yaml@4": "4.3.2",
+      "nanoid@3": "3.3.18",
       "nanoid@5": "5.1.16",
       "sharp": "0.35.4",
       "@opentelemetry/propagator-jaeger": "2.10.0",
@@ -85,8 +93,12 @@
     "build:web": "pnpm exec turbo run build --filter=web",
     "build:admin": "pnpm exec turbo run build --filter=admin-web",
     "build:packages": "pnpm exec turbo run build --filter=./packages/*",
-    "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
-    "release:check": "pnpm run typecheck && pnpm run lint && pnpm run test",
+    "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run i18n:check && pnpm run test && pnpm run build",
+    "i18n:check": "pnpm --filter @beautonomi/i18n run i18n:check",
+    "i18n:scan": "pnpm --filter @beautonomi/i18n run i18n:scan",
+    "i18n:translate-wave-a": "node packages/i18n/scripts/apply-wave-a-translations.mjs",
+    "i18n:merge": "pnpm --filter @beautonomi/i18n run i18n:merge",
+    "release:check": "pnpm run typecheck && pnpm run lint && pnpm run i18n:check && pnpm run test",
     "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
@@ -99,6 +111,7 @@
     "audit:multi-tenant": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints",
     "audit:multi-tenant:strict": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints:strict",
     "verify:cron-schedule": "node docs/scripts/verify-cron-schedule.mjs",
+    "verify:db": "node tooling/audit/check-db-objects.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
     "setup:env": "node scripts/setup-env.js",
     "setup": "pnpm install && node scripts/setup-env.js",

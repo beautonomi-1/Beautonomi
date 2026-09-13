@@ -3,6 +3,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import type { CompletionData } from "@/types/profile";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface FloatingProgressOrbitProps {
   completionData: CompletionData;
@@ -15,6 +16,7 @@ export default function FloatingProgressOrbit({
   onCompleteClick,
   onItemClick,
 }: FloatingProgressOrbitProps) {
+  const { t } = useTranslation();
   const { percentage, topItems } = completionData;
   const radius = 50;
   const circumference = 2 * Math.PI * radius;
@@ -68,7 +70,7 @@ export default function FloatingProgressOrbit({
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-2xl md:text-3xl font-bold text-zinc-900">{percentage}%</span>
-              <span className="text-xs text-zinc-500 mt-1">Complete</span>
+              <span className="text-xs text-zinc-500 mt-1">{t("web.profile.floatingProgress.complete")}</span>
             </div>
           </div>
         </div>
@@ -77,10 +79,13 @@ export default function FloatingProgressOrbit({
         <div className="flex-1 min-w-0">
           <div className="mb-4">
             <h3 className="text-lg font-semibold tracking-tight text-zinc-900 mb-1">
-              Profile Strength
+              {t("web.profile.floatingProgress.title")}
             </h3>
             <p className="text-sm text-zinc-600">
-              {completionData.completed} of {completionData.total} completed
+              {t("web.profile.floatingProgress.completedOf", {
+                completed: completionData.completed,
+                total: completionData.total,
+              })}
             </p>
           </div>
 
@@ -88,7 +93,7 @@ export default function FloatingProgressOrbit({
             <>
               <div className="mb-4">
                 <p className="text-xs font-semibold text-zinc-700 mb-3">
-                  Level up your profile
+                  {t("web.profile.floatingProgress.levelUp")}
                 </p>
                 <div className="space-y-2">
                   {topItems.map((item, index) => (
@@ -101,8 +106,8 @@ export default function FloatingProgressOrbit({
                       whileHover={{ scale: 1.02, x: 4 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => onItemClick?.(item.id)}
-                      aria-label={`Go to: ${item.label}`}
-                      className="w-full text-left p-3 rounded-xl bg-gradient-to-r from-zinc-50 to-white border border-zinc-200/50 hover:border-zinc-300 hover:shadow-md transition-all group"
+                      aria-label={t("web.profile.floatingProgress.goToA11y", { label: item.label })}
+                      className="w-full text-start p-3 rounded-xl bg-gradient-to-r from-zinc-50 to-white border border-zinc-200/50 hover:border-zinc-300 hover:shadow-md transition-all group"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -118,7 +123,7 @@ export default function FloatingProgressOrbit({
                             <p className="text-xs text-zinc-500">{item.timeEstimate}</p>
                           </div>
                         </div>
-                        <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-600 ml-2 flex-shrink-0">
+                        <span className="text-xs font-medium text-zinc-400 group-hover:text-zinc-600 ms-2 flex-shrink-0">
                           →
                         </span>
                       </div>
@@ -132,10 +137,10 @@ export default function FloatingProgressOrbit({
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={onCompleteClick}
-                aria-label="Continue with the next incomplete profile step"
+                aria-label={t("web.profile.floatingProgress.continueA11y")}
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white font-medium shadow-lg hover:shadow-xl transition-all"
               >
-                Complete profile
+                {t("web.profile.floatingProgress.completeProfile")}
               </motion.button>
             </>
           )}
@@ -143,7 +148,7 @@ export default function FloatingProgressOrbit({
           {percentage === 100 && (
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
               <p className="text-sm font-medium text-emerald-800">
-                🎉 Your profile is complete!
+                {t("web.profile.floatingProgress.allComplete")}
               </p>
             </div>
           )}

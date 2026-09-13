@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 
 export type RepeatFrequency = "none" | "weekly" | "monthly" | "yearly";
 export type RepeatEndType = "never" | "after" | "on_date";
@@ -33,6 +34,7 @@ export default function RepeatScheduleSelector({
   onChange,
   startDate,
 }: RepeatScheduleSelectorProps) {
+  const { t } = useTranslation();
   const [localSchedule, setLocalSchedule] = useState<RepeatSchedule>(value);
 
   const updateSchedule = (updates: Partial<RepeatSchedule>) => {
@@ -70,24 +72,47 @@ export default function RepeatScheduleSelector({
     updateSchedule({ daysOfWeek: newDays });
   };
 
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayKeys = [
+    "daySun",
+    "dayMon",
+    "dayTue",
+    "dayWed",
+    "dayThu",
+    "dayFri",
+    "daySat",
+  ] as const;
+  const rs = "web.booking.repeatSchedule";
+  const unitLabel =
+    localSchedule.frequency === "weekly"
+      ? t(`${rs}.unitWeeks`)
+      : localSchedule.frequency === "monthly"
+        ? t(`${rs}.unitMonths`)
+        : t(`${rs}.unitYears`);
+  const endingLabel =
+    localSchedule.endType === "never"
+      ? t(`${rs}.endingNever`)
+      : localSchedule.endType === "after"
+        ? t(`${rs}.endingAfter`, { count: localSchedule.endAfterCount })
+        : localSchedule.endDate
+          ? t(`${rs}.endingUntil`, { date: format(localSchedule.endDate, "PPP") })
+          : "";
 
   return (
     <div className="space-y-4">
       <div>
-        <Label>Repeat Schedule</Label>
+        <Label>{t("web.booking.repeatSchedule.label")}</Label>
         <Select
           value={localSchedule.frequency}
           onValueChange={handleFrequencyChange}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Select repeat frequency" />
+            <SelectValue placeholder={t("web.booking.repeatSchedule.frequencyPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">No Repeat</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
-            <SelectItem value="yearly">Yearly</SelectItem>
+            <SelectItem value="none">{t("web.booking.repeatSchedule.noRepeat")}</SelectItem>
+            <SelectItem value="weekly">{t("web.booking.repeatSchedule.weekly")}</SelectItem>
+            <SelectItem value="monthly">{t("web.booking.repeatSchedule.monthly")}</SelectItem>
+            <SelectItem value="yearly">{t("web.booking.repeatSchedule.yearly")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -95,7 +120,7 @@ export default function RepeatScheduleSelector({
       {localSchedule.frequency !== "none" && (
         <>
           <div>
-            <Label>Repeat Every</Label>
+            <Label>{t(`${rs}.repeatEvery`)}</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="number"
@@ -108,18 +133,16 @@ export default function RepeatScheduleSelector({
                 className="w-20"
               />
               <span className="text-sm text-gray-600">
-                {localSchedule.frequency === "weekly" && "week(s)"}
-                {localSchedule.frequency === "monthly" && "month(s)"}
-                {localSchedule.frequency === "yearly" && "year(s)"}
+                {unitLabel}
               </span>
             </div>
           </div>
 
           {localSchedule.frequency === "weekly" && (
             <div>
-              <Label>Days of Week</Label>
+              <Label>{t(`${rs}.daysOfWeek`)}</Label>
               <div className="flex flex-wrap gap-2 mt-2">
-                {dayNames.map((day, index) => (
+                {dayKeys.map((dayKey, index) => (
                   <Button
                     key={index}
                     type="button"
@@ -136,7 +159,7 @@ export default function RepeatScheduleSelector({
                         : ""
                     }
                   >
-                    {day}
+                    {t(`${rs}.${dayKey}`)}
                   </Button>
                 ))}
               </div>
@@ -144,7 +167,7 @@ export default function RepeatScheduleSelector({
           )}
 
           <div>
-            <Label>End Repeat</Label>
+            <Label>{t(`${rs}.endRepeat`)}</Label>
             <Select
               value={localSchedule.endType}
               onValueChange={(value: RepeatEndType) =>
@@ -155,16 +178,16 @@ export default function RepeatScheduleSelector({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="never">Never</SelectItem>
-                <SelectItem value="after">After X occurrences</SelectItem>
-                <SelectItem value="on_date">On specific date</SelectItem>
+                <SelectItem value="never">{t(`${rs}.never`)}</SelectItem>
+                <SelectItem value="after">{t(`${rs}.afterOccurrences`)}</SelectItem>
+                <SelectItem value="on_date">{t(`${rs}.onSpecificDate`)}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {localSchedule.endType === "after" && (
             <div>
-              <Label>Number of Occurrences</Label>
+              <Label>{t(`${rs}.numberOfOccurrences`)}</Label>
               <Input
                 type="number"
                 min="2"
@@ -181,18 +204,18 @@ export default function RepeatScheduleSelector({
 
           {localSchedule.endType === "on_date" && (
             <div>
-              <Label>End Date</Label>
+              <Label>{t(`${rs}.endDate`)}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal"
+                    className="w-full justify-start text-start font-normal"
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="me-2 h-4 w-4" />
                     {localSchedule.endDate ? (
                       format(localSchedule.endDate, "PPP")
                     ) : (
-                      <span>Pick a date</span>
+                      <span>{t(`${rs}.pickADate`)}</span>
                     )}
                   </Button>
                 </PopoverTrigger>
@@ -215,17 +238,12 @@ export default function RepeatScheduleSelector({
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-xs text-blue-800">
-              <strong>Summary:</strong> This booking will repeat every{" "}
-              {localSchedule.interval}{" "}
-              {localSchedule.frequency === "weekly" && "week(s)"}
-              {localSchedule.frequency === "monthly" && "month(s)"}
-              {localSchedule.frequency === "yearly" && "year(s)"}
-              {localSchedule.endType === "never" && " indefinitely"}
-              {localSchedule.endType === "after" &&
-                ` for ${localSchedule.endAfterCount} occurrence(s)`}
-              {localSchedule.endType === "on_date" &&
-                localSchedule.endDate &&
-                ` until ${format(localSchedule.endDate, "PPP")}`}
+              <strong>{t(`${rs}.summaryLabel`)}</strong>{" "}
+              {t(`${rs}.summary`, {
+                interval: localSchedule.interval,
+                unit: unitLabel,
+                ending: endingLabel,
+              })}
             </p>
           </div>
         </>

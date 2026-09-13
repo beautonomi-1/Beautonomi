@@ -25,6 +25,7 @@ export const SUPPORT_TICKET_CATEGORY_GROUPS: TicketCategoryGroup[] = [
       { value: "booking_issue", label: "Booking details wrong or not visible" },
       { value: "booking_reschedule_cancel", label: "Reschedule, cancel, or refund request" },
       { value: "booking_provider_no_show", label: "Provider no-show or late arrival" },
+      { value: "marked_no_show_incorrectly", label: "I was marked as a no-show but I attended" },
       { value: "booking_quality", label: "Service quality or didn’t match description" },
       { value: "booking_group", label: "Group booking or multiple clients" },
       { value: "booking_waitlist", label: "Waitlist or availability question" },

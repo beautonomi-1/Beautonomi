@@ -54,7 +54,9 @@ import { percentOf, sumMoney } from "@beautonomi/utils";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
 import { PROVIDER_DASHBOARD_REFRESH_EVENT } from "@/lib/provider-dashboard-events";
 import { useProvider } from "@/providers/ProviderContext";
+import { useTranslation } from "@beautonomi/i18n";
 import { pt } from "@/lib/provider-translate";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface ProductVariant {
   id: string;
@@ -172,25 +174,35 @@ type CartLine = {
 
 type WalkInPaymentMethod = "cash" | "yoco" | "paycloud" | "paystack_terminal" | "card" | "eft" | "other";
 
-const WALK_IN_PAYMENT_METHODS: { id: WalkInPaymentMethod; label: string }[] = [
-  { id: "cash", label: "Cash" },
-  { id: "yoco", label: "Yoco" },
-  { id: "paycloud", label: "Card machine" },
-  { id: "paystack_terminal", label: "Paystack Terminal" },
-  { id: "card", label: "Card manual" },
-  { id: "eft", label: "EFT" },
-  { id: "other", label: "Other" },
+const WALK_IN_PAYMENT_METHOD_IDS: WalkInPaymentMethod[] = [
+  "cash",
+  "yoco",
+  "paycloud",
+  "paystack_terminal",
+  "card",
+  "eft",
+  "other",
 ];
+
+const WALK_IN_PAYMENT_LABEL_KEY: Record<WalkInPaymentMethod, string> = {
+  cash: "payCash",
+  yoco: "payYoco",
+  paycloud: "payCardMachine",
+  paystack_terminal: "payPaystackTerminal",
+  card: "payCardManual",
+  eft: "payEft",
+  other: "payOther",
+};
 
 function newLineId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function formatProductVariantLabel(v: ProductVariant): string {
+function formatProductVariantLabel(v: ProductVariant, fallback: string): string {
   const vals = v.option_values ? Object.values(v.option_values).filter(Boolean) : [];
   if (vals.length) return vals.map(String).join(" / ");
   if (v.sku) return String(v.sku);
-  return "Option";
+  return fallback;
 }
 
 /** Max units sellable for this product + optional variant (matches POS / ecommerce rules). */
@@ -219,26 +231,36 @@ function formatDateSafe(value: unknown): string {
   return parsed.toLocaleDateString();
 }
 
-function walkInSaleErrorMessage(code: string | null | undefined, message: string): string {
+function walkInSaleErrorMessage(
+  code: string | null | undefined,
+  message: string,
+  tr: (key: string) => string,
+): string {
   switch (code) {
     case "FORBIDDEN":
-      return "You don't have permission to record sales. Ask an owner to grant create_sales.";
+      return tr("errForbidden");
     case "STOCK_ERROR":
-      return message || "Stock issue — check quantities or refresh the product list.";
+      return message || tr("errStock");
     case "YOCO_REFERENCE_REQUIRED":
-      return "Yoco walk-in sales need the terminal payment reference from the receipt.";
+      return tr("errYocoRef");
     case "TENANT_ERROR":
-      return "Workspace configuration error. Check provider/tenant settings or support.";
+      return tr("errTenant");
     case "VALIDATION_ERROR":
-      return message || "Check the sale details and try again.";
+      return message || tr("errValidation");
     case "UNAUTHORIZED":
-      return "Session expired. Sign in again and retry.";
+      return tr("errUnauthorized");
     default:
-      return message || "Could not complete sale. Please try again.";
+      return message || tr("errDefault");
   }
 }
 
 export default function WalkInSaleScreen() {
+  const { t } = useTranslation();
+  const wis = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.walkInSale.${key}`, opts) as string,
+    [t],
+  );
   const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
   const router = useRouter();
@@ -324,10 +346,10 @@ export default function WalkInSaleScreen() {
     return rows.map((c) => ({
       id: c.id,
       customer_id: c.customer_id,
-      full_name: (c.customer?.full_name || "Unknown").trim() || "Unknown",
+      full_name: (c.customer?.full_name || wis("unknownClient")).trim() || wis("unknownClient"),
       phone: c.customer?.phone || "",
     }));
-  }, [rawPickClients]);
+  }, [rawPickClients, wis]);
 
   const products = useMemo(() => normalizeProductsPayload(productsData), [productsData]);
 
@@ -409,12 +431,15 @@ export default function WalkInSaleScreen() {
   const handleRefundSale = useCallback(
     (sale: WalkInSale) => {
       Alert.alert(
-        "Process refund",
-        `Refund order ${sale.order_number} (${formatCurrency(Number(sale.total_amount), tenantCurrency)})? Stock will be returned automatically.`,
+        wis("refundTitle"),
+        wis("refundBody", {
+          orderNumber: sale.order_number,
+          amount: formatCurrency(Number(sale.total_amount), tenantCurrency),
+        }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           {
-            text: "Refund",
+            text: wis("refundAction"),
             style: "destructive",
             onPress: async () => {
               setRefunding(true);
@@ -424,10 +449,10 @@ export default function WalkInSaleScreen() {
                   { status: "refunded", refund_method: "cash" },
                 );
                 if (err) {
-                  Alert.alert("Refund failed", err);
+                  Alert.alert(wis("refundFailed"), err);
                 } else {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  Alert.alert("Refunded", `Order ${sale.order_number} has been marked as refunded.`);
+                  Alert.alert(wis("refundedTitle"), wis("refundedBody", { orderNumber: sale.order_number }));
                   setSelectedSale(null);
                   refresh();
                 }
@@ -439,16 +464,18 @@ export default function WalkInSaleScreen() {
         ],
       );
     },
-    [patchOrder, refresh, tenantCurrency],
+    [patchOrder, refresh, tenantCurrency, wis, t],
   );
 
   const addLine = useCallback((product: Product, variant: ProductVariant | null) => {
     const variantId = variant?.id ?? null;
     const unit = variant ? Number(variant.retail_price ?? 0) : Number(product.retail_price ?? 0);
-    const name = variant ? `${product.name} — ${formatProductVariantLabel(variant)}` : product.name;
+    const name = variant
+      ? `${product.name} — ${formatProductVariantLabel(variant, wis("variantOptionFallback"))}`
+      : product.name;
     const max = maxSellableUnits(product, variantId);
     if (max < 1) {
-      Alert.alert("Out of stock", `${name} has no available stock.`);
+      Alert.alert(wis("outOfStockTitle"), wis("outOfStockBody", { name }));
       return;
     }
     setCart((prev) => {
@@ -476,7 +503,7 @@ export default function WalkInSaleScreen() {
       ];
     });
     setVariantPickProduct(null);
-  }, [walkInTaxRate]);
+  }, [walkInTaxRate, wis]);
 
   const onProductRowPress = useCallback((p: Product) => {
     if (p.has_variants && (p.variants?.length ?? 0) > 0) {
@@ -490,7 +517,7 @@ export default function WalkInSaleScreen() {
     (resolved: ReturnType<typeof resolveBarcodeForWalkInSale>) => {
       if (resolved.action === "error") {
         setBarcodeLookupError(resolved.message);
-        Alert.alert("Barcode lookup", resolved.message);
+        Alert.alert(wis("barcodeLookupTitle"), resolved.message);
         return;
       }
       setBarcodeLookupError(null);
@@ -501,7 +528,7 @@ export default function WalkInSaleScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       addLine(resolved.product, resolved.variant);
     },
-    [addLine],
+    [addLine, wis],
   );
 
   const handleBarcodeCode = useCallback(
@@ -518,10 +545,10 @@ export default function WalkInSaleScreen() {
         if (res.error) {
           const message = mapApiErrorCodeToMessage(
             res.error.code,
-            res.error.message ?? "Lookup failed",
+            res.error.message ?? wis("lookupFailed"),
           );
           setBarcodeLookupError(message);
-          Alert.alert("Barcode lookup", message);
+          Alert.alert(wis("barcodeLookupTitle"), message);
           return;
         }
         applyBarcodeResolve(resolveBarcodeForWalkInSale(res.data, sellableProducts));
@@ -531,7 +558,7 @@ export default function WalkInSaleScreen() {
         setBarcodeLookupBusy(false);
       }
     },
-    [applyBarcodeResolve, sellableProducts],
+    [applyBarcodeResolve, sellableProducts, wis],
   );
 
   const updateCartQty = useCallback((lineId: string, delta: number) => {
@@ -572,7 +599,7 @@ export default function WalkInSaleScreen() {
       const phoneErr = validateE164Phone(customerPhoneE164);
       if (phoneErr) {
         setCheckoutError(phoneErr);
-        Alert.alert("Invalid phone", phoneErr);
+        Alert.alert(wis("invalidPhoneTitle"), phoneErr);
         return;
       }
       setCheckoutError(null);
@@ -592,7 +619,7 @@ export default function WalkInSaleScreen() {
         ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
       });
       if (err) {
-        const friendly = walkInSaleErrorMessage(errorCode, err);
+        const friendly = walkInSaleErrorMessage(errorCode, err, wis);
         setCheckoutError(friendly);
         Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
         return;
@@ -640,6 +667,7 @@ export default function WalkInSaleScreen() {
       refreshProducts,
       cartTotalDue,
       selectedLocationId,
+      wis,
     ],
   );
 
@@ -660,7 +688,7 @@ export default function WalkInSaleScreen() {
       const phoneErr = validateE164Phone(customerPhoneE164);
       if (phoneErr) {
         setCheckoutError(phoneErr);
-        Alert.alert("Invalid phone", phoneErr);
+        Alert.alert(wis("invalidPhoneTitle"), phoneErr);
         return;
       }
       setCheckoutError(null);
@@ -680,7 +708,7 @@ export default function WalkInSaleScreen() {
           ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
         });
         if (err) {
-          const friendly = walkInSaleErrorMessage(errorCode, err);
+          const friendly = walkInSaleErrorMessage(errorCode, err, wis);
           setCheckoutError(friendly);
           Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
           return;
@@ -693,7 +721,7 @@ export default function WalkInSaleScreen() {
               ? (rawPayload as WalkInSale)
               : undefined;
         if (!order?.id) {
-          Alert.alert("Error", "Could not prepare card sale");
+          Alert.alert(wis("errorTitle"), wis("couldNotPrepareCardSale"));
           return;
         }
         const serverTotal = Number(order.total_amount ?? cartTotalDue);
@@ -709,7 +737,7 @@ export default function WalkInSaleScreen() {
       const phoneErr = validateE164Phone(customerPhoneE164);
       if (phoneErr) {
         setCheckoutError(phoneErr);
-        Alert.alert("Invalid phone", phoneErr);
+        Alert.alert(wis("invalidPhoneTitle"), phoneErr);
         return;
       }
       setCheckoutError(null);
@@ -729,7 +757,7 @@ export default function WalkInSaleScreen() {
           ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
         });
         if (err) {
-          const friendly = walkInSaleErrorMessage(errorCode, err);
+          const friendly = walkInSaleErrorMessage(errorCode, err, wis);
           setCheckoutError(friendly);
           Alert.alert(pt("walkInSale.couldntCompleteSale", undefined, "Couldn't complete sale"), friendly);
           return;
@@ -742,7 +770,7 @@ export default function WalkInSaleScreen() {
               ? (rawPayload as WalkInSale)
               : undefined;
         if (!order?.id) {
-          Alert.alert("Error", "Could not prepare card sale");
+          Alert.alert(wis("errorTitle"), wis("couldNotPrepareCardSale"));
           return;
         }
         const customerReference = `walk-in-${order.id.slice(0, 8)}`;
@@ -756,12 +784,12 @@ export default function WalkInSaleScreen() {
           customer_reference: customerReference,
         }), { timeout: 120_000 });
         if (res.error) {
-          Alert.alert("Paystack Terminal", res.error.message ?? "Failed to prepare terminal payment.");
+          Alert.alert(wis("paystackTerminalTitle"), res.error.message ?? wis("paystackPrepareFailed"));
           return;
         }
         const terminal = res.data?.terminal;
         if (!terminal?.terminal_code) {
-          Alert.alert("Paystack Terminal", "No active Paystack Terminal is available. Create one first.");
+          Alert.alert(wis("paystackTerminalTitle"), wis("noActiveTerminal"));
           return;
         }
         setPaystackTerminalPrompt({
@@ -787,6 +815,7 @@ export default function WalkInSaleScreen() {
     linkedClient,
     postSale,
     selectedLocationId,
+    wis,
   ]);
 
   const lineCountForSale = (sale: WalkInSale) => {
@@ -797,7 +826,7 @@ export default function WalkInSaleScreen() {
   if (loadingSales && !salesData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Walk-in Sale" showBack onBack={handleBack} />
+        <ScreenHeader title={wis("title")} showBack onBack={handleBack} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -808,7 +837,7 @@ export default function WalkInSaleScreen() {
   if (error && !salesData) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Walk-in Sale" showBack onBack={handleBack} />
+        <ScreenHeader title={wis("title")} showBack onBack={handleBack} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -819,17 +848,17 @@ export default function WalkInSaleScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Walk-in Sale"
+        title={wis("title")}
         showBack
         onBack={handleBack}
-        subtitle="Products & ecommerce payments"
+        subtitle={wis("subtitle")}
         rightAction={
           <TouchableOpacity
             onPress={openNewSaleSheet}
             style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "#f59e0b", paddingHorizontal: 16, paddingVertical: 8 }}
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.white }}>New sale</Text>
+            <Text style={{ marginStart: 6, fontSize: 14, fontWeight: "600", color: Colors.white }}>{wis("newSale")}</Text>
           </TouchableOpacity>
         }
       />
@@ -842,9 +871,9 @@ export default function WalkInSaleScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[500] }}>Recent walk-in sales</Text>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[500] }}>{wis("recentSales")}</Text>
           {totalSales > 0 && (
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{totalSales} total</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{wis("totalCount", { count: totalSales })}</Text>
           )}
         </View>
         {sales.length === 0 ? (
@@ -852,9 +881,9 @@ export default function WalkInSaleScreen() {
             <View style={{ marginBottom: 12, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#fef3c7" }}>
               <Ionicons name="storefront-outline" size={28} color="#f59e0b" />
             </View>
-            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>No walk-in sales yet</Text>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>{wis("emptyTitle")}</Text>
             <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Tap &quot;New sale&quot; to sell retail products in person.
+              {wis("emptyBody")}
             </Text>
           </View>
         ) : (
@@ -869,13 +898,13 @@ export default function WalkInSaleScreen() {
                   setSelectedSale(sale);
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`Sale ${sale.order_number}, view details`}
+                accessibilityLabel={wis("saleA11y", { orderNumber: sale.order_number })}
                 style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
                 <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fef3c7" }}>
                   <Ionicons name="receipt-outline" size={20} color="#f59e0b" />
                 </View>
-                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                <View style={{ marginStart: 12, flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontWeight: "700", color: Colors.gray[900] }}>{sale.order_number}</Text>
                     {sale.customer_name?.trim() ? (
@@ -886,10 +915,12 @@ export default function WalkInSaleScreen() {
                     {formatCurrency(Number(sale.total_amount), tenantCurrency)}
                   </Text>
                   <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                    {sale.payment_method.replace(/_/g, " ")} · {n > 0 ? `${n} item${n !== 1 ? "s" : ""} · ` : ""}{formatDateSafe(sale.created_at)}
+                    {(sale.payment_method in WALK_IN_PAYMENT_LABEL_KEY
+                      ? wis(WALK_IN_PAYMENT_LABEL_KEY[sale.payment_method as WalkInPaymentMethod])
+                      : sale.payment_method.replace(/_/g, " "))} · {n > 0 ? `${wis("itemCount", { count: n })} · ` : ""}{formatDateSafe(sale.created_at)}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
               </TouchableOpacity>
             );
           })
@@ -899,7 +930,7 @@ export default function WalkInSaleScreen() {
       <BottomSheet
         visible={!!selectedSale}
         onClose={() => setSelectedSale(null)}
-        title={selectedSale?.order_number ?? "Sale"}
+        title={selectedSale?.order_number ?? wis("saleFallbackTitle")}
         subtitle={selectedSale ? formatDateSafe(selectedSale.created_at) : undefined}
       >
         {selectedSale ? (
@@ -908,16 +939,18 @@ export default function WalkInSaleScreen() {
             <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Ionicons name="storefront-outline" size={13} color="#92400e" />
-                <Text style={{ marginLeft: 5, fontSize: 12, fontWeight: "600", color: "#92400e" }}>Walk-in · Delivered</Text>
+                <Text style={{ marginStart: 5, fontSize: 12, fontWeight: "600", color: "#92400e" }}>{wis("walkInDelivered")}</Text>
               </View>
               <View style={{ borderRadius: 10, backgroundColor: Colors.gray[100], paddingHorizontal: 10, paddingVertical: 6 }}>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
-                  {String(selectedSale.payment_method).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                  {selectedSale.payment_method in WALK_IN_PAYMENT_LABEL_KEY
+                    ? wis(WALK_IN_PAYMENT_LABEL_KEY[selectedSale.payment_method as WalkInPaymentMethod])
+                    : String(selectedSale.payment_method).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                 </Text>
               </View>
               {selectedSale.customer_id ? (
                 <View style={{ borderRadius: 10, backgroundColor: "#e0e7ff", paddingHorizontal: 10, paddingVertical: 6 }}>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#3730a3" }}>Client linked</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: "#3730a3" }}>{wis("clientLinked")}</Text>
                 </View>
               ) : null}
             </View>
@@ -925,7 +958,7 @@ export default function WalkInSaleScreen() {
             {/* Customer info */}
             {(selectedSale.customer_name?.trim() || selectedSale.customer_phone?.trim()) ? (
               <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: "#ecfdf5", padding: 12, flexDirection: "row", alignItems: "center" }}>
-                <View style={{ height: 36, width: 36, borderRadius: 18, backgroundColor: "#d1fae5", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                <View style={{ height: 36, width: 36, borderRadius: 18, backgroundColor: "#d1fae5", alignItems: "center", justifyContent: "center", marginEnd: 10 }}>
                   <Ionicons name="person-outline" size={18} color="#047857" />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -946,18 +979,18 @@ export default function WalkInSaleScreen() {
             {selectedSale.payment_reference?.trim() ? (
               <View style={{ marginBottom: 12, backgroundColor: Colors.gray[50], borderRadius: 10, padding: 10, flexDirection: "row", alignItems: "center" }}>
                 <Ionicons name="receipt-outline" size={16} color={Colors.gray[500]} />
-                <Text style={{ marginLeft: 8, fontSize: 13, color: Colors.gray[600] }} selectable numberOfLines={1}>
-                  Ref: {selectedSale.payment_reference.trim()}
+                <Text style={{ marginStart: 8, fontSize: 13, color: Colors.gray[600] }} selectable numberOfLines={1}>
+                  {wis("refLabel", { ref: selectedSale.payment_reference.trim() })}
                 </Text>
               </View>
             ) : null}
 
             {/* Line items */}
             <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "700", color: Colors.gray[400], letterSpacing: 0.8, textTransform: "uppercase" }}>
-              Items
+              {wis("items")}
             </Text>
             {(selectedSale.items ?? selectedSale.product_order_items ?? []).length === 0 ? (
-              <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>No line items returned for this sale.</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>{wis("noLineItems")}</Text>
             ) : (
               (selectedSale.items ?? selectedSale.product_order_items ?? []).map((it, idx) => (
                 <View
@@ -971,12 +1004,15 @@ export default function WalkInSaleScreen() {
                     borderBottomColor: Colors.gray[100],
                   }}
                 >
-                  <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                  <View style={{ flex: 1, minWidth: 0, paddingEnd: 12 }}>
                     <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={3}>
                       {it.product_name}
                     </Text>
                     <Text style={{ marginTop: 3, fontSize: 13, color: Colors.gray[500] }}>
-                      {it.quantity} × {formatCurrency(Number(it.unit_price), tenantCurrency)}
+                      {wis("qtyTimesPrice", {
+                        quantity: it.quantity,
+                        price: formatCurrency(Number(it.unit_price), tenantCurrency),
+                      })}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[800] }}>
@@ -990,18 +1026,18 @@ export default function WalkInSaleScreen() {
             <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 12, marginBottom: 16 }}>
               {selectedSale.subtotal != null && Number(selectedSale.subtotal) > 0 ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Subtotal</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{wis("subtotal")}</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(Number(selectedSale.subtotal), tenantCurrency)}</Text>
                 </View>
               ) : null}
               {selectedSale.tax_amount != null && Number(selectedSale.tax_amount) > 0 ? (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{wis("tax")}</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(Number(selectedSale.tax_amount), tenantCurrency)}</Text>
                 </View>
               ) : null}
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total paid</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{wis("totalPaid")}</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                   {formatCurrency(Number(selectedSale.total_amount), tenantCurrency)}
                 </Text>
@@ -1016,15 +1052,15 @@ export default function WalkInSaleScreen() {
                     selectedSale.id,
                     selectedSale.order_number,
                   ).catch((e) =>
-                    Alert.alert("Share", e instanceof Error ? e.message : "Could not share receipt."),
+                    Alert.alert(wis("shareFailedTitle"), e instanceof Error ? e.message : wis("shareFailedBody")),
                   );
                 }}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="Share order receipt"
+                accessibilityLabel={wis("shareReceiptA11y")}
               >
                 <Ionicons name="share-outline" size={18} color={Colors.gray[700]} />
-                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Share receipt</Text>
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{wis("shareReceipt")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1034,21 +1070,21 @@ export default function WalkInSaleScreen() {
                     pdfPath: `/api/provider/product-orders/${encodeURIComponent(selectedSale.id)}/receipt/pdf`,
                     signedUrlPath: `/api/provider/product-orders/${encodeURIComponent(selectedSale.id)}/receipt/signed-url`,
                     filename: `order_${selectedSale.order_number || selectedSale.id}.pdf`,
-                    title: `Order ${selectedSale.order_number}`,
-                    label: "receipt",
+                    title: wis("orderTitle", { orderNumber: selectedSale.order_number }),
+                    label: wis("receiptLabel"),
                   }).catch((e) =>
                     Alert.alert(
-                      "Download receipt",
-                      e instanceof Error ? e.message : "Something went wrong.",
+                      wis("downloadReceiptTitle"),
+                      e instanceof Error ? e.message : wis("downloadFailed"),
                     ),
                   );
                 }}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="Download order receipt"
+                accessibilityLabel={wis("downloadReceiptA11y")}
               >
                 <Ionicons name="download-outline" size={18} color={Colors.gray[700]} />
-                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Download PDF</Text>
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{wis("downloadPdf")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1058,10 +1094,10 @@ export default function WalkInSaleScreen() {
                 }}
                 style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 12 }}
                 accessibilityRole="button"
-                accessibilityLabel="Manage order in orders hub"
+                accessibilityLabel={wis("manageInOrdersA11y")}
               >
                 <Ionicons name="cube-outline" size={18} color={Colors.gray[700]} />
-                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Manage in Orders</Text>
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{wis("manageInOrders")}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1077,11 +1113,11 @@ export default function WalkInSaleScreen() {
                   opacity: refunding ? 0.6 : 1,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Process refund for this sale"
+                accessibilityLabel={wis("processRefundA11y")}
               >
                 <Ionicons name="return-down-back-outline" size={18} color="#dc2626" />
-                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#dc2626" }}>
-                  {refunding ? "Processing…" : "Process Refund / Return"}
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "600", color: "#dc2626" }}>
+                  {refunding ? wis("processing") : wis("processRefund")}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1095,8 +1131,8 @@ export default function WalkInSaleScreen() {
           setCreateOpen(false);
           setVariantPickProduct(null);
         }}
-        title="New walk-in sale"
-        subtitle="Search products, choose variants when needed, then pay"
+        title={wis("newSaleTitle")}
+        subtitle={wis("newSaleSubtitle")}
         snapHeight="full"
       >
         {loadingProducts && !productsData ? (
@@ -1109,15 +1145,15 @@ export default function WalkInSaleScreen() {
                   onPress={() => setVariantPickProduct(null)}
                   style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}
                   accessibilityRole="button"
-                  accessibilityLabel="Back to product list"
+                  accessibilityLabel={wis("backToProductsA11y")}
                 >
-                  <Ionicons name="chevron-back" size={22} color="#374151" />
-                  <Text style={{ marginLeft: 4, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Products</Text>
+                  <DirectionalIcon name="chevron-back" size={22} color="#374151" />
+                  <Text style={{ marginStart: 4, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{wis("products")}</Text>
                 </TouchableOpacity>
                 <Text style={{ marginBottom: 4, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={2}>
                   {variantPickProduct.name}
                 </Text>
-                <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[500] }}>Select an option to add to the cart</Text>
+                <Text style={{ marginBottom: 12, fontSize: 13, color: Colors.gray[500] }}>{wis("selectOption")}</Text>
                 <ScrollView style={{ maxHeight: 280, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }} nestedScrollEnabled>
                   {(variantPickProduct.variants ?? []).map((v, idx) => {
                     const maxV = maxSellableUnits(variantPickProduct, v.id);
@@ -1138,13 +1174,13 @@ export default function WalkInSaleScreen() {
                           opacity: disabled ? 0.45 : 1,
                         }}
                       >
-                        <View style={{ flex: 1, minWidth: 0, paddingRight: 12 }}>
+                        <View style={{ flex: 1, minWidth: 0, paddingEnd: 12 }}>
                           <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={2}>
-                            {formatProductVariantLabel(v)}
+                            {formatProductVariantLabel(v, wis("variantOptionFallback"))}
                           </Text>
                           <Text style={{ marginTop: 4, fontSize: 13, color: Colors.gray[600] }}>
                             {formatCurrency(Number(v.retail_price), tenantCurrency)}
-                            {` · ${maxV} available`}
+                            {` · ${wis("availableCount", { count: maxV })}`}
                           </Text>
                         </View>
                         <Ionicons name="add-circle" size={26} color={disabled ? Colors.gray[300] : "#f59e0b"} />
@@ -1157,13 +1193,13 @@ export default function WalkInSaleScreen() {
               <>
                 <View style={{ marginBottom: 12 }}>
                   <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-                    Scan or enter barcode
+                    {wis("scanOrEnterBarcode")}
                   </Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <TextInput
                       value={barcodeInput}
                       onChangeText={setBarcodeInput}
-                      placeholder="Barcode / SKU"
+                      placeholder={wis("barcodePlaceholder")}
                       autoCapitalize="none"
                       autoCorrect={false}
                       returnKeyType="done"
@@ -1191,7 +1227,7 @@ export default function WalkInSaleScreen() {
                         opacity: barcodeLookupBusy ? 0.6 : 1,
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Look up barcode"
+                      accessibilityLabel={wis("lookupBarcodeA11y")}
                     >
                       <Ionicons name="search" size={20} color="#fff" />
                     </TouchableOpacity>
@@ -1207,7 +1243,7 @@ export default function WalkInSaleScreen() {
                         paddingVertical: 12,
                       }}
                       accessibilityRole="button"
-                      accessibilityLabel="Scan barcode with camera"
+                      accessibilityLabel={wis("scanBarcodeA11y")}
                     >
                       <Ionicons name="barcode-outline" size={22} color="#6d28d9" />
                     </TouchableOpacity>
@@ -1217,22 +1253,22 @@ export default function WalkInSaleScreen() {
                   ) : null}
                 </View>
                 <SearchBar
-                  placeholder="Search products…"
+                  placeholder={wis("searchProducts")}
                   value={productSearch}
                   onChangeText={setProductSearch}
                 />
-                <Text style={{ marginTop: 12, marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Products</Text>
+                <Text style={{ marginTop: 12, marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{wis("products")}</Text>
                 {productsError && !productsData && (
                   <View style={{ marginBottom: 12, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 }}>
-                    <Text style={{ fontSize: 13, color: "#B91C1C" }}>Could not load products. Pull down to retry.</Text>
+                    <Text style={{ fontSize: 13, color: "#B91C1C" }}>{wis("loadProductsFailed")}</Text>
                   </View>
                 )}
                 <ScrollView style={{ marginBottom: 16, maxHeight: 220, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50] }} nestedScrollEnabled>
                   {filteredProducts.length === 0 ? (
                     <Text style={{ padding: 16, fontSize: 14, color: Colors.gray[500] }}>
                       {sellableProducts.length === 0
-                        ? "No retail products yet. Add products with retail sales enabled."
-                        : "No matches. Try a different search."}
+                        ? wis("noRetailProducts")
+                        : wis("noMatches")}
                     </Text>
                   ) : (
                     filteredProducts.map((p, idx) => {
@@ -1242,17 +1278,19 @@ export default function WalkInSaleScreen() {
                       const variantMatrixBroken = Boolean(p.has_variants) && !hasV;
                       const maxSimple = maxSellableUnits(p, null);
                       const priceLabel = hasV
-                        ? `From ${formatCurrency(displayRetailPriceMin(p), tenantCurrency)}`
+                        ? wis("fromPrice", { price: formatCurrency(displayRetailPriceMin(p), tenantCurrency) })
                         : formatCurrency(Number(p.retail_price), tenantCurrency);
                       const stockLabel = hasV
-                        ? `${effectiveStockQuantity({
+                        ? wis("unitsAllOptions", {
+                            count: effectiveStockQuantity({
                             has_variants: true,
                             quantity: p.quantity,
                             variants: p.variants?.map((x) => ({ quantity: x.quantity, retail_price: x.retail_price })),
-                          })} units (all options)`
+                          }),
+                          })
                         : p.track_stock_quantity === false
-                          ? "Stock not tracked"
-                          : `${maxSimple} in stock`;
+                          ? wis("stockNotTracked")
+                          : wis("inStock", { count: maxSimple });
                       const rowDisabled = variantMatrixBroken || (!hasV && maxSimple < 1);
 
                       return (
@@ -1281,10 +1319,10 @@ export default function WalkInSaleScreen() {
                               {priceLabel} · {stockLabel}
                             </Text>
                             {variantMatrixBroken && (
-                              <Text style={{ marginTop: 4, fontSize: 12, color: "#b91c1c" }}>Variants not loaded — open product in catalogue to fix.</Text>
+                              <Text style={{ marginTop: 4, fontSize: 12, color: "#b91c1c" }}>{wis("variantsNotLoaded")}</Text>
                             )}
                             {hasV && (
-                              <Text style={{ marginTop: 4, fontSize: 12, color: "#b45309" }}>Tap to choose size / option</Text>
+                              <Text style={{ marginTop: 4, fontSize: 12, color: "#b45309" }}>{wis("tapToChooseOption")}</Text>
                             )}
                           </TouchableOpacity>
                           {!hasV ? (
@@ -1295,11 +1333,11 @@ export default function WalkInSaleScreen() {
                                     const line = inCart[0];
                                     if (line) updateCartQty(line.lineId, -1);
                                   }}
-                                  style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[200], marginRight: 8 }}
+                                  style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[200], marginEnd: 8 }}
                                 >
                                   <Ionicons name="remove" size={18} color="#374151" />
                                 </TouchableOpacity>
-                                <Text style={{ minWidth: 28, textAlign: "center", fontWeight: "500", marginRight: 8 }}>
+                                <Text style={{ minWidth: 28, textAlign: "center", fontWeight: "500", marginEnd: 8 }}>
                                   {cartQtyForProduct}
                                 </Text>
                                 <TouchableOpacity
@@ -1324,7 +1362,7 @@ export default function WalkInSaleScreen() {
                                 disabled={rowDisabled}
                                 style={{ borderRadius: 8, backgroundColor: "#f59e0b", paddingHorizontal: 12, paddingVertical: 6 }}
                               >
-                                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.white }}>Add</Text>
+                                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.white }}>{wis("add")}</Text>
                               </TouchableOpacity>
                             )
                           ) : (
@@ -1332,7 +1370,7 @@ export default function WalkInSaleScreen() {
                               onPress={() => onProductRowPress(p)}
                               style={{ borderRadius: 8, borderWidth: 1, borderColor: "#fcd34d", backgroundColor: "#fffbeb", paddingHorizontal: 12, paddingVertical: 6 }}
                             >
-                              <Text style={{ fontSize: 13, fontWeight: "600", color: "#b45309" }}>Options</Text>
+                              <Text style={{ fontSize: 13, fontWeight: "600", color: "#b45309" }}>{wis("options")}</Text>
                             </TouchableOpacity>
                           )}
                         </View>
@@ -1345,11 +1383,11 @@ export default function WalkInSaleScreen() {
 
             {cart.length > 0 && (
               <>
-                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Cart</Text>
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{wis("cart")}</Text>
                 <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 12 }}>
                   {cart.map((c) => (
                     <View key={c.lineId} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 6 }}>
-                      <View style={{ flex: 1, minWidth: 0, paddingRight: 8 }}>
+                      <View style={{ flex: 1, minWidth: 0, paddingEnd: 8 }}>
                         <Text style={{ fontSize: 14, color: Colors.gray[900] }} numberOfLines={2}>
                           {c.name}
                         </Text>
@@ -1374,42 +1412,42 @@ export default function WalkInSaleScreen() {
                           {formatCurrency(c.price * c.quantity, tenantCurrency)}
                         </Text>
                         <TouchableOpacity onPress={() => removeLine(c.lineId)} style={{ marginTop: 4 }} hitSlop={8}>
-                          <Text style={{ fontSize: 12, color: "#dc2626" }}>Remove</Text>
+                          <Text style={{ fontSize: 12, color: "#dc2626" }}>{wis("remove")}</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
                   ))}
                   <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, gap: 6 }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Subtotal</Text>
+                      <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{wis("subtotal")}</Text>
                       <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(cartSubtotal, tenantCurrency)}</Text>
                     </View>
                     {cartTax > 0 ? (
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Tax</Text>
+                        <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{wis("tax")}</Text>
                         <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{formatCurrency(cartTax, tenantCurrency)}</Text>
                       </View>
                     ) : null}
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Total</Text>
+                      <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{wis("total")}</Text>
                       <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(cartTotalDue, tenantCurrency)}</Text>
                     </View>
                   </View>
                 </View>
 
-                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Payment</Text>
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{wis("payment")}</Text>
                 <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}>
-                  {WALK_IN_PAYMENT_METHODS.filter(
-                    (method) =>
-                      (paystackTerminalEnabled || method.id !== "paystack_terminal") &&
-                      (yocoEnabled || method.id !== "yoco") &&
-                      (canProcessPayments && paycloudEnabled && paycloudCollectEnabled || method.id !== "paycloud"),
-                  ).map((method) => {
-                    const active = paymentMethod === method.id;
+                  {WALK_IN_PAYMENT_METHOD_IDS.filter(
+                    (methodId) =>
+                      (paystackTerminalEnabled || methodId !== "paystack_terminal") &&
+                      (yocoEnabled || methodId !== "yoco") &&
+                      (canProcessPayments && paycloudEnabled && paycloudCollectEnabled || methodId !== "paycloud"),
+                  ).map((methodId) => {
+                    const active = paymentMethod === methodId;
                     return (
                       <TouchableOpacity
-                        key={method.id}
-                        onPress={() => setPaymentMethod(method.id)}
+                        key={methodId}
+                        onPress={() => setPaymentMethod(methodId)}
                         style={{
                           width: "48%",
                           marginHorizontal: "1%",
@@ -1420,7 +1458,7 @@ export default function WalkInSaleScreen() {
                         }}
                       >
                         <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: active ? Colors.white : Colors.gray[700] }}>
-                          {method.label}
+                          {wis(WALK_IN_PAYMENT_LABEL_KEY[methodId])}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1453,13 +1491,13 @@ export default function WalkInSaleScreen() {
                     backgroundColor: Colors.gray[50],
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={linkClientsOpen ? "Hide saved client picker" : "Link a saved client"}
+                  accessibilityLabel={linkClientsOpen ? wis("hideClientPickerA11y") : wis("linkSavedClientA11y")}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                     <Ionicons name="people-outline" size={20} color={Colors.gray[600]} />
-                    <View style={{ marginLeft: 10, flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>Saved client</Text>
-                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Attach this sale to a client profile</Text>
+                    <View style={{ marginStart: 10, flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>{wis("savedClient")}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{wis("savedClientHint")}</Text>
                     </View>
                   </View>
                   <Ionicons name={linkClientsOpen ? "chevron-up" : "chevron-down"} size={20} color={Colors.gray[500]} />
@@ -1468,21 +1506,21 @@ export default function WalkInSaleScreen() {
                 {linkedClient ? (
                   <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "#ecfdf5", padding: 12 }}>
                     <Ionicons name="checkmark-circle" size={22} color="#047857" />
-                    <Text style={{ marginLeft: 8, flex: 1, fontSize: 14, fontWeight: "600", color: "#065f46" }} numberOfLines={2}>
+                    <Text style={{ marginStart: 8, flex: 1, fontSize: 14, fontWeight: "600", color: "#065f46" }} numberOfLines={2}>
                       {linkedClient.full_name}
                     </Text>
-                    <TouchableOpacity onPress={() => setLinkedClient(null)} hitSlop={8} accessibilityLabel="Clear linked client">
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#b91c1c" }}>Clear</Text>
+                    <TouchableOpacity onPress={() => setLinkedClient(null)} hitSlop={8} accessibilityLabel={wis("clearLinkedClientA11y")}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#b91c1c" }}>{t("common.clear")}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
 
                 {linkClientsOpen && !linkedClient ? (
                   <View style={{ marginBottom: 14 }}>
-                    <SearchBar placeholder="Search saved clients…" value={clientPickSearch} onChangeText={setClientPickSearch} />
+                    <SearchBar placeholder={wis("searchClients")} value={clientPickSearch} onChangeText={setClientPickSearch} />
                     {pickClientsError ? (
                       <Text style={{ marginTop: 8, fontSize: 13, color: "#b91c1c" }}>
-                        Could not load clients. You may need permission to view clients.
+                        {wis("loadClientsFailed")}
                       </Text>
                     ) : null}
                     {pickClientsLoading && pickClients.length === 0 ? (
@@ -1508,7 +1546,7 @@ export default function WalkInSaleScreen() {
                               borderBottomColor: Colors.gray[100],
                             }}
                             accessibilityRole="button"
-                            accessibilityLabel={`Link client ${c.full_name}`}
+                            accessibilityLabel={wis("linkClientA11y", { name: c.full_name })}
                           >
                             <View style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: "#eef2ff", alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ fontSize: 12, fontWeight: "700", color: "#4f46e5" }}>
@@ -1521,25 +1559,25 @@ export default function WalkInSaleScreen() {
                                   .toUpperCase() || "?"}
                               </Text>
                             </View>
-                            <View style={{ marginLeft: 12, flex: 1 }}>
+                            <View style={{ marginStart: 12, flex: 1 }}>
                               <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{c.full_name}</Text>
                               {c.phone ? <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{c.phone}</Text> : null}
                             </View>
-                            <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
+                            <DirectionalIcon name="chevron-forward" size={18} color={Colors.gray[400]} />
                           </TouchableOpacity>
                         ))}
                         {pickClients.length === 0 && !pickClientsLoading ? (
-                          <Text style={{ paddingVertical: 12, fontSize: 14, color: Colors.gray[500] }}>No clients match.</Text>
+                          <Text style={{ paddingVertical: 12, fontSize: 14, color: Colors.gray[500] }}>{wis("noClientsMatch")}</Text>
                         ) : null}
                       </ScrollView>
                     )}
                   </View>
                 ) : null}
 
-                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Customer (optional)</Text>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{wis("customerOptional")}</Text>
                 <TextInput
                   style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 10, fontSize: 16, color: Colors.gray[900] }}
-                  placeholder="Name on receipt"
+                  placeholder={wis("nameOnReceipt")}
                   placeholderTextColor="#9ca3af"
                   value={customerName}
                   onChangeText={setCustomerName}
@@ -1552,7 +1590,7 @@ export default function WalkInSaleScreen() {
                   }}
                   compact
                   muted
-                  accessibilityLabel="Customer phone"
+                  accessibilityLabel={wis("customerPhoneA11y")}
                 />
 
                 {checkoutError ? (
@@ -1573,12 +1611,12 @@ export default function WalkInSaleScreen() {
                 <ActionButton
                   label={
                     preparingPaystackTerminal || preparingPaycloud
-                      ? "Preparing terminal..."
+                      ? wis("preparingTerminal")
                       : creating
-                        ? "Completing…"
+                        ? wis("completing")
                         : paymentMethod === "paystack_terminal"
-                          ? `Show Paystack Terminal · ${formatCurrency(cartTotalDue)}`
-                          : `Complete sale · ${formatCurrency(cartTotalDue)}`
+                          ? wis("showPaystackTerminal", { amount: formatCurrency(cartTotalDue) })
+                          : wis("completeSale", { amount: formatCurrency(cartTotalDue) })
                   }
                   onPress={handleCompleteSale}
                   loading={creating || preparingPaystackTerminal || preparingPaycloud}
@@ -1588,7 +1626,7 @@ export default function WalkInSaleScreen() {
             )}
 
             {cart.length === 0 && !variantPickProduct && (
-              <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>Add products above to continue.</Text>
+              <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>{wis("addProductsToContinue")}</Text>
             )}
           </>
         )}
@@ -1599,7 +1637,7 @@ export default function WalkInSaleScreen() {
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(cartTotalDue * 100)}
         currency={tenantCurrency}
-        description="Walk-in sale"
+        description={wis("yocoDescription")}
         onPaymentSuccess={async (result) => {
           await submitSale(result.reference);
         }}
@@ -1623,26 +1661,26 @@ export default function WalkInSaleScreen() {
       <BottomSheet
         visible={!!paystackTerminalPrompt}
         onClose={() => setPaystackTerminalPrompt(null)}
-        title="Paystack Terminal"
+        title={wis("paystackTerminalTitle")}
       >
         {paystackTerminalPrompt ? (
           <View>
             <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
-              Ask the customer to pay using this Paystack link. Paystack generates the transaction reference; this sale is not recorded as paid until you allocate the webhooked payment.
+              {wis("paystackTerminalHint")}
             </Text>
             <View style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#ecfdf5", padding: 16 }}>
               <Text style={{ fontSize: 12, fontWeight: "700", color: "#047857", textTransform: "uppercase" }}>
-                Terminal code
+                {wis("terminalCode")}
               </Text>
               <Text style={{ marginTop: 6, fontFamily: "monospace", fontSize: 24, fontWeight: "800", color: "#064e3b" }}>
                 {paystackTerminalPrompt.code}
               </Text>
               <Text style={{ marginTop: 8, fontSize: 14, color: "#047857" }}>
-                Expected: {formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)}
+                {wis("expectedAmount", { amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency) })}
               </Text>
               {paystackTerminalPrompt.reference ? (
                 <Text style={{ marginTop: 4, fontSize: 12, color: "#047857" }}>
-                  Booking/order note: {paystackTerminalPrompt.reference}
+                  {wis("bookingOrderNote", { note: paystackTerminalPrompt.reference })}
                 </Text>
               ) : null}
             </View>
@@ -1650,22 +1688,28 @@ export default function WalkInSaleScreen() {
               <TouchableOpacity
                 onPress={() => {
                   void Share.share({
-                    title: "Paystack Terminal",
+                    title: wis("paystackTerminalTitle"),
                     message: paystackTerminalPrompt.link
-                      ? `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using this Paystack Terminal link: ${paystackTerminalPrompt.link}${paystackTerminalPrompt.reference ? ` Note: ${paystackTerminalPrompt.reference}` : ""}`
-                      : `Pay ${formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency)} using Paystack Terminal code ${paystackTerminalPrompt.code}${paystackTerminalPrompt.reference ? `. Note: ${paystackTerminalPrompt.reference}` : ""}.`,
+                      ? wis("sharePaystackLink", {
+                          amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency),
+                          link: paystackTerminalPrompt.link,
+                        }) + (paystackTerminalPrompt.reference ? wis("shareNote", { note: paystackTerminalPrompt.reference }) : "")
+                      : wis("sharePaystackCode", {
+                          amount: formatCurrency(paystackTerminalPrompt.expectedAmount, tenantCurrency),
+                          code: paystackTerminalPrompt.code,
+                        }) + (paystackTerminalPrompt.reference ? wis("shareNote", { note: paystackTerminalPrompt.reference }) : ""),
                   });
                 }}
                 style={{ flex: 1, borderRadius: 12, backgroundColor: "#16a34a", paddingVertical: 12 }}
               >
-                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>Share</Text>
+                <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>{t("common.share")}</Text>
               </TouchableOpacity>
               {paystackTerminalPrompt.link ? (
                 <TouchableOpacity
                   onPress={() => void Linking.openURL(paystackTerminalPrompt.link || "")}
                   style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: "#16a34a", paddingVertical: 12 }}
                 >
-                  <Text style={{ textAlign: "center", fontWeight: "700", color: "#15803d" }}>Open link</Text>
+                  <Text style={{ textAlign: "center", fontWeight: "700", color: "#15803d" }}>{wis("openLink")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -1675,7 +1719,7 @@ export default function WalkInSaleScreen() {
                 style={{ marginTop: 12, borderRadius: 12, backgroundColor: "#111827", paddingVertical: 14 }}
               >
                 <Text style={{ textAlign: "center", fontWeight: "700", color: "#fff" }}>
-                  Payment received — complete sale
+                  {wis("paymentReceivedComplete")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -1686,7 +1730,7 @@ export default function WalkInSaleScreen() {
       <BarcodeScannerModal
         visible={barcodeScanOpen}
         onClose={() => setBarcodeScanOpen(false)}
-        title="Scan product barcode"
+        title={wis("scanProductBarcode")}
         busy={barcodeLookupBusy}
         errorMessage={barcodeLookupError}
         onScanned={(code) => {

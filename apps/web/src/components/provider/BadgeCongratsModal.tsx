@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { Trophy, Sparkles } from "lucide-react";
+import { useTranslation } from "@beautonomi/i18n";
 
 const STORAGE_KEY = "provider_congrats_badge_seen_at";
 const RECENT_DAYS = 7;
@@ -30,6 +31,7 @@ interface BadgeCongratsModalProps {
 }
 
 export function BadgeCongratsModal({ gamification }: BadgeCongratsModalProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -81,10 +83,10 @@ export function BadgeCongratsModal({ gamification }: BadgeCongratsModalProps) {
           </div>
           <DialogTitle className="flex items-center justify-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-500" />
-            Congratulations!
+            {t("web.provider.badgeCongrats.title")}
           </DialogTitle>
           <DialogDescription>
-            You earned the <strong>{badge.name}</strong> badge.
+            {t("web.provider.badgeCongrats.earned", { name: badge.name })}
             {badge.description && (
               <span className="block mt-2 text-sm">{badge.description}</span>
             )}
@@ -92,7 +94,7 @@ export function BadgeCongratsModal({ gamification }: BadgeCongratsModalProps) {
         </DialogHeader>
         <DialogFooter className="flex flex-col sm:flex-row gap-2 justify-center">
           <Button variant="outline" onClick={handleClose}>
-            Thanks!
+            {t("web.provider.postCompletion.thanks")}
           </Button>
           <Button
             className="bg-primary hover:bg-primary/90"
@@ -101,7 +103,7 @@ export function BadgeCongratsModal({ gamification }: BadgeCongratsModalProps) {
               router.push("/provider/gamification");
             }}
           >
-            View rewards
+            {t("web.provider.badgeCongrats.viewRewards")}
           </Button>
         </DialogFooter>
       </DialogContent>

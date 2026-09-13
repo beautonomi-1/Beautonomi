@@ -10,6 +10,7 @@ import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 type UpcomingTalentSectionProps = {
   categorySlug?: string;
@@ -22,6 +23,7 @@ const UpcomingTalentSection = ({
   initialProviders,
   initialHydrated = false,
 }: UpcomingTalentSectionProps) => {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<PublicProviderCard[]>(() =>
     initialHydrated ? (initialProviders ?? []) : [],
   );
@@ -101,7 +103,7 @@ const UpcomingTalentSection = ({
     return (
       <div className="mb-8 md:mb-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading rising stars..." onRetry={handleRetry} />
+          <LoadingTimeout loadingMessage={t("web.home.loadingRising")} onRetry={handleRetry} />
         </div>
       </div>
     );
@@ -114,17 +116,17 @@ const UpcomingTalentSection = ({
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           {error ? (
             <EmptyState
-              title="Unable to load providers"
+              title={t("web.home.unableToLoadProviders")}
               description={error}
               action={{
-                label: "Retry",
+                label: t("web.home.retry"),
                 onClick: handleRetry,
               }}
             />
           ) : (
             <EmptyState
-              title="No new providers yet"
-              description="Check back later for rising stars"
+              title={t("web.home.noRising")}
+              description={t("web.home.noRisingHint")}
             />
           )}
         </div>
@@ -149,11 +151,11 @@ const UpcomingTalentSection = ({
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
             <Sparkles className="h-6 w-6 md:h-8 md:w-8 text-primary" />
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Rising Star</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{t("web.home.risingStar")}</h2>
           </div>
           <Link href="/more-rising-star-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-primary">
-            View all
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            {t("web.home.viewAll")}
+            <ArrowRight className="ms-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>
         {/* Mobile: Horizontal scroll with peek effect, Desktop: Grid */}

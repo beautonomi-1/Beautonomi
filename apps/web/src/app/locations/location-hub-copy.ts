@@ -1,45 +1,70 @@
 import { getCategoryLabelForSeo } from "@/app/home/home-category-labels";
 
-export function locationHubMetaTitle(params: {
-  countryName: string;
-  cityName?: string;
-  categorySlug?: string | null;
-}): string {
+type SeoTranslate = (key: string, vars?: Record<string, string>) => string;
+
+export function locationHubMetaTitle(
+  t: SeoTranslate,
+  params: {
+    countryName: string;
+    cityName?: string;
+    categorySlug?: string | null;
+  },
+): string {
   const cat =
     params.categorySlug && params.categorySlug !== "all"
       ? getCategoryLabelForSeo(params.categorySlug)
       : null;
   if (params.cityName && cat) {
-    return `${cat} freelancers & salons in ${params.cityName} | Beautonomi`;
+    return t("web.seo.locationHubCityCategoryTitle", {
+      category: cat,
+      city: params.cityName,
+    }) as string;
   }
   if (params.cityName) {
-    return `Book beauty freelancers & salons in ${params.cityName} | Beautonomi`;
+    return t("web.seo.locationHubCityTitle", { city: params.cityName }) as string;
   }
   if (cat) {
-    return `${cat} across ${params.countryName} — verified beauty professionals | Beautonomi`;
+    return t("web.seo.locationHubCountryCategoryTitle", {
+      category: cat,
+      country: params.countryName,
+    }) as string;
   }
-  return `Beauty freelancers & salons in ${params.countryName} | Beautonomi`;
+  return t("web.seo.locationHubCountryTitle", { country: params.countryName }) as string;
 }
 
-export function locationHubMetaDescription(params: {
-  countryName: string;
-  cityName?: string;
-  categorySlug?: string | null;
-}): string {
+export function locationHubMetaDescription(
+  t: SeoTranslate,
+  params: {
+    countryName: string;
+    cityName?: string;
+    categorySlug?: string | null;
+  },
+): string {
   const cat =
     params.categorySlug && params.categorySlug !== "all"
       ? getCategoryLabelForSeo(params.categorySlug)
       : null;
   if (params.cityName && cat) {
-    return `Find top-rated ${cat.toLowerCase()} freelancers and salons in ${params.cityName}. Compare reviews, book verified beauty professionals on Beautonomi.`;
+    return t("web.seo.locationHubCityCategoryDescription", {
+      category: cat.toLowerCase(),
+      city: params.cityName,
+    }) as string;
   }
   if (params.cityName) {
-    return `Discover salons and mobile beauty freelancers in ${params.cityName}, ${params.countryName}. Book verified professionals on Beautonomi.`;
+    return t("web.seo.locationHubCityDescription", {
+      city: params.cityName,
+      country: params.countryName,
+    }) as string;
   }
   if (cat) {
-    return `Browse ${cat.toLowerCase()} services from verified freelancers and salons across ${params.countryName} on Beautonomi.`;
+    return t("web.seo.locationHubCountryCategoryDescription", {
+      category: cat.toLowerCase(),
+      country: params.countryName,
+    }) as string;
   }
-  return `Explore beauty freelancers and salons across ${params.countryName}. Book hair, nails, spa, and more on Beautonomi.`;
+  return t("web.seo.locationHubCountryDescription", {
+    country: params.countryName,
+  }) as string;
 }
 
 export function sectionTopRatedTitle(cityName: string | undefined, categorySlug: string | null | undefined): string {

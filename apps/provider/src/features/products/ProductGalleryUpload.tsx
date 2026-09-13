@@ -7,6 +7,7 @@ import { twStyle } from "@/lib/twStyle";
 import { api } from "@/lib/api-client";
 import { appendFormDataFileNative } from "@beautonomi/utils";
 import { useImagePicker } from "@/hooks/useImagePicker";
+import { useTranslation } from "@beautonomi/i18n";
 
 const MAX_IMAGES = 5;
 
@@ -16,13 +17,15 @@ type Props = {
 };
 
 export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
+  const { t } = useTranslation();
+  const pg = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.productGalleryUpload.${key}`, opts) as string;
   const [uploading, setUploading] = useState(false);
   const { pickFromLibrary, pickFromCamera } = useImagePicker();
 
   const uploadAsset = useCallback(
     async (asset: { uri: string; mimeType?: string | null; fileName?: string | null }) => {
       if (imageUrls.length >= MAX_IMAGES) {
-        Alert.alert("Limit reached", `You can add up to ${MAX_IMAGES} images.`);
+        Alert.alert(pg("limitReached"), pg("limitReachedBody", { count: MAX_IMAGES }));
         return;
       }
       setUploading(true);
@@ -33,7 +36,7 @@ export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
         formData.append("folder", "products");
         const res = await api.fetch<{ url?: string }>("/api/upload", { method: "POST", body: formData });
         if (res.error || !res.data?.url) {
-          Alert.alert("Upload failed", res.error?.message ?? "Could not upload image.");
+          Alert.alert(pg("uploadFailed"), res.error?.message ?? pg("uploadFailedBody"));
           return;
         }
         onChange([...imageUrls, res.data.url]);
@@ -42,7 +45,7 @@ export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
         setUploading(false);
       }
     },
-    [imageUrls, onChange],
+    [imageUrls, onChange, t],
   );
 
   const pickLibrary = async () => {
@@ -71,20 +74,20 @@ export function ProductGalleryUpload({ imageUrls, onChange }: Props) {
 
   return (
     <View style={twStyle("mb-4")}>
-      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Product images (up to {MAX_IMAGES})</Text>
-      <Text style={twStyle("mb-2 text-xs text-gray-500")}>First image is the primary thumbnail.</Text>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pg("imagesLabel", { count: MAX_IMAGES })}</Text>
+      <Text style={twStyle("mb-2 text-xs text-gray-500")}>{pg("primaryHint")}</Text>
       <View style={twStyle("flex-row flex-wrap gap-2")}>
         {imageUrls.map((url, idx) => (
           <View key={`${url}-${idx}`} style={twStyle("relative")}>
             <Image source={{ uri: url }} style={{ width: 72, height: 72, borderRadius: 12, borderWidth: idx === 0 ? 2 : 1, borderColor: idx === 0 ? "#6366f1" : "#e5e7eb" }} contentFit="cover" />
             {idx === 0 && (
               <View style={twStyle("absolute left-1 top-1 rounded bg-indigo-600 px-1")}>
-                <Text style={twStyle("text-[9px] font-semibold text-white")}>Primary</Text>
+                <Text style={twStyle("text-[9px] font-semibold text-white")}>{pg("primary")}</Text>
               </View>
             )}
             <View style={twStyle("absolute -right-1 -top-1 flex-row")}>
               {idx > 0 && (
-                <TouchableOpacity onPress={() => movePrimary(idx)} style={twStyle("mr-1 rounded-full bg-white p-1 shadow")}>
+                <TouchableOpacity onPress={() => movePrimary(idx)} style={twStyle("me-1 rounded-full bg-white p-1 shadow")}>
                   <Ionicons name="star-outline" size={14} color="#6366f1" />
                 </TouchableOpacity>
               )}

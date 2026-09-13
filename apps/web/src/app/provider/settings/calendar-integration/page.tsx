@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -29,6 +30,7 @@ import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { getUpgradeMessage, isPlanGateErrorCode } from "@/lib/subscriptions/subscription-upgrade-copy";
 
 export default function CalendarIntegrationPage() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -47,12 +49,12 @@ export default function CalendarIntegrationPage() {
     const provider = searchParams?.get("provider");
 
     if (success === "true" && provider) {
-      toast.success(`${provider} calendar connected successfully`);
+      toast.success(t("web.provider.settings.pages.calendar-integration.connectedSuccess", { provider }));
       loadSyncs();
       // Clean URL
       router.replace("/provider/settings/calendar-integration");
     } else if (error) {
-      toast.error(`Failed to connect calendar: ${error}`);
+      toast.error(t("web.provider.settings.pages.calendar-integration.failedToConnectWithError", { error }));
       router.replace("/provider/settings/calendar-integration");
     }
   }, [searchParams, router]);
@@ -80,7 +82,7 @@ export default function CalendarIntegrationPage() {
         return;
       }
       console.error("Failed to load calendar syncs:", error);
-      toast.error("Failed to load calendar integrations");
+      toast.error(t("web.provider.settings.pages.calendar-integration.failedToLoadCalendarIntegrations"));
     } finally {
       setIsLoading(false);
     }
@@ -97,23 +99,23 @@ export default function CalendarIntegrationPage() {
       window.location.href = url;
     } catch (error: any) {
       console.error("Failed to initiate calendar connection:", error);
-      const errorMessage = error?.error?.message || error?.message || "Failed to connect calendar";
+      const errorMessage = error?.error?.message || error?.message || t("web.provider.settings.pages.calendar-integration.failedToConnect");
       const errorCode = error?.error?.code || error?.code;
 
       if (errorCode === "CONFIG_ERROR") {
         toast.error(
-          "Calendar integration is not configured. Please contact your administrator to set up OAuth credentials.",
+          t("web.provider.settings.pages.calendar-integration.configError"),
           { duration: 8000 }
         );
       } else if (errorCode === "INTEGRATION_DISABLED") {
         toast.error(
-          errorMessage || "This calendar provider is not enabled. Please contact your administrator.",
+          errorMessage || t("web.provider.settings.pages.calendar-integration.integrationDisabled"),
           { duration: 8000 }
         );
       } else if (isPlanGateErrorCode(errorCode)) {
         toast.error(errorMessage || getUpgradeMessage("integrations.calendar"), {
           action: {
-            label: "View plans",
+            label: t("web.provider.settings.pages.calendar-integration.viewPlans"),
             onClick: () => router.push("/provider/subscription"),
           },
         });
@@ -124,47 +126,47 @@ export default function CalendarIntegrationPage() {
   };
 
   const handleDisconnect = async (id: string) => {
-    if (!confirm("Are you sure you want to disconnect this calendar?")) return;
+    if (!confirm(t("web.provider.settings.pages.calendar-integration.disconnectConfirm"))) return;
 
     try {
       await providerApi.deleteCalendarSync(id);
-      toast.success("Calendar disconnected");
+      toast.success(t("web.provider.settings.pages.calendar-integration.calendarDisconnected"));
       loadSyncs();
     } catch (error) {
       console.error("Failed to disconnect calendar:", error);
-      toast.error("Failed to disconnect calendar");
+      toast.error(t("web.provider.settings.pages.calendar-integration.failedToDisconnectCalendar"));
     }
   };
 
   const handleSync = async (sync: CalendarSync) => {
     try {
-      toast.info("Syncing calendar...");
+      toast.info(t("web.provider.settings.pages.calendar-integration.syncing"));
       await providerApi.syncCalendarToAppointments(sync.id);
-      toast.success("Calendar synced successfully");
+      toast.success(t("web.provider.settings.pages.calendar-integration.calendarSyncedSuccessfully"));
       loadSyncs();
     } catch (error) {
       if (error instanceof FetchError && isPlanGateErrorCode(error.code)) {
         toast.error(error.message || getUpgradeMessage("integrations.calendar"), {
           action: {
-            label: "View plans",
+            label: t("web.provider.settings.pages.calendar-integration.viewPlans"),
             onClick: () => router.push("/provider/subscription"),
           },
         });
         return;
       }
       console.error("Failed to sync calendar:", error);
-      toast.error("Failed to sync calendar");
+      toast.error(t("web.provider.settings.pages.calendar-integration.failedToSyncCalendar"));
     }
   };
 
   const getProviderName = (provider: CalendarProvider) => {
     switch (provider) {
       case "google":
-        return "Google Calendar";
+        return t("web.provider.portal.calendarLinkDialog.googleCalendar");
       case "apple":
-        return "Apple Calendar (iCal)";
+        return t("web.provider.portal.calendarLinkDialog.appleCalendar");
       case "outlook":
-        return "Microsoft Outlook";
+        return t("web.provider.portal.calendarLinkDialog.microsoftOutlook");
     }
   };
 
@@ -173,19 +175,19 @@ export default function CalendarIntegrationPage() {
   };
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading calendar integrations..." />;
+    return <LoadingTimeout loadingMessage={t("web.provider.settings.pages.calendar-integration.loadingCalendarIntegrations")} />;
   }
 
   if (subscriptionRequired) {
     return (
       <div>
         <PageHeader
-          title="Calendar Integration"
-          subtitle="Sync your appointments with external calendars"
+          title={t("web.provider.settings.categories.appointmentActivity.items.calendarIntegration.title")}
+          subtitle={t("web.provider.settings.categories.appointmentActivity.items.calendarIntegration.description")}
         />
         <SectionCard className="p-12">
           <SubscriptionGate
-            feature="Calendar sync"
+            feature={t("web.provider.settings.pages.calendar-integration.calendarSync")}
             message={subscriptionGateMessage || getUpgradeMessage("integrations.calendar")}
           />
         </SectionCard>
@@ -196,28 +198,28 @@ export default function CalendarIntegrationPage() {
   return (
     <div>
       <PageHeader
-        title="Calendar Integration"
-        subtitle="Sync your appointments with external calendars"
+        title={t("web.provider.settings.categories.appointmentActivity.items.calendarIntegration.title")}
+        subtitle={t("web.provider.settings.categories.appointmentActivity.items.calendarIntegration.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Calendar Integration" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.calendar-integration.calendarIntegration") },
         ]}
         primaryAction={{
-          label: "Connect Calendar",
+          label: t("web.provider.settings.pages.calendar-integration.connectCalendar"),
           onClick: () => setIsDialogOpen(true),
-          icon: <Plus className="w-4 h-4 mr-2" />,
+          icon: <Plus className="w-4 h-4 me-2" />,
         }}
       />
 
       {syncs.length === 0 ? (
         <SectionCard className="p-12">
           <EmptyState
-            title="No calendar integrations"
-            description="Connect your calendar to sync appointments automatically"
+            title={t("web.provider.settings.pages.calendar-integration.noCalendarIntegrations")}
+            description={t("web.provider.settings.pages.calendar-integration.connectHint")}
             action={{
-              label: "Connect Calendar",
+              label: t("web.provider.settings.pages.calendar-integration.connectCalendar"),
               onClick: () => setIsDialogOpen(true),
             }}
           />
@@ -232,26 +234,26 @@ export default function CalendarIntegrationPage() {
                   <div>
                     <h3 className="font-semibold">{getProviderName(sync.provider)}</h3>
                     <p className="text-sm text-gray-600">
-                      {sync.sync_direction === "two_way" ? "Two-way sync" : "One-way sync"}
+                      {sync.sync_direction === "two_way" ? t("web.provider.settings.pages.calendar-integration.twoWaySync") : t("web.provider.settings.pages.calendar-integration.oneWaySync")}
                     </p>
                   </div>
                 </div>
                 {sync.is_active ? (
-                  <Badge className="bg-green-100 text-green-800">Active</Badge>
+                  <Badge className="bg-green-100 text-green-800">{t("web.provider.common.active")}</Badge>
                 ) : (
-                  <Badge className="bg-gray-100 text-gray-800">Inactive</Badge>
+                  <Badge className="bg-gray-100 text-gray-800">{t("web.provider.common.inactive")}</Badge>
                 )}
               </div>
 
               {sync.last_sync_date && (
                 <div className="mb-4 text-sm text-gray-600">
-                  <p>Last synced: {format(new Date(sync.last_sync_date), "PPp")}</p>
+                  <p>{t("web.provider.settings.pages.calendar-integration.lastSynced", { date: format(new Date(sync.last_sync_date), "PPp") })}</p>
                 </div>
               )}
 
               {sync.sync_errors && sync.sync_errors.length > 0 && (
                 <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm font-medium text-red-800 mb-1">Sync Errors:</p>
+                  <p className="text-sm font-medium text-red-800 mb-1">{t("web.provider.settings.pages.calendar-integration.syncErrors")}</p>
                   <ul className="text-xs text-red-600 space-y-1">
                     {sync.sync_errors.map((error, idx) => (
                       <li key={idx}>• {error}</li>
@@ -267,8 +269,8 @@ export default function CalendarIntegrationPage() {
                   onClick={() => handleSync(sync)}
                   disabled={!sync.is_active}
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Sync Now
+                  <RefreshCw className="w-4 h-4 me-2" />
+                  {t("web.provider.settings.pages.calendar-integration.syncNow")}
                 </Button>
                 <Button
                   variant="outline"
@@ -276,8 +278,8 @@ export default function CalendarIntegrationPage() {
                   onClick={() => handleDisconnect(sync.id)}
                   className="text-red-600 hover:text-red-700"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Disconnect
+                  <Trash2 className="w-4 h-4 me-2" />
+                  {t("web.provider.settings.pages.calendar-integration.disconnect")}
                 </Button>
               </div>
             </SectionCard>
@@ -304,6 +306,7 @@ function ConnectCalendarDialog({
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
   const [selectedProvider, setSelectedProvider] = useState<CalendarProvider>("google");
   const [syncDirection, setSyncDirection] = useState<"one_way" | "two_way">("two_way");
   const [isConnecting, setIsConnecting] = useState(false);
@@ -339,17 +342,17 @@ function ConnectCalendarDialog({
       window.location.href = url;
     } catch (error: any) {
       console.error("Failed to connect calendar:", error);
-      const errorMessage = error?.error?.message || error?.message || "Failed to connect calendar";
+      const errorMessage = error?.error?.message || error?.message || t("web.provider.settings.pages.calendar-integration.failedToConnect");
       const errorCode = error?.error?.code;
       
       if (errorCode === "CONFIG_ERROR") {
         toast.error(
-          "Calendar integration is not configured. Please contact your administrator to set up OAuth credentials.",
+          t("web.provider.settings.pages.calendar-integration.configError"),
           { duration: 8000 }
         );
       } else if (errorCode === "INTEGRATION_DISABLED") {
         toast.error(
-          errorMessage || "This calendar provider is not enabled. Please contact your administrator.",
+          errorMessage || t("web.provider.settings.pages.calendar-integration.integrationDisabled"),
           { duration: 8000 }
         );
       } else {
@@ -363,15 +366,15 @@ function ConnectCalendarDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect Calendar</DialogTitle>
+          <DialogTitle>{t("web.provider.settings.pages.calendar-integration.connectCalendar")}</DialogTitle>
           <DialogDescription>
-            Choose a calendar provider to sync your appointments
+            {t("web.provider.settings.pages.calendar-integration.chooseProvider")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div>
-            <Label htmlFor="provider">Calendar Provider</Label>
+            <Label htmlFor="provider">{t("web.provider.settings.pages.calendar-integration.calendarProvider")}</Label>
             <Select
               value={selectedProvider}
               onValueChange={(value) => setSelectedProvider(value as CalendarProvider)}
@@ -381,17 +384,17 @@ function ConnectCalendarDialog({
               </SelectTrigger>
               <SelectContent>
                 {enabledProviders.includes("google") && (
-                  <SelectItem value="google">Google Calendar</SelectItem>
+                  <SelectItem value="google">{t("web.provider.portal.calendarLinkDialog.googleCalendar")}</SelectItem>
                 )}
                 {enabledProviders.includes("outlook") && (
-                  <SelectItem value="outlook">Microsoft Outlook</SelectItem>
+                  <SelectItem value="outlook">{t("web.provider.portal.calendarLinkDialog.microsoftOutlook")}</SelectItem>
                 )}
                 {enabledProviders.includes("apple") && (
-                  <SelectItem value="apple">Apple Calendar (iCal)</SelectItem>
+                  <SelectItem value="apple">{t("web.provider.portal.calendarLinkDialog.appleCalendar")}</SelectItem>
                 )}
                 {enabledProviders.length === 0 && (
                   <SelectItem value="none" disabled>
-                    No calendar providers enabled
+                    {t("web.provider.settings.pages.calendar-integration.noProvidersEnabled")}
                   </SelectItem>
                 )}
               </SelectContent>
@@ -399,7 +402,7 @@ function ConnectCalendarDialog({
           </div>
 
           <div>
-            <Label>Sync Direction</Label>
+            <Label>{t("web.provider.settings.pages.calendar-integration.syncDirection")}</Label>
             <div className="space-y-2 mt-2">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -410,11 +413,11 @@ function ConnectCalendarDialog({
                   }
                 />
                 <Label htmlFor="two_way" className="cursor-pointer">
-                  Two-way sync (recommended)
+                  {t("web.provider.settings.pages.calendar-integration.twoWayRecommended")}
                 </Label>
               </div>
-              <p className="text-xs text-gray-500 ml-6">
-                Changes in either calendar will sync to the other
+              <p className="text-xs text-gray-500 ms-6">
+                {t("web.provider.settings.pages.calendar-integration.twoWayHint")}
               </p>
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -425,18 +428,18 @@ function ConnectCalendarDialog({
                   }
                 />
                 <Label htmlFor="one_way" className="cursor-pointer">
-                  One-way sync (appointments → calendar only)
+                  {t("web.provider.settings.pages.calendar-integration.oneWayAppointmentsOnly")}
                 </Label>
               </div>
             </div>
           </div>
 
           <div className="p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-            <p className="font-medium mb-1">How it works:</p>
+            <p className="font-medium mb-1">{t("web.provider.settings.pages.calendar-integration.howItWorks")}</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
-              <li>Appointments will automatically sync to your calendar</li>
-              <li>You can view and manage appointments from your calendar app</li>
-              <li>Changes made in your calendar can sync back (two-way only)</li>
+              <li>{t("web.provider.settings.pages.calendar-integration.howStep1")}</li>
+              <li>{t("web.provider.settings.pages.calendar-integration.howStep2")}</li>
+              <li>{t("web.provider.settings.pages.calendar-integration.howStep3")}</li>
             </ul>
           </div>
         </div>
@@ -448,14 +451,14 @@ function ConnectCalendarDialog({
             onClick={() => onOpenChange(false)}
             disabled={isConnecting}
           >
-            Cancel
+            {t("web.provider.common.cancel")}
           </Button>
           <Button
             onClick={handleConnect}
             disabled={isConnecting}
             className="bg-primary hover:bg-primary-hover"
           >
-            {isConnecting ? "Connecting..." : "Connect Calendar"}
+            {isConnecting ? t("web.provider.settings.pages.calendar-integration.connecting") : t("web.provider.settings.pages.calendar-integration.connectCalendar")}
           </Button>
         </DialogFooter>
       </DialogContent>

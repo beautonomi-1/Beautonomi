@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import { History, User, Clock } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -14,6 +16,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 
 interface AuditLogEntry {
   id: string;
@@ -38,6 +41,7 @@ interface BookingAuditLogProps {
 }
 
 export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,16 +69,16 @@ export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
 
   const getEventTypeLabel = (eventType: string): string => {
     const labels: Record<string, string> = {
-      created: "Created",
-      confirmed: "Confirmed",
-      service_started: "Service Started",
-      service_completed: "Service Completed",
-      cancelled: "Cancelled",
-      status_changed: "Status Changed",
-      payment_received: "Payment Received",
-      refunded: "Refunded",
-      rescheduled: "Rescheduled",
-      note_added: "Note Added",
+      created: t("web.auditLog.created"),
+      confirmed: t("web.auditLog.confirmed"),
+      service_started: t("web.auditLog.serviceStarted"),
+      service_completed: t("web.auditLog.serviceCompleted"),
+      cancelled: t("web.auditLog.cancelled"),
+      status_changed: t("web.auditLog.statusChanged"),
+      payment_received: t("web.auditLog.paymentReceived"),
+      refunded: t("web.auditLog.refunded"),
+      rescheduled: t("web.auditLog.rescheduled"),
+      note_added: t("web.auditLog.noteAdded"),
     };
     return labels[eventType] || eventType;
   };
@@ -95,8 +99,8 @@ export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
-            <History className="w-4 h-4 mr-2" />
-            View History
+            <History className="w-4 h-4 me-2" />
+            {t("web.auditLog.viewHistory")}
           </Button>
         )}
       </DialogTrigger>
@@ -104,17 +108,17 @@ export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <History className="w-5 h-5" />
-            Booking History & Audit Log
+            {t("web.auditLog.title")}
           </DialogTitle>
         </DialogHeader>
-        <ScrollArea className="max-h-[60vh] pr-4">
+        <ScrollArea className="max-h-[60vh] pe-4">
           {isLoading ? (
             <div className="py-8">
-              <LoadingTimeout loadingMessage="Loading audit log..." />
+              <LoadingTimeout loadingMessage={t("web.auditLog.loading")} />
             </div>
           ) : auditLogs.length === 0 ? (
             <div className="py-8 text-center text-gray-500">
-              No audit log entries found
+              {t("web.auditLog.empty")}
             </div>
           ) : (
             <div className="space-y-4">
@@ -144,7 +148,7 @@ export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
                       </div>
                       {entry.event_data.reason && (
                         <p className="text-sm text-gray-600 mb-2">
-                          Reason: {entry.event_data.reason}
+                          {t("web.auditLog.reason", { reason: entry.event_data.reason })}
                         </p>
                       )}
                       {entry.event_data.field && (
@@ -164,12 +168,12 @@ export function BookingAuditLog({ bookingId, trigger }: BookingAuditLogProps) {
                   <div className="flex items-center gap-4 text-xs text-gray-500 pt-2 border-t">
                     <div className="flex items-center gap-1">
                       <User className="w-3 h-3" />
-                      <span>{entry.created_by_name || "System"}</span>
+                      <span>{entry.created_by_name || t("web.auditLog.system")}</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       <span>
-                        {new Date(entry.created_at).toLocaleString("en-US", {
+                        {new Date(entry.created_at).toLocaleString(getDefaultMoneyLocale(), {
                           year: "numeric",
                           month: "short",
                           day: "numeric",

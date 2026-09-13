@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, TextInput, Share, Alert, ActivityIndicator, Platform, Modal, ScrollView } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -71,14 +72,14 @@ function parseAddonIdsFromText(text: string): string[] {
     .filter((s) => UUID_RE.test(s));
 }
 
-function parseProductCartJson(raw: string): { ok: true; lines: NonNullable<ExpressPrefill["product_cart"]> } | { ok: false; message: string } {
+function parseProductCartJson(raw: string): { ok: true; lines: NonNullable<ExpressPrefill["product_cart"]> } | { ok: false; errorKey: "invalidJson" | "cartMustBeArray" } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.trim() || "[]");
   } catch {
-    return { ok: false, message: "Invalid JSON." };
+    return { ok: false, errorKey: "invalidJson" };
   }
-  if (!Array.isArray(parsed)) return { ok: false, message: "Product cart must be a JSON array." };
+  if (!Array.isArray(parsed)) return { ok: false, errorKey: "cartMustBeArray" };
   const lines: NonNullable<ExpressPrefill["product_cart"]> = [];
   for (const row of parsed) {
     if (!row || typeof row !== "object") continue;
@@ -102,14 +103,10 @@ function parseProductCartJson(raw: string): { ok: true; lines: NonNullable<Expre
 }
 
 /** Single message with URL — reliable for WhatsApp, Instagram DMs, SMS (Android avoids duplicate URL). */
-function shareBookingPayload(url: string, opts?: { businessName?: string; shortLabel?: string }) {
-  const name = opts?.shortLabel?.trim() || opts?.businessName?.trim();
-  const line = name
-    ? `Book with ${name} — tap to pick a time:\n${url}`
-    : `Book online — tap to pick a time:\n${url}`;
+function shareBookingPayload(url: string, message: string) {
   return Platform.OS === "ios"
-    ? { message: line, url }
-    : { message: line };
+    ? { message, url }
+    : { message };
 }
 
 function normalizeArray<T>(raw: unknown): T[] {
@@ -140,6 +137,12 @@ function formatDateInputFromIso(value?: string | null): string {
 }
 
 export default function ExpressBookingScreen() {
+  const { t } = useTranslation();
+  const eb = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.expressBooking.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { data: link, loading, error: bookingLinkError, timedOut, refresh } = useApi<BookingLink>(
     "/api/provider/booking-link"
@@ -226,11 +229,11 @@ export default function ExpressBookingScreen() {
             break;
           }
         }
-        errorOut = getApiErrorMessage(res.error, "Failed to load short links");
+        errorOut = getApiErrorMessage(res.error, eb("loadShortLinksFailed"));
         if (status === 401 || status === 403) break;
         if (attempt < 1) await new Promise((r) => setTimeout(r, 450));
       } catch (e) {
-        errorOut = getApiErrorMessage(e, "Failed to load short links");
+        errorOut = getApiErrorMessage(e, eb("loadShortLinksFailed"));
         if (attempt < 1) await new Promise((r) => setTimeout(r, 450));
       }
     }
@@ -238,7 +241,7 @@ export default function ExpressBookingScreen() {
     setExpressLinks(list);
     setExpressLinksError(errorOut);
     setExpressLinksLoading(false);
-  }, []);
+  }, [eb]);
 
   useEffect(() => {
     if (loading) return;
@@ -263,7 +266,7 @@ export default function ExpressBookingScreen() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      Alert.alert("Error", "Failed to copy link to clipboard");
+      Alert.alert(eb("errorTitle"), eb("copyFailedClipboard"));
     }
   }
 
@@ -271,7 +274,11 @@ export default function ExpressBookingScreen() {
     if (!link?.url) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await Share.share(shareBookingPayload(link.url, { businessName: link.business_name }));
+      const name = link.business_name?.trim();
+      const message = name
+        ? eb("shareBookWithName", { name, url: link.url })
+        : eb("shareBookOnline", { url: link.url });
+      await Share.share(shareBookingPayload(link.url, message));
     } catch {
       // User cancelled share
     }
@@ -283,7 +290,7 @@ export default function ExpressBookingScreen() {
       slug: customSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"),
     });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(eb("errorTitle"), error);
     } else {
       setEditingSlug(false);
       await refresh();
@@ -299,7 +306,7 @@ export default function ExpressBookingScreen() {
     if (!prefillModalLink) return;
     const parsedCart = parseProductCartJson(prefillProductsJson);
     if (!parsedCart.ok) {
-      Alert.alert("Product cart", parsedCart.message);
+      Alert.alert(eb("productCartTitle"), eb(parsedCart.errorKey));
       return;
     }
     const addon_ids = parseAddonIdsFromText(prefillAddonsText);
@@ -311,7 +318,7 @@ export default function ExpressBookingScreen() {
 
     const { data: updatedLink, error } = await patchExpressLink(`/api/provider/express-booking/${prefillModalLink.id}`, { prefill });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(eb("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -372,7 +379,7 @@ export default function ExpressBookingScreen() {
 
   async function handleSaveExpressLink() {
     if (!newLinkName.trim() || !newLinkSlug.trim()) {
-      setCreateError("Name and slug are required");
+      setCreateError(eb("nameSlugRequired"));
       return;
     }
     setCreatingLink(true);
@@ -380,7 +387,7 @@ export default function ExpressBookingScreen() {
     try {
       const slug = normalizeExpressSlug(newLinkSlug);
       if (!slug) {
-        setCreateError("Short code must contain at least one letter or number");
+        setCreateError(eb("shortCodeRequired"));
         setCreatingLink(false);
         return;
       }
@@ -406,7 +413,7 @@ export default function ExpressBookingScreen() {
         const code = (res.error as { code?: string }).code;
         const msg = getApiErrorMessage(
           res.error,
-          editingExpressLink ? "Failed to update express link" : "Failed to create express link",
+          editingExpressLink ? eb("updateLinkFailed") : eb("createLinkFailed"),
         );
         setCreateError(msg);
         if (isPlanGateErrorCode(code)) {
@@ -426,7 +433,7 @@ export default function ExpressBookingScreen() {
         void loadExpressLinks();
       }
     } catch (e) {
-      setCreateError(getApiErrorMessage(e, editingExpressLink ? "Failed to update express link" : "Failed to create express link"));
+      setCreateError(getApiErrorMessage(e, editingExpressLink ? eb("updateLinkFailed") : eb("createLinkFailed")));
     }
     setCreatingLink(false);
   }
@@ -437,7 +444,7 @@ export default function ExpressBookingScreen() {
       is_active: nextActive,
     });
     if (res.error) {
-      Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update link"));
+      Alert.alert(eb("errorTitle"), getApiErrorMessage(res.error, eb("updateLinkGeneric")));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -449,12 +456,12 @@ export default function ExpressBookingScreen() {
   function handleClearPrefill() {
     if (!prefillModalLink) return;
     Alert.alert(
-      "Clear checkout prefill",
-      "Remove promo, gift card, add-ons, and product lines from this link?",
+      eb("clearPrefillTitle"),
+      eb("clearPrefillBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: eb("cancel"), style: "cancel" },
         {
-          text: "Clear",
+          text: eb("clear"),
           style: "destructive",
           onPress: () => {
             void (async () => {
@@ -462,7 +469,7 @@ export default function ExpressBookingScreen() {
                 prefill: {},
               });
               if (error) {
-                Alert.alert("Error", error);
+                Alert.alert(eb("errorTitle"), error);
                 return;
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -483,17 +490,17 @@ export default function ExpressBookingScreen() {
   }
 
   const locationOptions: { value: "" | "at_salon" | "at_home"; label: string }[] = [
-    { value: "", label: "Client chooses" },
-    { value: "at_salon", label: "At salon" },
-    { value: "at_home", label: "At home" },
+    { value: "", label: eb("clientChooses") },
+    { value: "at_salon", label: eb("atSalon") },
+    { value: "at_home", label: eb("atHome") },
   ];
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Booking Links"
+        title={eb("title")}
         showBack
-        subtitle="Copy or share for WhatsApp, Instagram, SMS"
+        subtitle={eb("subtitle")}
       />
 
       {loading ? (
@@ -510,12 +517,12 @@ export default function ExpressBookingScreen() {
                 backgroundColor: "#fef2f2",
                 padding: 16,
               }}
-              accessibilityLabel="Booking link error"
+              accessibilityLabel={eb("bookingLinkErrorA11y")}
             >
               <Text style={{ fontSize: 14, color: "#991b1b", marginBottom: 8 }}>{bookingLinkError}</Text>
               {timedOut ? (
                 <Text style={{ fontSize: 12, color: "#b91c1c", marginBottom: 8 }}>
-                  This is taking longer than usual. Check your connection and try again.
+                  {eb("timeoutHint")}
                 </Text>
               ) : null}
               <TouchableOpacity
@@ -527,17 +534,17 @@ export default function ExpressBookingScreen() {
                   paddingVertical: 8,
                 }}
                 onPress={() => void refresh()}
-                accessibilityLabel="Retry loading booking link"
+                accessibilityLabel={eb("retryBookingLinkA11y")}
                 accessibilityRole="button"
               >
-                <Text style={{ fontWeight: "600", color: Colors.white }}>Try again</Text>
+                <Text style={{ fontWeight: "600", color: Colors.white }}>{eb("tryAgain")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
 
           <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", rowGap: 8, marginTop: 8, marginBottom: 4 }}>
             <View style={{ flexShrink: 1, minWidth: "55%" }}>
-              <SectionHeader title="Express Links" />
+              <SectionHeader title={eb("expressLinks")} />
             </View>
             <TouchableOpacity
               style={{
@@ -549,23 +556,23 @@ export default function ExpressBookingScreen() {
                 paddingVertical: 8,
               }}
               onPress={openCreateExpressLinkForm}
-              accessibilityLabel="Create new express link"
+              accessibilityLabel={eb("createNewA11y")}
               accessibilityRole="button"
             >
               <Ionicons name="add" size={18} color="#fff" />
-              <Text style={{ marginLeft: 4, fontWeight: "600", color: Colors.white, fontSize: 13 }}>New Link</Text>
+              <Text style={{ marginStart: 4, fontWeight: "600", color: Colors.white, fontSize: 13 }}>{eb("newLink")}</Text>
             </TouchableOpacity>
           </View>
 
           {showCreateForm && (
             <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#f5f3ff", padding: 16, marginBottom: 12 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca", marginBottom: 12 }}>
-                {editingExpressLink ? "Edit Express Link" : "Create Express Link"}
+                {editingExpressLink ? eb("editExpressLink") : eb("createExpressLink")}
               </Text>
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Name</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("name")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white, marginBottom: 10 }}
-                placeholder="e.g. Summer Promo"
+                placeholder={eb("namePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={newLinkName}
                 onChangeText={(t) => {
@@ -576,25 +583,25 @@ export default function ExpressBookingScreen() {
                 }}
                 autoCapitalize="words"
               />
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Slug (URL-safe)</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("slugLabel")}</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white, marginBottom: 10 }}
-                placeholder="e.g. summer-promo"
+                placeholder={eb("slugPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={newLinkSlug}
                 onChangeText={(value) => setNewLinkSlug(normalizeExpressSlug(value))}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Pre-select services (optional)</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{eb("preselectServices")}</Text>
               <View style={{ maxHeight: 180, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, backgroundColor: Colors.white, marginBottom: 10, overflow: "hidden" }}>
                 <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                   {bookableItems.length === 0 ? (
-                    <Text style={{ padding: 12, fontSize: 13, color: Colors.gray[500] }}>No services found.</Text>
+                    <Text style={{ padding: 12, fontSize: 13, color: Colors.gray[500] }}>{eb("noServices")}</Text>
                   ) : (
                     bookableItems.map((svc) => {
                       const selected = newServiceIds.includes(svc.id);
-                      const label = svc.variant_name || svc.title || svc.name || "Untitled service";
+                      const label = svc.variant_name || svc.title || svc.name || eb("untitledService");
                       return (
                         <TouchableOpacity
                           key={svc.id}
@@ -604,8 +611,8 @@ export default function ExpressBookingScreen() {
                           accessibilityState={{ checked: selected }}
                         >
                           <Ionicons name={selected ? "checkbox" : "square-outline"} size={20} color={selected ? "#4f46e5" : Colors.gray[400]} />
-                          <Text style={{ marginLeft: 8, flex: 1, fontSize: 13, color: Colors.gray[800] }} numberOfLines={1}>
-                            {label}{svc.duration_minutes ? ` · ${svc.duration_minutes}min` : ""}
+                          <Text style={{ marginStart: 8, flex: 1, fontSize: 13, color: Colors.gray[800] }} numberOfLines={1}>
+                            {label}{svc.duration_minutes ? eb("durationMin", { minutes: svc.duration_minutes }) : ""}
                           </Text>
                           {svc.service_type === "package" || svc.service_type === "addon" ? (
                             <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{svc.service_type}</Text>
@@ -616,13 +623,13 @@ export default function ExpressBookingScreen() {
                   )}
                 </ScrollView>
               </View>
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Staff member (optional)</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("staffOptional")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                 <TouchableOpacity
                   style={{ borderRadius: 999, borderWidth: 1, borderColor: !newStaffId ? "#4f46e5" : Colors.gray[200], backgroundColor: !newStaffId ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
                   onPress={() => setNewStaffId("")}
                 >
-                  <Text style={{ fontSize: 12, color: !newStaffId ? "#4338ca" : Colors.gray[600] }}>Any staff</Text>
+                  <Text style={{ fontSize: 12, color: !newStaffId ? "#4338ca" : Colors.gray[600] }}>{eb("anyStaff")}</Text>
                 </TouchableOpacity>
                 {activeStaff.map((member) => (
                   <TouchableOpacity
@@ -630,11 +637,11 @@ export default function ExpressBookingScreen() {
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: newStaffId === member.id ? "#4f46e5" : Colors.gray[200], backgroundColor: newStaffId === member.id ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
                     onPress={() => setNewStaffId(member.id)}
                   >
-                    <Text style={{ fontSize: 12, color: newStaffId === member.id ? "#4338ca" : Colors.gray[600] }}>{member.name || "Staff member"}</Text>
+                    <Text style={{ fontSize: 12, color: newStaffId === member.id ? "#4338ca" : Colors.gray[600] }}>{member.name || eb("staffMemberFallback")}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Location choice</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("locationChoice")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                 {locationOptions.map((option) => (
                   <TouchableOpacity
@@ -655,7 +662,7 @@ export default function ExpressBookingScreen() {
                     style={{ borderRadius: 999, borderWidth: 1, borderColor: !newLocationId ? "#4f46e5" : Colors.gray[200], backgroundColor: !newLocationId ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
                     onPress={() => setNewLocationId("")}
                   >
-                    <Text style={{ fontSize: 12, color: !newLocationId ? "#4338ca" : Colors.gray[600] }}>Any branch</Text>
+                    <Text style={{ fontSize: 12, color: !newLocationId ? "#4338ca" : Colors.gray[600] }}>{eb("anyBranch")}</Text>
                   </TouchableOpacity>
                   {salonLocations.map((loc) => (
                     <TouchableOpacity
@@ -663,17 +670,17 @@ export default function ExpressBookingScreen() {
                       style={{ borderRadius: 999, borderWidth: 1, borderColor: newLocationId === loc.id ? "#4f46e5" : Colors.gray[200], backgroundColor: newLocationId === loc.id ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 8 }}
                       onPress={() => setNewLocationId(loc.id)}
                     >
-                      <Text style={{ fontSize: 12, color: newLocationId === loc.id ? "#4338ca" : Colors.gray[600] }}>{loc.name || "Branch"}</Text>
+                      <Text style={{ fontSize: 12, color: newLocationId === loc.id ? "#4338ca" : Colors.gray[600] }}>{loc.name || eb("branchFallback")}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
               )}
               <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Expiry date</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("expiryDate")}</Text>
                   <TextInput
                     style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white }}
-                    placeholder="YYYY-MM-DD"
+                    placeholder={eb("datePlaceholder")}
                     placeholderTextColor="#9ca3af"
                     value={newExpiresAt}
                     onChangeText={(value) => setNewExpiresAt(value.replace(/[^0-9-]/g, "").slice(0, 10))}
@@ -681,10 +688,10 @@ export default function ExpressBookingScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Max uses</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{eb("maxUses")}</Text>
                   <TextInput
                     style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white }}
-                    placeholder="Unlimited"
+                    placeholder={eb("unlimited")}
                     placeholderTextColor="#9ca3af"
                     value={newMaxUses}
                     onChangeText={(value) => setNewMaxUses(value.replace(/\D/g, ""))}
@@ -699,7 +706,7 @@ export default function ExpressBookingScreen() {
                 accessibilityState={{ checked: newIsActive }}
               >
                 <Ionicons name={newIsActive ? "checkbox" : "square-outline"} size={20} color={newIsActive ? "#4f46e5" : Colors.gray[400]} />
-                <Text style={{ marginLeft: 8, fontSize: 13, color: Colors.gray[700] }}>Active link</Text>
+                <Text style={{ marginStart: 8, fontSize: 13, color: Colors.gray[700] }}>{eb("activeLink")}</Text>
               </TouchableOpacity>
               {createError && (
                 <View style={{ borderRadius: 8, backgroundColor: "#fef2f2", padding: 10, marginBottom: 10 }}>
@@ -711,22 +718,22 @@ export default function ExpressBookingScreen() {
                   style={{ flex: 1, alignItems: "center", borderRadius: 12, backgroundColor: "#4f46e5", paddingVertical: 12, opacity: creatingLink ? 0.6 : 1 }}
                   onPress={() => void handleSaveExpressLink()}
                   disabled={creatingLink}
-                  accessibilityLabel="Create express link"
+                  accessibilityLabel={eb("createExpressA11y")}
                   accessibilityRole="button"
                 >
                   {creatingLink ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ fontWeight: "600", color: Colors.white }}>{editingExpressLink ? "Save" : "Create"}</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.white }}>{editingExpressLink ? eb("save") : eb("create")}</Text>
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 12 }}
                   onPress={() => { setShowCreateForm(false); resetExpressForm(); }}
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={eb("cancelA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontWeight: "500", color: Colors.gray[600] }}>Cancel</Text>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[600] }}>{eb("cancel")}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -744,12 +751,12 @@ export default function ExpressBookingScreen() {
             >
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
                 <Ionicons name="lock-closed-outline" size={20} color="#b45309" />
-                <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "600", color: "#92400e" }}>
-                  Upgrade Required
+                <Text style={{ marginStart: 8, fontSize: 16, fontWeight: "600", color: "#92400e" }}>
+                  {eb("upgradeRequired")}
                 </Text>
               </View>
               <Text style={{ fontSize: 14, color: "#78350f", marginBottom: 12 }}>
-                Express booking links are not included on this plan. Upgrade under Subscription to unlock them.
+                {eb("upgradeBody")}
               </Text>
               <TouchableOpacity
                 style={{
@@ -760,16 +767,16 @@ export default function ExpressBookingScreen() {
                   paddingVertical: 10,
                 }}
                 onPress={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
-                accessibilityLabel="Go to subscription page"
+                accessibilityLabel={eb("goSubscriptionA11y")}
                 accessibilityRole="button"
               >
-                <Text style={{ fontWeight: "600", color: Colors.white }}>View Plans</Text>
+                <Text style={{ fontWeight: "600", color: Colors.white }}>{eb("viewPlans")}</Text>
               </TouchableOpacity>
             </View>
           ) : expressLinksLoading ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 16 }}>
               <ActivityIndicator color={Colors.primary} />
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Loading express links…</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{eb("loadingLinks")}</Text>
             </View>
           ) : expressLinksError ? (
             <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", padding: 16 }}>
@@ -777,10 +784,10 @@ export default function ExpressBookingScreen() {
               <TouchableOpacity
                 style={{ marginTop: 12, alignSelf: "flex-start", borderRadius: 12, backgroundColor: "#dc2626", paddingHorizontal: 16, paddingVertical: 8 }}
                 onPress={() => void loadExpressLinks()}
-                accessibilityLabel="Retry loading express links"
+                accessibilityLabel={eb("retryExpressA11y")}
                 accessibilityRole="button"
               >
-                <Text style={{ fontWeight: "500", color: Colors.white }}>Try again</Text>
+                <Text style={{ fontWeight: "500", color: Colors.white }}>{eb("tryAgain")}</Text>
               </TouchableOpacity>
             </View>
           ) : expressLinks.length === 0 && !showCreateForm ? (
@@ -794,7 +801,7 @@ export default function ExpressBookingScreen() {
               }}
             >
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
-                No express links yet. Tap &quot;New Link&quot; above to create a pre-filled booking link you can share with clients.
+                {eb("emptyLinks")}
               </Text>
             </View>
           ) : (
@@ -817,32 +824,32 @@ export default function ExpressBookingScreen() {
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                                 <Text style={{ fontWeight: "500", color: Colors.gray[900], flexShrink: 1 }}>{el.name}</Text>
                                 <Text style={{ borderRadius: 999, overflow: "hidden", backgroundColor: el.is_active === false ? Colors.gray[100] : "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, fontSize: 10, color: el.is_active === false ? Colors.gray[500] : "#166534" }}>
-                                  {el.is_active === false ? "Inactive" : "Active"}
+                                  {el.is_active === false ? eb("inactive") : eb("active")}
                                 </Text>
                               </View>
                               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>{fullUrl}</Text>
                               <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
                                 {el.location_type === "at_home" ? (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>At home</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("atHome")}</Text>
                                 ) : el.location_type === "at_salon" || el.location_id ? (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>At salon</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("atSalon")}</Text>
                                 ) : (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[400] }}>Any venue</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[400] }}>{eb("anyVenue")}</Text>
                                 )}
                                 {el.use_count != null && (
-                                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{el.use_count} click{el.use_count !== 1 ? "s" : ""}</Text>
+                                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{eb("clicks", { count: el.use_count })}</Text>
                                 )}
                                 {serviceCount > 0 && (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{serviceCount} service{serviceCount !== 1 ? "s" : ""}</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("servicesCount", { count: serviceCount })}</Text>
                                 )}
                                 {staffCount > 0 && (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Staff preselected</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("staffPreselected")}</Text>
                                 )}
                                 {expiresLabel && (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Expires {expiresLabel}</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("expires", { date: expiresLabel })}</Text>
                                 )}
                                 {el.max_uses != null && (
-                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Max {el.max_uses}</Text>
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>{eb("maxUsesValue", { count: el.max_uses })}</Text>
                                 )}
                               </View>
                             </View>
@@ -851,11 +858,11 @@ export default function ExpressBookingScreen() {
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => openEditExpressLinkForm(el)}
-                                accessibilityLabel="Edit express link"
+                                accessibilityLabel={eb("editA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="create-outline" size={18} color="#4f46e5" />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#4338ca" }}>Edit</Text>
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: "#4338ca" }}>{eb("edit")}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
@@ -866,35 +873,35 @@ export default function ExpressBookingScreen() {
                                     setCopiedShortId(el.id);
                                     setTimeout(() => setCopiedShortId(null), 2000);
                                   } catch {
-                                    Alert.alert("Error", "Failed to copy");
+                                    Alert.alert(eb("errorTitle"), eb("copyFailed"));
                                   }
                                 }}
-                                accessibilityLabel="Copy short link"
+                                accessibilityLabel={eb("copyShortA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name={isCopied ? "checkmark-circle" : "copy-outline"} size={18} color={isCopied ? "#059669" : "#6b7280"} />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: isCopied ? "#059669" : Colors.gray[700] }}>
-                                  {isCopied ? "Copied" : "Copy"}
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: isCopied ? "#059669" : Colors.gray[700] }}>
+                                  {isCopied ? eb("copied") : eb("copy")}
                                 </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
-                                onPress={() => Share.share(shareBookingPayload(fullUrl, { shortLabel: el.name }))}
-                                accessibilityLabel="Share short link"
+                                onPress={() => Share.share(shareBookingPayload(fullUrl, eb("shareBookWithName", { name: el.name, url: fullUrl })))}
+                                accessibilityLabel={eb("shareShortA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="share-outline" size={18} color="#6b7280" />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Share</Text>
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{eb("share")}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: el.is_active === false ? "#dcfce7" : "#fee2e2", paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => void handleToggleExpressLinkActive(el)}
-                                accessibilityLabel={el.is_active === false ? "Activate express link" : "Deactivate express link"}
+                                accessibilityLabel={el.is_active === false ? eb("activateA11y") : eb("deactivateA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name={el.is_active === false ? "play-outline" : "pause-outline"} size={18} color={el.is_active === false ? "#15803d" : "#b91c1c"} />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: el.is_active === false ? "#166534" : "#991b1b" }}>
-                                  {el.is_active === false ? "Activate" : "Pause"}
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: el.is_active === false ? "#166534" : "#991b1b" }}>
+                                  {el.is_active === false ? eb("activate") : eb("pause")}
                                 </Text>
                               </TouchableOpacity>
                               </View>
@@ -902,11 +909,11 @@ export default function ExpressBookingScreen() {
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#ede9fe", paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => setPrefillModalLink(el)}
-                                accessibilityLabel="Edit checkout prefill for short link"
+                                accessibilityLabel={eb("prefillA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="pricetag-outline" size={18} color="#6d28d9" />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#6d28d9" }}>Prefill</Text>
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: "#6d28d9" }}>{eb("prefill")}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
@@ -914,26 +921,26 @@ export default function ExpressBookingScreen() {
                                   try {
                                     await Clipboard.setStringAsync(embedUrl);
                                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                    Alert.alert("Copied", "Embed URL copied. Use it in your website iframe.");
+                                    Alert.alert(eb("copiedTitle"), eb("embedCopiedBody"));
                                   } catch {
-                                    Alert.alert("Error", "Failed to copy");
+                                    Alert.alert(eb("errorTitle"), eb("copyFailed"));
                                   }
                                 }}
-                                accessibilityLabel="Copy embed URL"
+                                accessibilityLabel={eb("copyEmbedA11y")}
                                 accessibilityRole="button"
                               >
                                 <Ionicons name="code-slash-outline" size={18} color="#6b7280" />
-                                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Embed</Text>
+                                <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{eb("embed")}</Text>
                               </TouchableOpacity>
                               {APP_URL ? (
                                 <TouchableOpacity
                                   style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 12, paddingVertical: 8 }}
                                   onPress={() => router.push("/(app)/(tabs)/more/settings/booking-link" as never)}
-                                  accessibilityLabel="Manage links"
+                                  accessibilityLabel={eb("manageA11y")}
                                   accessibilityRole="button"
                                 >
                                   <Ionicons name="settings-outline" size={18} color="#6366f1" />
-                                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#4f46e5" }}>Manage</Text>
+                                  <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: "#4f46e5" }}>{eb("manage")}</Text>
                                 </TouchableOpacity>
                               ) : null}
                             </View>
@@ -948,24 +955,24 @@ export default function ExpressBookingScreen() {
 
           <View
             style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#eef2ff", padding: 24 }}
-            accessibilityLabel="Booking link section"
+            accessibilityLabel={eb("bookingLinkSectionA11y")}
           >
             <View style={{ alignItems: "center" }}>
               <View style={{ height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#c7d2fe" }}>
                 <Ionicons name="flash" size={28} color="#6366f1" />
               </View>
               <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: "#312e81" }}>
-                General Booking Link
+                {eb("generalLink")}
               </Text>
               <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: "#4338ca" }}>
-                The main link for your booking page — easy to paste in chats or your bio
+                {eb("generalLinkHint")}
               </Text>
             </View>
 
             {link?.url && (
               <View
                 style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12 }}
-                accessibilityLabel={`Booking link: ${link.url}`}
+                accessibilityLabel={eb("bookingLinkValueA11y", { url: link.url })}
               >
                 <Text
                   style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: "#4f46e5" }}
@@ -981,7 +988,7 @@ export default function ExpressBookingScreen() {
               <TouchableOpacity
                 style={{
                   flex: 1,
-                  marginRight: 12,
+                  marginEnd: 12,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
@@ -990,39 +997,39 @@ export default function ExpressBookingScreen() {
                   backgroundColor: copied ? "#16a34a" : "#4f46e5",
                 }}
                 onPress={handleCopyLink}
-                accessibilityLabel={copied ? "Link copied" : "Copy booking link"}
+                accessibilityLabel={copied ? eb("linkCopiedA11y") : eb("copyBookingA11y")}
                 accessibilityRole="button"
               >
                 <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={18} color="#fff" />
-                <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>
-                  {copied ? "Copied!" : "Copy Link"}
+                <Text style={{ marginStart: 8, fontWeight: "600", color: Colors.white }}>
+                  {copied ? eb("copiedExclaim") : eb("copyLink")}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#a5b4fc", backgroundColor: Colors.white, paddingVertical: 12 }}
                 onPress={handleShareLink}
-                accessibilityLabel="Share booking link"
+                accessibilityLabel={eb("shareBookingA11y")}
                 accessibilityRole="button"
               >
                 <Ionicons name="share-outline" size={18} color="#6366f1" />
-                <Text style={{ marginLeft: 8, fontWeight: "600", color: "#4f46e5" }}>Share Link</Text>
+                <Text style={{ marginStart: 8, fontWeight: "600", color: "#4f46e5" }}>{eb("shareLink")}</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {link?.url && (
             <>
-              <SectionHeader title="QR Code" />
+              <SectionHeader title={eb("qrCode")} />
               <View
                 style={{ alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 24 }}
-                accessibilityLabel="QR code for booking link"
+                accessibilityLabel={eb("qrA11y")}
               >
                 <View style={{ alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: Colors.white, padding: 16 }}>
                   <QRCode value={link.url} size={180} color="#111827" backgroundColor="#ffffff" />
                 </View>
                 <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[500] }}>
-                  Clients can scan this code to open your booking page
+                  {eb("qrHint")}
                 </Text>
               </View>
             </>
@@ -1030,42 +1037,42 @@ export default function ExpressBookingScreen() {
 
           {link && (
             <>
-              <SectionHeader title="Customize Link" />
+              <SectionHeader title={eb("customizeLink")} />
               <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
                 {editingSlug ? (
                   <>
-                    <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Custom URL slug</Text>
+                    <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{eb("customSlug")}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <TextInput
-                        style={{ flex: 1, marginRight: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
-                        placeholder="my-salon"
+                        style={{ flex: 1, marginEnd: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
+                        placeholder={eb("slugExample")}
                         placeholderTextColor="#9ca3af"
                         value={customSlug}
                         onChangeText={setCustomSlug}
                         autoCapitalize="none"
                         autoCorrect={false}
-                        accessibilityLabel="Custom URL slug input"
+                        accessibilityLabel={eb("customSlugA11y")}
                       />
-                      <ActionButton label="Save" variant="secondary" size="sm" onPress={handleSaveSlug} loading={saving} disabled={!customSlug.trim()} />
+                      <ActionButton label={eb("save")} variant="secondary" size="sm" onPress={handleSaveSlug} loading={saving} disabled={!customSlug.trim()} />
                     </View>
-                    <TouchableOpacity onPress={() => setEditingSlug(false)} style={{ marginTop: 8, alignSelf: "flex-start" }} accessibilityLabel="Cancel editing slug" accessibilityRole="button">
-                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancel</Text>
+                    <TouchableOpacity onPress={() => setEditingSlug(false)} style={{ marginTop: 8, alignSelf: "flex-start" }} accessibilityLabel={eb("cancelSlugA11y")} accessibilityRole="button">
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{eb("cancel")}</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Current slug</Text>
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{eb("currentSlug")}</Text>
                       <Text style={{ marginTop: 2, fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>{link.slug}</Text>
                     </View>
                     <TouchableOpacity
                       style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                       onPress={handleStartEditSlug}
-                      accessibilityLabel="Edit booking link slug"
+                      accessibilityLabel={eb("editSlugA11y")}
                       accessibilityRole="button"
                     >
                       <Ionicons name="pencil-outline" size={16} color="#6b7280" />
-                      <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Edit</Text>
+                      <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{eb("edit")}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1075,14 +1082,14 @@ export default function ExpressBookingScreen() {
 
           {link && (
             <>
-              <SectionHeader title="Link Status" />
+              <SectionHeader title={eb("linkStatus")} />
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 16 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ marginRight: 8, height: 12, width: 12, borderRadius: 9999, backgroundColor: link.is_active ? "#22c55e" : Colors.gray[300] }} />
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{link.is_active ? "Active" : "Inactive"}</Text>
+                  <View style={{ marginEnd: 8, height: 12, width: 12, borderRadius: 9999, backgroundColor: link.is_active ? "#22c55e" : Colors.gray[300] }} />
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{link.is_active ? eb("active") : eb("inactive")}</Text>
                 </View>
                 <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
-                  {link.is_active ? "Clients can book via this link" : "Link is disabled"}
+                  {link.is_active ? eb("clientsCanBook") : eb("linkDisabled")}
                 </Text>
               </View>
             </>
@@ -1114,22 +1121,22 @@ export default function ExpressBookingScreen() {
               borderBottomColor: Colors.gray[100],
             }}
           >
-            <TouchableOpacity onPress={() => setPrefillModalLink(null)} accessibilityLabel="Close" accessibilityRole="button">
-              <Text style={{ fontSize: 16, color: Colors.gray[600] }}>Cancel</Text>
+            <TouchableOpacity onPress={() => setPrefillModalLink(null)} accessibilityLabel={eb("closeA11y")} accessibilityRole="button">
+              <Text style={{ fontSize: 16, color: Colors.gray[600] }}>{eb("cancel")}</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
-              Checkout prefill
+              {eb("checkoutPrefill")}
             </Text>
             <TouchableOpacity
               onPress={() => void handleSavePrefill()}
               disabled={savingPrefill}
-              accessibilityLabel="Save prefill"
+              accessibilityLabel={eb("savePrefillA11y")}
               accessibilityRole="button"
             >
               {savingPrefill ? (
                 <ActivityIndicator color={Colors.primary} />
               ) : (
-                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.primary }}>Save</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.primary }}>{eb("save")}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1142,9 +1149,9 @@ export default function ExpressBookingScreen() {
               <>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900], marginBottom: 4 }}>{prefillModalLink.name}</Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 16 }}>
-                  Optional fields applied when clients open this short link (add-ons, promo, gift card, retail products).
+                  {eb("prefillHint")}
                 </Text>
-                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Promo code</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{eb("promoCode")}</Text>
                 <TextInput
                   style={{
                     borderWidth: 1,
@@ -1156,14 +1163,14 @@ export default function ExpressBookingScreen() {
                     marginBottom: 14,
                     backgroundColor: Colors.gray[50],
                   }}
-                  placeholder="SUMMER20"
+                  placeholder={eb("promoPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   value={prefillPromo}
                   onChangeText={setPrefillPromo}
                   autoCapitalize="characters"
                   autoCorrect={false}
                 />
-                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Gift card code</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{eb("giftCardCode")}</Text>
                 <TextInput
                   style={{
                     borderWidth: 1,
@@ -1175,15 +1182,15 @@ export default function ExpressBookingScreen() {
                     marginBottom: 14,
                     backgroundColor: Colors.gray[50],
                   }}
-                  placeholder="Optional"
+                  placeholder={eb("optional")}
                   placeholderTextColor="#9ca3af"
                   value={prefillGift}
                   onChangeText={setPrefillGift}
                   autoCapitalize="characters"
                   autoCorrect={false}
                 />
-                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Add-on IDs (UUIDs)</Text>
-                <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>Comma or space separated</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{eb("addonIds")}</Text>
+                <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>{eb("commaSeparated")}</Text>
                 <TextInput
                   style={{
                     borderWidth: 1,
@@ -1196,16 +1203,16 @@ export default function ExpressBookingScreen() {
                     backgroundColor: Colors.gray[50],
                     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
                   }}
-                  placeholder="uuid, uuid, …"
+                  placeholder={eb("uuidPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   value={prefillAddonsText}
                   onChangeText={setPrefillAddonsText}
                   autoCapitalize="none"
                   multiline
                 />
-                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>Product cart (JSON)</Text>
+                <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 6 }}>{eb("productCartJson")}</Text>
                 <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>
-                  JSON array: product_id (UUID), quantity (1–999), optional product_variant_id.
+                  {eb("productCartHint")}
                 </Text>
                 <TextInput
                   style={{
@@ -1238,10 +1245,10 @@ export default function ExpressBookingScreen() {
                   }}
                   onPress={handleClearPrefill}
                   disabled={savingPrefill}
-                  accessibilityLabel="Clear all prefill"
+                  accessibilityLabel={eb("clearAllPrefillA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontWeight: "600", color: "#b91c1c" }}>Clear all prefill</Text>
+                  <Text style={{ fontWeight: "600", color: "#b91c1c" }}>{eb("clearAllPrefill")}</Text>
                 </TouchableOpacity>
               </>
             ) : null}

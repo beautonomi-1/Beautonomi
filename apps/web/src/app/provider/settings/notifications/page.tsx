@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -28,75 +29,21 @@ interface NotificationPreferences {
 }
 
 const notificationSections = [
-  {
-    id: "booking_updates",
-    title: "Booking Updates",
-    description: "Get notified when bookings are created, updated, or rescheduled",
-    icon: Calendar,
-  },
-  {
-    id: "booking_cancellations",
-    title: "Booking Cancellations",
-    description: "Be notified when clients cancel their appointments",
-    icon: AlertCircle,
-  },
-  {
-    id: "booking_reminders",
-    title: "Booking Reminders",
-    description: "Receive reminders about upcoming appointments",
-    icon: Clock,
-  },
-  {
-    id: "new_reviews",
-    title: "New Reviews",
-    description: "Get notified when customers leave reviews",
-    icon: Star,
-  },
-  {
-    id: "review_responses",
-    title: "Review Responses",
-    description: "Notifications about review interactions",
-    icon: MessageSquare,
-  },
-  {
-    id: "client_messages",
-    title: "Client Messages",
-    description: "Stay updated on messages from clients",
-    icon: MessageSquare,
-  },
-  {
-    id: "payment_received",
-    title: "Payment Received",
-    description: "Get notified when payments are received",
-    icon: DollarSign,
-  },
-  {
-    id: "payout_updates",
-    title: "Payout Updates",
-    description: "Updates on payout requests and processing",
-    icon: Wallet,
-  },
-  {
-    id: "waitlist_notifications",
-    title: "Waitlist Notifications",
-    description: "Get notified about waitlist activity",
-    icon: Users,
-  },
-  {
-    id: "system_updates",
-    title: "System Updates",
-    description: "Important system announcements and updates",
-    icon: FileText,
-  },
-  {
-    id: "marketing",
-    title: "Marketing & Promotions",
-    description: "Receive marketing emails and promotional offers",
-    icon: TrendingUp,
-  },
+  { id: "booking_updates", titleKey: "booking_updates", icon: Calendar },
+  { id: "booking_cancellations", titleKey: "booking_cancellations", icon: AlertCircle },
+  { id: "booking_reminders", titleKey: "booking_reminders", icon: Clock },
+  { id: "new_reviews", titleKey: "new_reviews", icon: Star },
+  { id: "review_responses", titleKey: "review_responses", icon: MessageSquare },
+  { id: "client_messages", titleKey: "client_messages", icon: MessageSquare },
+  { id: "payment_received", titleKey: "payment_received", icon: DollarSign },
+  { id: "payout_updates", titleKey: "payout_updates", icon: Wallet },
+  { id: "waitlist_notifications", titleKey: "waitlist_notifications", icon: Users },
+  { id: "system_updates", titleKey: "system_updates", icon: FileText },
+  { id: "marketing", titleKey: "marketing", icon: TrendingUp },
 ];
 
 export default function ProviderNotificationPreferences() {
+  const { t } = useTranslation();
   const [preferences, setPreferences] = useState<NotificationPreferences>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -117,10 +64,10 @@ export default function ProviderNotificationPreferences() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load notification preferences";
+          : t("web.provider.settings.pages.notifications.loadFailed");
       setError(errorMessage);
       console.error("Error loading notification preferences:", err);
     } finally {
@@ -143,12 +90,12 @@ export default function ProviderNotificationPreferences() {
         [sectionId]: prefs,
       }));
       
-      toast.success("Notification preferences updated");
+      toast.success(t("web.provider.settings.pages.notifications.notificationPreferencesUpdated"));
     } catch (err) {
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to update preferences";
+          : t("web.provider.settings.pages.notifications.updateFailed");
       toast.error(errorMessage);
       console.error("Error updating preferences:", err);
     } finally {
@@ -181,9 +128,13 @@ export default function ProviderNotificationPreferences() {
         ...prev,
         booking_alert_sound: enabled,
       }));
-      toast.success(enabled ? "Booking alert sound enabled" : "Booking alert sound disabled");
+      toast.success(
+        enabled
+          ? t("web.provider.settings.pages.notifications.alertSoundEnabled")
+          : t("web.provider.settings.pages.notifications.alertSoundDisabled"),
+      );
     } catch {
-      toast.error("Failed to update booking alert preference");
+      toast.error(t("web.provider.settings.pages.notifications.failedToUpdateBookingAlertPreference"));
     } finally {
       setIsSaving(false);
     }
@@ -202,9 +153,13 @@ export default function ProviderNotificationPreferences() {
         unsubscribe_marketing: newValue,
       }));
       
-      toast.success(newValue ? "Unsubscribed from marketing" : "Subscribed to marketing");
+      toast.success(
+        newValue
+          ? t("web.provider.settings.pages.notifications.unsubscribedMarketing")
+          : t("web.provider.settings.pages.notifications.subscribedMarketing"),
+      );
     } catch {
-      toast.error("Failed to update marketing preferences");
+      toast.error(t("web.provider.settings.pages.notifications.failedToUpdateMarketingPreferences"));
     } finally {
       setIsSaving(false);
     }
@@ -214,13 +169,13 @@ export default function ProviderNotificationPreferences() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Notifications" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.notifications.notifications") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading notification preferences..." />
+        <LoadingTimeout loadingMessage={t("web.provider.settings.pages.notifications.loadingNotificationPreferences")} />
       </SettingsDetailLayout>
     );
   }
@@ -229,17 +184,17 @@ export default function ProviderNotificationPreferences() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Notifications" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.notifications.notifications") },
         ]}
       >
         <EmptyState
-          title="Failed to load preferences"
+          title={t("web.provider.settings.categories.account.items.notifications.title")}
           description={error}
           action={{
-            label: "Retry",
+            label: t("web.provider.common.retry"),
             onClick: loadPreferences,
           }}
         />
@@ -250,16 +205,16 @@ export default function ProviderNotificationPreferences() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Settings", href: "/provider/settings" },
-        { label: "Notifications" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+        { label: t("web.provider.settings.pages.notifications.notifications") },
       ]}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Notification Preferences"
-          subtitle="Choose how you want to be notified about important events"
+          title={t("web.provider.settings.pages.notifications.notificationPreferences")}
+          subtitle={t("web.provider.settings.categories.account.items.notifications.description")}
         />
 
         <div className="bg-white border rounded-lg p-6">
@@ -269,10 +224,9 @@ export default function ProviderNotificationPreferences() {
                 <Volume2 className="w-5 h-5 text-emerald-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold mb-1">Booking alert sound</h3>
+                <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.notifications.bookingAlertSound")}</h3>
                 <p className="text-sm text-gray-600">
-                  Play a short tone in this browser when a new booking arrives, if your market configures a
-                  normal-booking ringtone in Control Plane.
+                  {t("web.provider.settings.pages.notifications.bookingAlertSoundDesc")}
                 </p>
               </div>
             </div>
@@ -289,9 +243,9 @@ export default function ProviderNotificationPreferences() {
         <div className="bg-white border rounded-lg p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-semibold mb-1">Marketing Communications</h3>
+              <h3 className="text-lg font-semibold mb-1">{t("web.provider.settings.pages.notifications.marketingComms")}</h3>
               <p className="text-sm text-gray-600">
-                Unsubscribe from marketing emails and promotional offers
+                {t("web.provider.settings.pages.notifications.marketingCommsDesc")}
               </p>
             </div>
             <Switch
@@ -321,16 +275,16 @@ export default function ProviderNotificationPreferences() {
                     <Icon className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold mb-1">{section.title}</h3>
-                    <p className="text-sm text-gray-600">{section.description}</p>
+                    <h3 className="text-lg font-semibold mb-1">{t(`web.provider.settings.pages.notifications.sections.${section.titleKey}.title`)}</h3>
+                    <p className="text-sm text-gray-600">{t(`web.provider.settings.pages.notifications.sections.${section.titleKey}.description`)}</p>
                   </div>
                 </div>
 
-                <div className="space-y-3 pl-14">
+                <div className="space-y-3 ps-14">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Mail className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">Email</span>
+                      <span className="font-medium">{t("web.provider.settings.pages.notifications.email")}</span>
                     </div>
                     <Switch
                       checked={sectionPrefs.email}
@@ -342,7 +296,7 @@ export default function ProviderNotificationPreferences() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">SMS</span>
+                      <span className="font-medium">{t("web.provider.settings.pages.notifications.sms")}</span>
                     </div>
                     <Switch
                       checked={sectionPrefs.sms}
@@ -354,7 +308,7 @@ export default function ProviderNotificationPreferences() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="w-4 h-4 text-emerald-600" />
-                      <span className="font-medium">WhatsApp</span>
+                      <span className="font-medium">{t("web.provider.settings.pages.notifications.whatsapp")}</span>
                     </div>
                     <Switch
                       checked={sectionPrefs.whatsapp ?? false}
@@ -366,7 +320,7 @@ export default function ProviderNotificationPreferences() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Bell className="w-4 h-4 text-gray-500" />
-                      <span className="font-medium">Push Notifications</span>
+                      <span className="font-medium">{t("web.provider.settings.pages.notifications.push")}</span>
                     </div>
                     <Switch
                       checked={sectionPrefs.push}

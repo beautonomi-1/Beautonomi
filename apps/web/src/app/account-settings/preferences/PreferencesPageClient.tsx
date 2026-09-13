@@ -14,6 +14,7 @@ import { Edit, Check, X, Globe } from "lucide-react";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import type { PreferenceOption, Preferences, PreferencesPageInitial } from "./preferences-initial-types";
 import { expandLanguagePreferenceOptions } from "./expand-language-options";
+import { useTranslation } from "@beautonomi/i18n";
 
 type PreferenceField = "language" | "currency" | "timezone" | null;
 
@@ -25,13 +26,16 @@ const GlobalPreferences: React.FC<{
 }> = ({
   initial,
   accountHomeHref = "/account-settings",
-  accountHomeLabel = "Account Settings",
+  accountHomeLabel: accountHomeLabelProp,
   showBottomNav = true,
 }) => {
+  const { t } = useTranslation();
+  const accountHomeLabel = accountHomeLabelProp ?? t("web.accountSettings.preferences.accountSettings");
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const tenantTimezone =
     bundle?.meta?.tenant_region?.timezone?.trim() || "Africa/Johannesburg";
+  const marketSupportedLanguages = bundle?.meta?.tenant_region?.supported_languages ?? [];
   const { user } = useAuth();
   const isProviderUser =
     user?.role === "provider_owner" || user?.role === "provider_staff";
@@ -81,7 +85,7 @@ const GlobalPreferences: React.FC<{
       ]);
 
       const loadedOptions = {
-        languages: expandLanguagePreferenceOptions(langsRes.data || []),
+        languages: expandLanguagePreferenceOptions(langsRes.data || [], marketSupportedLanguages),
         currencies: currenciesRes.data || [],
         timezones: timezonesRes.data || [],
       };
@@ -96,14 +100,14 @@ const GlobalPreferences: React.FC<{
 
       const languageOption = loadedOptions.languages.find(l => l.code === languageCode) || 
         loadedOptions.languages.find(l => l.code === "en") || 
-        { code: "en", name: "English" };
+        { code: "en", name: t("web.accountSettings.preferences.english") };
       const currencyOption = loadedOptions.currencies.find(c => c.code === currencyCode) || 
         loadedOptions.currencies.find(c => c.code === tenantCurrency) || 
         loadedOptions.currencies.find(c => c.code === LAST_RESORT_CURRENCY) || 
         { code: tenantCurrency, name: tenantCurrency };
-      const timezoneOption = loadedOptions.timezones.find(t => t.code === timezoneCode) || 
-        loadedOptions.timezones.find(t => t.code === tenantTimezone) || 
-        loadedOptions.timezones.find(t => t.code === "Africa/Johannesburg") || 
+      const timezoneOption = loadedOptions.timezones.find(tz => tz.code === timezoneCode) || 
+        loadedOptions.timezones.find(tz => tz.code === tenantTimezone) || 
+        loadedOptions.timezones.find(tz => tz.code === "Africa/Johannesburg") || 
         { code: tenantTimezone, name: tenantTimezone };
 
       setPreferences({
@@ -113,7 +117,7 @@ const GlobalPreferences: React.FC<{
       });
     } catch (error) {
       console.error("Failed to load preferences:", error);
-      toast.error("Failed to load preferences");
+      toast.error(t("web.accountSettings.preferences.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -151,10 +155,8 @@ const GlobalPreferences: React.FC<{
 
       if (field === "language") {
         await fetcher.post("/api/me/preferences", { language: tempValue });
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("preferred_language", tempValue);
-          window.dispatchEvent(new CustomEvent("beautonomi:preferred-language-changed", { detail: { language: tempValue } }));
-        }
+        const { persistClientLanguage } = await import("@/lib/locale/persist-client-language");
+        persistClientLanguage(tempValue);
       } else {
         await fetcher.patch("/api/me/profile", updateData);
       }
@@ -174,13 +176,19 @@ const GlobalPreferences: React.FC<{
         },
       });
       
-      toast.success(`${field === "language" ? "Language" : field === "currency" ? "Currency" : "Timezone"} updated successfully`);
+      toast.success(
+        field === "language"
+          ? t("web.accountSettings.preferences.languageUpdated")
+          : field === "currency"
+            ? t("web.accountSettings.preferences.currencyUpdated")
+            : t("web.accountSettings.preferences.timezoneUpdated"),
+      );
       setEditingField(null);
       setTempValue("");
       router.refresh();
     } catch (error: unknown) {
       console.error("Failed to save preference:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to save preference");
+      toast.error(error instanceof Error ? error.message : t("web.accountSettings.preferences.saveFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -225,7 +233,7 @@ const GlobalPreferences: React.FC<{
               className="flex items-center gap-2 px-4 py-2 text-[#FF0077] hover:bg-[#FF0077]/10 rounded-lg transition-colors font-medium"
             >
               <Edit className="w-4 h-4" />
-              <span>Edit</span>
+              <span>{t("web.accountSettings.preferences.edit")}</span>
             </button>
           ) : (
             <div className="flex items-center gap-2">
@@ -244,7 +252,7 @@ const GlobalPreferences: React.FC<{
                 disabled={isSaving || !tempValue}
               >
                 {isSaving ? (
-                  <span className="text-xs text-gray-500">Saving…</span>
+                  <span className="text-xs text-gray-500">{t("web.accountSettings.preferences.saving")}</span>
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
@@ -260,7 +268,7 @@ const GlobalPreferences: React.FC<{
               onValueChange={setTempValue}
             >
               <SelectTrigger className="w-full backdrop-blur-sm bg-white/60 border-white/40">
-                <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+                <SelectValue placeholder={field === "language" ? t("web.accountSettings.preferences.selectLanguage") : field === "currency" ? t("web.accountSettings.preferences.selectCurrency") : t("web.accountSettings.preferences.selectTimezone")} />
               </SelectTrigger>
               <SelectContent>
                 {currentOptions.map((option) => (
@@ -281,30 +289,30 @@ const GlobalPreferences: React.FC<{
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
           <Breadcrumb 
             items={[
-              { label: "Home", href: "/" },
+              { label: t("web.accountSettings.preferences.breadcrumbHome"), href: "/" },
               { label: accountHomeLabel, href: accountHomeHref },
-              { label: "Global preferences" }
+              { label: t("web.accountSettings.preferences.title") }
             ]} 
           />
           <BackButton href={accountHomeHref} />
 
           <div className="mt-6">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
-              Global preferences
+              {t("web.accountSettings.preferences.title")}
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-gray-500">Loading…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.preferences.loading")}</p>
               </div>
             ) : (
               <div className="flex flex-col lg:flex-row gap-6">
                 {/* Main Content */}
                 <div className="w-full lg:w-2/3">
-                  {renderField("Preferred language", "language", <Globe className="w-5 h-5 text-[#FF0077]" />)}
+                  {renderField(t("web.accountSettings.preferences.preferredLanguage"), "language", <Globe className="w-5 h-5 text-[#FF0077]" />)}
                   {!isProviderUser &&
-                    renderField("Preferred currency", "currency", <Globe className="w-5 h-5 text-[#FF0077]" />)}
-                  {renderField("Time zone", "timezone", <Globe className="w-5 h-5 text-[#FF0077]" />)}
+                    renderField(t("web.accountSettings.preferences.preferredCurrency"), "currency", <Globe className="w-5 h-5 text-[#FF0077]" />)}
+                  {renderField(t("web.accountSettings.preferences.timeZone"), "timezone", <Globe className="w-5 h-5 text-[#FF0077]" />)}
                 </div>
 
                 {/* Sidebar */}
@@ -315,13 +323,13 @@ const GlobalPreferences: React.FC<{
                         <Globe className="w-6 h-6 text-[#FF0077]" />
                       </div>
                       <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
-                        Your global preferences
+                        {t("web.accountSettings.preferences.sidebarTitle")}
                       </h2>
                     </div>
                     <p className="text-sm font-light text-gray-600 leading-relaxed">
                       {isProviderUser
-                        ? "Language and timezone apply to your account. Payout currency follows your provider payout settings."
-                        : "Changing your currency updates how you see prices. You can change how you get payments in your payments & payouts preferences."}
+                        ? t("web.accountSettings.preferences.sidebarProvider")
+                        : t("web.accountSettings.preferences.sidebarCustomer")}
                     </p>
                   </div>
                 </div>

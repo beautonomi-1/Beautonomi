@@ -71,7 +71,7 @@ export function VerifiedBadge({
       />
       <Text
         style={{
-          marginLeft: 3,
+          marginStart: 3,
           fontSize,
           fontWeight: "700",
           color: isVerified ? "#15803d" : "#6b7280",

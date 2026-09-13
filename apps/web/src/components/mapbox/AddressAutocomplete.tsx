@@ -296,7 +296,7 @@ export default function AddressAutocomplete({
       {label && (
         <Label htmlFor={inputId} className="mb-2 block">
           {label}
-          {required && <span className="text-red-500 ml-1">*</span>}
+          {required && <span className="text-red-500 ms-1">*</span>}
         </Label>
       )}
       <div className="relative">

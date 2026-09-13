@@ -4,6 +4,7 @@ import { twStyle } from "@/lib/twStyle";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import type { CustomerBookingTierPreview } from "./types";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface BookingTierCustomerPreviewProps {
   tiers: CustomerBookingTierPreview[];
@@ -12,6 +13,9 @@ interface BookingTierCustomerPreviewProps {
 
 /** Mimics the pill-style option picker customers see at booking (multi-tier only). */
 export function BookingTierCustomerPreview({ tiers, serviceTitle }: BookingTierCustomerPreviewProps) {
+  const { t } = useTranslation();
+  const bt = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.components.bookingTierPreview.${key}`, opts) as string;
   if (tiers.length === 0) return null;
 
   const currency = getTenantDefaultCurrency();
@@ -20,7 +24,7 @@ export function BookingTierCustomerPreview({ tiers, serviceTitle }: BookingTierC
     <View
       style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/80 px-4 py-3.5")}
       accessibilityRole="summary"
-      accessibilityLabel={`Customers choose from ${tiers.length} booking options`}
+      accessibilityLabel={bt("a11y", { count: tiers.length })}
     >
       <View style={twStyle("mb-2.5 flex-row items-center gap-2")}>
         <View style={twStyle("rounded-full bg-indigo-100 p-1.5")}>
@@ -28,11 +32,12 @@ export function BookingTierCustomerPreview({ tiers, serviceTitle }: BookingTierC
         </View>
         <View style={twStyle("flex-1")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-700")}>
-            Customer booking view
+            {bt("customerView")}
           </Text>
           <Text style={twStyle("text-xs text-indigo-600/90")}>
-            {tiers.length} option{tiers.length === 1 ? "" : "s"} to choose from
-            {serviceTitle ? ` · ${serviceTitle}` : ""}
+            {serviceTitle
+              ? bt("optionsWithTitle", { count: tiers.length, title: serviceTitle })
+              : bt("options", { count: tiers.length })}
           </Text>
         </View>
       </View>
@@ -47,7 +52,7 @@ export function BookingTierCustomerPreview({ tiers, serviceTitle }: BookingTierC
             </Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
               {formatCurrency(tier.price, currency)}
-              {tier.durationMinutes ? ` · ${tier.durationMinutes} min` : ""}
+              {tier.durationMinutes ? ` · ${bt("durationMin", { count: tier.durationMinutes })}` : ""}
             </Text>
           </View>
         ))}

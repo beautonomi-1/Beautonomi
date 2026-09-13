@@ -17,7 +17,7 @@ export function BookingSummaryRow({ label, value, className, emphasize }: Bookin
         {label}
       </span>
       <span
-        className={cn("text-sm text-right font-medium", emphasize && "text-base font-semibold")}
+        className={cn("text-sm text-end font-medium", emphasize && "text-base font-semibold")}
         style={{ color: BOOKING_TEXT_PRIMARY }}
       >
         {value}

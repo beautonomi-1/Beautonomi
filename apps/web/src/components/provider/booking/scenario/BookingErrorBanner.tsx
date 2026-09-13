@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +12,7 @@ interface BookingErrorBannerProps {
 }
 
 export function BookingErrorBanner({ message, onDismiss, className }: BookingErrorBannerProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -27,7 +30,7 @@ export function BookingErrorBanner({ message, onDismiss, className }: BookingErr
             onClick={onDismiss}
             className="mt-1 text-xs font-semibold text-red-800 underline underline-offset-2"
           >
-            Dismiss
+            {t("common.dismiss")}
           </button>
         ) : null}
       </div>

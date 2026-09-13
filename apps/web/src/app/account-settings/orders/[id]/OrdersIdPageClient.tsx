@@ -17,6 +17,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ShareReceiptButton } from "@/components/receipts/ShareReceiptButton";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { getProductOrderSupportPrompt, supportTicketQuery } from "@beautonomi/utils";
+import { useTranslation, type TFunction } from "@beautonomi/i18n";
 
 interface ProductOrder {
   id: string;
@@ -112,12 +113,61 @@ function formatEstimatedDeliveryDate(date: string | null | undefined, locale: st
 }
 
 const TIMELINE = [
-  { key: "pending", label: "Order Placed" },
-  { key: "confirmed", label: "Confirmed" },
-  { key: "processing", label: "Processing" },
-  { key: "shipped", label: "Shipped / Ready" },
-  { key: "delivered", label: "Delivered / Collected" },
-];
+  { key: "pending", labelKey: "timelineOrderPlaced" },
+  { key: "confirmed", labelKey: "timelineConfirmed" },
+  { key: "processing", labelKey: "timelineProcessing" },
+  { key: "shipped", labelKey: "timelineShippedReady" },
+  { key: "delivered", labelKey: "timelineDeliveredCollected" },
+] as const;
+
+function returnTitle(status: string, t: TFunction): string {
+  if (status === "refunded") return t("web.accountSettings.orderDetail.refundProcessed");
+  if (status === "approved") return t("web.accountSettings.orderDetail.returnApproved");
+  if (status === "item_received") return t("web.accountSettings.orderDetail.itemReceived");
+  if (status === "rejected") return t("web.accountSettings.orderDetail.returnRejected");
+  if (status === "escalated") return t("web.accountSettings.orderDetail.returnEscalated");
+  if (status === "cancelled") return t("web.accountSettings.orderDetail.returnCancelled");
+  if (status === "resolved_by_admin") return t("web.accountSettings.orderDetail.resolvedByBeautonomi");
+  return t("web.accountSettings.orderDetail.returnRequest");
+}
+
+function returnStatusLabel(status: string, t: TFunction): string {
+  switch (status) {
+    case "pending":
+      return t("web.accountSettings.orderDetail.returnStatusPending");
+    case "approved":
+      return t("web.accountSettings.orderDetail.returnStatusApproved");
+    case "refunded":
+      return t("web.accountSettings.orderDetail.returnStatusRefunded");
+    case "rejected":
+      return t("web.accountSettings.orderDetail.returnStatusRejected");
+    case "item_received":
+      return t("web.accountSettings.orderDetail.returnStatusItemReceived");
+    case "escalated":
+      return t("web.accountSettings.orderDetail.returnStatusEscalated");
+    case "cancelled":
+      return t("web.accountSettings.orderDetail.returnStatusCancelled");
+    case "resolved_by_admin":
+      return t("web.accountSettings.orderDetail.returnStatusResolvedByAdmin");
+    default:
+      return status.replace(/_/g, " ");
+  }
+}
+
+function paymentStatusLabel(status: string, t: TFunction): string {
+  switch (status) {
+    case "paid":
+      return t("web.accountSettings.orderDetail.paymentPaid");
+    case "pending":
+      return t("web.accountSettings.orderDetail.paymentPending");
+    case "failed":
+      return t("web.accountSettings.orderDetail.paymentFailed");
+    case "refunded":
+      return t("web.accountSettings.orderDetail.paymentRefunded");
+    default:
+      return status.replace(/_/g, " ");
+  }
+}
 
 function timelineIndex(status: string) {
   if (status === "cancelled" || status === "refunded") return -1;
@@ -126,6 +176,7 @@ function timelineIndex(status: string) {
 }
 
 export default function OrderDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -157,16 +208,16 @@ export default function OrderDetailPage() {
               ? err
               : err && typeof err === "object" && "message" in err && typeof err.message === "string"
                 ? err.message
-                : "Something went wrong loading this order.";
+                : t("web.accountSettings.orderDetail.loadFailed");
           setErrorMsg(msg);
         }
       } catch (e) {
         if (e instanceof FetchError && e.status === 404) {
-          setErrorMsg("Order not found");
+          setErrorMsg(t("web.accountSettings.orderDetail.notFound"));
         } else if (e instanceof FetchError) {
-          setErrorMsg(e.message || "Something went wrong loading this order.");
+          setErrorMsg(e.message || t("web.accountSettings.orderDetail.loadFailed"));
         } else {
-          setErrorMsg("Unable to connect. Please check your network and try again.");
+          setErrorMsg(t("web.accountSettings.orderDetail.networkError"));
         }
       }
       setLoading(false);
@@ -187,11 +238,11 @@ export default function OrderDetailPage() {
         await fetcher.post(`/api/me/product-orders/${orderId}/refund-respond`, { action });
         toast.success(
           action === "dispute"
-            ? "Refund disputed. Our team will review."
-            : "Refund confirmed. Thank you.",
+            ? t("web.accountSettings.orderDetail.refundDisputed")
+            : t("web.accountSettings.orderDetail.refundConfirmed"),
         );
       } catch (err) {
-        const msg = err instanceof FetchError ? err.message : "Could not update refund status.";
+        const msg = err instanceof FetchError ? err.message : t("web.accountSettings.orderDetail.refundUpdateFailed");
         toast.error(msg);
       } finally {
         router.replace(`/account-settings/orders/${orderId}`);
@@ -202,7 +253,7 @@ export default function OrderDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500">{t("web.accountSettings.orderDetail.loading")}</p>
       </div>
     );
   }
@@ -210,8 +261,10 @@ export default function OrderDetailPage() {
   if (!order) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center text-gray-400">
-        <p>{errorMsg || "Order not found"}</p>
-        <button onClick={() => router.back()} className="mt-4 text-pink-600 hover:underline">Go back</button>
+        <p>{errorMsg || t("web.accountSettings.orderDetail.notFound")}</p>
+        <button onClick={() => router.back()} className="mt-4 text-pink-600 hover:underline">
+          {t("web.accountSettings.orderDetail.goBack")}
+        </button>
       </div>
     );
   }
@@ -238,19 +291,19 @@ export default function OrderDetailPage() {
 
   const handleCancelOrder = async () => {
     if (!canSelfCancel || cancelling) return;
-    if (!confirm("Cancel this order? In-stock items will be restocked and paid tenders refunded.")) return;
+    if (!confirm(t("web.accountSettings.orderDetail.cancelConfirm"))) return;
     setCancelling(true);
     setErrorMsg(null);
     try {
       await fetcher.patch(`/api/me/orders/${order.id}/cancel`, {});
-      toast.success("Order cancelled");
+      toast.success(t("web.accountSettings.orderDetail.cancelledToast"));
       const json = await fetcher.get<{ data: { order: ProductOrder } | null }>(
         `/api/me/orders/${order.id}`,
         { staleTimeMs: 0 },
       );
       if (json.data?.order) setOrder(json.data.order);
     } catch (e) {
-      setErrorMsg(e instanceof FetchError ? e.message : "Could not cancel this order.");
+      setErrorMsg(e instanceof FetchError ? e.message : t("web.accountSettings.orderDetail.cancelFailed"));
     } finally {
       setCancelling(false);
     }
@@ -260,7 +313,7 @@ export default function OrderDetailPage() {
     if (!canPayOnline || paying) return;
     const email = order.customer?.email?.trim();
     if (!email) {
-      setErrorMsg("Add an email address to your account before paying this order online.");
+      setErrorMsg(t("web.accountSettings.orderDetail.addEmailBeforePay"));
       return;
     }
 
@@ -282,7 +335,7 @@ export default function OrderDetailPage() {
       });
       const url = payRes?.data?.authorization_url;
       if (!url) {
-        setErrorMsg("We could not start payment for this order. Please try again.");
+        setErrorMsg(t("web.accountSettings.orderDetail.paymentStartFailed"));
         return;
       }
       window.location.href = url;
@@ -291,11 +344,11 @@ export default function OrderDetailPage() {
         setErrorMsg(
           e.message ||
             (e.status === 403
-              ? "We could not verify this request. Refresh the page and try again."
-              : "We could not start payment for this order. Please try again."),
+              ? t("web.accountSettings.orderDetail.paymentVerifyFailed")
+              : t("web.accountSettings.orderDetail.paymentStartFailed")),
         );
       } else {
-        setErrorMsg("Unable to start payment. Please check your network and try again.");
+        setErrorMsg(t("web.accountSettings.orderDetail.paymentNetworkFailed"));
       }
     } finally {
       setPaying(false);
@@ -309,7 +362,7 @@ export default function OrderDetailPage() {
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Back to Orders
+          {t("web.accountSettings.orderDetail.backToOrders")}
         </button>
 
         <div className="mb-4 flex items-center justify-between">
@@ -328,10 +381,10 @@ export default function OrderDetailPage() {
                 disabled={cancelling}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
-                {cancelling ? "Cancelling…" : "Cancel order"}
+                {cancelling ? t("web.accountSettings.orderDetail.cancelling") : t("web.accountSettings.orderDetail.cancelOrder")}
               </button>
             ) : null}
-            <ShareReceiptButton kind="customer-order" subjectId={order.id} label="Share receipt" />
+            <ShareReceiptButton kind="customer-order" subjectId={order.id} label={t("web.accountSettings.orderDetail.shareReceipt")} />
             <a
               href={`/api/me/orders/${order.id}/receipt/pdf`}
             target="_blank"
@@ -341,7 +394,7 @@ export default function OrderDetailPage() {
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
             </svg>
-            Download receipt
+            {t("web.accountSettings.orderDetail.downloadReceipt")}
           </a>
           </div>
         </div>
@@ -364,22 +417,22 @@ export default function OrderDetailPage() {
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
               onClick={() => {
                 void copyTextToClipboard(order.order_number).then((ok) =>
-                  ok ? toast.success("Order number copied") : toast.error("Could not copy"),
+                  ok ? toast.success(t("web.accountSettings.orderDetail.orderNumberCopied")) : toast.error(t("web.accountSettings.orderDetail.couldNotCopy")),
                 );
               }}
             >
-              Copy number
+              {t("web.accountSettings.orderDetail.copyNumber")}
             </button>
             <button
               type="button"
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
               onClick={() => {
                 void copyTextToClipboard(order.id).then((ok) =>
-                  ok ? toast.success("Order ID copied") : toast.error("Could not copy"),
+                  ok ? toast.success(t("web.accountSettings.orderDetail.orderIdCopied")) : toast.error(t("web.accountSettings.orderDetail.couldNotCopy")),
                 );
               }}
             >
-              Copy ID
+              {t("web.accountSettings.orderDetail.copyId")}
             </button>
             <Link
               href={`/help/submit-ticket${supportTicketQuery({
@@ -393,7 +446,7 @@ export default function OrderDetailPage() {
                   : "bg-gray-900 text-white hover:bg-gray-800"
               }`}
             >
-              Contact support
+              {t("web.accountSettings.orderDetail.contactSupport")}
             </Link>
           </div>
         </div>
@@ -405,14 +458,14 @@ export default function OrderDetailPage() {
 
         {/* Timeline */}
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-semibold text-gray-900">Order Status</h2>
+          <h2 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.orderStatus")}</h2>
           {isCancelled ? (
             <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4">
               <svg className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="font-semibold text-red-600">{order.status === "refunded" ? "Refunded" : "Cancelled"}</p>
+                <p className="font-semibold text-red-600">{order.status === "refunded" ? t("web.accountSettings.orderDetail.refunded") : t("web.accountSettings.orderDetail.cancelled")}</p>
                 {order.cancellation_reason && <p className="text-sm text-gray-500">{order.cancellation_reason}</p>}
               </div>
             </div>
@@ -436,7 +489,7 @@ export default function OrderDetailPage() {
                       )}
                     </div>
                     <p className={`pb-6 text-sm ${active ? "font-bold text-gray-900" : done ? "text-gray-700" : "text-gray-400"}`}>
-                      {step.label}
+                      {t(`web.accountSettings.orderDetail.${step.labelKey}`)}
                     </p>
                   </div>
                 );
@@ -452,13 +505,13 @@ export default function OrderDetailPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 hover:underline"
                 >
-                  Tracking:{" "}
-                  {[order.carrier, order.tracking_number].filter(Boolean).join(" · ") || "Open carrier"}
+                  {t("web.accountSettings.orderDetail.tracking")}{" "}
+                  {[order.carrier, order.tracking_number].filter(Boolean).join(" · ") || t("web.accountSettings.orderDetail.openCarrier")}
                   <span aria-hidden>↗</span>
                 </a>
               ) : (
                 <>
-                  Tracking:{" "}
+                  {t("web.accountSettings.orderDetail.tracking")}{" "}
                   {[order.carrier, order.tracking_number].filter(Boolean).join(" · ")}
                 </>
               )}
@@ -469,7 +522,7 @@ export default function OrderDetailPage() {
         {/* Returns */}
         {order.returns && order.returns.length > 0 && (
           <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-4 font-semibold text-gray-900">Returns & Refunds</h2>
+            <h2 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.returnsRefunds")}</h2>
             <div className="space-y-4">
               {order.returns.map((ret) => {
                 const isApproved = ret.status === "approved";
@@ -478,84 +531,81 @@ export default function OrderDetailPage() {
                 const isPending = ret.status === "pending";
                 const isReceived = ret.status === "item_received";
                 const isEscalated = ret.status === "escalated";
-                const isCancelled = ret.status === "cancelled";
-                const isResolvedAdmin = ret.status === "resolved_by_admin";
 
                 let badgeClass = "bg-gray-100 text-gray-600";
                 if (isApproved || isRefunded || isReceived) badgeClass = "bg-green-100 text-green-700";
                 else if (isRejected || isEscalated) badgeClass = "bg-red-100 text-red-700";
                 else if (isPending) badgeClass = "bg-yellow-100 text-yellow-700";
 
-                let title = "Return Request";
-                if (isRefunded) title = "Refund Processed";
-                else if (isApproved) title = "Return Approved";
-                else if (isReceived) title = "Item Received";
-                else if (isRejected) title = "Return Rejected";
-                else if (isEscalated) title = "Return Escalated";
-                else if (isCancelled) title = "Return Cancelled";
-                else if (isResolvedAdmin) title = "Resolved by Beautonomi";
+                const title = returnTitle(ret.status, t);
 
                 return (
                   <div key={ret.id} className="border-b border-gray-50 pb-4 last:border-0 last:pb-0">
                     <div className="mb-2 flex items-center justify-between">
                       <p className="font-semibold text-gray-700">{title}</p>
                       <span className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${badgeClass}`}>
-                        {ret.status}
+                        {returnStatusLabel(ret.status, t)}
                       </span>
                     </div>
                     <div className="text-sm text-gray-600">
                       {(ret.product_name || ret.order_item_id) && (
                         <p>
-                          <span className="font-medium text-gray-700">Item:</span>{" "}
-                          {ret.product_name || "Line item"}
+                          <span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.itemLabel")}</span>{" "}
+                          {ret.product_name || t("web.accountSettings.orderDetail.lineItem")}
                           {ret.quantity != null && ret.quantity > 1 ? ` × ${ret.quantity}` : ""}
                         </p>
                       )}
-                      <p><span className="font-medium text-gray-700">Reason:</span> {ret.reason.replace(/_/g, " ")}</p>
+                      <p><span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.reasonLabel")}</span> {ret.reason.replace(/_/g, " ")}</p>
                       {ret.description && (
-                        <p className="mt-1"><span className="font-medium text-gray-700">Details:</span> {ret.description}</p>
+                        <p className="mt-1"><span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.detailsLabel")}</span> {ret.description}</p>
                       )}
                       {ret.provider_notes && (
                         <p className="mt-1 text-gray-700">
-                          <span className="font-medium">Provider:</span> {ret.provider_notes}
+                          <span className="font-medium">{t("web.accountSettings.orderDetail.providerLabel")}</span> {ret.provider_notes}
                         </p>
                       )}
                       {ret.refund_amount != null && (
-                        <p className="mt-1"><span className="font-medium text-gray-700">Refund Amount:</span> {sym} {Number(ret.refund_amount).toFixed(2)}</p>
+                        <p className="mt-1"><span className="font-medium text-gray-700">{t("web.accountSettings.orderDetail.refundAmountLabel")}</span> {sym} {Number(ret.refund_amount).toFixed(2)}</p>
                       )}
                       <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
                         <li>
-                          Requested{" "}
-                          {new Date(ret.created_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                          {t("web.accountSettings.orderDetail.requestedOn", {
+                            date: new Date(ret.created_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                          })}
                         </li>
                         {ret.approved_at && (
                           <li>
-                            Approved{" "}
-                            {new Date(ret.approved_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                            {t("web.accountSettings.orderDetail.approvedOn", {
+                              date: new Date(ret.approved_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                            })}
                           </li>
                         )}
                         {ret.item_received_at && (
                           <li>
-                            Item received{" "}
-                            {new Date(ret.item_received_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                            {t("web.accountSettings.orderDetail.itemReceivedOn", {
+                              date: new Date(ret.item_received_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                            })}
                           </li>
                         )}
                         {ret.refunded_at && (
                           <li>
-                            Refunded{" "}
-                            {new Date(ret.refunded_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                            {t("web.accountSettings.orderDetail.refundedOn", {
+                              date: new Date(ret.refunded_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                            })}
                           </li>
                         )}
                         {ret.rejected_at && (
                           <li>
-                            Rejected{" "}
-                            {new Date(ret.rejected_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                            {t("web.accountSettings.orderDetail.rejectedOn", {
+                              date: new Date(ret.rejected_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                            })}
                           </li>
                         )}
                         {ret.escalated_at && (
                           <li>
-                            Escalated{" "}
-                            {new Date(ret.escalated_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}
+                            {t("web.accountSettings.orderDetail.escalatedOn", {
+                              date: new Date(ret.escalated_at).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }),
+                            })}
                           </li>
                         )}
                       </ul>
@@ -569,7 +619,7 @@ export default function OrderDetailPage() {
 
         {/* Items */}
         <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-semibold text-gray-900">Items</h2>
+          <h2 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.items")}</h2>
           <div className="divide-y divide-gray-50">
             {order.items?.map((item) => (
               <div key={item.id} className="flex items-center gap-4 py-3">
@@ -591,7 +641,7 @@ export default function OrderDetailPage() {
                       <span className="font-normal text-gray-500"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-400">{item.quantity} x {sym} {Number(item.unit_price).toFixed(2)}</p>
+                  <p className="text-xs text-gray-400">{t("web.accountSettings.orderDetail.qtyPrice", { quantity: item.quantity, currency: sym, price: Number(item.unit_price).toFixed(2) })}</p>
                 </div>
                 <p className="font-semibold text-gray-900">{sym} {Number(item.total_price).toFixed(2)}</p>
               </div>
@@ -610,7 +660,7 @@ export default function OrderDetailPage() {
           return (
             <div className="mb-8 rounded-2xl bg-white p-6 shadow-sm">
               <h2 className="mb-4 font-semibold text-gray-900">
-                {isDel ? "Delivery details" : "Collection details"}
+                {isDel ? t("web.accountSettings.orderDetail.deliveryDetails") : t("web.accountSettings.orderDetail.collectionDetails")}
               </h2>
               {isDel && addr && (
                 <div className="flex gap-3 text-sm text-gray-700">
@@ -621,7 +671,7 @@ export default function OrderDetailPage() {
                     </svg>
                   </span>
                   <div>
-                    <p className="font-semibold text-gray-900">{addr.label ?? "Delivery address"}</p>
+                    <p className="font-semibold text-gray-900">{addr.label ?? t("web.accountSettings.orderDetail.deliveryAddress")}</p>
                     <p className="mt-1 text-gray-600">
                       {addr.address_line1}
                       {addr.address_line2 ? `, ${addr.address_line2}` : ""}
@@ -649,14 +699,14 @@ export default function OrderDetailPage() {
                     <p className="mt-1 text-gray-600">
                       {[coll.city, coll.state, coll.postal_code].filter(Boolean).join(", ")}
                     </p>
-                    {coll.phone && <p className="mt-2 text-gray-600">Tel: {coll.phone}</p>}
+                    {coll.phone && <p className="mt-2 text-gray-600">{t("web.accountSettings.orderDetail.tel", { phone: coll.phone })}</p>}
                   </div>
                 </div>
               )}
               {isDel && (est || instr) && (
                 <div className="mt-5 border-t border-gray-100 pt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Delivery notes</p>
-                  {est && <p className="mt-1 text-sm text-gray-600">Estimated delivery: {est}</p>}
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{t("web.accountSettings.orderDetail.deliveryNotes")}</p>
+                  {est && <p className="mt-1 text-sm text-gray-600">{t("web.accountSettings.orderDetail.estimatedDelivery", { date: est })}</p>}
                   {instr && <p className="mt-2 text-sm text-gray-700">{instr}</p>}
                 </div>
               )}
@@ -666,49 +716,49 @@ export default function OrderDetailPage() {
 
         {/* Payment summary */}
         <div className="rounded-2xl bg-white p-6 shadow-sm">
-          <h2 className="mb-4 font-semibold text-gray-900">Payment Summary</h2>
+          <h2 className="mb-4 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.paymentSummary")}</h2>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{sym} {Number(order.subtotal).toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">{t("web.accountSettings.orderDetail.subtotal")}</span><span>{sym} {Number(order.subtotal).toFixed(2)}</span></div>
             {Number(order.discount_amount ?? 0) > 0 && (
               <div className="flex justify-between text-emerald-700">
-                <span>Discount</span>
+                <span>{t("web.accountSettings.orderDetail.discount")}</span>
                 <span>-{sym} {Number(order.discount_amount).toFixed(2)}</span>
               </div>
             )}
             {Number(order.delivery_fee) > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Delivery</span><span>{sym} {Number(order.delivery_fee).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t("web.accountSettings.orderDetail.delivery")}</span><span>{sym} {Number(order.delivery_fee).toFixed(2)}</span></div>
             )}
             {Number(order.tax_amount) > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{sym} {Number(order.tax_amount).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t("web.accountSettings.orderDetail.tax")}</span><span>{sym} {Number(order.tax_amount).toFixed(2)}</span></div>
             )}
             {platformFee > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Platform fee</span><span>{sym} {platformFee.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">{t("web.accountSettings.orderDetail.platformFee")}</span><span>{sym} {platformFee.toFixed(2)}</span></div>
             )}
             {walletAmount > 0 && (
-              <div className="flex justify-between text-emerald-700"><span>Paid from wallet</span><span>{sym} {walletAmount.toFixed(2)}</span></div>
+              <div className="flex justify-between text-emerald-700"><span>{t("web.accountSettings.orderDetail.paidFromWallet")}</span><span>{sym} {walletAmount.toFixed(2)}</span></div>
             )}
             {Number(order.gift_card_amount ?? 0) > 0 && (
               <div className="flex justify-between text-emerald-700">
-                <span>Paid from gift card</span>
+                <span>{t("web.accountSettings.orderDetail.paidFromGiftCard")}</span>
                 <span>{sym} {Number(order.gift_card_amount).toFixed(2)}</span>
               </div>
             )}
             {order.promotion_code ? (
               <div className="flex justify-between text-emerald-700">
-                <span>Promotion</span>
+                <span>{t("web.accountSettings.orderDetail.promotion")}</span>
                 <span>{order.promotion_code}</span>
               </div>
             ) : null}
             {order.payment_status && (
               <div className="flex justify-between">
-                <span className="text-gray-500">Payment status</span>
+                <span className="text-gray-500">{t("web.accountSettings.orderDetail.paymentStatus")}</span>
                 <span className={order.payment_status === "paid" ? "font-semibold text-emerald-700" : order.payment_status === "failed" ? "font-semibold text-red-600" : "font-semibold text-amber-600"}>
-                  {order.payment_status.replace(/_/g, " ")}
+                  {paymentStatusLabel(order.payment_status, t)}
                 </span>
               </div>
             )}
             <div className="flex justify-between border-t border-gray-100 pt-3 text-lg font-bold">
-              <span>Total</span>
+              <span>{t("web.accountSettings.orderDetail.total")}</span>
               <span className="text-pink-600">{sym} {Number(order.total_amount).toFixed(2)}</span>
             </div>
           </div>
@@ -719,7 +769,7 @@ export default function OrderDetailPage() {
               disabled={paying}
               className="mt-5 w-full rounded-xl bg-pink-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-pink-700 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {paying ? "Starting payment..." : `Pay ${sym} ${onlineAmountDue.toFixed(2)} online`}
+              {paying ? t("web.accountSettings.orderDetail.startingPayment") : t("web.accountSettings.orderDetail.payOnline", { currency: sym, amount: onlineAmountDue.toFixed(2) })}
             </button>
           )}
         </div>
@@ -727,7 +777,7 @@ export default function OrderDetailPage() {
         {/* Provider */}
         {order.provider && (
           <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-2 font-semibold text-gray-900">Sold by</h2>
+            <h2 className="mb-2 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.soldBy")}</h2>
             <Link href={`/partner-profile?slug=${order.provider.slug}`} className="inline-flex items-center gap-3 text-sm text-gray-700 hover:text-pink-600 transition-colors">
               {order.provider.logo_url ? (
                 <Image src={order.provider.logo_url} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
@@ -751,9 +801,9 @@ export default function OrderDetailPage() {
             returns: order.returns,
           }) && (
           <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-2 font-semibold text-gray-900">Need to return an item?</h2>
+            <h2 className="mb-2 font-semibold text-gray-900">{t("web.accountSettings.orderDetail.needToReturn")}</h2>
             <p className="mb-4 text-sm text-gray-500">
-              You can request a return within {PRODUCT_RETURN_WINDOW_DAYS} days of delivery. Items must be unused and in original condition.
+              {t("web.accountSettings.orderDetail.returnWindowBody", { days: PRODUCT_RETURN_WINDOW_DAYS })}
             </p>
             <Link
               href={`/account-settings/orders/${order.id}/return`}
@@ -762,14 +812,14 @@ export default function OrderDetailPage() {
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
               </svg>
-              Request Return / Refund
+              {t("web.accountSettings.orderDetail.requestReturnRefund")}
             </Link>
           </div>
         )}
         {(order.status === "delivered" || order.status === "ready_for_collection") &&
           !isWithinProductReturnWindow(order.delivered_at, order.created_at) && (
             <div className="mt-6 rounded-2xl border border-amber-100 bg-amber-50 p-6 text-sm text-amber-900">
-              The {PRODUCT_RETURN_WINDOW_DAYS}-day return window from delivery has passed. For help, contact support from your profile.
+              {t("web.accountSettings.orderDetail.returnWindowPassed", { days: PRODUCT_RETURN_WINDOW_DAYS })}
             </div>
           )}
       </div>

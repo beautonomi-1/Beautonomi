@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       .from("ai_module_config")
       .select("*")
       .eq("environment", environment)
+      .is("tenant_id", null)
       .maybeSingle();
 
     if (error) throw error;
@@ -50,10 +51,12 @@ export async function PUT(request: NextRequest) {
       .from("ai_module_config")
       .select("*")
       .eq("environment", environment)
+      .is("tenant_id", null)
       .maybeSingle();
 
     const payload = {
       environment,
+      tenant_id: null as null,
       enabled: body.enabled ?? false,
       sampling_rate: body.sampling_rate ?? 0,
       cache_ttl_seconds: body.cache_ttl_seconds ?? 86400,
@@ -63,23 +66,33 @@ export async function PUT(request: NextRequest) {
       daily_budget_credits: body.daily_budget_credits ?? 0,
       per_provider_calls_per_day: body.per_provider_calls_per_day ?? 0,
       per_user_calls_per_day: body.per_user_calls_per_day ?? 0,
+      monthly_budget_usd: body.monthly_budget_usd ?? null,
+      alert_threshold_pct: body.alert_threshold_pct ?? 80,
       updated_at: new Date().toISOString(),
     };
 
-    const { data: after, error } = await supabase
-      .from("ai_module_config")
-      .upsert(payload, { onConflict: "environment" })
-      .select()
-      .single();
-
-    if (error) throw error;
+    let after: Record<string, unknown> | null = null;
+    if ((before as { id?: string } | null)?.id) {
+      const res = await supabase
+        .from("ai_module_config")
+        .update(payload)
+        .eq("id", (before as { id: string }).id)
+        .select()
+        .single();
+      after = res.data as Record<string, unknown> | null;
+      if (res.error) throw res.error;
+    } else {
+      const res = await supabase.from("ai_module_config").insert(payload).select().single();
+      after = res.data as Record<string, unknown> | null;
+      if (res.error) throw res.error;
+    }
 
     await writeConfigChangeLog({
       changedBy: user.id,
       area: "module",
       recordKey: `ai.${environment}`,
-      before: before as Record<string, any> | null,
-      after: after as Record<string, any> | null,
+      before: before as Record<string, unknown> | null,
+      after: after as Record<string, unknown> | null,
     });
 
     const reqMeta = extractRequestMeta(request);
@@ -92,8 +105,8 @@ export async function PUT(request: NextRequest) {
       risk_level: "high",
       retention_tier: "access",
       status: "succeeded",
-      before_json: before as Record<string, any> | null,
-      after_json: after as Record<string, any> | null,
+      before_json: before as Record<string, unknown> | null,
+      after_json: after as Record<string, unknown> | null,
       ip_address: reqMeta.ip_address,
       user_agent: reqMeta.user_agent,
       superadmin_bypass_used: user.role === "superadmin",

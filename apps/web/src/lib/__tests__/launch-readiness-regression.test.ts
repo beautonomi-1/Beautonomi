@@ -177,6 +177,21 @@ describe("Launch readiness regressions", () => {
     expect(src).toContain("AbortSignal.timeout");
   });
 
+  it("callLlm is the shared LLM entry with timeout and kill-switch checks", () => {
+    const src = readFileSync(join(repoRoot, "apps/web/src/lib/ai/call-llm.ts"), "utf8");
+    expect(src).toContain("export async function callLlm");
+    expect(src).toContain("AbortSignal.timeout");
+    expect(src).toContain("LLM_BLOCKED_BY_KILL_SWITCH");
+    expect(src).toContain("export async function streamLlm");
+  });
+
+  it("AI platform migrations 899-903 exist", () => {
+    for (const n of ["899", "900", "901", "902", "903"]) {
+      const files = readdirSync(join(repoRoot, "supabase/migrations")).filter((f) => f.startsWith(`${n}_`));
+      expect(files.length).toBeGreaterThan(0);
+    }
+  });
+
   it("trackServer supports insert_id dedup for revenue events", () => {
     const src = readFileSync(
       join(repoRoot, "apps/web/src/lib/analytics/amplitude/server.ts"),

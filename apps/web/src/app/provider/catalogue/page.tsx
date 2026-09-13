@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -11,6 +12,7 @@ import { providerApi } from "@/lib/provider-portal/api";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function CataloguePage() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const [hasProducts, setHasProducts] = useState<boolean | null>(null);
   const [hasServices, setHasServices] = useState<boolean | null>(null);
@@ -45,15 +47,15 @@ export default function CataloguePage() {
   const sections = [
     {
       id: "products",
-      title: "Products",
-      description: "Manage your product inventory, categories, and pricing",
+      title: t("web.provider.sidebar.items.products"),
+      description: t("web.provider.pages.catalogue.productsDesc"),
       href: "/provider/catalogue/products",
       icon: Package,
     },
     {
       id: "services",
-      title: "Services",
-      description: "Manage your service offerings, categories, and pricing",
+      title: t("web.provider.sidebar.items.services"),
+      description: t("web.provider.pages.catalogue.servicesDesc"),
       href: "/provider/catalogue/services",
       icon: Grid3x3,
     },
@@ -62,8 +64,8 @@ export default function CataloguePage() {
   return (
     <div>
       <PageHeader
-        title="Catalogue"
-        subtitle="Manage your services and products"
+        title={t("web.provider.sidebar.items.catalogue")}
+        subtitle={t("web.provider.pages.catalogue.subtitle")}
       />
 
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 mt-4 lg:mt-6">
@@ -71,7 +73,7 @@ export default function CataloguePage() {
         <div className="w-full lg:w-64 flex-shrink-0">
           <SectionCard className="p-0">
             <div className="p-3 sm:p-4 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900">Catalogue</h3>
+              <h3 className="text-sm font-semibold text-gray-900">{t("web.provider.sidebar.items.catalogue")}</h3>
             </div>
             <nav className="p-2 sm:p-3 grid grid-cols-2 lg:grid-cols-1 gap-2">
               {sections.map((section) => {
@@ -123,36 +125,36 @@ export default function CataloguePage() {
                   </div>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2 sm:mb-3 px-2">
-                  Manage your inventory with Beautonomi product list
+                  {t("web.provider.pages.catalogue.emptyTitle")}
                 </h2>
                 <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
-                  Organize and manage your products and services efficiently
+                  {t("web.provider.pages.catalogue.emptyBody")}
                 </p>
-                <ul className="text-left space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
+                <ul className="text-start space-y-2 mb-6 sm:mb-8 text-gray-600 text-sm sm:text-base px-4">
                   <li className="flex items-start gap-2">
                     <span className="text-primary mt-1 flex-shrink-0">•</span>
-                    <span>Start with a single product or import many at once</span>
+                    <span>{t("web.provider.pages.catalogue.emptyBullet1")}</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-primary mt-1 flex-shrink-0">•</span>
-                    <span>Organise your list by adding brands and categories</span>
+                    <span>{t("web.provider.pages.catalogue.emptyBullet2")}</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-primary mt-1 flex-shrink-0">•</span>
-                    <span>Set pricing and manage inventory levels</span>
+                    <span>{t("web.provider.pages.catalogue.emptyBullet3")}</span>
                   </li>
                 </ul>
                 <div className="flex flex-col sm:flex-row gap-3 justify-center px-4">
                   <Link href="/provider/catalogue/products" className="w-full sm:w-auto">
                     <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation">
-                      Start now
+                      {t("web.provider.catalogue.services.startNow")}
                     </button>
                   </Link>
                   <a
                     href="/provider/catalogue/products"
                     className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-primary font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation text-center"
                   >
-                    Browse catalogue
+                    {t("web.provider.pages.catalogue.browseCatalogue")}
                   </a>
                 </div>
               </div>
@@ -160,22 +162,22 @@ export default function CataloguePage() {
           ) : (
             <SectionCard className="p-4 sm:p-6 lg:p-8">
               <div className="text-center">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">Welcome to Catalogue</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">{t("web.provider.pages.catalogue.welcome")}</h3>
                 <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
-                  Select a section above to manage your {hasProducts && hasServices ? "products and services" : hasProducts ? "products" : "services"}.
+                  {hasProducts && hasServices ? t("web.provider.pages.catalogue.selectSectionBoth") : hasProducts ? t("web.provider.pages.catalogue.selectSectionProducts") : t("web.provider.pages.catalogue.selectSectionServices")}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
                   {!hasProducts && (
                     <Link href="/provider/catalogue/products" className="w-full sm:w-auto">
                       <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation">
-                        Add Products
+                        {t("web.provider.pages.catalogue.addProducts")}
                       </button>
                     </Link>
                   )}
                   {!hasServices && (
                     <Link href="/provider/catalogue/services" className="w-full sm:w-auto">
                       <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover active:bg-[#C00454] transition-colors min-h-[44px] touch-manipulation">
-                        Add Services
+                        {t("web.provider.pages.catalogue.addServices")}
                       </button>
                     </Link>
                   )}

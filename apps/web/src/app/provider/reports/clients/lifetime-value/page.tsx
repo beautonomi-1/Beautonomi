@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -45,6 +46,7 @@ interface LifetimeValueData {
 export default function LifetimeValueReport() {
   const { selectedLocationId } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [data, setData] = useState<LifetimeValueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,10 +91,10 @@ export default function LifetimeValueReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Lifetime Value" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/lifetime-value.title") },
         ]}
       >
         <ReportSkeleton />
@@ -104,15 +106,15 @@ export default function LifetimeValueReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Lifetime Value" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/lifetime-value.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Lifetime Value" />
-          <ReportSubscriptionRequired feature="Lifetime Value" />
+          <PageHeader title={t("web.provider.reports.pages.clients/lifetime-value.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.clients/lifetime-value.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -122,15 +124,15 @@ export default function LifetimeValueReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Lifetime Value" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.clients/lifetime-value.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load lifetime value data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.clients/lifetime-value.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -139,21 +141,21 @@ export default function LifetimeValueReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Lifetime Value" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.clients/lifetime-value.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Lifetime Value"
-          subtitle="Calculate and analyze client lifetime value"
+          title={t("web.provider.reports.pages.clients/lifetime-value.title")}
+          subtitle={t("web.provider.reports.pages.clients/lifetime-value.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export
+              <Download className="w-4 h-4 me-2" />
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -162,7 +164,7 @@ export default function LifetimeValueReport() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Average LTV</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.averageLtv")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -176,7 +178,7 @@ export default function LifetimeValueReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Median LTV</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.medianLtv")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -190,7 +192,7 @@ export default function LifetimeValueReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Total LTV</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.totalLtv")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -204,7 +206,7 @@ export default function LifetimeValueReport() {
 
           <Card className="border-gray-200">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg Visits</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.avgVisits")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between">
@@ -220,7 +222,7 @@ export default function LifetimeValueReport() {
         {/* LTV Segments */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>LTV Segments</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.clients/lifetime-value.segments")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -231,10 +233,10 @@ export default function LifetimeValueReport() {
                 >
                   <div>
                     <p className="font-medium text-gray-900">{segment.segment}</p>
-                    <p className="text-sm text-gray-600">{segment.count} clients</p>
+                    <p className="text-sm text-gray-600">{t("web.provider.reports.pages.clients/lifetime-value.clientsCount", { count: segment.count })}</p>
                   </div>
                   <p className="font-semibold text-gray-900">
-                    {fmt(segment.avgLTV)} avg
+                    {t("web.provider.reports.pages.clients/lifetime-value.avg", { amount: fmt(segment.avgLTV) })}
                   </p>
                 </div>
               ))}
@@ -245,11 +247,11 @@ export default function LifetimeValueReport() {
         {/* Top Clients */}
         <Card className="border-gray-200">
           <CardHeader>
-            <CardTitle>Top Clients by Lifetime Value</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.clients/lifetime-value.topClients")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.topClients.length === 0 ? (
-              <EmptyReportState title="No clients found" description="No client data available." />
+              <EmptyReportState title={t("web.provider.reports.pages.clients/lifetime-value.emptyTitle")} description={t("web.provider.reports.pages.clients/lifetime-value.emptyDesc")} />
             ) : (
               <div className="space-y-3">
                 {data.topClients.map((client, index) => (
@@ -264,16 +266,16 @@ export default function LifetimeValueReport() {
                       <div>
                         <p className="font-medium text-gray-900">{client.clientName}</p>
                         <p className="text-sm text-gray-600">
-                          {client.totalBookings} visits • {Math.floor(client.daysSinceFirstVisit / 30)} months
+                          {t("web.provider.reports.pages.clients/lifetime-value.visitsMonths", { visits: client.totalBookings, months: Math.floor(client.daysSinceFirstVisit / 30) })}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="font-semibold text-gray-900">
                         {fmt(client.totalSpent)}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {fmt(client.averageBookingValue)} avg
+                        {t("web.provider.reports.pages.clients/lifetime-value.avg", { amount: fmt(client.averageBookingValue) })}
                       </p>
                     </div>
                   </div>

@@ -43,11 +43,15 @@ import {
   ARRIVAL_PIN_FALLBACK_LABEL,
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
+  buildCustomerRebookParams,
+  type RebookServiceLine,
+  slaSettingsFromHours,
   getBookingLifecycleDisplay,
   getBookingPaymentDisplay,
   getCustomerEtaUiParts,
   normalizeProviderTimezone,
 } from "@beautonomi/utils";
+import { pendingConfirmationSlaDisplay } from "@/lib/pending-confirmation-sla-copy";
 import QRCode from "react-native-qrcode-svg";
 import { useTranslation } from "@beautonomi/i18n";
 import {
@@ -58,6 +62,8 @@ import {
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { verifyPaystackWithRetry } from "@/lib/payments/verifyPaystackWithRetry";
 import { useSavedCards } from "@/hooks/useSavedCards";
+import { endTextAlign } from "@/lib/rtlText";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
 
@@ -77,7 +83,7 @@ function formatDate(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
   try {
-    return parsed.toLocaleDateString("en-US", {
+    return parsed.toLocaleDateString(getTenantLocaleTag(), {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -85,7 +91,7 @@ function formatDate(s: string, tz?: string | null) {
       timeZone: resolveBookingTimezone(tz),
     });
   } catch {
-    return parsed.toLocaleDateString("en-US", {
+    return parsed.toLocaleDateString(getTenantLocaleTag(), {
       weekday: "long",
       year: "numeric",
       month: "long",
@@ -97,14 +103,14 @@ function formatTime(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
   try {
-    return parsed.toLocaleTimeString("en-US", {
+    return parsed.toLocaleTimeString(getTenantLocaleTag(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
       timeZone: resolveBookingTimezone(tz),
     });
   } catch {
-    return parsed.toLocaleTimeString("en-US", {
+    return parsed.toLocaleTimeString(getTenantLocaleTag(), {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
@@ -151,6 +157,66 @@ function getOutlookCalendarUrl(params: { title: string; description: string; loc
 }
 
 const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
+const RUNNING_LATE_MINUTES = [10, 15, 20, 30, 45] as const;
+
+type CustomerLifecycleHint = "upcoming" | "late_window" | "awaiting_close_out" | "past" | null;
+
+function isExpiredPendingBooking(booking: {
+  status?: string;
+  cancellation_reason?: string | null;
+}): boolean {
+  if (booking.status !== "cancelled") return false;
+  const reason = String(booking.cancellation_reason ?? "");
+  return (
+    reason.includes("not confirmed in time") ||
+    reason.includes("did not confirm this request before the appointment time")
+  );
+}
+
+function lifecycleHintBanner(
+  hint: CustomerLifecycleHint,
+  bd: (key: string) => string,
+): {
+  title: string;
+  body: string;
+  backgroundColor: string;
+  borderColor: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+} | null {
+  switch (hint) {
+    case "late_window":
+      return {
+        title: bd("lifecycleLateWindowTitle"),
+        body: bd("lifecycleLateWindowBody"),
+        backgroundColor: "#FFFBEB",
+        borderColor: "#FDE68A",
+        icon: "time-outline",
+        iconColor: "#D97706",
+      };
+    case "awaiting_close_out":
+      return {
+        title: bd("lifecycleAwaitingCloseOutTitle"),
+        body: bd("lifecycleAwaitingCloseOutBody"),
+        backgroundColor: "#F5F3FF",
+        borderColor: "#DDD6FE",
+        icon: "alert-circle-outline",
+        iconColor: "#7C3AED",
+      };
+    case "past":
+      return {
+        title: bd("lifecyclePastTitle"),
+        body: bd("lifecyclePastBody"),
+        backgroundColor: "#F9FAFB",
+        borderColor: "#E5E7EB",
+        icon: "calendar-outline",
+        iconColor: "#6B7280",
+      };
+    default:
+      return null;
+  }
+}
+
 type BookingReviewSummary = {
   id: string;
   booking_id?: string;
@@ -234,6 +300,8 @@ export default function BookingDetailScreen() {
   const [additionalPayUseWallet, setAdditionalPayUseWallet] = useState(false);
   const [additionalPayGiftCode, setAdditionalPayGiftCode] = useState("");
   const [myReview, setMyReview] = useState<BookingReviewSummary | null>(null);
+  const [runningLateOpen, setRunningLateOpen] = useState(false);
+  const [runningLateSubmitting, setRunningLateSubmitting] = useState(false);
   const hasLoadedOnce = useRef(false);
   const [lastLiveUpdateAt, setLastLiveUpdateAt] = useState<number | null>(null);
   const referralPostedBookingIds = useRef<Set<string>>(new Set());
@@ -855,7 +923,7 @@ export default function BookingDetailScreen() {
       const res = await api.post<{ booking?: unknown }>(
         `/api/me/bookings/${encodeURIComponent(cancelBookingId)}/cancel`,
         {
-        reason: reason.trim() || "Customer request",
+        reason: reason.trim() || bd("cancelReasonDefault"),
         ...(pending?.version !== undefined ? { version: pending.version } : {}),
         },
       );
@@ -910,6 +978,30 @@ export default function BookingDetailScreen() {
     } else {
       openInBrowser();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- openInBrowser stable
+  }, [booking]);
+
+  const handleRebook = useCallback(() => {
+    if (!booking) return;
+    haptic.light();
+    const provider = booking.provider;
+    if (!provider?.slug) {
+      openInBrowser();
+      return;
+    }
+    const location = (booking as { location?: { id?: string } }).location;
+    router.push({
+      pathname: "/(app)/book",
+      params: buildCustomerRebookParams(
+        provider.slug,
+        (booking.services ?? []) as RebookServiceLine[],
+        {
+          locationId:
+            (booking as { location_id?: string | null }).location_id ?? location?.id ?? null,
+          locationType: booking.location_type,
+        },
+      ),
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps -- openInBrowser stable
   }, [booking]);
 
@@ -1031,7 +1123,7 @@ export default function BookingDetailScreen() {
           markReferenceProcessing(paymentReference);
         }
         const checkoutResult = await payRemainingCheckout.waitForCheckout(url, {
-          title: "Pay remaining balance",
+          title: bd("payRemainingBalanceTitle"),
           returnUrl,
           matchSuccess: (rawUrl) =>
             matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
@@ -1040,7 +1132,7 @@ export default function BookingDetailScreen() {
         if (checkoutResult.outcome === "cancel") {
           Alert.alert(
             bd("paymentPendingTitle"),
-            "Payment was cancelled. You can retry when ready.",
+            bd("paymentCancelledRetryBody"),
           );
           return;
         }
@@ -1279,10 +1371,33 @@ export default function BookingDetailScreen() {
     }
   };
 
+  const handleReportRunningLate = async (delayMinutes: number) => {
+    if (!id) return;
+    setRunningLateSubmitting(true);
+    try {
+      const res = await api.post<{ delay_minutes?: number }>(
+        `/api/me/bookings/${encodeURIComponent(id)}/running-late`,
+        { delay_minutes: delayMinutes },
+      );
+      if (res.error) {
+        Alert.alert(bd("runningLateCouldNotSendTitle"), getApiErrorMessage(res.error, bd("runningLateTryAgainFallback")));
+        return;
+      }
+      haptic.success();
+      Alert.alert(bd("runningLateSentTitle"), bd("runningLateSentBody"));
+      setRunningLateOpen(false);
+      await load({ silent: true });
+    } catch (e) {
+      Alert.alert(bd("runningLateCouldNotSendTitle"), getApiErrorMessage(e as Error, bd("runningLateTryAgainFallback")));
+    } finally {
+      setRunningLateSubmitting(false);
+    }
+  };
+
   if (loading && !booking) {
     return (
       <>
-        <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
+        <Stack.Screen options={{ title: bd("stackTitle"), headerBackTitle: bd("backHeader") }} />
         <View style={{ flex: 1, backgroundColor: Colors.white, padding: 16 }}>
           <Skeleton width="45%" height={20} />
           <Skeleton width="70%" height={14} style={{ marginTop: 10 }} />
@@ -1298,11 +1413,11 @@ export default function BookingDetailScreen() {
   if (error && !booking) {
     return (
       <>
-        <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
+        <Stack.Screen options={{ title: bd("stackTitle"), headerBackTitle: bd("backHeader") }} />
         <View style={{ flex: 1, backgroundColor: Colors.white, padding: 24, alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{error}</Text>
           <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{bd("retry")}</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -1326,6 +1441,8 @@ export default function BookingDetailScreen() {
     providerName: provider?.business_name,
     paymentStatus: booking.payment_status,
     outstandingBalance: _bookingOutstanding,
+    lifecycleHint: ((booking as { lifecycle_hint?: CustomerLifecycleHint }).lifecycle_hint ??
+      null) as CustomerLifecycleHint,
   });
   const paymentDisplay = getBookingPaymentDisplay({
     paymentStatus: booking.payment_status,
@@ -1337,13 +1454,49 @@ export default function BookingDetailScreen() {
   const location = booking.location;
   const services = booking.services ?? booking.booking_services ?? [];
   const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
+  const isAtHome = booking.location_type === "at_home";
+  const lifecycleHint = ((booking as { lifecycle_hint?: CustomerLifecycleHint }).lifecycle_hint ??
+    null) as CustomerLifecycleHint;
+  const pendingSlaCopy = lifecycleDisplay.isAwaitingProviderConfirmation &&
+    !(booking as { recurring_series_id?: string | null }).recurring_series_id
+    ? ((booking as { pending_confirmation_sla?: { body?: string } }).pending_confirmation_sla ??
+      pendingConfirmationSlaDisplay({
+        scheduledAt: booking.scheduled_at ?? booking.selected_datetime,
+        createdAt: (booking as { created_at?: string }).created_at,
+        paymentStatus: booking.payment_status,
+        timezone:
+          (booking.provider as { timezone?: string | null } | undefined)?.timezone ??
+          (booking as { display_time_zone?: string | null }).display_time_zone,
+        workingHours: (location?.working_hours ?? null) as
+          | import("@beautonomi/utils").WorkingHoursJson
+          | null,
+        settings: slaSettingsFromHours(
+          booking.provider as {
+            confirmation_sla_hours?: number | null;
+            unconfirmed_expire_hours_before_slot?: number | null;
+          } | undefined,
+        ),
+      }))
+    : null;
+  const customerRunningLateAt = (booking as { customer_running_late_at?: string | null })
+    .customer_running_late_at;
+  const customerRunningLateMinutes = (booking as { customer_running_late_minutes?: number | null })
+    .customer_running_late_minutes;
+  const providerLateAckAt = (booking as { provider_late_ack_at?: string | null }).provider_late_ack_at;
+  const lifecycleBanner = lifecycleHintBanner(lifecycleHint, bd);
+  const apiCanReportRunningLate = (booking as { can_report_running_late?: boolean })
+    .can_report_running_late;
+  const canReportRunningLate =
+    typeof apiCanReportRunningLate === "boolean"
+      ? apiCanReportRunningLate
+      : false;
+  const isExpiredPending = isExpiredPendingBooking(booking);
   const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(_effectiveStatus);
   const bookingNumberFull =
     typeof booking.booking_number === "string" ? booking.booking_number.trim() : "";
   const bookingRef = bookingNumberFull || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
-  const isAtHome = booking.location_type === "at_home";
   /** House-call journey is over — do not treat historical timestamps as "still en route". */
   const isHouseCallJourneyClosed = ["completed", "cancelled", "no_show"].includes(_effectiveStatus);
   const isProviderEnRoute =
@@ -1389,9 +1542,9 @@ export default function BookingDetailScreen() {
     <>
       {packageName ? (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Package</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentPackage")}</Text>
           <Text
-            style={{ fontSize: 14, color: Colors.gray[700], flex: 1, textAlign: "right", marginLeft: 12 }}
+            style={{ fontSize: 14, color: Colors.gray[700], flex: 1, textAlign: endTextAlign(), marginStart: 12 }}
             numberOfLines={2}
           >
             {packageName}
@@ -1400,7 +1553,7 @@ export default function BookingDetailScreen() {
       ) : null}
       {booking.subtotal != null && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentSubtotal")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
             {booking.currency}{" "}
             {(Number(booking.subtotal) || 0).toFixed(2)}
@@ -1417,14 +1570,14 @@ export default function BookingDetailScreen() {
       )}
       {genericDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentDiscount")}</Text>
           <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {genericDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
       {loyaltyDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-            Loyalty
+            {bd("paymentLoyalty")}
             {Number((booking as any).loyalty_points_used || 0) > 0
               ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
               : ""}
@@ -1434,50 +1587,54 @@ export default function BookingDetailScreen() {
       )}
       {membershipDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentMembership")}</Text>
           <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {membershipDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
       {promotionDiscountAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentPromotion")}</Text>
           <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {promotionDiscountAmount.toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).travel_fee) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentTravelFee")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
         </View>
       )}
       {platformFeeAmount > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
           <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-            Platform fee{platformFeePercentage > 0 ? ` (${platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1)}%)` : ""}
+            {platformFeePercentage > 0
+              ? bd("paymentPlatformFeePct", {
+                  rate: platformFeePercentage.toFixed(platformFeePercentage % 1 === 0 ? 0 : 1),
+                })
+              : bd("paymentPlatformFee")}
           </Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {platformFeeAmount.toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).tip_amount) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tip</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentTip")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
         </View>
       )}
       {Number((booking as any).cancellation_fee) > 0 && (
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancellation fee</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{bd("paymentCancellationFee")}</Text>
           <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).cancellation_fee).toFixed(2)}</Text>
         </View>
       )}
       <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8, marginTop: 4 }}>
-        <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+        <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{bd("paymentTotal")}</Text>
         <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
       </View>
       {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && Number((booking as any).deposit_amount || 0) > 0 && (
         <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-            Deposit{(booking as any).deposit_percentage ? ` (${(booking as any).deposit_percentage}%)` : ""}
+{(booking as any).deposit_percentage ? bd("paymentDepositPct", { pct: String((booking as any).deposit_percentage) }) : bd("paymentDeposit")}
           </Text>
           <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
             {booking.currency} {Number((booking as any).deposit_amount).toFixed(2)}
@@ -1499,7 +1656,7 @@ export default function BookingDetailScreen() {
           <View style={{ marginTop: 8 }}>
             {walletPaid > 0 && (
               <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (wallet)</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("paymentPaidWallet")}</Text>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
                   {booking.currency} {walletPaid.toFixed(2)}
                 </Text>
@@ -1507,7 +1664,7 @@ export default function BookingDetailScreen() {
             )}
             {giftPaid > 0 && (
               <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (gift card)</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("paymentPaidGiftCard")}</Text>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
                   {booking.currency} {giftPaid.toFixed(2)}
                 </Text>
@@ -1515,7 +1672,7 @@ export default function BookingDetailScreen() {
             )}
             {otherPaid > 0 && (
               <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid (card / other)</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("paymentPaidCardOther")}</Text>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
                   {booking.currency} {otherPaid.toFixed(2)}
                 </Text>
@@ -1532,7 +1689,7 @@ export default function BookingDetailScreen() {
                   justifyContent: "space-between",
                 }}
               >
-                <Text style={{ fontSize: 13, color: Colors.gray[600], fontWeight: "600" }}>Total paid</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[600], fontWeight: "600" }}>{bd("paymentTotalPaid")}</Text>
                 <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[700] }}>
                   {booking.currency} {totalPaid.toFixed(2)}
                 </Text>
@@ -1548,23 +1705,23 @@ export default function BookingDetailScreen() {
               height: 8,
               width: 8,
               borderRadius: 4,
-              marginRight: 8,
+              marginEnd: 8,
               backgroundColor:
                 booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF",
             }}
           />
           <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
             {booking.payment_status === "paid"
-              ? "Paid in full"
+              ? bd("paymentPaidInFull")
               : booking.payment_status === "partially_paid"
-                ? "Partially paid"
+                ? bd("paymentPartiallyPaid")
                 : booking.payment_status}
           </Text>
         </View>
       )}
       {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
         <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Outstanding balance</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("paymentOutstandingBalance")}</Text>
           <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>
             {booking.currency} {Number(booking.outstanding_balance).toFixed(2)}
           </Text>
@@ -1574,8 +1731,8 @@ export default function BookingDetailScreen() {
         <View style={{ marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10 }}>
           <Text style={{ fontSize: 13, color: "#92400E" }}>
             {booking.location_type === "at_home"
-              ? "You will pay cash when your provider arrives."
-              : "You will pay cash at the salon."}
+              ? bd("paymentCashAtHome")
+              : bd("paymentCashAtSalon")}
           </Text>
         </View>
       )}
@@ -1599,7 +1756,7 @@ export default function BookingDetailScreen() {
           : {}),
       }, { timeout: 120_000 });
       if (res.error) {
-        Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not start payment for this charge."));
+        Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotStartAdditionalChargePayment")));
         return;
       }
       if (res.data?.fully_settled) {
@@ -1610,7 +1767,7 @@ export default function BookingDetailScreen() {
       }
       const url = res.data?.authorization_url;
       if (!url) {
-        Alert.alert(errTitle, "Payment link was not received. Please try again.");
+        Alert.alert(errTitle, bd("paymentLinkNotReceived"));
         return;
       }
       if (Platform.OS === "web") {
@@ -1622,7 +1779,7 @@ export default function BookingDetailScreen() {
           markReferenceProcessing(paymentReference);
         }
         const checkoutResult = await payRemainingCheckout.waitForCheckout(url, {
-          title: "Pay additional charge",
+          title: bd("payAdditionalChargeTitle"),
           returnUrl,
           matchSuccess: (rawUrl) =>
             matchesExpoReturnUrl(rawUrl, returnUrl) && !isCancelledPaystackUrl(rawUrl),
@@ -1631,7 +1788,7 @@ export default function BookingDetailScreen() {
         if (checkoutResult.outcome === "cancel") {
           Alert.alert(
             bd("paymentPendingTitle"),
-            "Payment was cancelled. You can retry when ready.",
+            bd("paymentCancelledRetryBody"),
           );
           return;
         }
@@ -1674,7 +1831,7 @@ export default function BookingDetailScreen() {
         await load({ silent: true });
       }
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not pay additional charge."));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("couldNotPayAdditionalCharge")));
     } finally {
       setAdditionalChargePayLoadingId(null);
     }
@@ -1690,13 +1847,13 @@ export default function BookingDetailScreen() {
         { charge_id: chargeId, approved }
       );
       if (res.error) {
-        Alert.alert(errTitle, getApiErrorMessage(res.error, `Could not ${approved ? "approve" : "reject"} this charge.`));
+        Alert.alert(errTitle, getApiErrorMessage(res.error, approved ? bd("couldNotApproveCharge") : bd("couldNotRejectCharge")));
         return;
       }
       haptic.success();
       await load({ silent: true });
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e as Error, `Could not ${approved ? "approve" : "reject"} this charge.`));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, approved ? bd("couldNotApproveCharge") : bd("couldNotRejectCharge")));
     } finally {
       setAdditionalChargeApproveLoadingId(null);
     }
@@ -1721,7 +1878,7 @@ export default function BookingDetailScreen() {
         { timeout: 120_000 },
       );
       if (res.error) {
-        Alert.alert(errTitle, getApiErrorMessage(res.error, "Could not charge your saved card."));
+        Alert.alert(errTitle, getApiErrorMessage(res.error, bd("couldNotChargeSavedCard")));
         return;
       }
       const txStatus = String(
@@ -1766,13 +1923,13 @@ export default function BookingDetailScreen() {
           chargeId,
           Number((chargeRow as { amount?: number } | undefined)?.amount ?? 0),
         );
-        Alert.alert("Payment Successful", "Your additional charge was paid with your saved card.");
+        Alert.alert(bd("additionalChargePaidTitle"), bd("additionalChargePaidBody"));
       } else {
         Alert.alert(bd("paymentPendingTitle"), bd("paymentPendingBody"));
       }
       await load({ silent: true });
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Could not charge your saved card."));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, bd("couldNotChargeSavedCard")));
     } finally {
       setAdditionalChargeCardLoadingId(null);
     }
@@ -1805,18 +1962,18 @@ export default function BookingDetailScreen() {
               name={opts.useWallet ? "checkbox" : "square-outline"}
               size={20}
               color={opts.useWallet ? Colors.primary : Colors.gray[400]}
-              style={{ marginRight: 8 }}
+              style={{ marginEnd: 8 }}
             />
             <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>
-              Use wallet ({booking?.currency || "ZAR"} {walletBalance.toFixed(2)} available)
+{bd("paymentUseWallet", { currency: booking?.currency || "ZAR", amount: walletBalance.toFixed(2) })}
             </Text>
           </Pressable>
         ) : null}
-        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Gift card (optional)</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>{bd("paymentGiftCardOptional")}</Text>
         <TextInput
           value={opts.giftCode}
           onChangeText={opts.onGiftCode}
-          placeholder="Gift card code"
+          placeholder={bd("paymentGiftCardPlaceholder")}
           autoCapitalize="characters"
           style={{
             borderWidth: 1,
@@ -1840,7 +1997,7 @@ export default function BookingDetailScreen() {
     );
     return (
       <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
-        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("additionalChargesTitle")}</Text>
         {hasUnpaid
           ? renderSplitTenderOptions({
               useWallet: additionalPayUseWallet,
@@ -1873,13 +2030,13 @@ export default function BookingDetailScreen() {
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                <View style={{ flex: 1, marginEnd: 8 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || bd("additionalChargeDefault")}</Text>
                   <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
                     {cur} {Number(c.amount || 0).toFixed(2)}
                   </Text>
                   {c.paid_at ? (
-                    <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Paid on {new Date(c.paid_at).toLocaleDateString()}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{bd("additionalChargePaidOn", { date: new Date(c.paid_at).toLocaleDateString() })}</Text>
                   ) : null}
                 </View>
                 {!unpaid && (
@@ -1913,12 +2070,12 @@ export default function BookingDetailScreen() {
                         disabled={anyLoading}
                         style={{ flex: 1, borderWidth: 1, borderColor: Colors.primary, borderRadius: 8, paddingVertical: 8, alignItems: "center" }}
                         accessibilityRole="button"
-                        accessibilityLabel="Approve additional charge"
+                        accessibilityLabel={bd("approveAdditionalChargeA11y")}
                       >
                         {approveLoadingThis ? (
                           <ActivityIndicator size="small" color={Colors.primary} />
                         ) : (
-                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Approve</Text>
+                          <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>{bd("approve")}</Text>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -1926,9 +2083,9 @@ export default function BookingDetailScreen() {
                         disabled={anyLoading}
                         style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 8, paddingVertical: 8, alignItems: "center", opacity: anyLoading ? 0.4 : 1 }}
                         accessibilityRole="button"
-                        accessibilityLabel="Reject additional charge"
+                        accessibilityLabel={bd("rejectAdditionalChargeA11y")}
                       >
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600] }}>Reject</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600] }}>{bd("reject")}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1937,13 +2094,13 @@ export default function BookingDetailScreen() {
                     disabled={anyLoading}
                     style={{ backgroundColor: Colors.primary, paddingVertical: 10, borderRadius: 8, alignItems: "center" }}
                     accessibilityRole="button"
-                    accessibilityLabel="Pay additional charge"
+                    accessibilityLabel={bd("payAdditionalChargeA11y")}
                   >
                     {chargeLoadingThis ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>
-                        {isPending ? "Pay now (skips approval)" : "Pay now"}
+{isPending ? bd("payNowSkipsApproval") : bd("paymentPayNow")}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -1953,13 +2110,13 @@ export default function BookingDetailScreen() {
                       disabled={anyLoading}
                       style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 8, paddingVertical: 10, alignItems: "center" }}
                       accessibilityRole="button"
-                      accessibilityLabel="Pay with saved card"
+                      accessibilityLabel={bd("payWithSavedCardA11y")}
                     >
                       {cardLoadingThis ? (
                         <ActivityIndicator size="small" color={Colors.primary} />
                       ) : (
                         <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-                          Pay with saved card ···· {defaultSavedCard.last4 ?? ""}
+{bd("payWithSavedCard", { last4: defaultSavedCard.last4 ?? "" })}
                         </Text>
                       )}
                     </TouchableOpacity>
@@ -1977,11 +2134,11 @@ export default function BookingDetailScreen() {
     <>
       <Stack.Screen
         options={{
-          title: bookingNumberFull ? `Booking #${bookingNumberFull}` : "Booking",
-          headerBackTitle: "Back",
+          title: bookingNumberFull ? bd("stackTitleWithNumber", { number: bookingNumberFull }) : bd("stackTitle"),
+          headerBackTitle: bd("backHeader"),
         }}
       />
-      <ScrollView ref={scrollViewRef} style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
+      <ScrollView ref={scrollViewRef} style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel={bd("bookingDetailsA11y")} accessibilityRole="none">
         <BookingReferencePanel
           bookingId={String(booking.id)}
           bookingNumber={bookingNumberFull || null}
@@ -1999,6 +2156,84 @@ export default function BookingDetailScreen() {
             });
           }}
         />
+        {(() => {
+          const runningLateBanner =
+            lifecycleBanner ??
+            (canReportRunningLate || customerRunningLateAt
+              ? {
+                  title: bd("runningLateBannerTitle"),
+                  body: bd("runningLateBannerBody"),
+                  backgroundColor: "#FFFBEB",
+                  borderColor: "#FDE68A",
+                  icon: "walk-outline" as const,
+                  iconColor: "#D97706",
+                }
+              : null);
+          const showBanner =
+            Boolean(runningLateBanner) &&
+            (canReportRunningLate ||
+              Boolean(customerRunningLateAt) ||
+              lifecycleHint === "late_window" ||
+              lifecycleHint === "awaiting_close_out" ||
+              (lifecycleHint === "past" && !isActive));
+          if (!showBanner || !runningLateBanner) return null;
+          return (
+          <View
+            style={{
+              marginBottom: 16,
+              borderRadius: 16,
+              backgroundColor: runningLateBanner.backgroundColor,
+              borderWidth: 1,
+              borderColor: runningLateBanner.borderColor,
+              padding: 16,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              <Ionicons
+                name={runningLateBanner.icon}
+                size={22}
+                color={runningLateBanner.iconColor}
+                style={{ marginEnd: 10, marginTop: 2 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{runningLateBanner.title}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>{runningLateBanner.body}</Text>
+                {customerRunningLateAt ? (
+                  <Text style={{ fontSize: 13, color: Colors.gray[700], marginTop: 8 }}>
+                    You reported{" "}
+                    {typeof customerRunningLateMinutes === "number" && customerRunningLateMinutes > 0
+                      ? `about ${customerRunningLateMinutes} min late`
+                      : "running late"}{" "}
+                    {providerLateAckAt ? "· Provider acknowledged" : "· Waiting for provider reply"}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            {canReportRunningLate ? (
+              <TouchableOpacity
+                onPress={() => {
+                  haptic.light();
+                  setRunningLateOpen(true);
+                }}
+                style={{
+                  marginTop: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: Colors.primary,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={bd("reportRunningLateA11y")}
+              >
+                <Ionicons name="walk-outline" size={18} color={Colors.white} style={{ marginEnd: 8 }} />
+                <Text style={{ color: Colors.white, fontWeight: "600" }}>{bd("runningLateCta")}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          );
+        })()}
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
           <View
@@ -2020,7 +2255,7 @@ export default function BookingDetailScreen() {
                   backgroundColor: lifecycleDisplay.isAwaitingProviderConfirmation ? "#FEF3C7" : "#DCFCE7",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 12,
+                  marginEnd: 12,
                 }}
               >
                 <Ionicons
@@ -2035,11 +2270,16 @@ export default function BookingDetailScreen() {
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
                   {booking.status === "waiting"
-                    ? "The provider will be with you shortly."
+                    ? bd("providerWillBeWithYouShortly")
                     : booking.status === "checked_in"
-                      ? "You've arrived. The provider knows you're here."
+                      ? bd("checkedInArrived")
                       : `${lifecycleDisplay.description}${paymentDisplay.isPaymentSettled || paymentDisplay.isDepositPaid ? ` ${paymentDisplay.label}.` : ""}`}
                 </Text>
+                {pendingSlaCopy ? (
+                  <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>
+                    {pendingSlaCopy.body}
+                  </Text>
+                ) : null}
               </View>
             </View>
             {helpUrl ? (
@@ -2047,10 +2287,10 @@ export default function BookingDetailScreen() {
                 onPress={() => Linking.openURL(helpUrl)}
                 style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}
                 accessibilityRole="link"
-                accessibilityLabel="Help"
+                accessibilityLabel={bd("helpA11y")}
               >
                 <Ionicons name="help-circle-outline" size={18} color="#16a34a" />
-                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: "#15803d" }}>Help</Text>
+                <Text style={{ marginStart: 8, fontSize: 14, fontWeight: "500", color: "#15803d" }}>{bd("help")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -2102,14 +2342,14 @@ export default function BookingDetailScreen() {
                     backgroundColor: "#FED7AA",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 10,
+                    marginEnd: 10,
                   }}
                 >
                   <Ionicons name="card-outline" size={20} color="#EA580C" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "700", fontSize: 14, color: "#9A3412" }}>
-                    Payment Required
+{bd("paymentRequired")}
                   </Text>
                   {single ? (
                     <>
@@ -2117,18 +2357,18 @@ export default function BookingDetailScreen() {
                         style={{ fontSize: 13, color: "#C2410C", marginTop: 1 }}
                         numberOfLines={1}
                       >
-                        {single.description || "Additional charge"} —{" "}
+{single.description || bd("additionalChargeDefault")} —{" "}
                         {formatMoney(Number(single.amount || 0), currency)}
                       </Text>
                       {single.status === "pending" && (
                         <Text style={{ fontSize: 11, color: "#92400E", marginTop: 1 }}>
-                          Awaiting your approval to pay
+{bd("awaitingApprovalToPay")}
                         </Text>
                       )}
                     </>
                   ) : (
                     <Text style={{ fontSize: 13, color: "#C2410C", marginTop: 1 }}>
-                      {unpaid.length} outstanding charges · {formatMoney(total, currency)} total
+                      {bd("outstandingChargesSummary", { count: String(unpaid.length), total: formatMoney(total, currency) })}
                     </Text>
                   )}
                 </View>
@@ -2153,13 +2393,13 @@ export default function BookingDetailScreen() {
                           opacity: singleAnyLoading ? 0.4 : 1,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Approve additional charge"
+                        accessibilityLabel={bd("approveAdditionalChargeA11y")}
                       >
                         {singleApproveLoading ? (
                           <ActivityIndicator size="small" color="#EA580C" />
                         ) : (
                           <Text style={{ fontSize: 13, fontWeight: "600", color: "#EA580C" }}>
-                            Approve
+{bd("approve")}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -2176,10 +2416,10 @@ export default function BookingDetailScreen() {
                           opacity: singleAnyLoading ? 0.4 : 1,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel="Reject additional charge"
+                        accessibilityLabel={bd("rejectAdditionalChargeA11y")}
                       >
                         <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[600] }}>
-                          Reject
+{bd("reject")}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -2204,15 +2444,15 @@ export default function BookingDetailScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={
                       single.status === "pending"
-                        ? "Pay now, skips approval step"
-                        : "Pay now"
+                        ? bd("payNowA11ySkipsApproval")
+                        : bd("paymentPayNowA11y")
                     }
                   >
                     {singlePayLoading ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
-                        {single.status === "pending" ? "Pay Now · Skips Approval" : "Pay Now"}
+                        {single.status === "pending" ? bd("payNowSkipsApprovalBanner") : bd("paymentPayNow")}
                         {"  "}{formatMoney(Number(single.amount || 0), currency)}
                       </Text>
                     )}
@@ -2222,7 +2462,7 @@ export default function BookingDetailScreen() {
                   <TouchableOpacity
                     onPress={goToReceiptCharges}
                     accessibilityRole="button"
-                    accessibilityLabel="More payment options"
+                    accessibilityLabel={bd("morePaymentOptionsA11y")}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Text
@@ -2233,7 +2473,7 @@ export default function BookingDetailScreen() {
                         textDecorationLine: "underline",
                       }}
                     >
-                      More options: wallet · gift card · saved card
+{bd("morePaymentOptions")}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -2248,11 +2488,10 @@ export default function BookingDetailScreen() {
                     alignItems: "center",
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`View and pay ${unpaid.length} charges`}
+                  accessibilityLabel={bd("viewAndPayChargesA11y", { count: String(unpaid.length) })}
                 >
                   <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
-                    View &amp; Pay {unpaid.length} Charges —{" "}
-                    {formatMoney(total, currency)} total
+{bd("viewAndPayCharges", { count: String(unpaid.length), total: formatMoney(total, currency) })}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -2269,10 +2508,10 @@ export default function BookingDetailScreen() {
               style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: activeTab === tab ? Colors.primary : "transparent" }}
               accessibilityRole="tab"
               accessibilityState={{ selected: activeTab === tab }}
-              accessibilityLabel={tab === "tracking" ? "Tracking" : tab === "receipt" ? "Receipt" : "Details"}
+              accessibilityLabel={tab === "tracking" ? bd("tabTracking") : tab === "receipt" ? bd("tabReceipt") : bd("tabDetails")}
             >
               <Text style={{ fontSize: 14, fontWeight: "500", color: activeTab === tab ? Colors.primary : Colors.gray[500] }}>
-                {tab === "tracking" ? "Tracking" : tab === "receipt" ? "Receipt" : "Details"}
+                {tab === "tracking" ? bd("tabTracking") : tab === "receipt" ? bd("tabReceipt") : bd("tabDetails")}
               </Text>
             </TouchableOpacity>
           ))}
@@ -2284,26 +2523,26 @@ export default function BookingDetailScreen() {
             <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", padding: 20 }}>
               <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
                 {booking.status === "completed"
-                  ? "Service completed"
+                  ? bd("statusServiceCompleted")
                   : booking.status === "started" || booking.status === "in_progress"
-                    ? "Service in progress"
+                    ? bd("statusServiceInProgress")
                     : booking.status === "cancelled"
-                      ? "Booking cancelled"
+                      ? bd("statusBookingCancelled")
                       : booking.status === "no_show"
-                        ? "Marked as no-show"
+                        ? bd("statusNoShow")
                         : booking.status === "pending"
-                          ? "Awaiting provider confirmation"
+                          ? bd("statusAwaitingConfirmation")
                           : isProviderArrived
-                          ? "Provider has arrived"
+                          ? bd("statusProviderArrived")
                           : isProviderEnRoute
-                            ? "Provider on the way"
-                            : "Your visit is confirmed"}
+                            ? bd("statusProviderEnRoute")
+                            : bd("statusVisitConfirmed")}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginEnd: 12, marginBottom: 12 }}>
                   <Ionicons name="cut-outline" size={20} color={Colors.primary} />
                 </View>
-                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginEnd: 12, marginBottom: 12 }}>
                   <Ionicons name="brush-outline" size={20} color={Colors.primary} />
                 </View>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
@@ -2332,7 +2571,7 @@ export default function BookingDetailScreen() {
                   padding: 16,
                 }}>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: eta.isLate ? "#92400E" : "#1E3A8A" }}>
-                    {eta.isLate ? "Running a little late" : eta.show ? "Estimated arrival" : "Provider en route"}
+{eta.isLate ? bd("runningLateEta") : eta.show ? bd("estimatedArrival") : bd("providerEnRouteLabel")}
                   </Text>
                   {eta.show ? (
                     <Text style={{ fontSize: 16, color: eta.isLate ? "#B45309" : "#1E40AF", marginTop: 2 }}>
@@ -2342,13 +2581,13 @@ export default function BookingDetailScreen() {
                     </Text>
                   ) : (
                     <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
-                      Arrival time will appear when your provider shares an ETA.
+{bd("etaWillAppear")}
                     </Text>
                   )}
                   <Text style={{ fontSize: 12, color: eta.isLate ? "#D97706" : "#3B82F6", marginTop: 6 }}>
                     {eta.isLate
-                      ? "Your provider is on the way and will update their arrival time."
-                      : "We refresh this as your provider moves."}
+                      ? bd("etaRefreshHintLate")
+                      : bd("etaRefreshHint")}
                   </Text>
                 </View>
               );
@@ -2367,16 +2606,16 @@ export default function BookingDetailScreen() {
                 return (
                   <View style={{ marginBottom: 16, paddingVertical: 8 }}>
                     <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-                      Live map appears when your provider shares their location.
+{bd("liveMapUnavailable")}
                     </Text>
                   </View>
                 );
               }
               return (
                 <View style={{ marginBottom: 16 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Live tracking</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>{bd("liveTracking")}</Text>
                   {hasCustomerPin ? (
-                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>Pink = provider · Blue = your address</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>{bd("liveMapLegend")}</Text>
                   ) : null}
                   <View style={{ overflow: "hidden", borderRadius: 12 }}>
                     <StaticMapImage
@@ -2415,7 +2654,7 @@ export default function BookingDetailScreen() {
                 </View>
                 {pinSecondsLeft != null && (
                   <Text style={{ fontSize: 13, color: "#1E40AF", marginBottom: 12 }}>
-                    {pinSecondsLeft > 0 ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}` : "Code expired — get a new code below (your QR refreshes too if you use it)."}
+{pinSecondsLeft > 0 ? bd("codeExpiresIn", { time: `${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}` }) : bd("codeExpiredRefresh")}
                   </Text>
                 )}
                 <TouchableOpacity
@@ -2432,21 +2671,21 @@ export default function BookingDetailScreen() {
                     alignSelf: "flex-start",
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={pinSecondsLeft === 0 ? "Get new verification code" : "Resend verification code"}
+                  accessibilityLabel={pinSecondsLeft === 0 ? bd("getNewVerificationCodeA11y") : bd("resendVerificationCodeA11y")}
                 >
                   <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
                     {isResending
-                      ? "Sending…"
+                      ? bd("sending")
                       : resendCooldownUntil != null && Date.now() < resendCooldownUntil
-                        ? "Resend (wait)"
+                        ? bd("resendWait")
                         : pinSecondsLeft === 0
-                          ? "Get new code & QR"
-                          : "Resend code"}
+                          ? bd("getNewCodeQr")
+                          : bd("resendCode")}
                   </Text>
                 </TouchableOpacity>
                 {!showFallbackInput ? (
                   <TouchableOpacity onPress={() => setShowFallbackInput(true)} style={{ marginTop: 12 }}>
-                    <Text style={{ fontSize: 13, color: "#1E40AF", textDecorationLine: "underline" }}>Having trouble? Enter code here</Text>
+                    <Text style={{ fontSize: 13, color: "#1E40AF", textDecorationLine: "underline" }}>{bd("havingTroubleEnterCode")}</Text>
                   </TouchableOpacity>
                 ) : (
                   <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#BFDBFE" }}>
@@ -2460,7 +2699,7 @@ export default function BookingDetailScreen() {
                         keyboardType="number-pad"
                         maxLength={6}
                         style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, fontSize: 18 }}
-                        accessibilityLabel="Verification code"
+                        accessibilityLabel={bd("verificationCodeA11y")}
                       />
                       <TouchableOpacity
                         onPress={handleVerifyFallback}
@@ -2470,11 +2709,11 @@ export default function BookingDetailScreen() {
                         }
                         style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 }}
                       >
-                        {isVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600" }}>Verify</Text>}
+{isVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600" }}>{bd("verify")}</Text>}
                       </TouchableOpacity>
                     </View>
                     <Pressable onPress={() => { setShowFallbackInput(false); setFallbackOtp(""); }}>
-                      <Text style={{ fontSize: 13, color: "#1E40AF" }}>Cancel</Text>
+                      <Text style={{ fontSize: 13, color: "#1E40AF" }}>{bd("cancel")}</Text>
                     </Pressable>
                   </View>
                 )}
@@ -2484,18 +2723,18 @@ export default function BookingDetailScreen() {
             {needsQrDisplay && qrPayloadForDisplay && (
               <View
                 style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#FAF5FF", borderWidth: 1, borderColor: "#E9D5FF", padding: 20 }}
-                accessibilityLabel="Your arrival verification QR code"
+                accessibilityLabel={bd("qrCodeA11y")}
               >
-                <Text style={{ fontSize: 16, fontWeight: "600", color: "#581C87", marginBottom: 4 }}>Show this QR to your provider</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: "#581C87", marginBottom: 4 }}>{bd("showQrToProvider")}</Text>
                 <Text style={{ fontSize: 14, color: "#6B21A8", marginBottom: 16 }}>
                   {bothArrivalMethodsVisible
                     ? ARRIVAL_QR_CUSTOMER_SUBTITLE_WITH_PIN
-                    : "They will scan it or enter the code on their device to confirm they've arrived."}
+                    : bd("qrScanSubtitle")}
                 </Text>
                 {qrSecondsLeft != null && qrSecondsLeft <= 0 ? (
                   <View style={{ alignItems: "center", paddingVertical: 12 }}>
                     <Text style={{ fontSize: 14, color: "#6B21A8", textAlign: "center", marginBottom: 12 }}>
-                      This QR is no longer valid. Refresh to show a new code for your provider.
+                      {bd("qrInvalidRefresh")}
                     </Text>
                   </View>
                 ) : (
@@ -2506,8 +2745,8 @@ export default function BookingDetailScreen() {
                 {qrSecondsLeft != null && (
                   <Text style={{ fontSize: 13, color: "#6B21A8", marginTop: 12, textAlign: "center" }}>
                     {qrSecondsLeft > 0
-                      ? `QR expires in ${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, "0")}`
-                      : "QR expired"}
+                      ? bd("qrExpiresIn", { time: `${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, "0")}` })
+                      : bd("qrExpired")}
                   </Text>
                 )}
                 {qrSecondsLeft != null && qrSecondsLeft <= 0 && !needsPinDisplay ? (
@@ -2526,20 +2765,20 @@ export default function BookingDetailScreen() {
                       borderRadius: 12,
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Refresh verification QR"
+                    accessibilityLabel={bd("refreshVerificationQrA11y")}
                   >
                     <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
                       {isResending
-                        ? "Refreshing…"
+                        ? bd("refreshing")
                         : resendCooldownUntil != null && Date.now() < resendCooldownUntil
-                          ? "Refresh (wait)"
-                          : "Refresh QR & code"}
+                          ? bd("refreshWait")
+                          : bd("refreshQrCode")}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
                 {qrSecondsLeft != null && qrSecondsLeft <= 0 && needsPinDisplay ? (
                   <Text style={{ fontSize: 13, color: "#6B21A8", marginTop: 10, textAlign: "center" }}>
-                    Tap “Get new code & QR” above to refresh your PIN and this QR.
+{bd("tapGetNewCodeAbove")}
                   </Text>
                 ) : null}
                 {qrVerificationCode && (qrSecondsLeft == null || qrSecondsLeft > 0) ? (
@@ -2560,10 +2799,10 @@ export default function BookingDetailScreen() {
                       borderColor: "#DDD6FE",
                     }}
                     accessibilityRole="button"
-                    accessibilityLabel="Copy verification code"
+                    accessibilityLabel={bd("copyVerificationCodeA11y")}
                   >
                     <Text style={{ fontSize: 14, fontWeight: "600", color: "#5B21B6" }}>
-                      Copy code: <Text style={{ fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>{qrVerificationCode}</Text>
+                      {bd("copyCodeLabel", { code: qrVerificationCode })}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -2574,28 +2813,28 @@ export default function BookingDetailScreen() {
               {(
                 booking.status === "cancelled"
                   ? [
-                      { key: "confirmed", label: "Booking confirmed", done: true },
-                      { key: "cancelled", label: "Booking cancelled", done: true },
+                      { key: "confirmed", label: bd("milestoneBookingConfirmed"), done: true },
+                      { key: "cancelled", label: bd("milestoneBookingCancelled"), done: true },
                     ]
                   : isAtHome
                     ? [
-                        { key: "received", label: "Request received", done: true },
-                        { key: "confirmed", label: "Confirmed by provider", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) || isProviderEnRoute || isProviderArrived },
-                        { key: "en_route", label: "Provider en route", done: isProviderEnRoute || isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "arrived", label: "Provider arrived", done: isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "in_progress", label: "Service in progress", done: ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "completed", label: "Completed", done: booking.status === "completed" },
+                        { key: "received", label: bd("milestoneRequestReceived"), done: true },
+                        { key: "confirmed", label: bd("milestoneConfirmedByProvider"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) || isProviderEnRoute || isProviderArrived },
+                        { key: "en_route", label: bd("milestoneProviderEnRoute"), done: isProviderEnRoute || isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "arrived", label: bd("milestoneProviderArrived"), done: isProviderArrived || ["started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "in_progress", label: bd("milestoneServiceInProgress"), done: ["started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "completed", label: bd("milestoneCompleted"), done: booking.status === "completed" },
                       ]
                     : [
-                        { key: "received", label: "Request received", done: true },
-                        { key: "confirmed", label: "Confirmed by provider", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "preparing", label: "Preparing for your visit", done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "in_progress", label: "Service in progress", done: ["started", "completed", "in_progress"].includes(booking.status) },
-                        { key: "completed", label: "Completed", done: booking.status === "completed" },
+                        { key: "received", label: bd("milestoneRequestReceived"), done: true },
+                        { key: "confirmed", label: bd("milestoneConfirmedByProvider"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "preparing", label: bd("milestonePreparingForVisit"), done: ["confirmed", "started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "in_progress", label: bd("milestoneServiceInProgress"), done: ["started", "completed", "in_progress"].includes(booking.status) },
+                        { key: "completed", label: bd("milestoneCompleted"), done: booking.status === "completed" },
                       ]
               ).map((step: { key: string; label: string; done: boolean }) => (
                 <View key={step.key} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
-                  <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 12, backgroundColor: step.done ? "#DCFCE7" : Colors.gray[100] }}>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginEnd: 12, backgroundColor: step.done ? "#DCFCE7" : Colors.gray[100] }}>
                     {step.done ? (
                       <Ionicons name="checkmark" size={14} color="#16a34a" />
                     ) : (
@@ -2608,7 +2847,7 @@ export default function BookingDetailScreen() {
             </View>
             {/* Scheduled time */}
             <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
-              <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Scheduled for</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>{bd("scheduledFor")}</Text>
               <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
               {provider?.business_name ? (
@@ -2628,7 +2867,7 @@ export default function BookingDetailScreen() {
         {activeTab === "receipt" && (
           <>
             <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Payment</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("paymentSectionTitle")}</Text>
               {renderPaymentBreakdownCore()}
             </View>
             {payError && (
@@ -2637,8 +2876,8 @@ export default function BookingDetailScreen() {
               </View>
             )}
             {needsPayment && (
-              <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Pay now">
-                {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay Now</Text>}
+              <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel={bd("paymentPayNowA11y")}>
+{payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{bd("paymentPayNow")}</Text>}
               </Pressable>
             )}
             {showPayRemaining && (
@@ -2654,13 +2893,13 @@ export default function BookingDetailScreen() {
                   disabled={payRemainingLoading}
                   style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
                   accessibilityRole="button"
-                  accessibilityLabel={isFullyUnpaid ? "Pay now" : "Pay remaining balance"}
+                  accessibilityLabel={isFullyUnpaid ? bd("paymentPayNowA11y") : bd("paymentPayRemainingA11y")}
                 >
                   {payRemainingLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>
-                      {isFullyUnpaid ? "Pay now" : "Pay remaining balance"}
+                      {isFullyUnpaid ? bd("paymentPayNow") : bd("paymentPayRemainingBalance")}
                     </Text>
                   )}
                 </Pressable>
@@ -2671,7 +2910,7 @@ export default function BookingDetailScreen() {
               <View style={{ marginBottom: 16, padding: 16, alignItems: "center" }}>
                 <ActivityIndicator size="small" color={Colors.primary} />
                 <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[600] }}>
-                  Loading payment request…
+{bd("loadingPaymentRequest")}
                 </Text>
               </View>
             ) : null}
@@ -2695,11 +2934,10 @@ export default function BookingDetailScreen() {
                 }}
               >
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#9A3412", marginBottom: 6 }}>
-                  Payment request unavailable
+{bd("paymentRequestUnavailableTitle")}
                 </Text>
                 <Text style={{ fontSize: 13, color: "#C2410C", marginBottom: 12 }}>
-                  This charge may already be paid or removed. Refresh to see the latest balance, or contact your
-                  provider if you still owe an amount.
+{bd("paymentRequestUnavailableBody")}
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
@@ -2717,9 +2955,9 @@ export default function BookingDetailScreen() {
                     borderRadius: 8,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Refresh booking"
+                  accessibilityLabel={bd("refreshBookingA11y")}
                 >
-                  <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>Refresh</Text>
+                  <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{bd("refresh")}</Text>
                 </TouchableOpacity>
               </View>
             ) : null}
@@ -2731,30 +2969,30 @@ export default function BookingDetailScreen() {
             </View>
             <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
-                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginEnd: 12 }}
                 onPress={() => {
                   haptic.light();
                   void shareCustomerBookingReceipt(
                     String(booking.id),
                     booking.booking_number ?? null,
                   ).catch((e) =>
-                    Alert.alert("Share", e instanceof Error ? e.message : "Could not share booking."),
+                    Alert.alert(bd("shareErrorTitle"), e instanceof Error ? e.message : bd("couldNotShareBooking")),
                   );
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Share"
+                accessibilityLabel={bd("shareA11y")}
               >
                 <Ionicons name="share-outline" size={16} color={Colors.gray[700]} />
-                <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
+                <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.gray[700] }}>{bd("share")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={downloadReceiptNative}
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                 accessibilityRole="button"
-                accessibilityLabel="Download"
+                accessibilityLabel={bd("downloadA11y")}
               >
                 <Ionicons name="download-outline" size={16} color={Colors.gray[700]} />
-                <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Download</Text>
+                <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.gray[700] }}>{bd("download")}</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -2772,36 +3010,37 @@ export default function BookingDetailScreen() {
               borderBottomColor: Colors.gray[200],
             }}
           >
-            <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Visit type</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>{bd("visitTypeLabel")}</Text>
             {isAtHome ? (
               <>
-                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>House call</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{bd("houseCallTitle")}</Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>
-                  Your professional travels to the address below. Tracking and arrival verification (when your provider
-                  arrives) appear on the Tracking tab.
+                  {bd("houseCallBody")}
                 </Text>
                 {Number((booking as any).travel_fee || 0) > 0 ? (
                   <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 6 }}>
-                    A travel fee is included in your price breakdown below.
+                    {bd("houseCallTravelFeeHint")}
                   </Text>
                 ) : null}
               </>
             ) : (
               <>
-                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>In-salon visit</Text>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{bd("inSalonTitle")}</Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 4 }}>
-                  {"You go to the provider's salon or workspace. Use the address below for directions and parking."}
+                  {bd("inSalonBody")}
                 </Text>
               </>
             )}
           </View>
           {booking.is_group_booking && booking.group_booking_ref && (
             <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{bd("groupBookingLabel")}</Text>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{booking.group_booking_ref}</Text>
               {groupPaymentSummary && groupPaymentSummary.amount_paid > 0 ? (
                 <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>
-                  {formatMoney(groupPaymentSummary.amount_paid, groupPaymentSummary.currency)} paid for the whole group
+                  {bd("groupPaidSummary", {
+                    amount: formatMoney(groupPaymentSummary.amount_paid, groupPaymentSummary.currency),
+                  })}
                 </Text>
               ) : null}
               {booking.group_booking_id ? (
@@ -2809,16 +3048,16 @@ export default function BookingDetailScreen() {
                   onPress={() => router.push({ pathname: "/(app)/group-booking-detail", params: { id: booking.group_booking_id } })}
                   style={{ marginTop: 8, alignSelf: "flex-start", borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 8 }}
                   accessibilityRole="button"
-                  accessibilityLabel="View group booking details"
+                  accessibilityLabel={bd("viewGroupDetailsA11y")}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>View group details</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>{bd("viewGroupDetails")}</Text>
                 </TouchableOpacity>
               ) : null}
             </View>
           )}
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || "Provider"}</Text>
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || bd("providerFallback")}</Text>
               <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
               <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
             </View>
@@ -2838,7 +3077,7 @@ export default function BookingDetailScreen() {
                   color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" || booking.status === "no_show" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : booking.status === "in_progress" || booking.status === "started" ? "#7C3AED" : booking.status === "waiting" || booking.status === "checked_in" ? "#0369A1" : "#B45309",
                 }}
               >
-                {booking.status === "no_show" ? "No show" : booking.status === "in_progress" || booking.status === "started" ? "In progress" : booking.status === "checked_in" ? "Checked in" : booking.status === "pending_payment" ? "Payment pending" : booking.status === "pending" ? "Awaiting confirmation" : lifecycleDisplay.label}
+                {booking.status === "no_show" ? bd("statusNoShow") : booking.status === "in_progress" || booking.status === "started" ? bd("statusServiceInProgress") : booking.status === "checked_in" ? bd("statusCheckedIn") : booking.status === "pending_payment" ? bd("statusPaymentPending") : booking.status === "pending" ? bd("statusAwaitingConfirmation") : lifecycleDisplay.label}
               </Text>
             </View>
           </View>
@@ -2847,9 +3086,9 @@ export default function BookingDetailScreen() {
         {/* Services */}
         {services.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Services</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("servicesSection")}</Text>
             {services.map((svc: Record<string, unknown>, i: number) => {
-              const svcName = String(svc.offering_name ?? svc.service_name ?? svc.title ?? svc.name ?? `Service ${i + 1}`);
+              const svcName = String(svc.offering_name ?? svc.service_name ?? svc.title ?? svc.name ?? bd("serviceLineFallback", { index: i + 1 }));
               const duration = svc.duration_minutes ? Number(svc.duration_minutes) : null;
               const staffName = svc.staff_name ? String(svc.staff_name) : null;
               const guestName = svc.guest_name ? String(svc.guest_name) : null;
@@ -2859,10 +3098,10 @@ export default function BookingDetailScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{svcName}{guestName ? ` (${guestName})` : ""}</Text>
                     {duration != null && (
-                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{duration} min</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{bd("durationMinShort", { minutes: duration })}</Text>
                     )}
                     {staffName && (
-                      <Text style={{ fontSize: 12, color: Colors.gray[400] }}>with {staffName}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{bd("withStaff", { name: staffName })}</Text>
                     )}
                   </View>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
@@ -2873,15 +3112,15 @@ export default function BookingDetailScreen() {
             })}
             {booking.custom_offer && (
               <View style={{ marginTop: 8, padding: 12, backgroundColor: "#F8FAFC", borderRadius: 8, borderWidth: 1, borderColor: "#E2E8F0" }}>
-                <Text style={{ fontSize: 12, fontWeight: "600", color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>Custom Offer Details</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#334155", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>{bd("customOfferDetails")}</Text>
                 {booking.custom_offer.request?.description && (
                   <Text style={{ fontSize: 13, color: "#475569", marginBottom: booking.custom_offer.notes ? 8 : 0 }}>
-                    <Text style={{ fontWeight: "600" }}>Your request:</Text> {booking.custom_offer.request.description}
+                    <Text style={{ fontWeight: "600" }}>{bd("yourRequest")}</Text> {booking.custom_offer.request.description}
                   </Text>
                 )}
                 {booking.custom_offer.notes && (
                   <Text style={{ fontSize: 13, color: "#475569" }}>
-                    <Text style={{ fontWeight: "600" }}>Provider notes:</Text> {booking.custom_offer.notes}
+                    <Text style={{ fontWeight: "600" }}>{bd("providerNotes")}</Text> {booking.custom_offer.notes}
                   </Text>
                 )}
               </View>
@@ -2892,9 +3131,9 @@ export default function BookingDetailScreen() {
         {/* Add-ons */}
         {detailAddonRows.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add-ons</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("addonsSection")}</Text>
             {detailAddonRows.map((addon, i) => {
-              const addonName = String(addon.offering_name ?? addon.addon_name ?? "Add-on");
+              const addonName = String(addon.offering_name ?? addon.addon_name ?? bd("addonFallback"));
               const qty = Number(addon.quantity ?? 1);
               const price = Number(addon.price ?? 0);
               return (
@@ -2912,9 +3151,9 @@ export default function BookingDetailScreen() {
         {/* Products */}
         {Array.isArray((booking as any).products) && (booking as any).products.length > 0 && (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Products</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("productsSection")}</Text>
             {((booking as any).products as Record<string, unknown>[]).map((prod, i) => {
-              const prodName = String(prod.product_name ?? "Product");
+              const prodName = String(prod.product_name ?? bd("productFallback"));
               const qty = Number(prod.quantity ?? 1);
               const unitPrice = Number(prod.unit_price ?? 0);
               const totalPrice = Number(prod.total_price ?? unitPrice * qty);
@@ -2932,7 +3171,7 @@ export default function BookingDetailScreen() {
 
         {/* Price & payment — same breakdown as Receipt for parity */}
         <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Price & payment</Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("pricePaymentSection")}</Text>
           {renderPaymentBreakdownCore()}
         </View>
         {renderAdditionalChargesSection()}
@@ -2941,7 +3180,7 @@ export default function BookingDetailScreen() {
         {location && (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
-              {isAtHome ? "Provider location" : "Salon location"}
+              {isAtHome ? bd("providerLocation") : bd("salonLocation")}
             </Text>
             {(() => {
               const formattedSalonAddr =
@@ -2954,7 +3193,7 @@ export default function BookingDetailScreen() {
                 <>
                   <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                     <Ionicons name="location-outline" size={16} color={Colors.gray[600]} style={{ marginTop: 2 }} />
-                    <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
+                    <Text style={{ marginStart: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
                       {formattedSalonAddr || "—"}
                     </Text>
                   </View>
@@ -2976,9 +3215,9 @@ export default function BookingDetailScreen() {
                       style={{ marginTop: 10, alignSelf: "flex-start" }}
                       onPress={() => openInMaps({ query: formattedSalonAddr }).catch(() => {})}
                       accessibilityRole="button"
-                      accessibilityLabel="Open address in Maps"
+                      accessibilityLabel={bd("openInMapsA11y")}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Open in Maps</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{bd("openInMaps")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </>
@@ -2989,9 +3228,9 @@ export default function BookingDetailScreen() {
 
         {!isAtHome && !location ? (
           <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Salon location</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>{bd("salonLocation")}</Text>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-              Salon address is not loaded in the app yet. Check your confirmation email or message your provider for the exact address.
+              {bd("salonLocationMissingBody")}
             </Text>
           </View>
         ) : null}
@@ -3003,7 +3242,7 @@ export default function BookingDetailScreen() {
           return Boolean(line1);
         })() ? (
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Service address</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{bd("serviceAddress")}</Text>
             {(() => {
               const b = booking as Record<string, unknown>;
               const nested = b.address as Record<string, unknown> | undefined;
@@ -3037,37 +3276,37 @@ export default function BookingDetailScreen() {
                 <>
                   <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 22 }}>{lines.join("\n")}</Text>
                   {a.apartment_unit ? (
-                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>Unit: {String(a.apartment_unit)}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>{bd("unitLabel", { value: String(a.apartment_unit) })}</Text>
                   ) : null}
                   {a.building_name ? (
-                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Building: {String(a.building_name)}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("buildingLabel", { value: String(a.building_name) })}</Text>
                   ) : null}
                   {a.floor_number ? (
-                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Floor: {String(a.floor_number)}</Text>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("floorLabel", { value: String(a.floor_number) })}</Text>
                   ) : null}
                   {hasAc && ac ? (
                     <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200] }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700], marginBottom: 4 }}>Access</Text>
-                      {ac.gate?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Gate: {ac.gate}</Text> : null}
-                      {ac.buzzer?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Buzzer: {ac.buzzer}</Text> : null}
-                      {ac.door?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Door: {ac.door}</Text> : null}
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700], marginBottom: 4 }}>{bd("accessLabel")}</Text>
+                      {ac.gate?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("gateLabel", { value: ac.gate })}</Text> : null}
+                      {ac.buzzer?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("buzzerLabel", { value: ac.buzzer })}</Text> : null}
+                      {ac.door?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>{bd("doorLabel", { value: ac.door })}</Text> : null}
                     </View>
                   ) : null}
                   {a.parking_instructions ? (
                     <View style={{ marginTop: 8 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Parking</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{bd("parkingLabel")}</Text>
                       <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{String(a.parking_instructions)}</Text>
                     </View>
                   ) : null}
                   {a.location_landmarks ? (
                     <View style={{ marginTop: 8 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Landmarks</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{bd("landmarksLabel")}</Text>
                       <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{String(a.location_landmarks)}</Text>
                     </View>
                   ) : null}
                   {(booking as { house_call_instructions?: string | null }).house_call_instructions?.trim() ? (
                     <View style={{ marginTop: 8 }}>
-                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Visit instructions</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>{bd("visitInstructionsLabel")}</Text>
                       <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>
                         {(booking as { house_call_instructions?: string | null }).house_call_instructions}
                       </Text>
@@ -3090,9 +3329,9 @@ export default function BookingDetailScreen() {
                       style={{ marginTop: 10, alignSelf: "flex-start" }}
                       onPress={() => openInMaps({ query: addressSingleLine }).catch(() => {})}
                       accessibilityRole="button"
-                      accessibilityLabel="Open address in Maps"
+                      accessibilityLabel={bd("openInMapsA11y")}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Open in Maps</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{bd("openInMaps")}</Text>
                     </TouchableOpacity>
                   ) : null}
                 </>
@@ -3110,16 +3349,16 @@ export default function BookingDetailScreen() {
           return Boolean(line1);
         })() ? (
           <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: "#FFFBEB", padding: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Service address</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>{bd("serviceAddress")}</Text>
             <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
-              Your visit address will appear here once it is saved on the booking. If you are unsure, open this booking on the web or message your provider.
+              {bd("serviceAddressPendingBody")}
             </Text>
           </View>
         ) : null}
 
         {(booking as { special_requests?: string | null }).special_requests?.trim() ? (
           <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], padding: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>Notes for your provider</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 6 }}>{bd("notesForProvider")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 22 }}>
               {(booking as { special_requests?: string }).special_requests}
             </Text>
@@ -3137,10 +3376,10 @@ export default function BookingDetailScreen() {
               ? [addressObj.line1, addressObj.city, addressObj.country].filter(Boolean).join(", ")
               : (booking as any).address_line1
                 ? [(booking as any).address_line1, (booking as any).address_city, (booking as any).address_country].filter(Boolean).join(", ")
-                : "Address TBD";
-          const calTitle = `Appointment with ${provider?.business_name ?? "Beautonomi"}`;
-          const visitLine = isAtHome ? "House call" : "In-salon visit";
-          const calDesc = `Booking #${booking.booking_number ?? ""}\n${visitLine}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
+                : bd("addressTbd");
+          const calTitle = bd("calTitle", { name: provider?.business_name ?? bd("brandFallback") });
+          const visitLine = isAtHome ? bd("calHouseCall") : bd("calInSalon");
+          const calDesc = `Booking #${booking.booking_number ?? ""}\n${visitLine}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? bd("serviceFallback")} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
           if (!calStart || !calEnd) return null;
           const calPayload = { title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd };
           const chipRow: ViewStyle = {
@@ -3175,9 +3414,9 @@ export default function BookingDetailScreen() {
                     accessibilityLabel={bd("calendarPhoneAppA11y")}
                   >
                     {nativeCalLoading ? (
-                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 6 }} />
+                      <ActivityIndicator size="small" color={Colors.primary} style={{ marginEnd: 6 }} />
                     ) : (
-                      <Ionicons name="phone-portrait-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
+                      <Ionicons name="phone-portrait-outline" size={16} color={Colors.primary} style={{ marginEnd: 6 }} />
                     )}
                     <Text style={{ fontWeight: "600", color: Colors.primary }}>{bd("calendarPhoneAppCta")}</Text>
                   </TouchableOpacity>
@@ -3191,7 +3430,7 @@ export default function BookingDetailScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={bd("calendarGoogleA11y")}
                 >
-                  <Ionicons name="logo-google" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Ionicons name="logo-google" size={16} color={Colors.gray[700]} style={{ marginEnd: 6 }} />
                   <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarGoogleCta")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -3203,7 +3442,7 @@ export default function BookingDetailScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={bd("calendarOutlookA11y")}
                 >
-                  <Ionicons name="mail-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Ionicons name="mail-outline" size={16} color={Colors.gray[700]} style={{ marginEnd: 6 }} />
                   <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarOutlookCta")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -3214,9 +3453,9 @@ export default function BookingDetailScreen() {
                   accessibilityLabel={bd("calendarIcsA11y")}
                 >
                   {icsLoading ? (
-                    <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                    <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginEnd: 6 }} />
                   ) : (
-                    <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                    <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginEnd: 6 }} />
                   )}
                   <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("calendarIcsCta")}</Text>
                 </TouchableOpacity>
@@ -3231,27 +3470,27 @@ export default function BookingDetailScreen() {
           <View style={{ flexDirection: "row", marginBottom: 12 }}>
             <TouchableOpacity
               onPress={handleReschedule}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginEnd: 12 }}
               accessibilityRole="button"
-              accessibilityLabel="Reschedule booking"
+              accessibilityLabel={bd("rescheduleA11y")}
             >
               <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} />
-              <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Reschedule</Text>
+              <Text style={{ marginStart: 8, fontWeight: "500", color: Colors.gray[700] }}>{bd("rescheduleCta")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCancel}
               disabled={cancelling}
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA" }}
               accessibilityRole="button"
-              accessibilityLabel="Cancel booking"
-              accessibilityHint="Double tap to cancel this appointment. Cancellation fees may apply."
+              accessibilityLabel={bd("cancelBookingA11y")}
+              accessibilityHint={bd("cancelBookingHint")}
             >
               {cancelling ? (
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
                 <>
-                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" style={{ marginRight: 8 }} />
-                  <Text style={{ fontWeight: "500", color: "#B91C1C" }}>Cancel</Text>
+                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" style={{ marginEnd: 8 }} />
+                  <Text style={{ fontWeight: "500", color: "#B91C1C" }}>{bd("cancel")}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -3262,7 +3501,7 @@ export default function BookingDetailScreen() {
           <View style={{ marginBottom: 12 }}>
             {myReview ? (
               <View style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, marginBottom: 10 }}>
-                <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>Your review</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 4 }}>{bd("yourReview")}</Text>
                 {Number.isFinite(Number(myReview.rating)) ? (
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>
                     {`${Number(myReview.rating).toFixed(1)}★`}
@@ -3271,7 +3510,7 @@ export default function BookingDetailScreen() {
                 {typeof myReview.comment === "string" && myReview.comment.trim().length > 0 ? (
                   <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{myReview.comment.trim()}</Text>
                 ) : (
-                  <Text style={{ fontSize: 13, color: Colors.gray[500] }}>No written comment added.</Text>
+                  <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{bd("noWrittenComment")}</Text>
                 )}
               </View>
             ) : null}
@@ -3282,26 +3521,62 @@ export default function BookingDetailScreen() {
               }}
               style={{ paddingVertical: 16, borderWidth: 1, borderColor: Colors.primary, borderRadius: 12, alignItems: "center" }}
               accessibilityRole="button"
-              accessibilityLabel={myReview ? "Edit your review" : "Write a review"}
+              accessibilityLabel={myReview ? bd("editReviewA11y") : bd("writeReviewA11y")}
             >
               <Text style={{ color: Colors.primary, fontWeight: "600" }}>
-                {myReview ? "Edit Review" : "Write a Review"}
+                {myReview ? bd("editReview") : bd("writeReview")}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
+        {isExpiredPending && provider?.slug ? (
+          <View style={{ marginBottom: 12 }}>
+            <View
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "#E5E7EB",
+                backgroundColor: "#F9FAFB",
+                padding: 16,
+                marginBottom: 10,
+              }}
+            >
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{bd("requestExpiredTitle")}</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>
+                {typeof booking.cancellation_reason === "string" && booking.cancellation_reason.trim()
+                  ? booking.cancellation_reason
+                  : bd("requestExpiredDefaultBody")}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                handleRebook();
+              }}
+              style={{
+                paddingVertical: 16,
+                backgroundColor: Colors.primary,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={bd("bookAgainA11y")}
+            >
+              <Text style={{ fontWeight: "600", color: Colors.white }}>{bd("bookAgain")}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {booking.status === "completed" && provider?.slug && (
           <TouchableOpacity
             onPress={() => {
-              haptic.light();
-              router.push({ pathname: "/(app)/book", params: { slug: provider.slug } });
+              handleRebook();
             }}
             style={{ paddingVertical: 16, backgroundColor: Colors.gray[50], borderRadius: 12, alignItems: "center", marginBottom: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Book again with this provider"
+            accessibilityLabel={bd("bookAgainA11y")}
           >
-            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Book Again</Text>
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("bookAgainCompleted")}</Text>
           </TouchableOpacity>
         )}
 
@@ -3321,7 +3596,7 @@ export default function BookingDetailScreen() {
                 pathname: "/(app)/chat",
                 params: {
                   provider_id: provider.id,
-                  provider_name: provider.business_name || "Provider",
+                  provider_name: provider.business_name || bd("providerFallback"),
                   booking_id: booking.id,
                 },
               });
@@ -3338,17 +3613,17 @@ export default function BookingDetailScreen() {
               marginBottom: 12,
             }}
             accessibilityRole="button"
-            accessibilityLabel={`Message ${provider.business_name || "provider"}`}
-            accessibilityHint="Start a chat with the provider about this booking"
+            accessibilityLabel={bd("messageProviderA11y", { name: provider.business_name || bd("providerFallback") })}
+            accessibilityHint={bd("messageProviderHint")}
           >
             <Ionicons
               name="chatbubble-ellipses-outline"
               size={18}
               color={Colors.primary}
-              style={{ marginRight: 8 }}
+              style={{ marginEnd: 8 }}
             />
             <Text style={{ fontWeight: "600", color: Colors.primary }}>
-              Message Provider
+              {bd("messageProvider")}
             </Text>
           </TouchableOpacity>
         )}
@@ -3362,24 +3637,24 @@ export default function BookingDetailScreen() {
                 String(booking.id),
                 booking.booking_number ?? null,
               ).catch((e) =>
-                Alert.alert("Share", e instanceof Error ? e.message : "Could not share booking."),
+                Alert.alert(bd("shareErrorTitle"), e instanceof Error ? e.message : bd("couldNotShareBooking")),
               );
             }}
-            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginEnd: 12 }}
             accessibilityRole="button"
-            accessibilityLabel="Share booking details"
+            accessibilityLabel={bd("shareBookingA11y")}
           >
-            <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 8 }} />
-            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
+            <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginEnd: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("share")}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={downloadReceiptNative}
             style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
             accessibilityRole="button"
-            accessibilityLabel="Download booking receipt"
+            accessibilityLabel={bd("downloadReceiptA11y")}
           >
-            <Ionicons name="download-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 8 }} />
-            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Download</Text>
+            <Ionicons name="download-outline" size={16} color={Colors.gray[700]} style={{ marginEnd: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{bd("download")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -3388,15 +3663,74 @@ export default function BookingDetailScreen() {
             <TouchableOpacity
               onPress={() => Linking.openURL(helpUrl)}
               accessibilityRole="link"
-              accessibilityLabel="Help"
+              accessibilityLabel={bd("helpA11y")}
             >
-              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Help</Text>
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>{bd("help")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={runningLateOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setRunningLateOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
+          onPress={() => setRunningLateOpen(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>
+              {bd("runningLateTitle")}
+            </Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>
+              {bd("runningLateBody")}
+            </Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {RUNNING_LATE_MINUTES.map((mins) => (
+                <TouchableOpacity
+                  key={mins}
+                  disabled={runningLateSubmitting}
+                  onPress={() => void handleReportRunningLate(mins)}
+                  style={{
+                    minWidth: "30%",
+                    flexGrow: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    alignItems: "center",
+                    opacity: runningLateSubmitting ? 0.5 : 1,
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={bd("reportMinLateA11y", { minutes: mins })}
+                >
+                  {runningLateSubmitting ? (
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                  ) : (
+                    <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{bd("minShort", { minutes: mins })}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              onPress={() => setRunningLateOpen(false)}
+              style={{ marginTop: 12, paddingVertical: 12, alignItems: "center" }}
+              accessibilityRole="button"
+              accessibilityLabel={bd("cancelRunningLateA11y")}
+            >
+              <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>{bd("cancel")}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Post-completion modal: once per booking when opening a completed booking */}
       <Modal
@@ -3418,13 +3752,13 @@ export default function BookingDetailScreen() {
                 <Ionicons name="trophy" size={32} color={Colors.primary} />
               </View>
             </View>
-            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>Booking complete</Text>
+            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>{bd("completionTitle")}</Text>
             <Text style={{ fontSize: 15, color: Colors.gray[600], textAlign: "center", marginBottom: (booking?.loyalty_points_earned ?? 0) > 0 ? 12 : 20 }}>
-              You’re all set. Thanks for booking with us.
+              {bd("completionBody")}
             </Text>
             {(booking?.loyalty_points_earned ?? 0) > 0 && (
               <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 20 }}>
-                You earned {booking.loyalty_points_earned} loyalty points. They’ve been added to your balance.
+                {bd("loyaltyEarned", { points: booking.loyalty_points_earned })}
               </Text>
             )}
             <TouchableOpacity
@@ -3432,14 +3766,14 @@ export default function BookingDetailScreen() {
               style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
               activeOpacity={0.8}
             >
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Write a review</Text>
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>{bd("writeReviewCta")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => dismissCompletionModal(true)}
               style={{ paddingVertical: 14, alignItems: "center" }}
               activeOpacity={0.8}
             >
-              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
+              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>{bd("maybeLater")}</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>

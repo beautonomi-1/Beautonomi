@@ -2,12 +2,13 @@
  * Native Create automation — POST /api/provider/automations with full payload
  * (trigger_config, action_config message_template) aligned with web automations.
  */
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import type { Router } from "expo-router";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -17,38 +18,44 @@ import { twStyle } from "@/lib/twStyle";
 import { isPlanGateErrorCode, showPlanGateAlert } from "@/lib/plan-gate";
 
 const TRIGGER_TYPES = [
-  { label: "Booking completed", value: "booking_completed" },
-  { label: "Appointment reminder", value: "appointment_reminder" },
-  { label: "No-show", value: "appointment_no_show" },
-  { label: "Birthday", value: "client_birthday" },
-  { label: "Client inactive (win-back)", value: "client_inactive" },
-  { label: "Visit milestone", value: "visit_milestone" },
-  { label: "Referral received", value: "referral_received" },
-  { label: "Seasonal promotion", value: "seasonal_promotion" },
+  { labelKey: "triggerBookingCompleted", value: "booking_completed" },
+  { labelKey: "triggerAppointmentReminder", value: "appointment_reminder" },
+  { labelKey: "triggerNoShow", value: "appointment_no_show" },
+  { labelKey: "triggerBirthday", value: "client_birthday" },
+  { labelKey: "triggerClientInactive", value: "client_inactive" },
+  { labelKey: "triggerVisitMilestone", value: "visit_milestone" },
+  { labelKey: "triggerReferralReceived", value: "referral_received" },
+  { labelKey: "triggerSeasonal", value: "seasonal_promotion" },
 ] as const;
 
 const REMINDER_HOURS = [
-  { label: "1h", value: 1 },
-  { label: "24h", value: 24 },
-  { label: "48h", value: 48 },
+  { labelKey: "reminder1h", value: 1 },
+  { labelKey: "reminder24h", value: 24 },
+  { labelKey: "reminder48h", value: 48 },
 ] as const;
 
 const ACTION_TYPES = [
-  { label: "Email", value: "email" },
-  { label: "SMS", value: "sms" },
-  { label: "Push notification", value: "notification" },
-  { label: "WhatsApp", value: "whatsapp" },
+  { labelKey: "actionEmail", value: "email" },
+  { labelKey: "actionSms", value: "sms" },
+  { labelKey: "actionPush", value: "notification" },
+  { labelKey: "actionWhatsapp", value: "whatsapp" },
 ] as const;
 
-function alertCreateError(message: string, errorCode: string | null, router: Router) {
+function alertCreateError(message: string, errorCode: string | null, router: Router, errorTitle: string) {
   if (isPlanGateErrorCode(errorCode)) {
     showPlanGateAlert({ message, errorCode, router });
     return;
   }
-  Alert.alert("Error", message);
+  Alert.alert(errorTitle, message);
 }
 
 export default function AutomationsCreateScreen() {
+  const { t } = useTranslation();
+  const ac = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.automationsCreate.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [name, setName] = useState("");
@@ -57,8 +64,8 @@ export default function AutomationsCreateScreen() {
   const [reminderHours, setReminderHours] = useState<number>(24);
   const [actionType, setActionType] = useState<"email" | "sms" | "notification" | "whatsapp">("sms");
   const [delayMinutes, setDelayMinutes] = useState("0");
-  const [messageTemplate, setMessageTemplate] = useState(
-    "Hi {{name}}, thanks for booking with us. See you soon!",
+  const [messageTemplate, setMessageTemplate] = useState(() =>
+    t("provider.mobile.screens.automationsCreate.defaultMessage"),
   );
   const [emailSubject, setEmailSubject] = useState("");
 
@@ -66,20 +73,20 @@ export default function AutomationsCreateScreen() {
 
   const handleCreate = async () => {
     if (!name.trim()) {
-      Alert.alert("Required", "Enter a name for the automation.");
+      Alert.alert(ac("requiredTitle"), ac("nameRequired"));
       return;
     }
     if (!messageTemplate.trim()) {
-      Alert.alert("Required", "Enter a message template.");
+      Alert.alert(ac("requiredTitle"), ac("messageRequired"));
       return;
     }
     if (actionType === "email" && !emailSubject.trim()) {
-      Alert.alert("Required", "Enter an email subject.");
+      Alert.alert(ac("requiredTitle"), ac("subjectRequired"));
       return;
     }
     const delay = parseInt(delayMinutes, 10);
     if (isNaN(delay) || delay < 0) {
-      Alert.alert("Invalid", "Delay must be 0 or more minutes.");
+      Alert.alert(ac("invalidTitle"), ac("invalidDelay"));
       return;
     }
 
@@ -105,7 +112,7 @@ export default function AutomationsCreateScreen() {
       is_active: true,
     });
     if (error) {
-      alertCreateError(error, errorCode, router);
+      alertCreateError(error, errorCode, router, ac("errorTitle"));
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -117,8 +124,8 @@ export default function AutomationsCreateScreen() {
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
       <ScreenHeader
-        title="Create automation"
-        subtitle="Trigger, channel, and message template"
+        title={ac("title")}
+        subtitle={ac("subtitle")}
         onBack={() => router.back()}
       />
       <KeyboardAvoidingView
@@ -134,53 +141,53 @@ export default function AutomationsCreateScreen() {
         >
           <View style={twStyle("mb-4 rounded-xl border border-pink-100 bg-pink-50/80 px-3 py-2.5")}>
             <Text style={twStyle("text-xs text-gray-700 leading-5")}>
-              SMS and other channels are included with your platform subscription; volume follows your plan limits.
+              {ac("smsIncluded")}
             </Text>
           </View>
 
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ac("name")}</Text>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="e.g. Thank you after booking"
+              placeholder={ac("namePlaceholder")}
               placeholderTextColor="#9ca3af"
               style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
             />
           </View>
 
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description (optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ac("description")}</Text>
             <TextInput
               value={description}
               onChangeText={setDescription}
-              placeholder="Short internal description"
+              placeholder={ac("descriptionPlaceholder")}
               placeholderTextColor="#9ca3af"
               style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
             />
           </View>
 
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>When (trigger)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ac("whenTrigger")}</Text>
             <View style={twStyle("flex-row flex-wrap gap-2")}>
-              {TRIGGER_TYPES.map((t) => (
+              {TRIGGER_TYPES.map((item) => (
                 <TouchableOpacity
-                  key={t.value}
-                  onPress={() => setTriggerType(t.value)}
+                  key={item.value}
+                  onPress={() => setTriggerType(item.value)}
                   style={
-                    triggerType === t.value
+                    triggerType === item.value
                       ? twStyle("rounded-xl bg-gray-900 px-4 py-2.5")
                       : twStyle("rounded-xl border border-gray-200 bg-white px-4 py-2.5")
                   }
                 >
                   <Text
                     style={
-                      triggerType === t.value
+                      triggerType === item.value
                         ? twStyle("font-medium text-white")
                         : twStyle("text-gray-700")
                     }
                   >
-                    {t.label}
+                    {ac(item.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -189,7 +196,7 @@ export default function AutomationsCreateScreen() {
 
           {triggerType === "appointment_reminder" ? (
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Remind before appointment</Text>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ac("remindBefore")}</Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {REMINDER_HOURS.map((h) => (
                   <TouchableOpacity
@@ -208,7 +215,7 @@ export default function AutomationsCreateScreen() {
                           : twStyle("text-gray-700")
                       }
                     >
-                      {h.label}
+                      {ac(h.labelKey)}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -217,7 +224,7 @@ export default function AutomationsCreateScreen() {
           ) : null}
 
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Then (channel)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ac("thenChannel")}</Text>
             <View style={twStyle("flex-row flex-wrap gap-2")}>
               {ACTION_TYPES.map((a) => (
                 <TouchableOpacity
@@ -236,7 +243,7 @@ export default function AutomationsCreateScreen() {
                         : twStyle("text-gray-700")
                     }
                   >
-                    {a.label}
+                    {ac(a.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -245,11 +252,11 @@ export default function AutomationsCreateScreen() {
 
           {isEmail ? (
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Email subject</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ac("emailSubject")}</Text>
               <TextInput
                 value={emailSubject}
                 onChangeText={setEmailSubject}
-                placeholder="Subject line"
+                placeholder={ac("subjectPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
@@ -257,23 +264,23 @@ export default function AutomationsCreateScreen() {
           ) : null}
 
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Message template</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ac("messageTemplate")}</Text>
             <TextInput
               value={messageTemplate}
               onChangeText={setMessageTemplate}
-              placeholder="{{name}}, {{appointment_date}}, …"
+              placeholder={ac("templatePlaceholder")}
               placeholderTextColor="#9ca3af"
               multiline
               textAlignVertical="top"
               style={twStyle("min-h-[140px] rounded-xl border border-gray-200 bg-white px-4 py-3 font-mono text-sm text-gray-900")}
             />
             <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-              {"{{name}}"}, {"{{appointment_date}}"}, {"{{appointment_time}}"}, {"{{booking_number}}"}
+              {ac("templateTokens")}
             </Text>
           </View>
 
           <View style={twStyle("mb-6")}>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Delay (minutes)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{ac("delayMinutes")}</Text>
             <TextInput
               value={delayMinutes}
               onChangeText={setDelayMinutes}
@@ -284,7 +291,7 @@ export default function AutomationsCreateScreen() {
             />
           </View>
 
-          <ActionButton label={loading ? "Creating…" : "Create automation"} onPress={handleCreate} loading={loading} fullWidth />
+          <ActionButton label={loading ? ac("creating") : ac("create")} onPress={handleCreate} loading={loading} fullWidth />
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>

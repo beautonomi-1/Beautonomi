@@ -23,6 +23,9 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /* ─── types ─── */
 interface PaymentSettings {
@@ -102,7 +105,7 @@ function ToggleRow({
 }) {
   return (
     <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
-      <View style={twStyle("mr-3 flex-1")}>
+      <View style={twStyle("me-3 flex-1")}>
         <Text style={twStyle("text-sm font-medium text-gray-700")}>{label}</Text>
         {description && (
           <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{description}</Text>
@@ -121,9 +124,15 @@ function ToggleRow({
 
 /* ─── screen ─── */
 export default function PaymentSettingsScreen() {
+  const { t } = useTranslation();
+  const ps = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.paymentsSettings.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const { settings: paycloudSettings } = usePayCloudSettings();
   const {
@@ -143,27 +152,27 @@ export default function PaymentSettingsScreen() {
       integration?.api_key_set === true);
   const yocoStatusLabel =
     integration?.oauth_connected === true || yocoCredentialMode === "oauth"
-      ? "Web POS connected"
+      ? ps("yocoStatusWebPos")
       : yocoCredentialMode === "checkout"
-        ? "Checkout only"
-        : "Not connected";
+        ? ps("yocoStatusCheckout")
+        : ps("yocoStatusNotConnected");
   const yocoSubtitle =
     integration?.oauth_connected === true || yocoCredentialMode === "oauth"
-      ? "Card terminals and tap-to-pay"
+      ? ps("yocoSubWebPos")
       : yocoCredentialMode === "checkout"
-        ? "Hosted checkout links and QR"
-        : "Card & tap-to-pay";
+        ? ps("yocoSubCheckout")
+        : ps("yocoSubDefault");
   const paycloudStatusLabel = paycloudSettings?.ready
-    ? "Ready"
+    ? ps("paycloudStatusReady")
     : paycloudSettings?.accept_paycloud
-      ? "Set up"
-      : "Off";
+      ? ps("paycloudStatusSetup")
+      : ps("paycloudStatusOff");
   const paycloudConnected = paycloudSettings?.ready === true;
   const paycloudSubtitle = paycloudSettings?.ready
-    ? "Terminals active — collect at checkout"
+    ? ps("paycloudSubReady")
     : paycloudSettings?.accept_paycloud
-      ? "Finish machine setup to start collecting"
-      : "Manage terminals, shop & payments";
+      ? ps("paycloudSubSetup")
+      : ps("paycloudSubDefault");
 
   const [form, setForm] = useState<PaymentSettings>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
@@ -238,10 +247,10 @@ export default function PaymentSettingsScreen() {
       payload,
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(ps("errorTitle"), error);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Saved", "Payment settings updated successfully.");
+      Alert.alert(ps("savedTitle"), ps("savedBody"));
       setHasChanges(false);
       refresh();
     }
@@ -250,7 +259,7 @@ export default function PaymentSettingsScreen() {
   if (loading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Payment Settings" showBack />
+        <ScreenHeader title={ps("title")} showBack />
         <LoadingState />
       </ScreenContainer>
     );
@@ -259,7 +268,7 @@ export default function PaymentSettingsScreen() {
   if (fetchError && !settings) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Payment Settings" showBack />
+        <ScreenHeader title={ps("title")} showBack />
         <ErrorState message={fetchError} onRetry={refresh} />
       </ScreenContainer>
     );
@@ -267,17 +276,17 @@ export default function PaymentSettingsScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Payment Settings" showBack />
+      <ScreenHeader title={ps("title")} showBack />
 
       {(yocoEnabled || paycloudEnabled || paystackTerminalEnabled) && (
         <>
           {/* ─── Payment Gateway ─── */}
-          <SectionHeader title="Payment Gateway" />
+          <SectionHeader title={ps("sectionGateway")} />
           {yocoEnabled && (
             <TouchableOpacity
               style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}
               onPress={() => router.push("/(app)/(tabs)/more/settings/yoco-devices")}
-              accessibilityLabel="Yoco payment gateway — tap to manage"
+              accessibilityLabel={ps("yocoA11y")}
               accessibilityRole="button"
             >
               <View style={twStyle("flex-row items-center justify-between")}>
@@ -285,17 +294,17 @@ export default function PaymentSettingsScreen() {
                   <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
                     <Ionicons name="card-outline" size={20} color="#3b82f6" />
                   </View>
-                  <View style={twStyle("ml-3")}>
-                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Yoco</Text>
+                  <View style={twStyle("ms-3")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>{ps("yoco")}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>{yocoSubtitle}</Text>
                   </View>
                 </View>
                 <View style={twStyle("flex-row items-center")}>
                   <View
-                    style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`)}
+                    style={twStyle(`me-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`)}
                   >
                     <View
-                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`)}
+                      style={twStyle(`me-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`)}
                     />
                     <Text
                       style={twStyle(`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`)}
@@ -303,12 +312,12 @@ export default function PaymentSettingsScreen() {
                       {yocoStatusLabel}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </View>
               {!yocoConnected && (
                 <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
-                  Tap to connect your Yoco account →
+                  {ps("yocoConnectHint")}
                 </Text>
               )}
             </TouchableOpacity>
@@ -317,7 +326,7 @@ export default function PaymentSettingsScreen() {
             <TouchableOpacity
               style={twStyle(`${yocoEnabled ? "mt-3 " : ""}rounded-2xl border border-gray-100 bg-white p-4`)}
               onPress={() => router.push("/(app)/(tabs)/more/card-machines")}
-              accessibilityLabel="Card machines — tap to manage"
+              accessibilityLabel={ps("cardMachinesA11y")}
               accessibilityRole="button"
             >
               <View style={twStyle("flex-row items-center justify-between")}>
@@ -325,17 +334,17 @@ export default function PaymentSettingsScreen() {
                   <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-violet-50")}>
                     <Ionicons name="hardware-chip-outline" size={20} color="#7c3aed" />
                   </View>
-                  <View style={twStyle("ml-3")}>
-                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Card machines</Text>
+                  <View style={twStyle("ms-3")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>{ps("cardMachines")}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>{paycloudSubtitle}</Text>
                   </View>
                 </View>
                 <View style={twStyle("flex-row items-center")}>
                   <View
-                    style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${paycloudConnected ? "bg-green-50" : "bg-gray-100"}`)}
+                    style={twStyle(`me-2 flex-row items-center rounded-full px-3 py-1 ${paycloudConnected ? "bg-green-50" : "bg-gray-100"}`)}
                   >
                     <View
-                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${paycloudConnected ? "bg-green-500" : "bg-gray-400"}`)}
+                      style={twStyle(`me-1.5 h-2 w-2 rounded-full ${paycloudConnected ? "bg-green-500" : "bg-gray-400"}`)}
                     />
                     <Text
                       style={twStyle(`text-xs font-medium ${paycloudConnected ? "text-green-700" : "text-gray-500"}`)}
@@ -343,7 +352,7 @@ export default function PaymentSettingsScreen() {
                       {paycloudStatusLabel}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
                 </View>
               </View>
             </TouchableOpacity>
@@ -352,7 +361,7 @@ export default function PaymentSettingsScreen() {
             <TouchableOpacity
               style={twStyle("mt-3 rounded-2xl border border-emerald-100 bg-white p-4")}
               onPress={() => router.push("/(app)/(tabs)/more/paystack-terminal")}
-              accessibilityLabel="Paystack Terminal — tap to manage"
+              accessibilityLabel={ps("paystackA11y")}
               accessibilityRole="button"
             >
               <View style={twStyle("flex-row items-center justify-between")}>
@@ -360,15 +369,15 @@ export default function PaymentSettingsScreen() {
                   <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-emerald-50")}>
                     <Ionicons name="qr-code-outline" size={20} color="#16a34a" />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
-                    <Text style={twStyle("text-base font-semibold text-gray-900")}>Paystack Terminal</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>QR and link payments through Beautonomi payouts</Text>
+                  <View style={twStyle("ms-3 flex-1")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>{ps("paystackTerminal")}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{ps("paystackSub")}</Text>
                   </View>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
               </View>
               <Text style={twStyle("mt-2 text-xs text-emerald-700")}>
-                Code and link work immediately; branded QR/poster is prepared by Beautonomi Ops.
+                {ps("paystackHint")}
               </Text>
             </TouchableOpacity>
           )}
@@ -376,41 +385,41 @@ export default function PaymentSettingsScreen() {
       )}
 
       {/* ─── Accepted Payment Methods ─── */}
-      <SectionHeader title="Accepted Payment Methods" />
+      <SectionHeader title={ps("sectionAcceptedMethods")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
-          label="Accept Cash"
-          description="Allow cash payments at point of sale"
+          label={ps("acceptCash")}
+          description={ps("acceptCashDesc")}
           value={form.accept_cash}
           onValueChange={(v) => update("accept_cash", v)}
-          accessibilityLabel="Toggle accept cash payments"
+          accessibilityLabel={ps("acceptCashA11y")}
         />
         {yocoEnabled && (
           <ToggleRow
-            label="Accept Card (Yoco)"
-            description="Accept card payments via Yoco terminal"
+            label={ps("acceptCard")}
+            description={ps("acceptCardDesc")}
             value={form.accept_card}
             onValueChange={(v) => update("accept_card", v)}
-            accessibilityLabel="Toggle accept card payments"
+            accessibilityLabel={ps("acceptCardA11y")}
           />
         )}
         {paystackTerminalEnabled && (
           <ToggleRow
-            label="Accept Paystack Terminal"
-            description="Accept QR and link payments via Paystack Virtual Terminal"
+            label={ps("acceptPaystack")}
+            description={ps("acceptPaystackDesc")}
             value={form.accept_paystack_terminal}
             onValueChange={(v) => update("accept_paystack_terminal", v)}
-            accessibilityLabel="Toggle accept Paystack Terminal payments"
+            accessibilityLabel={ps("acceptPaystackA11y")}
           />
         )}
         <View style={twStyle("px-4 py-3.5")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <View style={twStyle("mr-3 flex-1")}>
+            <View style={twStyle("me-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                Accept Online Payments
+                {ps("acceptOnline")}
               </Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                Allow clients to pay online when booking
+                {ps("acceptOnlineDesc")}
               </Text>
             </View>
             <Switch
@@ -418,42 +427,42 @@ export default function PaymentSettingsScreen() {
               onValueChange={(v) => update("accept_online", v)}
               trackColor={{ false: "#d1d5db", true: "#818cf8" }}
               thumbColor={form.accept_online ? "#6366f1" : "#f3f4f6"}
-              accessibilityLabel="Toggle accept online payments"
+              accessibilityLabel={ps("acceptOnlineA11y")}
             />
           </View>
         </View>
       </View>
 
       {/* ─── Tax Settings ─── */}
-      <SectionHeader title="Tax Settings" />
+      <SectionHeader title={ps("sectionTax")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
-          label="VAT Registered"
-          description="Is your business VAT registered?"
+          label={ps("vatRegistered")}
+          description={ps("vatRegisteredDesc")}
           value={form.vat_registered}
           onValueChange={(v) => update("vat_registered", v)}
-          accessibilityLabel="Toggle VAT registered"
+          accessibilityLabel={ps("vatRegisteredA11y")}
         />
 
         {form.vat_registered && (
           <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
             <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-              VAT Number
+              {ps("vatNumber")}
             </Text>
             <TextInput
               style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
               value={form.vat_number ?? ""}
               onChangeText={(v) => update("vat_number", v)}
-              placeholder="Enter VAT number"
+              placeholder={ps("vatNumberPlaceholder")}
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="VAT number input"
+              accessibilityLabel={ps("vatNumberA11y")}
             />
           </View>
         )}
 
         <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
           <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-            Tax Rate (%)
+            {ps("taxRate")}
           </Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
@@ -464,22 +473,22 @@ export default function PaymentSettingsScreen() {
                 update("tax_rate", Math.min(100, Math.max(0, num)));
               }}
               keyboardType="decimal-pad"
-              placeholder="15"
+              placeholder={ps("taxRatePlaceholder")}
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="Tax rate percentage"
+              accessibilityLabel={ps("taxRateA11y")}
             />
-            <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>%</Text>
+            <Text style={twStyle("ms-2 text-lg font-semibold text-gray-400")}>%</Text>
           </View>
         </View>
 
         <View style={twStyle("px-4 py-3.5")}>
           <View style={twStyle("flex-row items-center justify-between")}>
-            <View style={twStyle("mr-3 flex-1")}>
+            <View style={twStyle("me-3 flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                Prices Include Tax
+                {ps("pricesIncludeTax")}
               </Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                Service prices are tax-inclusive
+                {ps("pricesIncludeTaxDesc")}
               </Text>
             </View>
             <Switch
@@ -487,26 +496,26 @@ export default function PaymentSettingsScreen() {
               onValueChange={(v) => update("tax_inclusive", v)}
               trackColor={{ false: "#d1d5db", true: "#818cf8" }}
               thumbColor={form.tax_inclusive ? "#6366f1" : "#f3f4f6"}
-              accessibilityLabel="Toggle prices include tax"
+              accessibilityLabel={ps("pricesIncludeTaxA11y")}
             />
           </View>
         </View>
       </View>
 
       {/* ─── No-show fees ─── */}
-      <SectionHeader title="No-show Fees" />
+      <SectionHeader title={ps("sectionNoShow")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
-          label="Charge no-show fee"
-          description="Retain a fee when a client no-shows a confirmed booking"
+          label={ps("noShowFee")}
+          description={ps("noShowFeeDesc")}
           value={form.no_show_fee_enabled}
           onValueChange={(v) => update("no_show_fee_enabled", v)}
-          accessibilityLabel="Toggle no-show fee"
+          accessibilityLabel={ps("noShowFeeA11y")}
         />
         {form.no_show_fee_enabled && (
           <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
             <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-              No-show fee amount
+              {ps("noShowFeeAmount")}
             </Text>
             <TextInput
               style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
@@ -518,40 +527,40 @@ export default function PaymentSettingsScreen() {
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="No-show fee amount"
+              accessibilityLabel={ps("noShowFeeAmountA11y")}
             />
           </View>
         )}
         <TouchableOpacity
           style={twStyle("flex-row items-center px-4 py-3.5")}
           onPress={() => router.push("/(app)/(tabs)/more/settings/cancellation-policies" as never)}
-          accessibilityLabel="Open cancellation policies"
+          accessibilityLabel={ps("openCancellationPoliciesA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="document-text-outline" size={18} color="#6366f1" />
-          <Text style={twStyle("ml-2 flex-1 text-sm text-indigo-700")}>
-            Manage late-cancel policies
+          <Text style={twStyle("ms-2 flex-1 text-sm text-indigo-700")}>
+            {ps("manageLateCancel")}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color="#6366f1" />
+          <DirectionalIcon name="chevron-forward" size={16} color="#6366f1" />
         </TouchableOpacity>
       </View>
 
       {/* ─── Tips ─── */}
-      <SectionHeader title="Tip Settings" />
+      <SectionHeader title={ps("sectionTips")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
-          label="Enable Tips"
-          description="Allow clients to add tips"
+          label={ps("enableTips")}
+          description={ps("enableTipsDesc")}
           value={form.tips_enabled}
           onValueChange={(v) => update("tips_enabled", v)}
-          accessibilityLabel="Toggle enable tips"
+          accessibilityLabel={ps("enableTipsA11y")}
         />
 
         {form.tips_enabled && (
           <>
             <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
               <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-                Tip Presets
+                {ps("tipPresets")}
               </Text>
               <View style={twStyle("flex-row flex-wrap")}>
                 {PRESET_OPTIONS.map((p) => {
@@ -559,9 +568,9 @@ export default function PaymentSettingsScreen() {
                   return (
                     <TouchableOpacity
                       key={p}
-                      style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
+                      style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginEnd: 8, marginBottom: 8 }]}
                       onPress={() => togglePreset(p)}
-                      accessibilityLabel={`${p}% tip preset ${selected ? "selected" : "not selected"}`}
+                      accessibilityLabel={ps("tipPresetA11y", { percent: p, state: selected ? ps("tipPresetSelected") : ps("tipPresetNotSelected") })}
                       accessibilityRole="button"
                     >
                       <Text
@@ -578,14 +587,14 @@ export default function PaymentSettingsScreen() {
             <View style={twStyle("px-4 py-3.5")}>
               <View style={twStyle("flex-row items-center justify-between")}>
                 <Text style={twStyle("text-sm text-gray-700")}>
-                  Auto-send Receipts
+                  {ps("autoSendReceipts")}
                 </Text>
                 <Switch
                   value={form.receipt_auto_send}
                   onValueChange={(v) => update("receipt_auto_send", v)}
                   trackColor={{ false: "#d1d5db", true: "#818cf8" }}
                   thumbColor={form.receipt_auto_send ? "#6366f1" : "#f3f4f6"}
-                  accessibilityLabel="Toggle auto-send receipts"
+                  accessibilityLabel={ps("autoSendReceiptsA11y")}
                 />
               </View>
             </View>
@@ -594,9 +603,9 @@ export default function PaymentSettingsScreen() {
       </View>
 
       {/* ─── Currency ─── */}
-      <SectionHeader title="Currency" />
+      <SectionHeader title={ps("sectionCurrency")} />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3.5")}>
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Currency</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{ps("currencyLabel")}</Text>
         <View style={twStyle("flex-row flex-wrap")}>
           {([LAST_RESORT_CURRENCY, "USD", "GBP", "EUR", "BWP", "NAD", "MZN"] as const).map((c) => {
             const symbols: Record<string, string> = {
@@ -612,9 +621,9 @@ export default function PaymentSettingsScreen() {
             return (
               <TouchableOpacity
                 key={c}
-                style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
+                style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() => update("currency", c)}
-                accessibilityLabel={`Select currency ${c}`}
+                accessibilityLabel={ps("selectCurrencyA11y", { code: c })}
                 accessibilityRole="button"
               >
                 <Text
@@ -631,7 +640,7 @@ export default function PaymentSettingsScreen() {
       {/* ─── Save ─── */}
       <View style={twStyle("mt-6")}>
         <ActionButton
-          label={saving ? "Saving…" : "Save Payment Settings"}
+          label={saving ? ps("saving") : ps("savePaymentSettings")}
           onPress={handleSave}
           loading={saving}
           disabled={!hasChanges}
@@ -641,7 +650,7 @@ export default function PaymentSettingsScreen() {
 
       {hasChanges && (
         <Text style={twStyle("mt-2 text-center text-xs text-amber-600")}>
-          You have unsaved changes
+          {ps("unsavedChanges")}
         </Text>
       )}
 

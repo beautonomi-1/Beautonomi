@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { View, Text, Alert, Switch, TouchableOpacity } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -16,13 +17,19 @@ interface VisibilitySettings {
   salon_visibility_mode: "all" | "booked_only" | "none";
 }
 
-const MODE_OPTIONS: { label: string; value: string; description: string; icon: string }[] = [
-  { label: "Everyone", value: "all", description: "Visible to all users", icon: "globe-outline" },
-  { label: "Booked Only", value: "booked_only", description: "Only clients who have booked", icon: "people-outline" },
-  { label: "Hidden", value: "none", description: "Not visible to anyone", icon: "eye-off-outline" },
+const MODE_OPTIONS: { labelKey: string; value: string; descKey: string; icon: string }[] = [
+  { labelKey: "modeEveryone", value: "all", descKey: "modeEveryoneDesc", icon: "globe-outline" },
+  { labelKey: "modeBookedOnly", value: "booked_only", descKey: "modeBookedOnlyDesc", icon: "people-outline" },
+  { labelKey: "modeHidden", value: "none", descKey: "modeHiddenDesc", icon: "eye-off-outline" },
 ];
 
 export default function CustomerVisibilityScreen() {
+  const { t } = useTranslation();
+  const cv = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.customerVisibility.${key}`, opts) as string,
+    [t],
+  );
   const { data: settings, loading, refresh } = useApi<VisibilitySettings>("/api/provider/customer-visibility");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
@@ -53,7 +60,7 @@ export default function CustomerVisibilityScreen() {
       customer_visibility_mode: customerMode,
       salon_visibility_mode: salonMode,
     });
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(cv("errorTitle"), error);
     else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDirty(false);
@@ -76,27 +83,31 @@ export default function CustomerVisibilityScreen() {
 
   const customerVis = visibilityIcon(customerMode);
   const salonVis = visibilityIcon(salonMode);
+  const modeLabel = (mode: string) => {
+    const opt = MODE_OPTIONS.find((o) => o.value === mode);
+    return opt ? cv(opt.labelKey) : mode;
+  };
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Customer Visibility" showBack subtitle="Control what's visible" />
+      <ScreenHeader title={cv("title")} showBack subtitle={cv("subtitle")} />
 
       {/* Preview cards */}
       <View style={twStyle("mb-4 flex-row")}>
-        <View style={[twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
+        <View style={[twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4"), { marginEnd: 12 }]}>
           <Ionicons name={customerVis.icon as keyof typeof Ionicons.glyphMap} size={28} color={customerVis.color} />
-          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Client Visibility</Text>
-          <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{customerMode.replace("_", " ")}</Text>
+          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>{cv("clientVisibility")}</Text>
+          <Text style={twStyle("text-[10px] text-gray-500")}>{modeLabel(customerMode)}</Text>
         </View>
         <View style={twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4")}>
           <Ionicons name={salonVis.icon as keyof typeof Ionicons.glyphMap} size={28} color={salonVis.color} />
-          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Salon Visibility</Text>
-          <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{salonMode.replace("_", " ")}</Text>
+          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>{cv("salonVisibility")}</Text>
+          <Text style={twStyle("text-[10px] text-gray-500")}>{modeLabel(salonMode)}</Text>
         </View>
       </View>
 
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-        Access Controls
+        {cv("accessControls")}
       </Text>
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
@@ -104,9 +115,9 @@ export default function CustomerVisibilityScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-indigo-50")}>
               <Ionicons name="list-outline" size={18} color="#6366f1" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Show Client List to Staff</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>Staff can see the full client list</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{cv("showClientList")}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{cv("showClientListHint")}</Text>
             </View>
           </View>
           <Switch
@@ -121,9 +132,9 @@ export default function CustomerVisibilityScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-green-50")}>
               <Ionicons name="storefront-outline" size={18} color="#22c55e" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>Show Salon on Client App</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>Appear in client searches</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{cv("showSalon")}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{cv("showSalonHint")}</Text>
             </View>
           </View>
           <Switch
@@ -136,7 +147,7 @@ export default function CustomerVisibilityScreen() {
       </View>
 
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-        Who Can See Your Clients
+        {cv("whoCanSeeClients")}
       </Text>
       <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {MODE_OPTIONS.map((opt, idx) => (
@@ -150,9 +161,9 @@ export default function CustomerVisibilityScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
               <Ionicons name={opt.icon as keyof typeof Ionicons.glyphMap} size={18} color="#6b7280" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{opt.description}</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{cv(opt.labelKey)}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{cv(opt.descKey)}</Text>
             </View>
             {customerMode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -162,7 +173,7 @@ export default function CustomerVisibilityScreen() {
       </View>
 
       <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
-        Who Can See Your Salon
+        {cv("whoCanSeeSalon")}
       </Text>
       <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {MODE_OPTIONS.map((opt, idx) => (
@@ -176,9 +187,9 @@ export default function CustomerVisibilityScreen() {
             <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
               <Ionicons name={opt.icon as keyof typeof Ionicons.glyphMap} size={18} color="#6b7280" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{opt.description}</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{cv(opt.labelKey)}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{cv(opt.descKey)}</Text>
             </View>
             {salonMode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -187,7 +198,7 @@ export default function CustomerVisibilityScreen() {
         ))}
       </View>
 
-      <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
+      <ActionButton label={cv("saveSettings")} onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
       <View style={twStyle("h-8")} />
     </ScreenContainer>
   );

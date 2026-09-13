@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { MapPin, Home, ChevronRight, Loader2, LocateFixed } from "lucide-react";
 import { useAtHomeAddressPrefill } from "@/hooks/use-at-home-address-prefill";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -67,6 +68,7 @@ export function StepVenue({
   displayCurrency = "ZAR",
   defaultCountryCode = "ZA",
 }: StepVenueProps) {
+  const { t } = useTranslation();
   const venueType = data.venueType;
   const [travelPreview, setTravelPreview] = useState<TravelFeePreviewState>({ status: "idle" });
   const previewSeq = useRef(0);
@@ -182,13 +184,13 @@ export function StepVenue({
         } else {
           setTravelPreview({
             status: "error",
-            reason: d?.reason ?? "We could not confirm travel to this address.",
+            reason: d?.reason ?? t("web.book.engine.couldNotConfirmTravel"),
             distanceKm: d?.distanceKm,
           });
         }
       } catch (e) {
         if (previewSeq.current !== seq) return;
-        const msg = e instanceof FetchError ? e.message : "Address check failed. You can still try to continue.";
+        const msg = e instanceof FetchError ? e.message : t("web.book.engine.addressCheckFailed");
         setTravelPreview({ status: "error", reason: msg });
       }
     }, 500);
@@ -218,10 +220,10 @@ export function StepVenue({
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
         <h2
-          className="text-2xl font-semibold tracking-tight text-left"
+          className="text-2xl font-semibold tracking-tight text-start"
           style={{ color: BOOKING_TEXT_PRIMARY }}
         >
-          {providerName ? `How would you like to experience ${providerName}?` : "Where would you like your appointment?"}
+          {providerName ? t("web.book.engine.venueExperienceProvider", { providerName }) : t("web.book.engine.whereAppointment")}
         </h2>
       </div>
 
@@ -231,7 +233,7 @@ export function StepVenue({
             type="button"
             onClick={() => onChange({ venueType: "at_salon" })}
             className={cn(
-              "flex items-center p-5 text-left touch-manipulation w-full rounded-3xl border-2 transition-all duration-300",
+              "flex items-center p-5 text-start touch-manipulation w-full rounded-3xl border-2 transition-all duration-300",
               MIN_TAP,
               BOOKING_ACTIVE_SCALE
             )}
@@ -242,7 +244,7 @@ export function StepVenue({
             }}
           >
             <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center mr-4 flex-shrink-0"
+              className="w-14 h-14 rounded-2xl flex items-center justify-center me-4 flex-shrink-0"
               style={{
                 backgroundColor: venueType === "at_salon" ? BOOKING_WAITLIST_BG : "rgba(0,0,0,0.04)",
                 color: venueType === "at_salon" ? BOOKING_ACCENT : undefined,
@@ -250,12 +252,12 @@ export function StepVenue({
             >
               <MapPin size={24} strokeWidth={2} className={venueType === "at_salon" ? "" : "text-gray-500"} />
             </div>
-            <div className="flex-1 min-w-0 text-left">
+            <div className="flex-1 min-w-0 text-start">
               <p className="font-semibold text-base" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                Visit Salon
+                {t("web.book.engine.visitSalon")}
               </p>
               <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                In-studio professional care
+                {t("web.book.engine.visitSalonSubtitle")}
               </p>
             </div>
           </button>
@@ -265,7 +267,7 @@ export function StepVenue({
           type="button"
           onClick={() => onChange({ venueType: "at_home" })}
           className={cn(
-            "flex items-center p-5 text-left touch-manipulation w-full rounded-3xl border-2 transition-all duration-300",
+            "flex items-center p-5 text-start touch-manipulation w-full rounded-3xl border-2 transition-all duration-300",
             MIN_TAP,
             BOOKING_ACTIVE_SCALE
           )}
@@ -276,7 +278,7 @@ export function StepVenue({
           }}
         >
           <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center mr-4 flex-shrink-0"
+            className="w-14 h-14 rounded-2xl flex items-center justify-center me-4 flex-shrink-0"
             style={{
               backgroundColor: venueType === "at_home" ? BOOKING_WAITLIST_BG : "rgba(0,0,0,0.04)",
               color: venueType === "at_home" ? BOOKING_ACCENT : undefined,
@@ -284,12 +286,12 @@ export function StepVenue({
           >
             <Home size={24} strokeWidth={2} className={venueType === "at_home" ? "" : "text-gray-500"} />
           </div>
-          <div className="flex-1 min-w-0 text-left">
+          <div className="flex-1 min-w-0 text-start">
             <p className="font-semibold text-base" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              At Your Home
+              {t("web.book.engine.atYourHomeTitle")}
             </p>
             <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              Luxury brought to your door
+              {t("web.book.engine.atYourHomeSubtitle")}
             </p>
           </div>
         </button>
@@ -301,7 +303,7 @@ export function StepVenue({
           style={cardStyle}
         >
           <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Select a Location
+            {t("web.book.engine.selectLocation")}
           </Label>
           <div className="space-y-2">
             {locations.map((loc) => (
@@ -310,7 +312,7 @@ export function StepVenue({
                 type="button"
                 onClick={() => onChange({ selectedLocation: loc })}
                 className={cn(
-                  "w-full text-left rounded-xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+                  "w-full text-start rounded-xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
                   MIN_TAP,
                   BOOKING_ACTIVE_SCALE
                 )}
@@ -322,7 +324,7 @@ export function StepVenue({
                 <div className="flex-1 min-w-0">
                   <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>{loc.name}</span>
                   <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                    {formatPublicLocationSubtitle(loc)}
+                    {formatPublicLocationSubtitle(loc, t("web.book.engine.serviceArea"))}
                   </p>
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
@@ -341,7 +343,7 @@ export function StepVenue({
           }}
         >
           <p className="text-sm" style={{ color: BOOKING_ACCENT }}>
-            This provider has no salon locations. Choose At your home or try another provider.
+            {t("web.book.engine.noSalonLocations")}
           </p>
         </div>
       )}
@@ -353,7 +355,7 @@ export function StepVenue({
         >
           <div className="flex items-center justify-between gap-2">
             <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              Your address (search for geocoding & travel fee)
+              {t("web.book.engine.addressSearchLabel")}
             </Label>
             <button
               type="button"
@@ -367,7 +369,7 @@ export function StepVenue({
               ) : (
                 <LocateFixed className="h-3.5 w-3.5" aria-hidden />
               )}
-              Use current location
+              {t("booking.useCurrentLocation")}
             </button>
           </div>
           {prefillState.status === "error" ? (
@@ -394,15 +396,15 @@ export function StepVenue({
                 atHomeAddress: { ...data.atHomeAddress, line1: value, latitude: undefined, longitude: undefined },
               })
             }
-            placeholder="Start typing your street address..."
+            placeholder={t("web.book.engine.streetAddressPlaceholder")}
             className="rounded-xl h-12 border bg-white/80 w-full"
           />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="address-city" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>City *</Label>
+              <Label htmlFor="address-city" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.cityRequiredLabel")}</Label>
               <Input
                 id="address-city"
-                placeholder="City"
+                placeholder={t("booking.cityPlaceholder")}
                 value={data.atHomeAddress.city}
                 onChange={(e) =>
                   onChange({
@@ -414,10 +416,10 @@ export function StepVenue({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="address-postal" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>Postal code</Label>
+              <Label htmlFor="address-postal" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.postalCodeLabel")}</Label>
               <Input
                 id="address-postal"
-                placeholder="Postal code"
+                placeholder={t("booking.postalCodePlaceholder")}
                 value={data.atHomeAddress.postal_code ?? ""}
                 onChange={(e) =>
                   onChange({
@@ -430,10 +432,10 @@ export function StepVenue({
             </div>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="address-country" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>Country *</Label>
+            <Label htmlFor="address-country" className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.engine.countryLabel")}</Label>
             <Input
               id="address-country"
-              placeholder="Country"
+              placeholder={t("web.book.engine.countryPlaceholder")}
               value={data.atHomeAddress.country}
               onChange={(e) =>
                 onChange({
@@ -459,33 +461,33 @@ export function StepVenue({
             {travelPreview.status === "loading" ? (
               <div className="flex items-center gap-2 text-gray-600 w-full">
                 <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
-                <span className="text-sm">Checking travel fee…</span>
+<span className="text-sm">{t("web.book.engine.checkingTravelFee")}</span>
               </div>
             ) : null}
             {travelPreview.status === "success" ? (
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  Estimated travel fee: {formatCurrency(travelPreview.travelFee, displayCurrency)}
+{t("web.book.engine.estimatedTravelFee", { amount: formatCurrency(travelPreview.travelFee, displayCurrency) })}
                 </p>
                 <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
                   {travelPreview.distanceKm != null || travelPreview.travelTimeMinutes != null ? (
                     <>
-                      {travelPreview.distanceKm != null && `About ${travelPreview.distanceKm} km`}
+                      {travelPreview.distanceKm != null && t("web.book.engine.aboutKm", { km: travelPreview.distanceKm })}
                       {travelPreview.distanceKm != null && travelPreview.travelTimeMinutes != null ? " · " : null}
-                      {travelPreview.travelTimeMinutes != null ? `~${travelPreview.travelTimeMinutes} min drive` : null}
+                      {travelPreview.travelTimeMinutes != null ? t("web.book.engine.minDrive", { minutes: travelPreview.travelTimeMinutes }) : null}
                     </>
                   ) : null}
                 </p>
                 <p className="text-xs pt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                  Final amount may be confirmed at checkout after we secure your slot.
+{t("web.book.engine.finalAmountAfterSlot")}
                 </p>
               </div>
             ) : null}
             {travelPreview.status === "error" ? (
               <div className="min-w-0 flex-1">
-                <p className="font-medium text-red-800">Travel area</p>
+                <p className="font-medium text-red-800">{t("web.book.engine.travelArea")}</p>
                 <p className="text-xs text-red-700/90 mt-1 leading-snug">{travelPreview.reason}</p>
-                <p className="text-xs text-gray-600 mt-2">You can still continue if you believe the address is correct.</p>
+                <p className="text-xs text-gray-600 mt-2">{t("web.book.engine.continueIfAddressCorrect")}</p>
               </div>
             ) : null}
           </div>
@@ -507,7 +509,7 @@ export function StepVenue({
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

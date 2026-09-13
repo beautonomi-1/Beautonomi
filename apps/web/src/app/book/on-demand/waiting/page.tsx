@@ -7,8 +7,11 @@ import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@beautonomi/i18n";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { clearBeautonomiHoldClientMarkers } from "@/lib/booking/clear-hold-client-markers";
+import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
+import { appendBookingEmbedQuery, isBookingEmbedEnabled } from "@beautonomi/utils";
 
 interface OnDemandRequest {
   id: string;
@@ -19,9 +22,11 @@ interface OnDemandRequest {
 }
 
 export default function OnDemandWaitingPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestId = searchParams.get("requestId") ?? "";
+  const embed = isBookingEmbedEnabled(searchParams);
   const onDemandConfig = useModuleConfig("on_demand");
   const [request, setRequest] = useState<OnDemandRequest | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +49,7 @@ export default function OnDemandWaitingPage() {
       setRequest(data ?? null);
       setError(null);
     } catch (e) {
-      setError(e instanceof FetchError ? e.message : "Failed to load");
+      setError(e instanceof FetchError ? e.message : t("web.book.onDemand.waiting.failedLoad"));
       setRequest(null);
     } finally {
       setLoading(false);
@@ -54,7 +59,7 @@ export default function OnDemandWaitingPage() {
   useEffect(() => {
     if (!requestId) {
       setLoading(false);
-      setError("No request ID");
+      setError(t("web.book.onDemand.waiting.noRequestId"));
       return;
     }
     load();
@@ -120,50 +125,73 @@ export default function OnDemandWaitingPage() {
   useEffect(() => {
     if (!request) return;
     if (request.status === "requested" && secondsLeft !== null && secondsLeft <= 0) {
-      router.replace(`/book/on-demand/result?status=expired&requestId=${encodeURIComponent(requestId)}`);
+      router.replace(
+        appendBookingEmbedQuery(
+          `/book/on-demand/result?status=expired&requestId=${encodeURIComponent(requestId)}`,
+          embed,
+        ),
+      );
       return;
     }
     if (request.status === "accepted") {
       if (request.booking_id) {
-        router.replace(`/account-settings/bookings/${request.booking_id}`);
+        // Account-settings is not frameable. Stay on checkout/success so the
+        // salon iframe does not go blank after the provider accepts.
+        router.replace(
+          appendBookingEmbedQuery(
+            `/checkout/success?booking_id=${encodeURIComponent(request.booking_id)}`,
+            embed,
+          ),
+        );
       } else {
-        router.replace(`/book/on-demand/result?status=accepted&requestId=${encodeURIComponent(requestId)}`);
+        router.replace(
+          appendBookingEmbedQuery(
+            `/book/on-demand/result?status=accepted&requestId=${encodeURIComponent(requestId)}`,
+            embed,
+          ),
+        );
       }
       return;
     }
     if (["declined", "cancelled", "expired"].includes(request.status)) {
-      router.replace(`/book/on-demand/result?status=${request.status}&requestId=${encodeURIComponent(requestId)}`);
+      router.replace(
+        appendBookingEmbedQuery(
+          `/book/on-demand/result?status=${request.status}&requestId=${encodeURIComponent(requestId)}`,
+          embed,
+        ),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- redirect only when status/booking_id/requestId/secondsLeft change
-  }, [request?.status, request?.booking_id, requestId, secondsLeft, router]);
+  }, [request?.status, request?.booking_id, requestId, secondsLeft, router, embed]);
 
   const handleCancel = async () => {
     if (!requestId || request?.status !== "requested") return;
-    if (!confirm("Are you sure you want to cancel this request?")) return;
+    if (!confirm(t("web.book.onDemand.waiting.cancelConfirm"))) return;
     setCancelling(true);
     try {
       await fetcher.post(`/api/me/on-demand/requests/${requestId}/cancel`, {});
       await load();
     } catch (e) {
-      alert(e instanceof FetchError ? e.message : "Failed to cancel");
+      alert(e instanceof FetchError ? e.message : t("web.book.onDemand.waiting.failedCancel"));
     } finally {
       setCancelling(false);
     }
   };
 
   const uiCopy = (onDemandConfig?.ui_copy ?? {}) as Record<string, string>;
-  const title = uiCopy.waiting_title ?? "Request sent";
-  const headline = uiCopy.waiting_headline ?? "Connecting you with beauty.";
+  const title = uiCopy.waiting_title ?? t("web.book.onDemand.waiting.title");
+  const headline = uiCopy.waiting_headline ?? t("web.book.onDemand.waiting.headline");
   const providerMessageTemplate =
     uiCopy.waiting_provider_message ??
-    "We'll confirm your booking as soon as we hear back from {provider_name}.";
-  const providerDisplayName = request?.provider_name?.trim() || "your provider";
+    t("web.book.onDemand.waiting.providerMessage");
+  const providerDisplayName =
+    request?.provider_name?.trim() || t("web.book.onDemand.waiting.providerFallback");
   const providerMessage = providerMessageTemplate.replace(
     /\{provider_name\}/gi,
     providerDisplayName
   );
-  const timerLabel = uiCopy.waiting_timer_label ?? "Time remaining";
-  const cancelCta = uiCopy.waiting_cancel_cta ?? "Cancel request";
+  const timerLabel = uiCopy.waiting_timer_label ?? t("web.book.onDemand.waiting.timerLabel");
+  const cancelCta = uiCopy.waiting_cancel_cta ?? t("web.book.onDemand.waiting.cancelCta");
   const helpUrl = uiCopy.waiting_help_url?.trim() || undefined;
 
   const shortRequestId = requestId
@@ -173,10 +201,12 @@ export default function OnDemandWaitingPage() {
   if (!requestId) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-        <p className="text-gray-600 mb-4">Missing request ID</p>
-        <Button variant="outline" asChild>
-          <Link href="/">Back</Link>
-        </Button>
+        <p className="text-gray-600 mb-4">{t("web.book.onDemand.waiting.missingRequestId")}</p>
+        {!embed ? (
+          <Button variant="outline" asChild>
+            <Link href="/">{t("web.book.onDemand.waiting.back")}</Link>
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -193,13 +223,14 @@ export default function OnDemandWaitingPage() {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
         <p className="text-gray-600 mb-4">{error}</p>
-        <Button onClick={() => { setLoading(true); load(); }}>Retry</Button>
+        <Button onClick={() => { setLoading(true); load(); }}>{t("web.book.onDemand.waiting.retry")}</Button>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
+      <BookingEmbedBridge active={embed} />
       <div className="flex-1 px-6 pt-6 pb-6 max-w-md mx-auto w-full">
         <div className="flex flex-row items-center justify-between mb-2">
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
@@ -214,7 +245,7 @@ export default function OnDemandWaitingPage() {
             rel="noopener noreferrer"
             className="text-sm text-primary font-medium mb-4 inline-block"
           >
-            Help
+            {t("web.book.onDemand.waiting.help")}
           </a>
         ) : null}
 
@@ -244,7 +275,7 @@ export default function OnDemandWaitingPage() {
             onClick={handleCancel}
             disabled={cancelling || request?.status !== "requested"}
           >
-            {cancelling ? "Cancelling…" : cancelCta}
+            {cancelling ? t("web.book.onDemand.waiting.cancelling") : cancelCta}
           </Button>
         </div>
       </div>

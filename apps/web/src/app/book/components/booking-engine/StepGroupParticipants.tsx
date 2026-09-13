@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { Plus, Trash2, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
@@ -50,6 +51,7 @@ export function StepGroupParticipants({
   onUpdateParticipants,
   onNext,
 }: StepGroupParticipantsProps) {
+  const { t } = useTranslation();
   const isGroup = data.isGroupBooking === true;
   const participants = data.groupParticipants ?? [];
   const primaryServices = data.selectedServices;
@@ -100,12 +102,12 @@ export function StepGroupParticipants({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      <div className="text-left">
+      <div className="text-start">
         <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Booking for yourself or a group?
+          {t("web.book.engine.groupTitle")}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Add other guests and choose their services. You’ll be the primary contact for the booking.
+          {t("web.book.engine.groupSubtitle")}
         </p>
       </div>
 
@@ -114,7 +116,7 @@ export function StepGroupParticipants({
           type="button"
           onClick={() => onToggleGroup(false)}
           className={cn(
-            "w-full text-left rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
+            "w-full text-start rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
             MIN_TAP,
             BOOKING_ACTIVE_SCALE
           )}
@@ -127,10 +129,10 @@ export function StepGroupParticipants({
           <User className="h-5 w-5 shrink-0" style={{ color: !isGroup ? BOOKING_ACCENT : BOOKING_TEXT_SECONDARY }} />
           <div>
             <p className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              Just me
+              {t("web.book.engine.justMe")}
             </p>
             <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              One appointment for you
+              {t("web.book.engine.justMeHint")}
             </p>
           </div>
         </button>
@@ -139,7 +141,7 @@ export function StepGroupParticipants({
           type="button"
           onClick={() => onToggleGroup(true)}
           className={cn(
-            "w-full text-left rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
+            "w-full text-start rounded-2xl border-2 px-5 py-4 transition-all touch-manipulation flex items-center gap-4",
             MIN_TAP,
             BOOKING_ACTIVE_SCALE
           )}
@@ -154,10 +156,10 @@ export function StepGroupParticipants({
           </div>
           <div>
             <p className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              Group booking
+              {t("web.book.engine.groupBooking")}
             </p>
             <p className="text-sm mt-0.5" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              Same time slot, each person picks their own services (up to {maxGroupSize} people)
+              {t("web.book.engine.groupBookingHint", { count: maxGroupSize })}
             </p>
           </div>
         </button>
@@ -168,17 +170,19 @@ export function StepGroupParticipants({
           {/* Primary (you) */}
           <div className="rounded-2xl p-4 border" style={{ ...cardStyle, borderColor: BOOKING_BORDER }}>
             <p className="text-xs font-medium uppercase tracking-wider mb-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              You (primary contact)
+              {t("web.book.engine.youPrimary")}
             </p>
             <p className="text-sm" style={{ color: BOOKING_TEXT_PRIMARY }}>
               {primaryServices.length > 0
                 ? primaryServices.map((s) => s.title).join(", ")
-                : "No services selected — go back to add services."}
+                : t("web.book.engine.noServicesSelected")}
             </p>
             {primaryServices.length > 0 && (
               <p className="text-xs mt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                {primaryServices.reduce((a, s) => a + s.duration_minutes, 0)} min ·{" "}
-                {formatCurrency(primaryServices.reduce((a, s) => a + s.price, 0), data.currency)}
+                {t("web.book.engine.durationPrice", {
+                  minutes: primaryServices.reduce((a, s) => a + s.duration_minutes, 0),
+                  amount: formatCurrency(primaryServices.reduce((a, s) => a + s.price, 0), data.currency),
+                })}
               </p>
             )}
           </div>
@@ -192,14 +196,14 @@ export function StepGroupParticipants({
             >
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  Guest {index + 2}
+                  {t("web.book.engine.guestNumber", { n: index + 2 })}
                 </span>
                 <button
                   type="button"
                   onClick={() => removeParticipant(index)}
                   className="p-2 rounded-lg touch-manipulation"
                   style={{ color: BOOKING_TEXT_SECONDARY }}
-                  aria-label="Remove guest"
+                  aria-label={t("web.a11y.removeGuest")}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -207,7 +211,7 @@ export function StepGroupParticipants({
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
-                  placeholder="Full name *"
+                  placeholder={t("web.book.engine.fullNameRequired")}
                   value={p.name}
                   onChange={(e) => updateParticipant(index, { name: e.target.value })}
                   className="rounded-xl border-2 px-3 py-2.5 text-sm w-full"
@@ -215,7 +219,7 @@ export function StepGroupParticipants({
                 />
                 <input
                   type="email"
-                  placeholder="Email"
+                  placeholder={t("auth.email")}
                   value={p.email ?? ""}
                   onChange={(e) => updateParticipant(index, { email: e.target.value || undefined })}
                   className="rounded-xl border-2 px-3 py-2.5 text-sm w-full"
@@ -224,19 +228,19 @@ export function StepGroupParticipants({
                 <div className="col-span-2 w-full">
                   <PhoneInput
                     inputId={`booking-engine-group-guest-${index}-phone`}
-                    label="Phone (optional)"
+                    label={t("web.book.engine.phoneOptional")}
                     value={p.phone ?? ""}
                     onChange={(e164) =>
                       updateParticipant(index, { phone: e164 || undefined })
                     }
-                    placeholder="Phone number"
+                    placeholder={t("auth.phone")}
                     className="[&_label]:text-xs [&_label]:font-medium"
                   />
                 </div>
               </div>
               <div>
                 <p className="text-xs font-medium mb-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                  Their services
+                  {t("web.book.engine.theirServices")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {offerings.map((off) => {
@@ -275,7 +279,7 @@ export function StepGroupParticipants({
               style={{ borderColor: BOOKING_BORDER, color: BOOKING_TEXT_SECONDARY }}
             >
               <Plus className="h-5 w-5" />
-              <span className="font-medium">Add another guest</span>
+              <span className="font-medium">{t("web.book.engine.addAnotherGuest")}</span>
             </button>
           )}
         </div>
@@ -296,7 +300,7 @@ export function StepGroupParticipants({
           boxShadow: BOOKING_SHADOW_CARD,
         }}
       >
-        Continue
+        {t("common.continue")}
       </button>
     </div>
   );

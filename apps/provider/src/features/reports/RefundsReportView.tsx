@@ -1,7 +1,9 @@
 /**
  * Refunds: ledger refund rows + provider earnings reversals (facts-first).
  */
+import { useCallback } from "react";
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency, formatPercentage } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -15,22 +17,18 @@ function omitKeys(obj: Record<string, unknown>, keys: string[]): Record<string, 
   return next;
 }
 
-const METHOD_LABEL: Record<string, string> = {
-  ledger: "Ledger (no booking link)",
-  product_order: "Retail / product order",
-  paystack: "Paystack",
-  yoco: "Yoco",
-  stripe: "Stripe",
-  cash: "Cash",
-  card: "Card",
-  wallet: "Wallet",
-  bank_transfer: "Bank transfer",
-  other: "Other",
+const METHOD_KEYS: Record<string, string> = {
+  ledger: "methodLedger",
+  product_order: "methodProductOrder",
+  paystack: "methodPaystack",
+  yoco: "methodYoco",
+  stripe: "methodStripe",
+  cash: "methodCash",
+  card: "methodCard",
+  wallet: "methodWallet",
+  bank_transfer: "methodBankTransfer",
+  other: "methodOther",
 };
-
-function formatMethod(m: string): string {
-  return METHOD_LABEL[m] ?? m.replace(/_/g, " ");
-}
 
 function isRefundsPayload(data: unknown): data is Record<string, unknown> & {
   totalRefunds?: number;
@@ -48,9 +46,18 @@ function isRefundsPayload(data: unknown): data is Record<string, unknown> & {
 }
 
 export function RefundsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const rf = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.refundsReport." + key, opts) as string,
+    [t],
+  );
+
   if (!isRefundsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
+
+  const formatMethod = (m: string): string => METHOD_KEYS[m] ? rf(METHOD_KEYS[m]) : m.replace(/_/g, " ");
 
   const basis = typeof data.reportBasis === "string" ? data.reportBasis : "";
   const tz = typeof data.timezone === "string" ? data.timezone : "";
@@ -75,22 +82,22 @@ export function RefundsReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {rf("factsDefinitions")}
       </Text>
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-sky-950")}>{basis}</Text>
-          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
+          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{rf("timezone", { tz })}</Text> : null}
         </View>
       ) : null}
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-rose-100 bg-rose-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-rose-900")}>Refund rows</Text>
+          <Text style={twStyle("text-xs font-medium text-rose-900")}>{rf("refundRows")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-rose-950")}>{count}</Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-red-100 bg-red-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-red-900")}>Customer refund gross</Text>
+          <Text style={twStyle("text-xs font-medium text-red-900")}>{rf("customerRefundGross")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-red-950")}>
             {formatCurrency(gross)}
           </Text>
@@ -99,24 +106,24 @@ export function RefundsReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-violet-900")}>Provider earnings reversal</Text>
+          <Text style={twStyle("text-xs font-medium text-violet-900")}>{rf("providerEarningsReversal")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-violet-950")}>
             {formatCurrency(rev)}
           </Text>
         </View>
         <View style={twStyle("min-w-[148px] flex-1 rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-amber-900")}>Refund ÷ payment ledger</Text>
+          <Text style={twStyle("text-xs font-medium text-amber-900")}>{rf("refundDivPaymentLedger")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-amber-950")}>
             {formatPercentage(share)}
           </Text>
           <Text style={twStyle("mt-1 text-[11px] text-amber-900/85")}>
-            Denominator: payment rows in same period ({formatCurrency(payLedger)})
+            {rf("denominator", { amount: formatCurrency(payLedger) })}
           </Text>
         </View>
       </View>
 
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
-        <Text style={twStyle("text-xs text-gray-600")}>Avg refund (customer gross)</Text>
+        <Text style={twStyle("text-xs text-gray-600")}>{rf("avgRefund")}</Text>
         <Text style={twStyle("mt-1 text-lg font-semibold tabular-nums text-gray-900")}>
           {formatCurrency(avg)}
         </Text>
@@ -125,7 +132,7 @@ export function RefundsReportView({ data }: { data: unknown }) {
       {methods.length > 0 ? (
         <View>
           <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-            By recorded path
+            {rf("byRecordedPath")}
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {methods.map((m) => (
@@ -137,7 +144,9 @@ export function RefundsReportView({ data }: { data: unknown }) {
                 <Text style={twStyle("text-sm font-semibold tabular-nums text-gray-900")}>
                   {formatCurrency(Number(m.amount))}{" "}
                   <Text style={twStyle("text-xs font-normal text-gray-500")}>
-                    ({m.count}){m.percentage != null ? ` · ${m.percentage.toFixed(0)}%` : ""}
+                    {m.percentage != null
+                      ? rf("methodCountPct", { count: m.count, pct: m.percentage.toFixed(0) })
+                      : rf("methodCount", { count: m.count })}
                   </Text>
                 </Text>
               </View>
@@ -149,7 +158,7 @@ export function RefundsReportView({ data }: { data: unknown }) {
       {Array.isArray(data.recentRefunds) && data.recentRefunds.length > 0 ? (
         <View>
           <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-            Recent refund rows
+            {rf("recentRefundRows")}
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {(data.recentRefunds as { id?: string; amount?: number; created_at?: string; reason?: string; paymentMethodLabel?: string }[]).map((r) => (
@@ -177,7 +186,7 @@ export function RefundsReportView({ data }: { data: unknown }) {
         </View>
       ) : null}
 
-      {Object.keys(detailPayload).length > 0 ? <ReportPayloadView data={detailPayload} title="Details" /> : null}
+      {Object.keys(detailPayload).length > 0 ? <ReportPayloadView data={detailPayload} title={rf("details")} /> : null}
     </View>
   );
 }

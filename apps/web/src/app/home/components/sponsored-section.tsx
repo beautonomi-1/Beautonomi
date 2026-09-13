@@ -9,6 +9,7 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Sponsored / boosted listings. Only rendered when ads module is enabled and API returns sponsored.
@@ -24,8 +25,9 @@ export default function SponsoredSection({
   initialProviders,
   initialHydrated = false,
 }: SponsoredSectionProps) {
+  const { t } = useTranslation();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean; disclosure_label?: string | null } | undefined;
-  const sponsoredHeading = (adsConfig?.disclosure_label || "Sponsored").trim() || "Sponsored";
+  const sponsoredHeading = (adsConfig?.disclosure_label || t("web.home.sponsored")).trim() || t("web.home.sponsored");
   const sponsoredBadgeText = sponsoredHeading;
   const sponsoredEnabled = useFeatureFlag("ads.sponsored_slots.enabled");
   const { location: userLocation } = useUserLocation();
@@ -98,8 +100,8 @@ export default function SponsoredSection({
             <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{sponsoredHeading}</h2>
           </div>
           <Link href="/more-sponsored-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            View all
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            {t("web.home.viewAll")}
+            <ArrowRight className="ms-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>
         <div className="flex md:hidden gap-4 overflow-x-auto pb-4 -mx-4 px-4 scrollbar-hide snap-x snap-mandatory">

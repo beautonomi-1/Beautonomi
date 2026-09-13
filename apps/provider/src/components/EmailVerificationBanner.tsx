@@ -8,6 +8,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/providers/AuthProvider";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   resolveMailableAccountEmail,
   shouldShowEmailVerificationBanner,
@@ -16,6 +17,8 @@ import {
 const DISMISS_KEY_PREFIX = "email-verification-dismissed-";
 
 export function EmailVerificationBanner() {
+  const { t } = useTranslation();
+  const ev = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.emailVerificationBanner.${key}`, opts) as string;
   const { user, session, resendVerificationEmail } = useAuth();
   const [dismissed, setDismissed] = useState(false);
   const [resending, setResending] = useState(false);
@@ -73,12 +76,12 @@ export function EmailVerificationBanner() {
   if (!shouldShow || !mailableEmail) return null;
 
   return (
-    <View style={twStyle("border-l-4 border-amber-400 bg-amber-50 px-4 py-3")}>
+    <View style={twStyle("border-s-4 border-amber-400 bg-amber-50 px-4 py-3")}>
       <View style={twStyle("flex-row items-start")}>
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-sm font-semibold text-amber-800")}>Verify your email address</Text>
+          <Text style={twStyle("text-sm font-semibold text-amber-800")}>{ev("title")}</Text>
           <Text style={twStyle("mt-1 text-sm text-amber-700")} numberOfLines={2}>
-            We sent a verification email to <Text style={twStyle("font-medium")}>{mailableEmail}</Text>. Click the link to activate your account.
+            {ev("body", { email: mailableEmail })}
           </Text>
           <View style={twStyle("mt-2 flex-row items-center")}>
             <TouchableOpacity
@@ -86,7 +89,7 @@ export function EmailVerificationBanner() {
               disabled={resending}
               style={twStyle("flex-row items-center rounded-lg border border-amber-300 bg-white px-3 py-2")}
               activeOpacity={0.7}
-              accessibilityLabel={resending ? "Sending verification email" : resendSuccess ? "Verification email sent" : "Resend verification email"}
+              accessibilityLabel={resending ? ev("sendingA11y") : resendSuccess ? ev("sentA11y") : ev("resendA11y")}
               accessibilityRole="button"
             >
               {resending ? (
@@ -94,8 +97,8 @@ export function EmailVerificationBanner() {
               ) : (
                 <Ionicons name="mail-outline" size={16} color="#b45309" />
               )}
-              <Text style={twStyle("ml-2 text-sm font-medium text-amber-800")}>
-                {resending ? "Sending…" : resendSuccess ? "Sent! Check your inbox" : "Resend email"}
+              <Text style={twStyle("ms-2 text-sm font-medium text-amber-800")}>
+                {resending ? ev("sending") : resendSuccess ? ev("sent") : ev("resend")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -104,7 +107,7 @@ export function EmailVerificationBanner() {
           onPress={handleDismiss}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={twStyle("p-1")}
-          accessibilityLabel="Dismiss verification banner"
+          accessibilityLabel={ev("dismissA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="close" size={20} color="#b45309" />

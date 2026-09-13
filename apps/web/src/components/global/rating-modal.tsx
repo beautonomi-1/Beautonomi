@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import {
   Dialog,
@@ -23,6 +25,7 @@ export default function RatingModal({
   appStoreUrl,
   platform = "other",
 }: RatingModalProps) {
+  const { t } = useTranslation();
   // Get App Store URL from prop, environment variable, or fallback
   const storeUrl = 
     appStoreUrl || 
@@ -31,18 +34,16 @@ export default function RatingModal({
 
   // Determine store name and button text based on platform
   const storeName =
-    platform === "ios"
-      ? "App Store"
-      : platform === "android"
-      ? "Google Play"
-      : "App Store"; // Default to App Store
+    platform === "android"
+      ? t("web.book.continue.googlePlay")
+      : t("web.book.continue.appStore");
 
   const buttonText =
     platform === "ios"
-      ? "Rate on App Store"
+      ? t("web.global.rateUsModal.rateOnAppStore")
       : platform === "android"
-      ? "Rate on Google Play"
-      : "Rate on App Store"; // Default to App Store
+      ? t("web.global.rateUsModal.rateOnGooglePlay")
+      : t("web.global.rateUsModal.rateOnAppStore");
   const handleRateClick = () => {
     // Open App Store URL
     if (typeof window !== "undefined") {
@@ -70,10 +71,10 @@ export default function RatingModal({
       <DialogContent className="max-w-[95%] sm:max-w-[500px] p-6 sm:p-8">
         <DialogHeader className="text-center">
           <DialogTitle className="text-2xl sm:text-3xl font-medium text-secondary mb-4">
-            Enjoying Beautonomi?
+            {t("web.global.rateUsModal.title")}
           </DialogTitle>
           <DialogDescription className="text-base sm:text-lg text-destructive font-light">
-            Your feedback helps us improve! Please take a moment to rate us on the {storeName}.
+            {t("web.global.rateUsModal.subtitle", { store: storeName })}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 mt-6">
@@ -91,7 +92,7 @@ export default function RatingModal({
             size="default"
             className="w-full"
           >
-            Maybe Later
+            {t("web.global.rateUsModal.maybeLater")}
           </Button>
         </div>
       </DialogContent>

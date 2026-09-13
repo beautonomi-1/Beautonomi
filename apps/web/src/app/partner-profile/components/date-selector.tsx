@@ -136,16 +136,16 @@ const DateSelector: React.FC<DateSelectorProps> = ({
             <div className="space-y-3">
               {keyboardShortcuts.map((shortcut, index) => (
                 <div key={index} className="flex items-center gap-10">
-                  <p className="bg-primary text-secondary text-xs font-normal  px-2 py-1 rounded mr-4 min-w-[60px] text-center">
+                  <p className="bg-primary text-secondary text-xs font-normal  px-2 py-1 rounded me-4 min-w-[60px] text-center">
                     {shortcut.key}
                   </p>
-                  <p className="text-base font-normal  text-destructive max-w-60 text-left">
+                  <p className="text-base font-normal  text-destructive max-w-60 text-start">
                     {shortcut.description}
                   </p>
                 </div>
               ))}
             </div>
-            <div className="mt-6 text-right">
+            <div className="mt-6 text-end">
               <Button variant="underline" onClick={togglePopup}>
                 Back to Calendar
               </Button>

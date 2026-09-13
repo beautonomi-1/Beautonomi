@@ -117,4 +117,14 @@ describe("booking payment and lifecycle display", () => {
     expect(payment.tone).toBe("danger");
     expect(payment.isPaymentSettled).toBe(false);
   });
+
+  it("labels awaiting close-out from lifecycle_hint even when status is still confirmed", () => {
+    const lifecycle = getBookingLifecycleDisplay({
+      status: "confirmed",
+      providerName: "Bantu",
+      lifecycleHint: "awaiting_close_out",
+    });
+    expect(lifecycle.label).toBe("Waiting for salon to close out");
+    expect(lifecycle.tone).toBe("warning");
+  });
 });

@@ -1,7 +1,9 @@
 /**
  * Yoco reconciliation: provider_yoco_payments vs booking_payments for booking-linked captures.
  */
+import { useCallback } from "react";
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -42,6 +44,12 @@ function isYocoReconciliationPayload(data: unknown): data is {
 }
 
 export function YocoReconciliationReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const yo = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.yocoReconciliationReport.${key}`, opts) as string,
+    [t],
+  );
   if (!isYocoReconciliationPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -59,23 +67,23 @@ export function YocoReconciliationReportView({ data }: { data: unknown }) {
     ? Object.entries(data.basis).filter(([, v]) => typeof v === "string" && String(v).trim())
     : [];
   const basisLabels: Record<string, string> = {
-    source: "Source",
-    syncDefinition: "Sync",
-    amountUnits: "Amounts",
-    locationFilter: "Location",
+    source: yo("basisSource"),
+    syncDefinition: yo("basisSync"),
+    amountUnits: yo("basisAmounts"),
+    locationFilter: yo("basisLocation"),
   };
 
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {yo("factsDefinitions")}
       </Text>
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-sm leading-5 text-sky-950")}>{basis}</Text>
-          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
-          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Capture window · {range}</Text> : null}
-          {lim !== "" ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>Row cap · {lim}</Text> : null}
+          {tz ? <Text style={twStyle("mt-2 text-xs text-sky-900/85")}>{yo("timezone", { tz })}</Text> : null}
+          {range ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{yo("captureWindow", { range })}</Text> : null}
+          {lim !== "" ? <Text style={twStyle("mt-1 text-xs text-sky-900/85")}>{yo("rowCap", { limit: lim })}</Text> : null}
         </View>
       ) : null}
 
@@ -87,10 +95,10 @@ export function YocoReconciliationReportView({ data }: { data: unknown }) {
 
       {basisEntries.length > 0 ? (
         <View style={twStyle("rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>Definitions</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>{yo("definitions")}</Text>
           {basisEntries.map(([k, v]) => (
             <Text key={k} style={twStyle("mt-2 text-sm leading-5 text-violet-950")}>
-              <Text style={twStyle("font-medium")}>{basisLabels[k] ?? k} · </Text>
+              <Text style={twStyle("font-medium")}>{yo("definitionLabel", { label: basisLabels[k] ?? k })}</Text>
               {v}
             </Text>
           ))}
@@ -99,24 +107,24 @@ export function YocoReconciliationReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-gray-600")}>Rows</Text>
+          <Text style={twStyle("text-xs font-medium text-gray-600")}>{yo("rows")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-gray-900")}>{s.total}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-blue-100 bg-blue-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-blue-900")}>Booking link</Text>
+          <Text style={twStyle("text-xs font-medium text-blue-900")}>{yo("bookingLink")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-blue-950")}>{s.with_booking}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Synced</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{yo("synced")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>{s.synced}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-amber-100 bg-amber-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-amber-900")}>Not synced</Text>
+          <Text style={twStyle("text-xs font-medium text-amber-900")}>{yo("notSynced")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-amber-950")}>{s.not_synced}</Text>
         </View>
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Payments</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{yo("payments")}</Text>
       {(data.payments ?? []).slice(0, 40).map((p) => (
         <View key={p.id} style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
           <Text style={twStyle("text-xs text-gray-500")}>
@@ -128,10 +136,10 @@ export function YocoReconciliationReportView({ data }: { data: unknown }) {
           </Text>
           {p.link_kind === "booking" ? (
             <Text style={twStyle("mt-1 text-sm text-gray-700")}>
-              {p.booking_synced ? "Synced to booking_payments" : "Missing booking_payments row"}
+              {p.booking_synced ? yo("syncedToBooking") : yo("missingBooking")}
             </Text>
           ) : (
-            <Text style={twStyle("mt-1 text-sm text-gray-500")}>Booking sync not applicable</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-500")}>{yo("syncNa")}</Text>
           )}
         </View>
       ))}

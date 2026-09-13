@@ -33,11 +33,11 @@ export async function validatePaycloudPaymentInitiate(
     environment: string;
   },
 ): Promise<PaycloudInitiateGuardResult> {
-  const admin = getSupabaseAdmin();
-
   if (!COLLECTIBLE_ENTITY_TYPES.has(params.entityType)) {
     return { ok: false, code: "INVALID_ENTITY", message: "This item can't be charged on a card machine.", status: 400 };
   }
+
+  const admin = getSupabaseAdmin();
 
   const { data: terminal } = await supabase
     .from("paycloud_terminals")

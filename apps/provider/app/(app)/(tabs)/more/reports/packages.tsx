@@ -6,6 +6,7 @@ import {
   FlatList,
   Share,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
@@ -38,13 +39,19 @@ interface PackageStats {
 }
 
 const PERIOD_FILTERS = [
-  { label: "All Time", value: "all" },
-  { label: "Last 30 days", value: "month" },
-  { label: "Last 90 days", value: "quarter" },
-  { label: "Last 365 days", value: "year" },
-];
+  { labelKey: "periodAllTime", value: "all" },
+  { labelKey: "periodLast30", value: "month" },
+  { labelKey: "periodLast90", value: "quarter" },
+  { labelKey: "periodLast365", value: "year" },
+] as const;
 
 export default function PackageReportScreen() {
+  const { t } = useTranslation();
+  const pk = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.packagesOverview.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
@@ -90,7 +97,7 @@ export default function PackageReportScreen() {
       `${esc("period")},${esc(period)}`,
       `${esc("calendar_window")},${esc(window)}`,
       "",
-      "Package,Sold,Booked value,Services in catalog",
+      pk("csvHeader"),
     ].join("\n");
     const rows = packages.map(
       (p) =>
@@ -98,16 +105,16 @@ export default function PackageReportScreen() {
     );
     const csv = `${header}\n${rows.join("\n")}`;
     try {
-      await Share.share({ message: csv, title: "Packages overview" });
+      await Share.share({ message: csv, title: pk("exportTitle") });
     } catch {}
   }
 
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Packages overview"
+        title={pk("title")}
         showBack
-        subtitle="Active catalog · booked counts & value in period"
+        subtitle={pk("subtitle")}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -121,11 +128,11 @@ export default function PackageReportScreen() {
       {basisText ? (
         <View style={twStyle("mb-3 rounded-2xl border border-teal-100 bg-teal-50/90 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-teal-900")}>
-            Basis
+            {pk("basis")}
           </Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-teal-950")}>{basisText}</Text>
           {reportData?.timezone ? (
-            <Text style={twStyle("mt-2 text-xs text-teal-900/85")}>Timezone · {reportData.timezone}</Text>
+            <Text style={twStyle("mt-2 text-xs text-teal-900/85")}>{pk("timezone", { tz: reportData.timezone })}</Text>
           ) : null}
         </View>
       ) : null}
@@ -133,7 +140,7 @@ export default function PackageReportScreen() {
       <View style={twStyle("mb-3")}>
         <ReportResponsiveStatRow>
           <StatCard
-            title="In catalog"
+            title={pk("inCatalog")}
             value={String(stats?.total_packages ?? 0)}
             icon="layers-outline"
             iconColor="#6366f1"
@@ -141,7 +148,7 @@ export default function PackageReportScreen() {
             compact
           />
           <StatCard
-            title="Bookings"
+            title={pk("bookings")}
             value={String(stats?.total_sold ?? 0)}
             icon="calendar-outline"
             iconColor="#0f766e"
@@ -149,7 +156,7 @@ export default function PackageReportScreen() {
             compact
           />
           <StatCard
-            title="Booked value"
+            title={pk("bookedValue")}
             value={formatCurrency(stats?.total_revenue ?? 0)}
             icon="cash-outline"
             iconColor="#22c55e"
@@ -160,7 +167,11 @@ export default function PackageReportScreen() {
       </View>
 
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
+        <FilterChipGroup
+          options={PERIOD_FILTERS.map((p) => ({ label: pk(p.labelKey), value: p.value }))}
+          selected={period}
+          onSelect={setPeriod}
+        />
       </View>
 
       {loading && !reportData ? (
@@ -168,7 +179,7 @@ export default function PackageReportScreen() {
       ) : !loading && dataError && !reportData ? (
         <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       ) : packages.length === 0 ? (
-        <EmptyState icon="layers-outline" title="No packages" description="Create active service packages to see them here" />
+        <EmptyState icon="layers-outline" title={pk("emptyTitle")} description={pk("emptyDesc")} />
       ) : (
         <FlatList
           {...verticalFlatListPerf}
@@ -185,12 +196,12 @@ export default function PackageReportScreen() {
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>{pkg.name}</Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    {pkg.services_included} services in package
+                    {pk("servicesInPackage", { count: pkg.services_included })}
                   </Text>
                   <View style={twStyle("mt-2 flex-row flex-wrap gap-x-4 gap-y-1")}>
                     <View style={twStyle("flex-row items-center")}>
-                      <Ionicons name="cart-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
-                      <Text style={twStyle("text-xs text-gray-600")}>{pkg.total_sold} bookings</Text>
+                      <Ionicons name="cart-outline" size={12} color="#6b7280" style={{ marginEnd: 4 }} />
+                      <Text style={twStyle("text-xs text-gray-600")}>{pk("bookingsCount", { count: pkg.total_sold })}</Text>
                     </View>
                   </View>
                 </View>
@@ -198,7 +209,7 @@ export default function PackageReportScreen() {
                   <Text style={twStyle("text-base font-bold text-gray-900")}>
                     {formatCurrency(pkg.total_revenue)}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>booked value</Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>{pk("bookedValueLabel")}</Text>
                 </View>
               </View>
             </View>

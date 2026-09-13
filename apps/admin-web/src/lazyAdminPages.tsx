@@ -189,6 +189,9 @@ export const LedgerRepairPage = lazy(() =>
 export const LedgerHealthPage = lazy(() =>
   import("@/routes/finance/LedgerHealthPage").then((m) => ({ default: m.LedgerHealthPage }))
 );
+export const FxRatesPage = lazy(() =>
+  import("@/routes/finance/FxRatesPage").then((m) => ({ default: m.FxRatesPage }))
+);
 export const FlutterwaveIntegrationPage = lazy(() =>
   import("@/routes/integrations/FlutterwaveIntegrationPage").then((m) => ({ default: m.FlutterwaveIntegrationPage }))
 );
@@ -254,6 +257,9 @@ export const CpAgenticConsolePage = lazy(() =>
 );
 export const CpIntegrationGeminiPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationGeminiPage").then((m) => ({ default: m.CpIntegrationGeminiPage }))
+);
+export const CpIntegrationAiPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationAiPage").then((m) => ({ default: m.CpIntegrationAiPage }))
 );
 export const CpIntegrationAuraPage = lazy(() =>
   import("@/routes/control-plane/CpIntegrationAuraPage").then((m) => ({ default: m.CpIntegrationAuraPage }))

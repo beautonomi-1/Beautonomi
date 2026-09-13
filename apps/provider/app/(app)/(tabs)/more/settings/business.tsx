@@ -87,17 +87,17 @@ const COMMON_LANGUAGES = [
   "French", "Portuguese", "Arabic", "Hindi", "Mandarin",
 ];
 
-const FIELD_LABELS: Record<string, string> = {
-  business_name: "Business name",
-  email: "Email",
-  phone: "Phone",
-  description: "Description",
-  website: "Website",
-  address_line1: "Address",
-  city: "City",
-  state: "State / Province",
-  postal_code: "Postal code",
-  country: "Country",
+const FIELD_LABEL_KEYS: Record<string, string> = {
+  business_name: "fieldBusinessName",
+  email: "fieldEmail",
+  phone: "fieldPhone",
+  description: "fieldDescription",
+  website: "fieldWebsite",
+  address_line1: "fieldAddress",
+  city: "fieldCity",
+  state: "fieldState",
+  postal_code: "fieldPostalCode",
+  country: "fieldCountry",
 };
 
 const PRIMARY = Colors.primary;
@@ -105,6 +105,11 @@ const PRIMARY = Colors.primary;
 export default function BusinessDetailsScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const bs = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.businessSettings.${key}`, opts) as string,
+    [t],
+  );
   const { screenPadding } = useResponsive();
   const { data, loading, error, refresh } = useApi<BusinessData>("/api/provider/settings/business");
   const [form, setForm] = useState<BusinessData>(EMPTY);
@@ -183,7 +188,7 @@ export default function BusinessDetailsScreen() {
     const base64 = picked.base64;
     const mime = picked.mimeType ?? "image/jpeg";
     if (!base64) {
-      Alert.alert("Upload failed", "Could not read image. Try another photo.");
+      Alert.alert(bs("uploadFailedTitle"), bs("uploadReadFailed"));
       return;
     }
     setUploadingLogo(true);
@@ -193,12 +198,12 @@ export default function BusinessDetailsScreen() {
         logo_base64: dataUrl,
       });
       if (res.error) {
-        Alert.alert("Upload failed", res.error.message);
+        Alert.alert(bs("uploadFailedTitle"), res.error.message);
         return;
       }
       await refresh();
     } catch (e) {
-      Alert.alert("Upload failed", e instanceof Error ? e.message : "Something went wrong.");
+      Alert.alert(bs("uploadFailedTitle"), e instanceof Error ? e.message : bs("uploadGenericFailed"));
     } finally {
       setUploadingLogo(false);
     }
@@ -218,7 +223,7 @@ export default function BusinessDetailsScreen() {
       const firstKey = Object.keys(nextErrors)[0];
       const firstMsg = nextErrors[firstKey];
       const message = firstMsg === "validation.required"
-        ? t(firstMsg, { field: FIELD_LABELS[firstKey] ?? firstKey })
+        ? t(firstMsg, { field: bs(FIELD_LABEL_KEYS[firstKey] ?? "fieldBusinessName") })
         : t(firstMsg);
       Alert.alert(t("validation.fixForm"), message);
       return;
@@ -253,15 +258,15 @@ export default function BusinessDetailsScreen() {
         twitter_url: form.twitter_url?.trim() || null,
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message);
+        Alert.alert(bs("errorTitle"), res.error.message);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateSetupStatusCache();
-      Alert.alert("Saved", "Business details updated.");
+      Alert.alert(bs("savedTitle"), bs("savedBody"));
       refresh();
     } catch {
-      Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+      Alert.alert(bs("errorTitle"), bs("saveFailedBody"));
     } finally {
       setSaving(false);
     }
@@ -270,7 +275,7 @@ export default function BusinessDetailsScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Business details" onBack={() => router.back()} />
+        <ScreenHeader title={bs("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -281,7 +286,7 @@ export default function BusinessDetailsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Business details" onBack={() => router.back()} />
+        <ScreenHeader title={bs("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -291,7 +296,7 @@ export default function BusinessDetailsScreen() {
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
-      <ScreenHeader title="Business details" onBack={() => router.back()} />
+      <ScreenHeader title={bs("title")} onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior="padding"
         style={twStyle("flex-1")}
@@ -312,7 +317,7 @@ export default function BusinessDetailsScreen() {
                 disabled={uploadingLogo}
                 style={[twStyle("overflow-hidden rounded-full border-2 border-gray-200"), { width: 96, height: 96 }]}
                 accessibilityRole="button"
-                accessibilityLabel="Change logo"
+                accessibilityLabel={bs("changeLogoA11y")}
               >
                 {form.logo_url ? (
                   <Image
@@ -331,11 +336,11 @@ export default function BusinessDetailsScreen() {
                   </View>
                 )}
               </TouchableOpacity>
-              <Text style={twStyle("mt-2 text-sm text-gray-500")}>Tap to change logo</Text>
+              <Text style={twStyle("mt-2 text-sm text-gray-500")}>{bs("tapToChangeLogo")}</Text>
             </View>
 
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Business name *</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("businessNameLabel")}</Text>
               <TextInput
                 style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.business_name ? "border-red-500" : "border-gray-200"}`)}
                 value={form.business_name}
@@ -343,26 +348,26 @@ export default function BusinessDetailsScreen() {
                   setForm((f) => ({ ...f, business_name: t }));
                   if (errors.business_name) setErrors((e) => ({ ...e, business_name: "" }));
                 }}
-                placeholder="Your business name"
+                placeholder={bs("businessNamePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="words"
               />
               {errors.business_name ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.business_name === "validation.required"
-                    ? t(errors.business_name, { field: FIELD_LABELS.business_name })
+                    ? t(errors.business_name, { field: bs("fieldBusinessName") })
                     : t(errors.business_name)}
                 </Text>
               ) : null}
             </View>
 
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Description</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("fieldDescription")}</Text>
               <TextInput
                 style={twStyle("min-h-[100px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.description ?? ""}
                 onChangeText={(t) => setForm((f) => ({ ...f, description: t || null }))}
-                placeholder="What you offer (shown to clients)"
+                placeholder={bs("descriptionPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 multiline
                 textAlignVertical="top"
@@ -370,7 +375,7 @@ export default function BusinessDetailsScreen() {
             </View>
 
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Email *</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("emailLabel")}</Text>
               <TextInput
                 style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.email ? "border-red-500" : "border-gray-200"}`)}
                 value={form.email}
@@ -378,7 +383,7 @@ export default function BusinessDetailsScreen() {
                   setForm((f) => ({ ...f, email: t }));
                   if (errors.email) setErrors((e) => ({ ...e, email: "" }));
                 }}
-                placeholder="contact@example.com"
+                placeholder={bs("emailPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -389,7 +394,7 @@ export default function BusinessDetailsScreen() {
             </View>
 
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Phone</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("fieldPhone")}</Text>
               <View
                 style={{
                   flexDirection: "row",
@@ -412,11 +417,11 @@ export default function BusinessDetailsScreen() {
                     borderRightWidth: 1,
                     borderRightColor: "#E5E7EB",
                   }}
-                  accessibilityLabel="Select country code"
+                  accessibilityLabel={bs("selectCountryCodeA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>
+                  <Text style={{ fontSize: 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>
                     {phoneCountryCode}
                   </Text>
                   <Ionicons name="chevron-down" size={14} color="#6B7280" />
@@ -432,14 +437,14 @@ export default function BusinessDetailsScreen() {
                   }}
                   value={phoneNational}
                   onChangeText={handlePhoneNationalChange}
-                  placeholder="82 123 4567"
+                  placeholder={bs("phonePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   keyboardType="phone-pad"
-                  accessibilityLabel="Business phone number without country code"
+                  accessibilityLabel={bs("phoneNationalA11y")}
                 />
               </View>
               <Text style={twStyle("mt-1.5 text-xs text-gray-500 leading-5")}>
-                Use your country code on the left. Enter the rest without + — a leading 0 is optional (we save E.164 for SMS and Supabase, e.g. +27821234567).
+                {bs("phoneHelp")}
               </Text>
               {phoneFieldError ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>{phoneFieldError}</Text>
@@ -447,12 +452,12 @@ export default function BusinessDetailsScreen() {
             </View>
 
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Website</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("fieldWebsite")}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.website ?? ""}
                 onChangeText={(t) => setForm((f) => ({ ...f, website: t.trim() || null }))}
-                placeholder="https://..."
+                placeholder={bs("websitePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="url"
                 autoCapitalize="none"
@@ -461,7 +466,7 @@ export default function BusinessDetailsScreen() {
 
             {/* ── Years in business ── */}
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Years in business</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("yearsInBusinessLabel")}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.yearsInBusiness != null ? String(form.yearsInBusiness) : ""}
@@ -469,19 +474,19 @@ export default function BusinessDetailsScreen() {
                   const n = parseInt(t, 10);
                   setForm((f) => ({ ...f, yearsInBusiness: t === "" ? null : Number.isFinite(n) ? n : f.yearsInBusiness }));
                 }}
-                placeholder="e.g. 5"
+                placeholder={bs("yearsPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 keyboardType="number-pad"
-                accessibilityLabel="Years in business"
+                accessibilityLabel={bs("yearsInBusinessA11y")}
               />
               <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-                Helps customers understand your experience level.
+                {bs("yearsInBusinessHelp")}
               </Text>
             </View>
 
             {/* ── Languages ── */}
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Languages you speak</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("languagesYouSpeak")}</Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {COMMON_LANGUAGES.map((lang) => {
                   const selected = form.languagesSpoken.includes(lang);
@@ -503,7 +508,7 @@ export default function BusinessDetailsScreen() {
                             : "bg-white border-gray-200"
                         }`
                       )}
-                      accessibilityLabel={`${selected ? "Remove" : "Add"} ${lang}`}
+                      accessibilityLabel={bs("languageToggleA11y", { action: selected ? bs("languageRemove") : bs("languageAdd"), language: lang })}
                     >
                       <Text style={twStyle(`text-sm font-medium ${selected ? "text-white" : "text-gray-600"}`)}>
                         {lang}
@@ -513,19 +518,19 @@ export default function BusinessDetailsScreen() {
                 })}
               </View>
               <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-                Tap to select languages you communicate in.
+                {bs("languagesHelp")}
               </Text>
             </View>
 
             {/* ── Social media ── */}
             <View style={twStyle("mb-2 rounded-xl border border-gray-100 bg-gray-50 p-3")}>
-              <Text style={twStyle("text-xs font-medium text-gray-500 uppercase tracking-wider")}>Social media (optional)</Text>
+              <Text style={twStyle("text-xs font-medium text-gray-500 uppercase tracking-wider")}>{bs("socialMediaOptional")}</Text>
             </View>
             {([
-              { key: "instagram_url", label: "Instagram", placeholder: "https://instagram.com/yourhandle" },
-              { key: "facebook_url", label: "Facebook", placeholder: "https://facebook.com/yourpage" },
-              { key: "tiktok_url", label: "TikTok", placeholder: "https://tiktok.com/@yourhandle" },
-              { key: "twitter_url", label: "X", placeholder: "https://x.com/yourhandle" },
+              { key: "instagram_url", label: bs("instagram"), placeholder: bs("instagramPlaceholder") },
+              { key: "facebook_url", label: bs("facebook"), placeholder: bs("facebookPlaceholder") },
+              { key: "tiktok_url", label: bs("tiktok"), placeholder: bs("tiktokPlaceholder") },
+              { key: "twitter_url", label: bs("xHandle"), placeholder: bs("xPlaceholder") },
             ] as const).map(({ key, label, placeholder }) => (
               <View key={key} style={twStyle("mb-4")}>
                 <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{label}</Text>
@@ -544,10 +549,10 @@ export default function BusinessDetailsScreen() {
             ))}
 
             <View style={twStyle("mb-2 rounded-xl border border-gray-100 bg-gray-50 p-3")}>
-              <Text style={twStyle("text-xs font-medium text-gray-500 uppercase tracking-wider")}>Address (optional)</Text>
+              <Text style={twStyle("text-xs font-medium text-gray-500 uppercase tracking-wider")}>{bs("addressOptional")}</Text>
             </View>
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("addressLine1")}</Text>
               <AddressAutocomplete
                 value={form.address_line1 ?? ""}
                 onSelect={(addr: ParsedAddress) => {
@@ -563,36 +568,36 @@ export default function BusinessDetailsScreen() {
                 onBlur={(query) => {
                   if (query.trim()) setForm((f) => ({ ...f, address_line1: query.trim() }));
                 }}
-                placeholder="Start typing address…"
+                placeholder={bs("addressPlaceholder")}
                 countryCode={countryFilterIso2FromStorage(form.country ?? "") ?? "ZA"}
                 defaultCountryName={form.country?.trim() || undefined}
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>City</Text>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("fieldCity")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={form.city ?? ""}
                   onChangeText={(t) => setForm((f) => ({ ...f, city: t.trim() || null }))}
-                  placeholder="City"
+                  placeholder={bs("cityPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View style={twStyle("flex-1")}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Country</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{bs("fieldCountry")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={form.country ?? ""}
                   onChangeText={(t) => setForm((f) => ({ ...f, country: t.trim() || null }))}
-                  placeholder="Country"
+                  placeholder={bs("countryPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
             </View>
 
             <ActionButton
-              label="Save changes"
+              label={bs("saveChanges")}
               variant="primary"
               onPress={handleSave}
               loading={saving}
@@ -611,7 +616,7 @@ export default function BusinessDetailsScreen() {
         <Pressable
           style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
           onPress={() => setShowCountryPicker(false)}
-          accessibilityLabel="Close country picker"
+          accessibilityLabel={bs("closeCountryPickerA11y")}
           accessibilityRole="button"
         >
           <Pressable
@@ -630,7 +635,7 @@ export default function BusinessDetailsScreen() {
               }}
             >
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
-                Select country
+                {bs("selectCountry")}
               </Text>
               <View
                 style={{
@@ -644,7 +649,7 @@ export default function BusinessDetailsScreen() {
                 <Ionicons name="search" size={16} color="#9CA3AF" />
                 <TextInput
                   style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
-                  placeholder="Search country..."
+                  placeholder={bs("searchCountryPlaceholder")}
                   placeholderTextColor="#9CA3AF"
                   value={countrySearch}
                   onChangeText={setCountrySearch}
@@ -678,7 +683,7 @@ export default function BusinessDetailsScreen() {
                   accessibilityLabel={c.label}
                   accessibilityRole="button"
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,

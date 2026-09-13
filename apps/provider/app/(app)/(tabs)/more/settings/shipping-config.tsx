@@ -14,6 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
@@ -50,6 +51,12 @@ const DEFAULTS: ShippingConfig = {
 type ShippingResponse = { config?: ShippingConfig };
 
 export default function ShippingConfigScreen() {
+  const { t } = useTranslation();
+  const sh = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.shippingConfig." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const tenantCurrency = getTenantDefaultCurrency();
   const { data, loading, error, refresh } = useApi<ShippingResponse>("/api/provider/shipping-config");
@@ -86,17 +93,17 @@ export default function ShippingConfigScreen() {
     });
     setSaving(false);
     if (res.error) {
-      Alert.alert("Error", res.error.message);
+      Alert.alert(sh("errorTitle"), res.error.message);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Saved", "Shipping configuration updated.");
+    Alert.alert(sh("savedTitle"), sh("savedBody"));
   }, [config]);
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Shipping & collection" onBack={() => router.back()} />
+        <ScreenHeader title={sh("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -107,7 +114,7 @@ export default function ShippingConfigScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Shipping & collection" onBack={() => router.back()} />
+        <ScreenHeader title={sh("title")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -117,7 +124,7 @@ export default function ShippingConfigScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Shipping & collection" onBack={() => router.back()} />
+      <ScreenHeader title={sh("title")} onBack={() => router.back()} />
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -128,7 +135,7 @@ export default function ShippingConfigScreen() {
           <View style={twStyle("flex-row items-center justify-between mb-2")}>
             <View style={twStyle("flex-row items-center")}>
               <Ionicons name="storefront-outline" size={22} color="#111827" />
-              <Text style={twStyle("ml-2 text-base font-semibold text-gray-900")}>In-store collection</Text>
+              <Text style={twStyle("ms-2 text-base font-semibold text-gray-900")}>{sh("inStoreCollection")}</Text>
             </View>
             <Switch
               value={config.offers_collection}
@@ -137,13 +144,13 @@ export default function ShippingConfigScreen() {
               thumbColor="#fff"
             />
           </View>
-          <Text style={twStyle("text-sm text-gray-500 mb-3")}>Allow customers to collect orders from your location(s).</Text>
+          <Text style={twStyle("text-sm text-gray-500 mb-3")}>{sh("collectionHint")}</Text>
 
           {config.offers_collection && (
             <View>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Collection notes</Text>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("collectionNotes")}</Text>
               <Text style={twStyle("mb-1.5 text-xs text-gray-500")}>
-                Shown to customers at checkout (e.g. hours, entrance, what to bring).
+                {sh("collectionNotesHint")}
               </Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[80px]")}
@@ -151,7 +158,7 @@ export default function ShippingConfigScreen() {
                 onChangeText={(t) =>
                   setConfig((c) => ({ ...c, collection_notes: t || null }))
                 }
-                placeholder="e.g. Collection Mon–Fri 9am–5pm. Please bring your order confirmation."
+                placeholder={sh("collectionNotesPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 multiline
                 maxLength={500}
@@ -166,7 +173,7 @@ export default function ShippingConfigScreen() {
           <View style={twStyle("flex-row items-center justify-between mb-2")}>
             <View style={twStyle("flex-row items-center")}>
               <Ionicons name="car-outline" size={22} color="#111827" />
-              <Text style={twStyle("ml-2 text-base font-semibold text-gray-900")}>Delivery</Text>
+              <Text style={twStyle("ms-2 text-base font-semibold text-gray-900")}>{sh("delivery")}</Text>
             </View>
             <Switch
               value={config.offers_delivery}
@@ -175,26 +182,26 @@ export default function ShippingConfigScreen() {
               thumbColor="#fff"
             />
           </View>
-          <Text style={twStyle("text-sm text-gray-500 mb-4")}>Offer product delivery to customers.</Text>
+          <Text style={twStyle("text-sm text-gray-500 mb-4")}>{sh("deliveryHint")}</Text>
 
           {config.offers_delivery && (
             <View>
               <View style={{ marginBottom: 12 }}>
                 <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-                  Delivery fee ({tenantCurrency})
+                  {sh("deliveryFee", { currency: tenantCurrency })}
                 </Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={String(config.delivery_fee ?? "")}
                   onChangeText={(t) => setConfig((c) => ({ ...c, delivery_fee: parseFloat(t) || 0 }))}
                   keyboardType="decimal-pad"
-                  placeholder="0.00"
+                  placeholder={sh("feePlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View style={{ marginBottom: 12 }}>
                 <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
-                  Free delivery above ({tenantCurrency})
+                  {sh("freeDeliveryAbove", { currency: tenantCurrency })}
                 </Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -206,12 +213,12 @@ export default function ShippingConfigScreen() {
                     }))
                   }
                   keyboardType="decimal-pad"
-                  placeholder="Optional"
+                  placeholder={sh("optionalPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Delivery radius (km)</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("deliveryRadius")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={config.delivery_radius_km != null ? String(config.delivery_radius_km) : ""}
@@ -222,12 +229,12 @@ export default function ShippingConfigScreen() {
                     }))
                   }
                   keyboardType="decimal-pad"
-                  placeholder="Optional"
+                  placeholder={sh("optionalPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Estimated delivery days</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("estimatedDays")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={String(config.estimated_delivery_days)}
@@ -240,12 +247,12 @@ export default function ShippingConfigScreen() {
                 />
               </View>
               <View>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Delivery notes</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{sh("deliveryNotes")}</Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[80px]")}
                   value={config.delivery_notes ?? ""}
                   onChangeText={(t) => setConfig((c) => ({ ...c, delivery_notes: t || null }))}
-                  placeholder="e.g. Mon–Fri only"
+                  placeholder={sh("deliveryNotesPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   multiline
                   textAlignVertical="top"
@@ -258,16 +265,16 @@ export default function ShippingConfigScreen() {
         <View style={twStyle("mx-4 mb-4 rounded-2xl bg-blue-50 p-4")}>
           <View style={twStyle("flex-row items-center mb-2")}>
             <Ionicons name="information-circle-outline" size={18} color="#2563eb" />
-            <Text style={twStyle("ml-2 text-sm font-semibold text-blue-800")}>How fees work</Text>
+            <Text style={twStyle("ms-2 text-sm font-semibold text-blue-800")}>{sh("howFeesWork")}</Text>
           </View>
           <Text style={twStyle("text-sm text-blue-900 leading-5")}>
-            Collection is free. Delivery uses your fee and platform fee. Set a free-delivery threshold so orders above that amount get free delivery.
+            {sh("howFeesWorkBody")}
           </Text>
         </View>
 
         <View style={twStyle("px-4")}>
           <ActionButton
-            label="Save changes"
+            label={sh("saveChanges")}
             variant="primary"
             onPress={handleSave}
             loading={saving}

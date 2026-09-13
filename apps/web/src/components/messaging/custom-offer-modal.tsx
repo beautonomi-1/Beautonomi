@@ -15,6 +15,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CustomOfferModalProps {
   isOpen: boolean;
@@ -53,6 +54,7 @@ export default function CustomOfferModal({
   editOfferId,
   onSuccess,
 }: CustomOfferModalProps) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [serviceName, setServiceName] = useState("");
@@ -129,7 +131,7 @@ export default function CustomOfferModal({
       }
     } catch (err) {
       console.error("Failed to load offer for edit:", err);
-      toast.error("Could not load offer");
+      toast.error(t("web.messaging.customOfferModal.loadOfferFailed"));
     }
   };
 
@@ -215,12 +217,14 @@ export default function CustomOfferModal({
     };
   }, [durationMinutes, isOpen, locationId, locationType, selectedSlotParts.date, selectedSlotParts.time, staffId]);
 
-  const handleQuickTemplate = (template: string) => {
-    const templates: Record<string, string> = {
-      "Wedding Package": `I'd like to offer you a complete wedding package including hair, makeup, and nails. This includes a trial session before the wedding day. Perfect for your special day!`,
-      "Special Occasion": `I have a special offer for your upcoming occasion. This includes full styling and makeup services tailored to your needs.`,
-      "Package Deal": `I'm offering you a discounted package deal for multiple services. This is a great value opportunity!`,
-      "Group Booking": `I can offer you a group booking discount for multiple people. Perfect for events, parties, or special occasions!`,
+  const handleQuickTemplate = (
+    template: "weddingPackage" | "specialOccasion" | "packageDeal" | "groupBooking",
+  ) => {
+    const templates: Record<typeof template, string> = {
+      weddingPackage: t("web.messaging.customOfferModal.templateWeddingPackageBody"),
+      specialOccasion: t("web.messaging.customOfferModal.templateSpecialOccasionBody"),
+      packageDeal: t("web.messaging.customOfferModal.templatePackageDealBody"),
+      groupBooking: t("web.messaging.customOfferModal.templateGroupBookingBody"),
     };
     setDescription(templates[template] || "");
   };
@@ -234,13 +238,13 @@ export default function CustomOfferModal({
 
     for (const file of imageFiles) {
       if (file.size > maxBytes) {
-        toast.error(`"${file.name}" is over 5MB. Choose a smaller image.`);
+        toast.error(t("web.messaging.customOfferModal.imageTooLarge", { name: file.name }));
         return;
       }
     }
 
     if (imageUrls.length + imageFiles.length > 6) {
-      toast.error("Maximum 6 images allowed");
+      toast.error(t("web.messaging.customOfferModal.maxImagesAllowed"));
       return;
     }
 
@@ -257,13 +261,13 @@ export default function CustomOfferModal({
       if (response.data?.urls?.length) {
         setImageUrls((prev) => [...prev, ...response.data.urls].slice(0, 6));
         const count = response.data.count || response.data.urls.length;
-        toast.success(`${count} image${count > 1 ? "s" : ""} uploaded successfully`);
+        toast.success(t("web.messaging.customOfferModal.imagesUploaded", { count }));
         if (response.data.partial) {
-          toast.warning("Some images could not be uploaded");
+          toast.warning(t("web.messaging.customOfferModal.partialUploadWarning"));
         }
       }
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Failed to upload images";
+      const msg = err instanceof FetchError ? err.message : t("web.messaging.customOfferModal.uploadImagesFailed");
       toast.error(msg);
     } finally {
       setUploadingImages(false);
@@ -301,24 +305,24 @@ export default function CustomOfferModal({
 
   const validationHint = useMemo(() => {
     const d = description.trim();
-    if (d.length > 0 && d.length < MIN_DESC) return `Add at least ${MIN_DESC - d.length} more character(s) to the description.`;
-    if (!price || Number.isNaN(Number(price)) || Number(price) < 0) return "Enter a valid price (0 or more).";
+    if (d.length > 0 && d.length < MIN_DESC) return t("web.messaging.customOfferModal.descCharsNeeded", { count: MIN_DESC - d.length });
+    if (!price || Number.isNaN(Number(price)) || Number(price) < 0) return t("web.messaging.customOfferModal.invalidPrice");
     const dm = Number(durationMinutes);
-    if (!Number.isFinite(dm) || dm < 15 || dm > 480) return "Duration must be between 15 and 480 minutes.";
+    if (!Number.isFinite(dm) || dm < 15 || dm > 480) return t("web.messaging.customOfferModal.invalidDuration");
     const ex = Number(expirationDays);
-    if (!Number.isFinite(ex) || ex <= 0) return "Expiration must be at least 1 day.";
+    if (!Number.isFinite(ex) || ex <= 0) return t("web.messaging.customOfferModal.invalidExpiration");
     if (locationType === "at_home" && !addressLine1.trim()) {
-      return "House-call offers need a service address.";
+      return t("web.messaging.customOfferModal.houseCallNeedsAddress");
     }
     if (locationType === "at_salon" && !locationId) {
-      return "At-salon offers need a salon location.";
+      return t("web.messaging.customOfferModal.salonNeedsLocation");
     }
     return null;
-  }, [description, price, durationMinutes, expirationDays, locationType, addressLine1, locationId]);
+  }, [description, price, durationMinutes, expirationDays, locationType, addressLine1, locationId, t]);
 
   const handleSubmit = async () => {
     if (!isValid()) {
-      toast.error("Please fill in all required fields correctly");
+      toast.error(t("web.messaging.customOfferModal.fillRequiredFields"));
       return;
     }
 
@@ -375,10 +379,10 @@ export default function CustomOfferModal({
           scheduled_at: preferredStartAtIso,
           travel_fee: locationType === "at_home" ? (Number.isNaN(Number(travelFee)) ? 0 : Number(travelFee)) : null,
         });
-        toast.success("Offer updated.");
+        toast.success(t("web.messaging.customOfferModal.offerUpdated"));
       } else {
         await fetcher.post<{ data: { request: any; offer: any } }>("/api/provider/custom-offers/create", payload);
-        toast.success("Custom offer sent successfully!");
+        toast.success(t("web.messaging.customOfferModal.offerSent"));
       }
 
       onSuccess?.();
@@ -386,7 +390,7 @@ export default function CustomOfferModal({
     } catch (err) {
       if (err instanceof FetchError && err.code === "CUSTOM_OFFERS_DISABLED") {
         toast.error(
-          "Custom offers are turned off for this workspace or market. Ask your admin to enable commerce.provider_custom_offers, or contact support.",
+          t("web.messaging.customOfferModal.customOffersDisabled"),
           { duration: 12_000 },
         );
         return;
@@ -394,8 +398,8 @@ export default function CustomOfferModal({
       const errorMessage =
         err instanceof FetchError
           ? err.message
-          : "Failed to send custom offer. Please try again.";
-      toast.error(`Could not send offer: ${errorMessage}`);
+          : t("web.messaging.customOfferModal.sendOfferFailed");
+      toast.error(t("web.messaging.customOfferModal.couldNotSendOffer", { message: errorMessage }));
       console.error("Error creating custom offer:", err);
     } finally {
       setIsSubmitting(false);
@@ -429,55 +433,55 @@ export default function CustomOfferModal({
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-primary" />
-            {isEditMode ? "Edit & resend offer" : `Send Custom Offer to ${customerName || "Customer"}`}
+            {isEditMode ? t("web.messaging.customOfferModal.editTitle") : t("web.messaging.customOfferModal.createTitle", { name: customerName || t("web.messaging.customOfferModal.customerFallback") })}
           </DialogTitle>
           <DialogDescription>
             {isEditMode
-              ? "Update the offer in place. The customer will be notified of the revised quote."
-              : "Create a personalized service offer for this customer. The offer will be sent as a message in your conversation."}
+              ? t("web.messaging.customOfferModal.editDescription")
+              : t("web.messaging.customOfferModal.createDescription")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Quick Templates */}
           <div>
-            <Label className="text-sm font-semibold mb-2 block">Quick Templates</Label>
+            <Label className="text-sm font-semibold mb-2 block">{t("web.messaging.customOfferModal.quickTemplates")}</Label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => handleQuickTemplate("Wedding Package")}
+                onClick={() => handleQuickTemplate("weddingPackage")}
                 className="rounded-full text-xs"
               >
-                Wedding Package
+                {t("web.messaging.customOfferModal.templateWeddingPackage")}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => handleQuickTemplate("Special Occasion")}
+                onClick={() => handleQuickTemplate("specialOccasion")}
                 className="rounded-full text-xs"
               >
-                Special Occasion
+                {t("web.messaging.customOfferModal.templateSpecialOccasion")}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => handleQuickTemplate("Package Deal")}
+                onClick={() => handleQuickTemplate("packageDeal")}
                 className="rounded-full text-xs"
               >
-                Package Deal
+                {t("web.messaging.customOfferModal.templatePackageDeal")}
               </Button>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => handleQuickTemplate("Group Booking")}
+                onClick={() => handleQuickTemplate("groupBooking")}
                 className="rounded-full text-xs"
               >
-                Group Booking
+                {t("web.messaging.customOfferModal.templateGroupBooking")}
               </Button>
             </div>
           </div>
@@ -485,32 +489,32 @@ export default function CustomOfferModal({
           {/* Service name (optional) - used as booking/calendar title when accepted */}
           <div className="space-y-2">
             <Label htmlFor="serviceName" className="text-sm font-semibold">
-              Service name (optional)
+              {t("web.messaging.customOfferModal.serviceNameOptional")}
             </Label>
             <Input
               id="serviceName"
               value={serviceName}
               onChange={(e) => setServiceName(e.target.value)}
-              placeholder="e.g. Haircut & Styling"
+              placeholder={t("web.messaging.customOfferModal.serviceNamePlaceholder")}
             />
           </div>
 
           {/* Description */}
           <div className="space-y-2">
             <Label htmlFor="description" className="text-sm font-semibold flex items-center gap-2">
-              Service Description <span className="text-red-500">*</span>
+              {t("web.messaging.customOfferModal.serviceDescription")} <span className="text-red-500">*</span>
             </Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the service you're offering. Include details about what's included, style preferences, special features, etc."
+              placeholder={t("web.messaging.customOfferModal.serviceDescriptionPlaceholder")}
               aria-invalid={description.trim().length > 0 && description.trim().length < MIN_DESC}
               rows={5}
               className="resize-none"
             />
             <p className="text-xs text-gray-500">
-              {description.trim().length} / {MIN_DESC}-4000 characters
+              {t("web.messaging.customOfferModal.characterCount", { count: description.trim().length, min: MIN_DESC })}
             </p>
             {validationHint && (
               <p className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5" role="status">
@@ -523,7 +527,7 @@ export default function CustomOfferModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="price" className="text-sm font-semibold">
-                Price <span className="text-red-500">*</span>
+{t("web.messaging.customOfferModal.price")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="price"
@@ -532,12 +536,12 @@ export default function CustomOfferModal({
                 step="0.01"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                placeholder="0.00"
+                placeholder={t("web.messaging.customOfferModal.pricePlaceholder")}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="currency" className="text-sm font-semibold">
-                Currency <span className="text-red-500">*</span>
+{t("web.messaging.customOfferModal.currency")} <span className="text-red-500">*</span>
               </Label>
               <Select value={currency} onValueChange={setCurrency}>
                 <SelectTrigger>
@@ -558,7 +562,7 @@ export default function CustomOfferModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="duration" className="text-sm font-semibold">
-                Duration (minutes) <span className="text-red-500">*</span>
+{t("web.messaging.customOfferModal.durationMinutes")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="duration"
@@ -569,19 +573,19 @@ export default function CustomOfferModal({
                 onChange={(e) => setDurationMinutes(e.target.value)}
                 placeholder="60"
               />
-              <p className="text-xs text-gray-500">15-480 minutes (1-8 hours)</p>
+              <p className="text-xs text-gray-500">{t("web.messaging.customOfferModal.durationHint")}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="location" className="text-sm font-semibold">
-                Location Type <span className="text-red-500">*</span>
+{t("web.messaging.customOfferModal.locationType")} <span className="text-red-500">*</span>
               </Label>
               <Select value={locationType} onValueChange={(value: "at_home" | "at_salon") => setLocationType(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="at_salon">At Salon</SelectItem>
-                  <SelectItem value="at_home">At Home</SelectItem>
+                  <SelectItem value="at_salon">{t("web.messaging.customOfferModal.atSalon")}</SelectItem>
+                  <SelectItem value="at_home">{t("web.messaging.customOfferModal.atHome")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -591,7 +595,7 @@ export default function CustomOfferModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="expiration" className="text-sm font-semibold">
-                Offer Expires In (days) <span className="text-red-500">*</span>
+                {t("web.messaging.customOfferModal.offerExpiresInDays")} <span className="text-red-500">*</span>
               </Label>
               <Input
                 id="expiration"
@@ -605,10 +609,10 @@ export default function CustomOfferModal({
             </div>
             <div className="space-y-2">
               <Label htmlFor="preferredStart" className="text-sm font-semibold">
-                Appointment slot
+                {t("web.messaging.customOfferModal.appointmentSlot")}
               </Label>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                <p className="mb-2 text-xs text-gray-500">Slots are loaded from the same availability engine used for new appointments.</p>
+                <p className="mb-2 text-xs text-gray-500">{t("web.messaging.customOfferModal.slotsHint")}</p>
                 <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                   {dateOptions.map((d) => {
                     const key = toDateKey(d);
@@ -630,9 +634,9 @@ export default function CustomOfferModal({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {loadingSlots ? (
-                    <p className="text-xs text-gray-500">Loading available times...</p>
+                    <p className="text-xs text-gray-500">{t("web.messaging.customOfferModal.loadingTimes")}</p>
                   ) : availableSlots.length === 0 ? (
-                    <p className="text-xs text-amber-700">No available slots for this date. Try another day, staff member, or duration.</p>
+                    <p className="text-xs text-amber-700">{t("web.messaging.customOfferModal.noSlots")}</p>
                   ) : (
                     availableSlots.slice(0, 32).map((slot) => {
                       const time = slot.time.slice(0, 5);
@@ -667,42 +671,42 @@ export default function CustomOfferModal({
           {locationType === "at_home" && (
             <>
               <div className="space-y-2">
-                <Label className="text-sm font-semibold">Address (for at home)</Label>
+                <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.addressForHome")}</Label>
                 <Input
                   value={addressLine1}
                   onChange={(e) => setAddressLine1(e.target.value)}
-                  placeholder="Street address"
+                  placeholder={t("web.messaging.customOfferModal.streetAddress")}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">City</Label>
+                  <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.city")}</Label>
                   <Input
                     value={addressCity}
                     onChange={(e) => setAddressCity(e.target.value)}
-                    placeholder="City"
+                    placeholder={t("web.messaging.customOfferModal.city")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-semibold">Country</Label>
+                  <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.country")}</Label>
                   <Input
                     value={addressCountry}
                     onChange={(e) => setAddressCountry(e.target.value)}
-                    placeholder="Country"
+                    placeholder={t("web.messaging.customOfferModal.country")}
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-semibold">Travel fee (optional, {tenantCurrency})</Label>
+                <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.travelFeeOptional", { currency: tenantCurrency })}</Label>
                 <Input
                   type="number"
                   min="0"
                   step="1"
                   value={travelFee}
                   onChange={(e) => setTravelFee(e.target.value)}
-                  placeholder="e.g. 50"
+                  placeholder={t("web.messaging.customOfferModal.travelFeePlaceholder")}
                 />
-                <p className="text-xs text-gray-500">Add a travel fee for this house call. Leave empty for no fee.</p>
+                <p className="text-xs text-gray-500">{t("web.messaging.customOfferModal.travelFeeHint")}</p>
               </div>
             </>
           )}
@@ -711,7 +715,7 @@ export default function CustomOfferModal({
           {categories.length > 0 && (
             <div className="space-y-2">
               <Label className="text-sm font-semibold">
-                Service Category (optional)
+                {t("web.messaging.customOfferModal.serviceCategoryOptional")}
               </Label>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -722,7 +726,7 @@ export default function CustomOfferModal({
                     serviceCategoryId == null ? "border-primary bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-600",
                   )}
                 >
-                  Any category
+                  {t("web.messaging.customOfferModal.anyCategory")}
                 </button>
                 {categories.map((cat) => {
                   const active = serviceCategoryId === cat.id;
@@ -746,7 +750,7 @@ export default function CustomOfferModal({
 
           {locationType === "at_salon" && locations.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-sm font-semibold">Venue (optional)</Label>
+              <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.venueOptional")}</Label>
               <div className="flex flex-wrap gap-2">
                 {locations.map((loc) => {
                   const active = locationId === loc.id;
@@ -772,17 +776,17 @@ export default function CustomOfferModal({
           {staffMembers.length > 0 && (
             <div className="space-y-2">
               <Label htmlFor="staff" className="text-sm font-semibold">
-                Assign to Staff Member (optional)
+                {t("web.messaging.customOfferModal.assignStaffOptional")}
               </Label>
               <Select
                 value={staffId || RADIX_SELECT_NONE}
                 onValueChange={(value) => setStaffId(value === RADIX_SELECT_NONE ? null : value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a staff member (optional)" />
+                  <SelectValue placeholder={t("web.messaging.customOfferModal.selectStaffPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_NONE}>No specific assignment</SelectItem>
+                  <SelectItem value={RADIX_SELECT_NONE}>{t("web.messaging.customOfferModal.noSpecificAssignment")}</SelectItem>
                   {staffMembers.map((staff) => (
                     <SelectItem key={staff.id} value={staff.id}>
                       {staff.name}
@@ -791,7 +795,7 @@ export default function CustomOfferModal({
                 </SelectContent>
               </Select>
               <p className="text-xs text-gray-500">
-                If assigned, this staff member will be assigned to the booking when the offer is accepted
+                {t("web.messaging.customOfferModal.staffAssignmentHint")}
               </p>
             </div>
           )}
@@ -799,22 +803,22 @@ export default function CustomOfferModal({
           {/* Notes */}
           <div className="space-y-2">
             <Label htmlFor="notes" className="text-sm font-semibold">
-              Additional Notes (optional)
+              {t("web.messaging.customOfferModal.additionalNotesOptional")}
             </Label>
             <Textarea
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Any additional information, terms, or special conditions..."
+              placeholder={t("web.messaging.customOfferModal.notesPlaceholder")}
               rows={3}
               className="resize-none"
             />
-            <p className="text-xs text-gray-500">Max 4000 characters</p>
+            <p className="text-xs text-gray-500">{t("web.messaging.customOfferModal.max4000Chars")}</p>
           </div>
 
           {/* Image Upload (optional) */}
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">Inspiration Images (optional)</Label>
+            <Label className="text-sm font-semibold">{t("web.messaging.customOfferModal.inspirationImagesOptional")}</Label>
             <div
               onClick={() => !uploadingImages && imageUrls.length < 6 && fileInputRef.current?.click()}
               className={cn(
@@ -836,15 +840,15 @@ export default function CustomOfferModal({
               {uploadingImages ? (
                 <div className="flex flex-col items-center gap-2">
                   <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-                  <span className="text-sm text-gray-600">Uploading images...</span>
+                  <span className="text-sm text-gray-600">{t("web.messaging.customOfferModal.uploadingImages")}</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <Upload className="w-5 h-5 text-gray-400" />
                   <span className="text-sm font-medium text-gray-700">
-                    {imageUrls.length >= 6 ? "Maximum 6 images reached" : "Click to upload inspiration photos"}
+                    {imageUrls.length >= 6 ? t("web.messaging.customOfferModal.maxImagesReached") : t("web.messaging.customOfferModal.clickToUpload")}
                   </span>
-                  <span className="text-xs text-gray-500">PNG, JPG, WebP, GIF up to 5MB each</span>
+                  <span className="text-xs text-gray-500">{t("web.messaging.customOfferModal.imageFormatsHint")}</span>
                 </div>
               )}
             </div>
@@ -852,7 +856,7 @@ export default function CustomOfferModal({
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {imageUrls.map((url, index) => (
                   <div key={index} className="relative aspect-video">
-                    <Image src={url} alt={`Preview ${index + 1}`} fill className="object-cover rounded" unoptimized />
+                    <Image src={url} alt={t("web.messaging.customOfferModal.imagePreviewAlt", { index: index + 1 })} fill className="object-cover rounded" unoptimized />
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
@@ -870,7 +874,7 @@ export default function CustomOfferModal({
         {/* Footer Actions */}
         <div className="flex justify-end gap-3 pt-4 border-t">
           <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
-            Cancel
+            {t("web.messaging.customOfferModal.cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
@@ -882,7 +886,7 @@ export default function CustomOfferModal({
                 : "bg-gradient-to-r from-primary/70 to-primary-hover/80 hover:from-primary/80 hover:to-primary-hover/90 opacity-90",
             )}
           >
-            {isSubmitting ? (isEditMode ? "Updating..." : "Sending...") : isEditMode ? "Update offer" : "Send Offer"}
+            {isSubmitting ? (isEditMode ? t("web.messaging.customOfferModal.updating") : t("web.messaging.customOfferModal.sending")) : isEditMode ? t("web.messaging.customOfferModal.updateOffer") : t("web.messaging.customOfferModal.sendOffer")}
           </Button>
         </div>
       </DialogContent>

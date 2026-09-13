@@ -18,6 +18,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 type Membership = {
   provider_id: string;
@@ -25,8 +26,8 @@ type Membership = {
   relationship: "owner" | "staff";
 };
 
-function relationshipLabel(relationship: Membership["relationship"]): string {
-  return relationship === "owner" ? "Owner" : "Staff";
+function relationshipLabel(relationship: Membership["relationship"], os: (key: string) => string): string {
+  return relationship === "owner" ? os("owner") : os("staff");
 }
 
 /**
@@ -38,6 +39,8 @@ export function ProviderOrgSwitcher({
 }: {
   variant?: "card" | "header";
 }) {
+  const { t } = useTranslation();
+  const os = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.providerOrgSwitcher.${key}`, opts) as string;
   const { user } = useAuth();
   const { provider, refresh } = useProvider();
   const [memberships, setMemberships] = useState<Membership[]>([]);
@@ -76,7 +79,7 @@ export function ProviderOrgSwitcher({
   const current =
     memberships.find((m) => m.provider_id === (activeId ?? provider?.id)) ??
     memberships.find((m) => m.provider_id === provider?.id);
-  const currentName = current?.business_name ?? provider?.business_name ?? "Business";
+  const currentName = current?.business_name ?? provider?.business_name ?? os("businessFallback");
   const canSwitch = memberships.length > 1;
 
   async function switchOrg(providerId: string) {
@@ -90,7 +93,7 @@ export function ProviderOrgSwitcher({
       { provider_id: providerId },
     );
     if (res.error) {
-      Alert.alert("Could not switch business", res.error.message ?? "Try again.");
+      Alert.alert(os("couldNotSwitch"), res.error.message ?? os("tryAgain"));
       return;
     }
     await persistActiveProviderOrgHint(user?.id, providerId);
@@ -115,9 +118,9 @@ export function ProviderOrgSwitcher({
           onPress={(e) => e.stopPropagation?.()}
         >
           <View style={twStyle("border-b border-gray-100 px-5 py-4")}>
-            <Text style={twStyle("text-base font-bold text-gray-900")}>Switch business</Text>
+            <Text style={twStyle("text-base font-bold text-gray-900")}>{os("switchTitle")}</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              Bookings, team, and AI follow the salon you select.
+              {os("switchSubtitle")}
             </Text>
           </View>
           <ScrollView style={{ maxHeight: listMaxHeight }}>
@@ -129,7 +132,7 @@ export function ProviderOrgSwitcher({
                   onPress={() => void switchOrg(m.provider_id)}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  accessibilityLabel={`${m.business_name}, ${relationshipLabel(m.relationship)}`}
+                  accessibilityLabel={`${m.business_name}, ${relationshipLabel(m.relationship, os)}`}
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -145,7 +148,7 @@ export function ProviderOrgSwitcher({
                       {m.business_name}
                     </Text>
                     <Text style={{ marginTop: 2, fontSize: 12, color: "#6b7280" }}>
-                      {relationshipLabel(m.relationship)}
+                      {relationshipLabel(m.relationship, os)}
                     </Text>
                   </View>
                   {selected ? <Ionicons name="checkmark-circle" size={20} color={Colors.primary} /> : null}
@@ -172,16 +175,16 @@ export function ProviderOrgSwitcher({
           accessibilityRole="button"
           accessibilityLabel={
             canSwitch
-              ? `Active business ${currentName}. Tap to switch.`
-              : `Active business ${currentName}`
+              ? os("activeA11ySwitch", { name: currentName })
+              : os("activeA11y", { name: currentName })
           }
         >
           <Ionicons name="storefront-outline" size={14} color="#6b7280" />
-          <Text style={twStyle("ml-1.5 text-xs font-medium text-gray-700")} numberOfLines={1}>
+          <Text style={twStyle("ms-1.5 text-xs font-medium text-gray-700")} numberOfLines={1}>
             {currentName}
           </Text>
           {canSwitch ? (
-            <Ionicons name="chevron-down" size={12} color="#9ca3af" style={{ marginLeft: 4 }} />
+            <Ionicons name="chevron-down" size={12} color="#9ca3af" style={{ marginStart: 4 }} />
           ) : null}
         </TouchableOpacity>
         {canSwitch ? sheet : null}
@@ -209,7 +212,7 @@ export function ProviderOrgSwitcher({
           letterSpacing: 0.6,
         }}
       >
-        Active business
+        {os("activeBusiness")}
       </Text>
       <View style={twStyle("mt-2")}>
         {memberships.map((m) => {
@@ -220,7 +223,7 @@ export function ProviderOrgSwitcher({
               onPress={() => void switchOrg(m.provider_id)}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              accessibilityLabel={`${m.business_name}, ${relationshipLabel(m.relationship)}`}
+              accessibilityLabel={`${m.business_name}, ${relationshipLabel(m.relationship, os)}`}
               style={{
                 paddingVertical: 10,
                 paddingHorizontal: 12,
@@ -232,7 +235,7 @@ export function ProviderOrgSwitcher({
                 justifyContent: "space-between",
               }}
             >
-              <View style={{ flex: 1, paddingRight: 8 }}>
+              <View style={{ flex: 1, paddingEnd: 8 }}>
                 <Text
                   style={{
                     color: selected ? "#fff" : Colors.gray[900],
@@ -243,7 +246,7 @@ export function ProviderOrgSwitcher({
                   {m.business_name}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 11, color: selected ? "#d1d5db" : "#6b7280" }}>
-                  {relationshipLabel(m.relationship)}
+                  {relationshipLabel(m.relationship, os)}
                 </Text>
               </View>
               {selected ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}

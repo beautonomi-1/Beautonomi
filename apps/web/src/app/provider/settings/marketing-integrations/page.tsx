@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useState } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -8,16 +9,17 @@ import { ChevronRight, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { formatCurrency } from "@/lib/utils";
 
 const marketingIntegrations = [
   {
-    title: "Email Integration",
-    description: "Connect SendGrid or Mailchimp for email marketing campaigns",
+    titleKey: "emailIntegration",
+    descriptionKey: "emailIntegrationHint",
     href: "/provider/settings/integrations/email",
   },
   {
-    title: "Twilio Integration",
-    description: "Connect Twilio for SMS and WhatsApp marketing campaigns",
+    titleKey: "twilioIntegration",
+    descriptionKey: "twilioIntegrationHint",
     href: "/provider/settings/integrations/twilio",
   },
 ];
@@ -40,6 +42,7 @@ type MarketingStatus = {
 };
 
 export default function MarketingIntegrationsPage() {
+  const { t } = useTranslation();
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [status, setStatus] = useState<MarketingStatus | null>(null);
   const [topupAmount, setTopupAmount] = useState("50");
@@ -72,7 +75,7 @@ export default function MarketingIntegrationsPage() {
   const handleTopup = async () => {
     const amount = Number(topupAmount);
     if (!Number.isFinite(amount) || amount < 10) {
-      toast.error("Minimum top-up is R10");
+      toast.error(t("web.provider.settings.pages.marketing-integrations.minimumTopUpIsR10"));
       return;
     }
     setTopupBusy(true);
@@ -85,10 +88,10 @@ export default function MarketingIntegrationsPage() {
       if (url) {
         window.location.href = url;
       } else {
-        toast.error("Could not start Paystack checkout");
+        toast.error(t("web.provider.settings.pages.marketing-integrations.couldNotStartPaystackCheckout"));
       }
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Top-up failed");
+      toast.error(e instanceof FetchError ? e.message : t("web.provider.settings.pages.marketing-integrations.topUpFailed"));
     } finally {
       setTopupBusy(false);
     }
@@ -97,55 +100,54 @@ export default function MarketingIntegrationsPage() {
   return (
     <div>
       <PageHeader
-        title="Marketing Integrations"
-        subtitle="Connect third-party services or use platform marketing credits"
+        title={t("web.provider.settings.categories.marketingIntegrations.title")}
+        subtitle={t("web.provider.settings.categories.marketingIntegrations.description")}
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Settings", href: "/provider/settings" },
-          { label: "Marketing Integrations" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+          { label: t("web.provider.settings.pages.marketing-integrations.marketingIntegrations") },
         ]}
       />
 
       <div className="mt-6 space-y-6">
         {status && (
           <SectionCard>
-            <h3 className="text-lg font-semibold">Sending mode</h3>
+            <h3 className="text-lg font-semibold">{t("web.provider.settings.pages.marketing-integrations.sendingMode")}</h3>
             <p className="mt-2 text-sm text-gray-700">
               {status.sending_mode === "platform" && (
                 <>
-                  <strong>Using Beautonomi platform sending.</strong> Promotional messages debit your marketing
-                  credits below.
+                  <strong>{t("web.provider.settings.pages.marketing-integrations.usingPlatformStrong")}</strong>{t("web.provider.settings.pages.marketing-integrations.usingPlatformBody")}
                 </>
               )}
               {status.sending_mode === "own_integrations" && (
                 <>
-                  <strong>Using your own integrations.</strong>{" "}
-                  {status.has_own_twilio && "Twilio connected. "}
-                  {status.has_own_email && "Email provider connected. "}
-                  Platform credits are not debited for sends on your credentials.
+                  <strong>{t("web.provider.settings.pages.marketing-integrations.usingOwnStrong")}</strong>{" "}
+                  {status.has_own_twilio && t("web.provider.settings.pages.marketing-integrations.twilioConnected")}
+                  {status.has_own_email && t("web.provider.settings.pages.marketing-integrations.emailConnected")}
+                  {t("web.provider.settings.pages.marketing-integrations.creditsNotDebited")}
                 </>
               )}
               {status.sending_mode === "configure_integrations" && (
                 <>
-                  Connect SendGrid/Mailchimp or Twilio below, or enable{" "}
-                  <strong>Platform sending</strong> on your subscription plan (any plan — not Growth-only).
+                  {t("web.provider.settings.pages.marketing-integrations.connectBelow")}{" "}
+                  <strong>{t("web.provider.settings.pages.marketing-integrations.platformSending")}</strong> {t("web.provider.settings.pages.marketing-integrations.connectBelowSuffix")}
                 </>
               )}
             </p>
             {status.platform_available && status.credits_apply_on && status.credits_apply_on.length > 0 && (
               <p className="mt-2 text-xs text-gray-600">
-                Platform credits apply to: {status.credits_apply_on.join(", ")}.
+                {t("web.provider.settings.pages.marketing-integrations.creditsApplyTo", { items: status.credits_apply_on.join(", ") })}
               </p>
             )}
             {status.platform_available && !status.use_platform_credentials && (
               <p className="mt-2 text-xs text-amber-700">
-                Platform sending is disabled for this provider (plan or admin override).
+                {t("web.provider.settings.pages.marketing-integrations.platformSendingDisabled")}
               </p>
             )}
             {status.use_platform_credentials && status.sending_mode !== "platform" && (
               <p className="mt-2 text-xs text-amber-700">
-                Your plan includes platform sending, but own integrations take precedence when connected.
+                {t("web.provider.settings.pages.marketing-integrations.ownTakesPrecedence")}
               </p>
             )}
           </SectionCard>
@@ -157,30 +159,29 @@ export default function MarketingIntegrationsPage() {
               <CreditCard className="h-5 w-5 text-emerald-600" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold">Platform marketing credits</h3>
+              <h3 className="text-lg font-semibold">{t("web.provider.settings.pages.marketing-integrations.platformCredits")}</h3>
               <p className="mt-1 text-sm text-gray-600">
-                When your plan includes platform sending, promotional SMS/email/WhatsApp debits this balance.
-                Transactional notifications are free.
+                {t("web.provider.settings.pages.marketing-integrations.platformCreditsHint")} {t("web.provider.settings.pages.marketing-integrations.transactionalFree")}
               </p>
               {balance && (
                 <dl className="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                   <div>
-                    <dt className="text-gray-500">Total balance</dt>
-                    <dd className="text-lg font-semibold">R{balance.total_zar.toFixed(2)}</dd>
+                    <dt className="text-gray-500">{t("web.provider.settings.pages.marketing-integrations.totalBalance")}</dt>
+                    <dd className="text-lg font-semibold">{formatCurrency(balance.total_zar, "ZAR")}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">Included (resets monthly)</dt>
-                    <dd>R{balance.included_balance_zar.toFixed(2)}</dd>
+                    <dt className="text-gray-500">{t("web.provider.settings.pages.marketing-integrations.includedResets")}</dt>
+                    <dd>{formatCurrency(balance.included_balance_zar, "ZAR")}</dd>
                   </div>
                   <div>
-                    <dt className="text-gray-500">Purchased (rolls over)</dt>
-                    <dd>R{balance.purchased_balance_zar.toFixed(2)}</dd>
+                    <dt className="text-gray-500">{t("web.provider.settings.pages.marketing-integrations.purchasedRollovers")}</dt>
+                    <dd>{formatCurrency(balance.purchased_balance_zar, "ZAR")}</dd>
                   </div>
                 </dl>
               )}
               <div className="mt-4 flex flex-wrap items-end gap-2">
                 <label className="text-sm">
-                  Top-up amount (ZAR)
+                  {t("web.provider.settings.pages.marketing-integrations.topUpAmount")}
                   <input
                     type="number"
                     min={10}
@@ -191,10 +192,10 @@ export default function MarketingIntegrationsPage() {
                   />
                 </label>
                 <Button type="button" disabled={topupBusy || !status?.use_platform_credentials} onClick={() => void handleTopup()}>
-                  {topupBusy ? "Redirecting…" : "Top up via Paystack"}
+                  {topupBusy ? t("web.provider.settings.pages.marketing-integrations.redirecting") : t("web.provider.settings.pages.marketing-integrations.topUpViaPaystack")}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => void loadCredits()}>
-                  Refresh
+                  {t("web.provider.settings.pages.marketing-integrations.refresh")}
                 </Button>
               </div>
             </div>
@@ -202,9 +203,9 @@ export default function MarketingIntegrationsPage() {
         </SectionCard>
 
         <SectionCard>
-          <h3 className="mb-2 text-lg font-semibold">Own integrations</h3>
+          <h3 className="mb-2 text-lg font-semibold">{t("web.provider.settings.pages.marketing-integrations.ownIntegrations")}</h3>
           <p className="mb-6 text-sm text-gray-600">
-            Connect your SendGrid/Mailchimp or Twilio account. Sends on your credentials are not debited from platform credits.
+            {t("web.provider.settings.pages.marketing-integrations.ownIntegrationsHint")}
           </p>
           <div className="space-y-2">
             {marketingIntegrations.map((item) => (
@@ -214,8 +215,8 @@ export default function MarketingIntegrationsPage() {
                 className="flex items-center justify-between rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50"
               >
                 <div>
-                  <h4 className="font-medium">{item.title}</h4>
-                  <p className="text-sm text-gray-600">{item.description}</p>
+                  <h4 className="font-medium">{t(`web.provider.settings.pages.marketing-integrations.${item.titleKey}`)}</h4>
+                  <p className="text-sm text-gray-600">{t(`web.provider.settings.pages.marketing-integrations.${item.descriptionKey}`)}</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-gray-400" />
               </Link>

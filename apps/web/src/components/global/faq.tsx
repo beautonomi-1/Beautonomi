@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -139,6 +141,7 @@ function getFallbackFaqs(category: string | undefined, partnerPage: boolean): FA
 }
 
 export default function FAQ({ applyBgPrimary, category, limit, partnerPage }: FAQProps) {
+  const { t } = useTranslation();
   const [faqData, setFaqData] = useState<FAQItem[]>(() => getFallbackFaqs(category, !!partnerPage));
   const [_isLoading, setIsLoading] = useState(true);
 
@@ -190,10 +193,10 @@ export default function FAQ({ applyBgPrimary, category, limit, partnerPage }: FA
     ? "text-white md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold"
     : "md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold";
   const triggerClass = onPrimary
-    ? "text-lg md:text-[22px] font-light text-white hover:text-white/90 text-left [&[data-state=open]]:text-white"
-    : "text-lg md:text-[22px] font-light text-secondary text-left";
+    ? "text-lg md:text-[22px] font-light text-white hover:text-white/90 text-start [&[data-state=open]]:text-white"
+    : "text-lg md:text-[22px] font-light text-secondary text-start";
   const contentClass = onPrimary ? "font-light text-white/95" : "font-light";
-  const listClass = onPrimary ? "list-decimal ml-6 text-white/95" : "list-decimal ml-6";
+  const listClass = onPrimary ? "list-decimal ms-6 text-white/95" : "list-decimal ms-6";
   const paragraphClass = onPrimary
     ? "text-base font-light text-white/95"
     : "text-base font-light text-destructive";
@@ -204,7 +207,7 @@ export default function FAQ({ applyBgPrimary, category, limit, partnerPage }: FA
         <div className="block lg:grid grid-cols-12">
           <div className="col-span-5">
             <h2 className={headingClass}>
-              Your questions, answered
+              {t("web.global.faq.heading")}
             </h2>
           </div>
           <div className="col-span-7">

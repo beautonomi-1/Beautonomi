@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -33,10 +34,10 @@ interface Conversation {
   is_pinned?: boolean;
 }
 
-function mapConversationRows(rows: Conversation[]): Conversation[] {
+function mapConversationRows(rows: Conversation[], customerFallback: string): Conversation[] {
   return (rows || []).map((conv) => ({
     ...conv,
-    customer_name: conv.customer_name || "Customer",
+customer_name: conv.customer_name || customerFallback,
     customer_phone: conv.customer_phone ?? null,
     customer_email: conv.customer_email ?? null,
     avatar: conv.customer_avatar || conv.avatar || null,
@@ -63,10 +64,11 @@ export function MessagingClient({
   fromServer: boolean;
   offerId?: string | null;
 }) {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<Conversation[]>(() => {
     if (initialConversations && !initialError) {
-      return mapConversationRows(initialConversations as Conversation[]);
+return mapConversationRows(initialConversations as Conversation[], t("web.provider.common.customer"));
     }
     return [];
   });
@@ -154,7 +156,7 @@ export function MessagingClient({
         return;
       }
       
-      const transformed = mapConversationRows((response.data || []) as Conversation[]);
+const transformed = mapConversationRows((response.data || []) as Conversation[], t("web.provider.common.customer"));
       
       setConversations(transformed);
       setSelectedConversation((prev) => {
@@ -162,22 +164,22 @@ export function MessagingClient({
         return transformed.find((c) => c.id === prev.id) ?? prev;
       });
     } catch (err) {
-      let errorMessage = "Failed to load conversations";
+let errorMessage = t("web.provider.pages.messaging.loadFailed");
       
       if (err instanceof FetchTimeoutError) {
-        errorMessage = "Request timed out. Please try again.";
+errorMessage = t("web.provider.common.requestTimeout");
       } else if (err instanceof FetchError) {
         // Provide more specific error messages based on status code
         if (err.status === 401) {
-          errorMessage = "Please sign in to view your conversations.";
+errorMessage = t("web.provider.pages.messaging.signInRequired");
         } else if (err.status === 403) {
           if (isPlanGateErrorCode(err.code)) {
             errorMessage =
               err.message ||
-              "You've reached your monthly client-chat message limit. Upgrade under Subscription.";
+              t("web.provider.pages.messaging.planLimit");
             toast.error(errorMessage, {
               action: {
-                label: "View plans",
+label: t("web.provider.settings.pages.sales/paystack-terminal.viewPlans"),
                 onClick: () => {
                   window.location.assign("/provider/subscription");
                 },
@@ -185,16 +187,16 @@ export function MessagingClient({
             });
           } else {
             errorMessage =
-              "You don't have permission to view conversations. Please contact support if you believe this is an error.";
+              t("web.provider.pages.messaging.permissionDenied");
           }
         } else if (err.status === 404) {
-          errorMessage = "Conversations endpoint not found.";
+errorMessage = t("web.provider.pages.messaging.endpointNotFound");
         } else if (err.status === 0) {
-          errorMessage = "Network error: Unable to reach server. Please check your connection.";
+errorMessage = t("web.provider.pages.messaging.networkError");
         } else if (err.status >= 500) {
-          errorMessage = "Server error. Please try again later.";
+errorMessage = t("web.provider.pages.messaging.serverError");
         } else {
-          errorMessage = err.message || `Failed to fetch conversations (${err.status})`;
+errorMessage = err.message || t("web.provider.pages.messaging.loadFailedWithStatus", { status: err.status });
         }
         
         // Log detailed error for debugging
@@ -205,7 +207,7 @@ export function MessagingClient({
           details: err.details,
         });
       } else {
-        errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
+errorMessage = err instanceof Error ? err.message : t("web.provider.pages.messaging.unexpectedError");
         console.error("Error loading conversations:", err);
       }
       
@@ -286,7 +288,7 @@ export function MessagingClient({
     return (
       <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
         <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading messages..." />
+<LoadingTimeout loadingMessage={t("web.provider.pages.messaging.loading")} />
         </div>
       </RoleGuard>
     );
@@ -299,7 +301,7 @@ export function MessagingClient({
         {!showChat && (
           <div className="md:hidden border-b border-[#e9edef] bg-white px-4 py-3">
             <BackButton href="/provider/dashboard" />
-            <h1 className="text-xl font-semibold text-[#111b21] mt-2">Messages</h1>
+<h1 className="text-xl font-semibold text-[#111b21] mt-2">{t("web.provider.sidebar.items.messages")}</h1>
           </div>
         )}
 
@@ -307,8 +309,8 @@ export function MessagingClient({
         <div className="hidden md:block border-b border-[#e9edef] bg-white px-6 py-4">
           <Breadcrumb
             items={[
-              { label: "Dashboard", href: "/provider/dashboard" },
-              { label: "Messages" },
+{ label: t("web.provider.common.breadcrumbDashboard"), href: "/provider/dashboard" },
+{ label: t("web.provider.sidebar.items.messages") },
             ]}
           />
         </div>
@@ -344,7 +346,7 @@ export function MessagingClient({
                   onClick={() => void loadConversations()}
                   className="mt-4 px-4 py-2 bg-[#008489] text-white rounded-lg text-sm font-medium hover:bg-[#006a6f] transition-colors"
                 >
-                  Try Again
+{t("web.provider.common.tryAgain")}
                 </button>
               </div>
             ) : (
@@ -392,9 +394,9 @@ export function MessagingClient({
                       />
                     </svg>
                   </div>
-                  <p className="text-[#667781] text-sm md:text-base font-medium">Select a conversation</p>
+<p className="text-[#667781] text-sm md:text-base font-medium">{t("web.provider.pages.messaging.selectConversation")}</p>
                   <p className="text-[#667781] text-xs md:text-sm mt-1">
-                    Choose a customer conversation to start messaging
+{t("web.provider.pages.messaging.selectConversationHint")}
                   </p>
                 </div>
               </div>

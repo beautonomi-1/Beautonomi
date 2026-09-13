@@ -6,8 +6,10 @@ import profile from "./../../../public/images/filled-profile-icon.svg";
 import sidebar from "./../../../public/images/sidebar-icon.svg";
 import { Button } from "../ui/button";
 import Link from "next/link";
+import { useTranslation } from "@beautonomi/i18n";
 
 const Navbar2 = () => {
+  const { t } = useTranslation();
   const [isPopupVisible, setIsPopupVisible] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null); // Provide the correct type here
 
@@ -38,14 +40,14 @@ const Navbar2 = () => {
     <div className="relative container">
       <div className="flex justify-between items-center py-3 mb-20">
       <Link href="/">
-        <Image src={logo} alt="Logo" />
+        <Image src={logo} alt={t("web.layout.navbar.logoAlt")} />
         </Link>
         <div className="flex items-center gap-3">
           <Button className="flex gap-4 border rounded-full h-12   bg-white p-4">
-            <Image src={sidebar} alt="Sidebar Icon" className="h-5 w-5" />
+            <Image src={sidebar} alt={t("web.layout.navbar.sidebarIconAlt")} className="h-5 w-5" />
             <Image
               src={profile}
-              alt="Profile Icon"
+              alt={t("web.layout.navbar.profileIconAlt")}
               className="h-7 w-7 cursor-pointer"
               onClick={handleProfileClick}
             />
@@ -57,19 +59,19 @@ const Navbar2 = () => {
               className="absolute right-5 top-14 bg-white border rounded-lg shadow py-5 z-10"
             >
               <ul className=" text-secondary text-base font-normal ">
-                <li className="pr-24 pl-5 mb-5">
-                  <Link href="/">Sign Up</Link>
+                <li className="pe-24 ps-5 mb-5">
+                  <Link href="/">{t("web.layout.navbar.signUp")}</Link>
                 </li>
                 <li className="border-b  pb-4 mb-5">
-                  <Link href="/" className=" pr-24 pl-5">
-                    Log In
+                  <Link href="/" className=" pe-24 ps-5">
+                    {t("web.layout.navbar.logIn")}
                   </Link>
                 </li>
-                <li className="pr-24 pl-5 mb-5">
-                  <Link href="/">Host your home</Link>
+                <li className="pe-24 ps-5 mb-5">
+                  <Link href="/">{t("web.layout.navbar.hostYourHome")}</Link>
                 </li>
-                <li className="pr-24 pl-5">
-                  <Link href="/">Help Center</Link>
+                <li className="pe-24 ps-5">
+                  <Link href="/">{t("web.layout.landingNavbar.helpCenter")}</Link>
                 </li>
               </ul>
             </div>

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -48,6 +49,12 @@ const COLORS = [
 type FilterMode = "all" | "paid" | "unpaid" | "active" | "inactive";
 
 export default function TimeOffTypesScreen() {
+  const { t } = useTranslation();
+  const tot = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.timeOffTypes.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<TimeOffType | null>(null);
@@ -86,34 +93,34 @@ export default function TimeOffTypesScreen() {
     if (search) {
       const q = search.toLowerCase();
       result = result.filter(
-        (t) =>
-          t.name.toLowerCase().includes(q) ||
-          t.description?.toLowerCase().includes(q)
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          item.description?.toLowerCase().includes(q)
       );
     }
     switch (filter) {
       case "paid":
-        result = result.filter((t) => t.is_paid);
+        result = result.filter((item) => item.is_paid);
         break;
       case "unpaid":
-        result = result.filter((t) => !t.is_paid);
+        result = result.filter((item) => !item.is_paid);
         break;
       case "active":
-        result = result.filter((t) => t.is_active);
+        result = result.filter((item) => item.is_active);
         break;
       case "inactive":
-        result = result.filter((t) => !t.is_active);
+        result = result.filter((item) => !item.is_active);
         break;
     }
     return result;
   }, [types, search, filter]);
 
   const paidCount = useMemo(
-    () => types?.filter((t) => t.is_paid).length ?? 0,
+    () => types?.filter((item) => item.is_paid).length ?? 0,
     [types]
   );
   const activeCount = useMemo(
-    () => types?.filter((t) => t.is_active).length ?? 0,
+    () => types?.filter((item) => item.is_active).length ?? 0,
     [types]
   );
 
@@ -145,7 +152,7 @@ export default function TimeOffTypesScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Name is required");
+      Alert.alert(tot("requiredTitle"), tot("nameRequired"));
       return;
     }
     const payload = {
@@ -162,13 +169,13 @@ export default function TimeOffTypesScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(tot("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createType(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(tot("errorTitle"), error);
         return;
       }
     }
@@ -182,21 +189,21 @@ export default function TimeOffTypesScreen() {
       `/api/provider/time-off-types/${type.id}`,
       { is_active: !type.is_active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(tot("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(type: TimeOffType) {
-    Alert.alert("Delete", `Remove "${type.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(tot("deleteTitle"), tot("deleteBody", { name: type.name }), [
+      { text: tot("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: tot("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteType(
             `/api/provider/time-off-types/${type.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(tot("errorTitle"), error);
           else refresh();
         },
       },
@@ -206,9 +213,9 @@ export default function TimeOffTypesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Time Off Types"
+        title={tot("title")}
         showBack
-        subtitle={`${types?.length ?? 0} types`}
+        subtitle={tot("subtitle", { count: types?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -221,9 +228,9 @@ export default function TimeOffTypesScreen() {
 
       {types && types.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Paid Types"
+              title={tot("statPaid")}
               value={String(paidCount)}
               icon="cash-outline"
               iconColor="#22c55e"
@@ -233,7 +240,7 @@ export default function TimeOffTypesScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Active"
+              title={tot("statActive")}
               value={String(activeCount)}
               icon="checkmark-circle-outline"
               iconColor="#6366f1"
@@ -249,16 +256,16 @@ export default function TimeOffTypesScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search types..."
+            placeholder={tot("searchPlaceholder")}
           />
           <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
-                { label: "All", value: "all" },
-                { label: "Paid", value: "paid" },
-                { label: "Unpaid", value: "unpaid" },
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
+                { label: tot("filterAll"), value: "all" },
+                { label: tot("filterPaid"), value: "paid" },
+                { label: tot("filterUnpaid"), value: "unpaid" },
+                { label: tot("filterActive"), value: "active" },
+                { label: tot("filterInactive"), value: "inactive" },
               ]}
               selected={filter}
               onSelect={(v) => setFilter(v as FilterMode)}
@@ -272,18 +279,18 @@ export default function TimeOffTypesScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="sunny-outline"
-          title={search || filter !== "all" ? "No matches" : "No time off types"}
+          title={search || filter !== "all" ? tot("emptyMatches") : tot("emptyTitle")}
           description={
             search || filter !== "all"
-              ? "Try different filters"
-              : "Add categories like Annual Leave, Sick Leave, etc."
+              ? tot("emptyMatchesHint")
+              : tot("emptyHint")
           }
         />
       ) : (
         <FlatList
           {...verticalFlatListPerf}
           data={filtered}
-          keyExtractor={(t: TimeOffType) => t.id}
+          keyExtractor={(item: TimeOffType) => item.id}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -311,28 +318,28 @@ export default function TimeOffTypesScreen() {
                     color={type.color ?? "#6366f1"}
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row items-center")}>
-                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>
                       {type.name}
                     </Text>
                     <View
                       style={[twStyle(`rounded-full px-2 py-0.5 ${
                         type.is_paid ? "bg-green-50" : "bg-gray-100"
-                      }`), { marginRight: 8 }]}
+                      }`), { marginEnd: 8 }]}
                     >
                       <Text
                         style={twStyle(`text-[10px] font-medium ${
                           type.is_paid ? "text-green-700" : "text-gray-500"
                         }`)}
                       >
-                        {type.is_paid ? "Paid" : "Unpaid"}
+                        {type.is_paid ? tot("paid") : tot("unpaid")}
                       </Text>
                     </View>
                     {!type.is_active && (
-                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginEnd: 8 }]}>
                         <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
-                          Inactive
+                          {tot("inactive")}
                         </Text>
                       </View>
                     )}
@@ -347,13 +354,13 @@ export default function TimeOffTypesScreen() {
                   )}
                   <View style={twStyle("mt-1 flex-row items-center")}>
                     {type.max_days && (
-                      <Text style={[twStyle("text-xs text-indigo-500"), { marginRight: 12 }]}>
-                        Max {type.max_days} days/year
+                      <Text style={[twStyle("text-xs text-indigo-500"), { marginEnd: 12 }]}>
+                        {tot("maxDays", { count: type.max_days })}
                       </Text>
                     )}
                     {type.usage_count !== undefined && (
                       <Text style={twStyle("text-xs text-gray-400")}>
-                        Used {type.usage_count} times
+                        {tot("usedTimes", { count: type.usage_count })}
                       </Text>
                     )}
                   </View>
@@ -361,7 +368,7 @@ export default function TimeOffTypesScreen() {
                 <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(type)}
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   >
                     <Ionicons
                       name={
@@ -388,49 +395,49 @@ export default function TimeOffTypesScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Time Off Type" : "New Time Off Type"}
+        title={editing ? tot("editTitle") : tot("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Name *
+            {tot("nameLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
-            onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Annual Leave"
+            onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+            placeholder={tot("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {tot("description")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional details..."
+            onChangeText={(text) => setForm((p) => ({ ...p, description: text }))}
+            placeholder={tot("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Max Days Per Year
+            {tot("maxDaysLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.maxDays}
-            onChangeText={(t) => setForm((p) => ({ ...p, maxDays: t }))}
-            placeholder="Leave blank for unlimited"
+            onChangeText={(text) => setForm((p) => ({ ...p, maxDays: text }))}
+            placeholder={tot("maxDaysPlaceholder")}
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{tot("color")}</Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
                 style={[twStyle(`h-10 w-10 items-center justify-center rounded-full ${
                   form.color === c ? "border-2 border-gray-900" : ""
-                }`), { backgroundColor: c, marginRight: 12, marginBottom: 12 }]}
+                }`), { backgroundColor: c, marginEnd: 12, marginBottom: 12 }]}
                 onPress={() => setForm((p) => ({ ...p, color: c }))}
               >
                 {form.color === c && (
@@ -441,7 +448,7 @@ export default function TimeOffTypesScreen() {
           </View>
           <View style={twStyle("mb-3 flex-row items-center justify-between")}>
             <Text style={twStyle("text-sm font-medium text-gray-700")}>
-              Paid Leave
+              {tot("paidLeave")}
             </Text>
             <Switch
               value={form.isPaid}
@@ -451,7 +458,7 @@ export default function TimeOffTypesScreen() {
             />
           </View>
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{tot("active")}</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
@@ -460,7 +467,7 @@ export default function TimeOffTypesScreen() {
             />
           </View>
           <ActionButton
-            label={editing ? "Update Type" : "Add Type"}
+            label={editing ? tot("updateType") : tot("addType")}
             onPress={handleSave}
             loading={creating || updating}
             fullWidth

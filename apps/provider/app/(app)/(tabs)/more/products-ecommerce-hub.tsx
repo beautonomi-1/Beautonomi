@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, DeviceEventEmitter } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -10,6 +11,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/lib/format";
 import { PROVIDER_PRODUCTS_CATALOG_CHANGED } from "@/lib/provider-products-catalog-events";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type Product = {
   id: string;
@@ -32,13 +34,13 @@ function hubStockQty(p: Product): number | undefined {
   return q !== undefined ? Number(q) : undefined;
 }
 
-function hubPriceLabel(p: Product): string {
+function hubPriceLabel(p: Product, pe: (key: string, opts?: Record<string, unknown>) => string): string {
   if (p.has_variants && p.variants?.length) {
     const min = Math.min(...p.variants.map((v) => Number(v.retail_price ?? 0)));
-    return `From ${formatCurrency(min)}`;
+    return pe("fromPrice", { amount: formatCurrency(min) });
   }
   if (typeof p.retail_price === "number") return formatCurrency(p.retail_price);
-  return "—";
+  return pe("dash");
 }
 
 type ProductsResponse = {
@@ -60,6 +62,12 @@ type ProductMetricsPayload = {
 };
 
 export default function ProductsEcommerceHubScreen() {
+  const { t } = useTranslation();
+  const pe = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.productsEcommerceHub." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<ProductsResponse>(
@@ -105,7 +113,7 @@ export default function ProductsEcommerceHubScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Products & e-commerce" onBack={() => router.back()} />
+        <ScreenHeader title={pe("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -116,7 +124,7 @@ export default function ProductsEcommerceHubScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Products & e-commerce" onBack={() => router.back()} />
+        <ScreenHeader title={pe("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -127,8 +135,8 @@ export default function ProductsEcommerceHubScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Products & e-commerce"
-        subtitle="Inventory, orders & sales"
+        title={pe("title")}
+        subtitle={pe("subtitle")}
         onBack={() => router.back()}
       />
       <ScrollView
@@ -141,23 +149,23 @@ export default function ProductsEcommerceHubScreen() {
         <View style={{ flexDirection: "row", marginBottom: 16, gap: 10 }}>
           <View style={{ flex: 1, backgroundColor: "#F0FDF4", borderRadius: 14, padding: 14, alignItems: "center" }}>
             <Text style={{ fontSize: 22, fontWeight: "800", color: "#166534" }}>{products.length}</Text>
-            <Text style={{ fontSize: 11, color: "#15803D", fontWeight: "600", marginTop: 2 }}>Products</Text>
+            <Text style={{ fontSize: 11, color: "#15803D", fontWeight: "600", marginTop: 2 }}>{pe("products")}</Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
             style={{ flex: 1, backgroundColor: totalNeedAction > 0 ? "#FFF7ED" : "#F9FAFB", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: totalNeedAction > 0 ? 1.5 : 1, borderColor: totalNeedAction > 0 ? "#FED7AA" : Colors.gray[200] }}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel={`${totalNeedAction} items need attention. Tap to view orders and returns.`}
+            accessibilityLabel={pe("needsActionA11y", { count: totalNeedAction })}
           >
             <Text style={{ fontSize: 22, fontWeight: "800", color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[700] }}>
               {totalNeedAction}
             </Text>
             <Text style={{ fontSize: 11, color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[500], fontWeight: "600", marginTop: 2, textAlign: "center" }}>
-              Needs action{totalNeedAction > 0 ? " ⚡" : ""}
+              {totalNeedAction > 0 ? pe("needsActionAlert") : pe("needsAction")}
             </Text>
             <Text style={{ fontSize: 9, color: Colors.gray[400], marginTop: 1 }}>
-              Tap → Orders Hub
+              {pe("tapOrdersHub")}
             </Text>
           </TouchableOpacity>
           {lowStockCount > 0 ? (
@@ -167,7 +175,7 @@ export default function ProductsEcommerceHubScreen() {
               activeOpacity={0.7}
             >
               <Text style={{ fontSize: 22, fontWeight: "800", color: "#DC2626" }}>{lowStockCount}</Text>
-              <Text style={{ fontSize: 11, color: "#DC2626", fontWeight: "600", marginTop: 2 }}>Low stock ⚠️</Text>
+              <Text style={{ fontSize: 11, color: "#DC2626", fontWeight: "600", marginTop: 2 }}>{pe("lowStock")}</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -180,89 +188,89 @@ export default function ProductsEcommerceHubScreen() {
               style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
-              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ede9fe" }}>
+              <View style={{ marginEnd: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ede9fe" }}>
                 <Ionicons name="cube-outline" size={22} color="#8b5cf6" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Products & inventory</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{pe("productsInventory")}</Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                  {products.length > 0 ? `${products.length} products` : "Catalog & stock"}
+                  {products.length > 0 ? pe("productsCount", { count: products.length }) : pe("catalogAndStock")}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/walk-in-sale" as never)}
               style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
-              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#fff7ed" }}>
+              <View style={{ marginEnd: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#fff7ed" }}>
                 <Ionicons name="cart-outline" size={22} color="#f97316" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Walk-in sale</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Quick in-person sales</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{pe("walkInSale")}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{pe("walkInSaleSub")}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
               style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: totalNeedAction > 0 ? "#FED7AA" : Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
-              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
+              <View style={{ marginEnd: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
                 <Ionicons name="receipt-outline" size={22} color="#0d9488" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Orders & returns</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{pe("ordersReturns")}</Text>
                 <Text style={{ fontSize: 12, color: totalNeedAction > 0 ? "#C2410C" : Colors.gray[500] }}>
-                  {totalNeedAction > 0 ? `${activeOrdersCount} orders, ${openReturnsCount} returns` : "Fulfill orders & refunds"}
+                  {totalNeedAction > 0 ? pe("ordersReturnsCounts", { orders: activeOrdersCount, returns: openReturnsCount }) : pe("fulfillOrders")}
                 </Text>
               </View>
               {totalNeedAction > 0 && (
-                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginRight: 4 }}>
-                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{totalNeedAction > 9 ? "9+" : totalNeedAction}</Text>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginEnd: 4 }}>
+                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{totalNeedAction > 9 ? pe("overflowBadge") : totalNeedAction}</Text>
                 </View>
               )}
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/settings/shipping-config" as never)}
               style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
-              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#f1f5f9" }}>
+              <View style={{ marginEnd: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#f1f5f9" }}>
                 <Ionicons name="car-outline" size={22} color="#475569" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Shipping & collection</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Delivery options</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{pe("shippingCollection")}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{pe("deliveryOptions")}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              <DirectionalIcon name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           </View>
         </View>
         {products.length === 0 ? (
           <View style={{ paddingVertical: 32, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="cube-outline" size={48} color="#9ca3af" />
-            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No products yet</Text>
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>{pe("emptyTitle")}</Text>
             <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-              Add your first product in the app
+              {pe("emptyDesc")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}
               style={{ borderRadius: 12, backgroundColor: "#7c3aed", paddingHorizontal: 24, paddingVertical: 12 }}
               activeOpacity={0.8}
             >
-              <Text style={{ fontWeight: "600", color: Colors.white }}>Add product</Text>
+              <Text style={{ fontWeight: "600", color: Colors.white }}>{pe("addProduct")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 4 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Recent products</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{pe("recentProducts")}</Text>
               <TouchableOpacity onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}>
-                <Text style={{ fontSize: 13, color: "#8b5cf6", fontWeight: "600" }}>+ Add product</Text>
+                <Text style={{ fontSize: 13, color: "#8b5cf6", fontWeight: "600" }}>{pe("addProductLink")}</Text>
               </TouchableOpacity>
             </View>
             {products.slice(0, 10).map((p) => {
@@ -277,15 +285,15 @@ export default function ProductsEcommerceHubScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{p.name}</Text>
                   {p.sku && (
-                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {p.sku}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{pe("sku", { sku: p.sku })}</Text>
                   )}
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{hubPriceLabel(p)}</Text>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{hubPriceLabel(p, pe)}</Text>
                   {stock !== undefined && (
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Stock: {stock}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{pe("stock", { count: stock })}</Text>
                   )}
-                  <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginTop: 4 }} />
+                  <DirectionalIcon name="chevron-forward" size={18} color="#9ca3af" style={{ marginTop: 4 }} />
                 </View>
               </TouchableOpacity>
               );
@@ -296,7 +304,7 @@ export default function ProductsEcommerceHubScreen() {
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 12 }}
                 activeOpacity={0.7}
               >
-                <Text style={{ textAlign: "center", fontWeight: "500", color: "#7c3aed" }}>View all products</Text>
+                <Text style={{ textAlign: "center", fontWeight: "500", color: "#7c3aed" }}>{pe("viewAll")}</Text>
               </TouchableOpacity>
             )}
           </View>

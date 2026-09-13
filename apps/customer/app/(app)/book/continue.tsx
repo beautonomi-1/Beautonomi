@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { View, ActivityIndicator, Text, TouchableOpacity } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 
 function pickParam(v: string | string[] | undefined): string | undefined {
@@ -13,13 +14,14 @@ function pickParam(v: string | string[] | undefined): string | undefined {
  * Same entry as web `/book/continue?hold_id=…` — opens checkout after slot hold (e.g. post-login return, universal link).
  */
 export default function BookContinueRedirect() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{
     hold_id?: string | string[];
     reschedule_booking_id?: string | string[];
   }>();
   const holdId = useMemo(() => pickParam(params.hold_id), [params.hold_id]);
   const rescheduleId = useMemo(() => pickParam(params.reschedule_booking_id), [params.reschedule_booking_id]);
-  const missingMessage = "Missing hold. Please start your booking again.";
+  const missingMessage = t("customer.mobile.screens.bookFlow.missingHold");
 
   useEffect(() => {
     if (!holdId) return;
@@ -46,8 +48,9 @@ export default function BookContinueRedirect() {
             onPress={() => router.replace("/(app)/(tabs)/search")}
             style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.primary }}
             accessibilityRole="button"
+            accessibilityLabel={t("customer.mobile.screens.bookFlow.findProvider")}
           >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Find a provider</Text>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>{t("customer.mobile.screens.bookFlow.findProvider")}</Text>
           </TouchableOpacity>
         </View>
       </>

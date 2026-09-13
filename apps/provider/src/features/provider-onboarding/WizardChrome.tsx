@@ -17,6 +17,8 @@ import { OnboardingScrollProvider } from "./OnboardingScrollContext";
 import { useAuth } from "@/providers/AuthProvider";
 import { isApplePrimaryIdentity } from "@beautonomi/utils";
 import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 /**
  * Named milestone ranges that appear as a segmented progress strip.
@@ -29,13 +31,13 @@ import { isAppReviewDemoUserId } from "@/lib/auth/app-review-demo";
 type Milestone = { label: string; stepIds: number[] };
 
 const MILESTONES: Milestone[] = [
-  { label: "Profile",   stepIds: [1, 2, 3] },
-  { label: "Business",  stepIds: [4, 5, 6] },
+  { label: "milestoneProfile",   stepIds: [1, 2, 3] },
+  { label: "milestoneBusiness",  stepIds: [4, 5, 6] },
   // §provider-launch (2026-06): Travel fees (10) joins the Location milestone
   // alongside Service zones — both are at-home/mobile setup.
-  { label: "Location",  stepIds: [7, 8, 9, 10] },
-  { label: "Services",  stepIds: [11, 12, 13] },
-  { label: "Plan",      stepIds: [14, 15] },
+  { label: "milestoneLocation",  stepIds: [7, 8, 9, 10] },
+  { label: "milestoneServices",  stepIds: [11, 12, 13] },
+  { label: "milestonePlan",      stepIds: [14, 15] },
 ];
 
 function getMilestoneLabel(stepId: number): string {
@@ -48,6 +50,8 @@ function getMilestoneProgress(stepId: number): number {
 }
 
 export function WizardChrome() {
+  const { t } = useTranslation();
+  const wc = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.wizardChrome.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const { offset: keyboardOffset, onLayout: onKeyboardLayout } = useKeyboardOffset();
@@ -81,8 +85,8 @@ export function WizardChrome() {
   if (loadingDraft) {
     return (
       <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
-        <ScreenHeader title="Resuming setup" />
-        <LoadingState message="Resuming your setup…" />
+        <ScreenHeader title={wc("resumingTitle")} />
+        <LoadingState message={wc("resumingMessage")} />
       </ScreenContainer>
     );
   }
@@ -121,7 +125,7 @@ export function WizardChrome() {
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false} keyboardAvoiding={false}>
       <ScreenHeader
-        title={stepMeta?.title ?? "Setup"}
+        title={stepMeta?.title ?? wc("setupFallback")}
         showBack
         onBack={goBack}
         subtitle={stepMeta?.description}
@@ -140,12 +144,12 @@ export function WizardChrome() {
               {milestoneLabel ? (
                 <View style={twStyle("rounded-full bg-primary/10 px-3 py-1")}>
                   <Text style={twStyle("text-[12px] font-bold uppercase tracking-wider text-primary")}>
-                    {milestoneLabel}
+                    {milestoneLabel ? wc(milestoneLabel) : milestoneLabel}
                   </Text>
                 </View>
               ) : null}
               <Text style={twStyle("text-[13px] font-semibold text-slate-500")}>
-                Step {visibleIndex} of {visibleTotal}
+                {wc("stepOf", { current: visibleIndex, total: visibleTotal })}
               </Text>
             </View>
             <View
@@ -158,12 +162,12 @@ export function WizardChrome() {
               {savingDraft ? (
                 <>
                   <ActivityIndicator size="small" color="#64748b" />
-                  <Text style={twStyle("text-[12px] font-semibold text-slate-500")}>Saving</Text>
+                  <Text style={twStyle("text-[12px] font-semibold text-slate-500")}>{wc("saving")}</Text>
                 </>
               ) : (
                 <>
                   <Ionicons name="cloud-done-outline" size={14} color="#059669" />
-                  <Text style={twStyle("text-[12px] font-semibold text-emerald-700")}>Saved</Text>
+                  <Text style={twStyle("text-[12px] font-semibold text-emerald-700")}>{wc("saved")}</Text>
                 </>
               )}
             </View>
@@ -214,8 +218,7 @@ export function WizardChrome() {
                     )}
                     numberOfLines={1}
                   >
-                    {m.done ? "✓ " : ""}
-                    {m.label}
+                    {m.done ? "✓ " : ""}{wc(m.label)}
                   </Text>
                 </View>
               );
@@ -249,10 +252,10 @@ export function WizardChrome() {
                       `flex-1 rounded-full border-2 border-primary/20 bg-white py-4 items-center justify-center transition-all duration-300 ${!canProceed ? "opacity-40" : ""}`,
                     )}
                     accessibilityRole="button"
-                    accessibilityLabel="Skip this step"
+                    accessibilityLabel={wc("skipA11y")}
                     accessibilityState={{ disabled: !canProceed }}
                   >
-                    <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>Skip for now</Text>
+                    <Text style={twStyle("text-[16px] font-semibold text-slate-600")}>{wc("skipForNow")}</Text>
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
@@ -266,7 +269,7 @@ export function WizardChrome() {
                     !isSubmitting ? Shadows.cardSmall : undefined,
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={isLast ? "Submit setup" : "Next step"}
+                  accessibilityLabel={isLast ? wc("submitA11y") : wc("nextA11y")}
                 >
                   {isSubmitting ? (
                     <>
@@ -278,7 +281,7 @@ export function WizardChrome() {
                       <Text style={twStyle("text-[16px] font-bold text-white")}>
                         {submitLabel}
                       </Text>
-                      {!isLast ? <Ionicons name="arrow-forward" size={20} color="#fff" /> : null}
+                      {!isLast ? <DirectionalIcon name="arrow-forward" size={20} color="#fff" /> : null}
                       {isLast ? <Ionicons name="rocket-outline" size={20} color="#fff" /> : null}
                     </>
                   )}

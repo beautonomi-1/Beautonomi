@@ -26,7 +26,7 @@ export default function PortalLandingContent() {
             the secure link sent to your email or SMS.
           </p>
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 text-left mb-8">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 text-start mb-8">
             <h2 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
               <Mail className="h-4 w-4 text-[#FF0077]" />
               How to access your booking

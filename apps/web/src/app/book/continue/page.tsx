@@ -1,7 +1,17 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getHoldTimeRemaining, percentOf, serverNowToClockOffsetMs } from "@beautonomi/utils";
+import {
+  appendBookingEmbedQuery,
+  buildBookContinuePath,
+  getHoldTimeRemaining,
+  isBookingEmbedEnabled,
+  percentOf,
+  serverNowToClockOffsetMs,
+} from "@beautonomi/utils";
+import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
+import { navigateForEmbedBreakout } from "@/lib/booking/embed-host";
+import { completeCustomerOnboardingQuietly } from "@/lib/booking/complete-customer-onboarding";
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
@@ -160,6 +170,7 @@ function generateConsumeIdempotencyKey(): string {
 }
 
 function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; clockOffsetMs: number }) {
+  const { t } = useTranslation();
   const [tick, setTick] = useState(() => getHoldTimeRemaining(expiresAt, clockOffsetMs));
   const toastFiredRef = useRef(false);
   useEffect(() => {
@@ -172,7 +183,7 @@ function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; cl
       // Fire toast exactly once when the slot transitions to expired
       if (next.expired && !toastFiredRef.current) {
         toastFiredRef.current = true;
-        toast.warning("Your reserved slot has expired. Please go back and pick a new time.", { duration: 8000 });
+        toast.warning(t("web.book.continue.slotExpiredToast"), { duration: 8000 });
       }
     }, 1000);
     return () => clearInterval(id);
@@ -191,18 +202,18 @@ function HoldSlotCountdown({ expiresAt, clockOffsetMs }: { expiresAt: string; cl
       <div className="min-w-0 flex-1 text-sm font-medium" style={{ color: tick.expired ? "#991b1b" : urgent ? "#92400e" : "#1e40af" }}>
         {tick.expired ? (
           <>
-            <p>Your reserved slot has expired. Go back and pick a new time to continue.</p>
+            <p>{t("web.book.continue.slotExpiredMessage")}</p>
             <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => window.history.back()}>
-              Back to booking
+              {t("web.book.continue.backToBooking")}
             </Button>
           </>
         ) : (
           <p>
-            Slot held for{" "}
+            {t("web.book.continue.slotHeldFor")}{" "}
             <span className="tabular-nums">
               {tick.minutes}:{String(tick.seconds).padStart(2, "0")}
             </span>
-            . Complete checkout before the timer ends.
+            . {t("web.book.continue.completeBeforeTimer")}
           </p>
         )}
       </div>
@@ -246,7 +257,8 @@ function variantDisplayLabel(variant: CatalogProductVariant): string {
 
 function resolvePrefillProductLines(
   catalog: CatalogProduct[],
-  lines: Array<{ product_id: string; quantity: number; product_variant_id?: string | null }>
+  lines: Array<{ product_id: string; quantity: number; product_variant_id?: string | null }>,
+  productFallback: string,
 ) {
   const out: Array<{
     productId: string;
@@ -270,7 +282,7 @@ function resolvePrefillProductLines(
       }
     }
     const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
-    const baseName = (p.name ?? "Product").trim() || "Product";
+    const baseName = (p.name ?? productFallback).trim() || productFallback;
     const displayName = variantLabel ? `${baseName} – ${variantLabel}` : baseName;
     out.push({
       productId: line.product_id,
@@ -288,6 +300,7 @@ const IOS_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultAppStoreUrl;
 const ANDROID_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultPlayStoreUrl;
 
 function MobileAppNudge() {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   const [storeUrl, setStoreUrl] = useState("");
   const [label, setLabel] = useState("");
@@ -296,14 +309,14 @@ function MobileAppNudge() {
     if (typeof navigator === "undefined") return;
     try { if (sessionStorage.getItem("beautonomi_app_banner_dismissed") === "1") return; } catch {}
     const osType = getOsTypeFromNavigator(navigator);
-    if (osType === "ios") { setStoreUrl(IOS_APP_URL_CONTINUE); setLabel("App Store"); setShow(true); }
-    else if (osType === "android" || osType === "huawei") { setStoreUrl(ANDROID_APP_URL_CONTINUE); setLabel("Google Play"); setShow(true); }
+    if (osType === "ios") { setStoreUrl(IOS_APP_URL_CONTINUE); setLabel(t("web.book.continue.appStore")); setShow(true); }
+    else if (osType === "android" || osType === "huawei") { setStoreUrl(ANDROID_APP_URL_CONTINUE); setLabel(t("web.book.continue.googlePlay")); setShow(true); }
   }, []);
 
   if (!show) return null;
   return (
     <p className="text-center text-xs mt-3" style={{ color: BOOKING_TEXT_SECONDARY }}>
-      For the best experience,{" "}
+      {t("web.book.continue.appNudge")}{" "}
       <a
         href={storeUrl}
         target="_blank"
@@ -311,9 +324,9 @@ function MobileAppNudge() {
         className="font-semibold underline"
         style={{ color: BOOKING_ACCENT }}
       >
-        download the Beautonomi app
+        {t("web.book.continue.downloadApp")}
       </a>{" "}
-      on {label} — manage bookings, get reminders &amp; rebook easily.
+      {t("web.book.continue.appNudgeSuffix", { store: label })}
     </p>
   );
 }
@@ -323,6 +336,7 @@ function BookContinueContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const holdId = searchParams?.get("hold_id");
+  const embed = isBookingEmbedEnabled(searchParams);
   const rescheduleBookingId = searchParams?.get("reschedule_booking_id") ?? undefined;
   const [status, setStatus] = useState<"loading" | "review" | "consuming" | "redirecting" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -401,7 +415,7 @@ function BookContinueContent() {
 
   useEffect(() => {
     if (!holdId) {
-      setErrorMessage("Missing hold ID. Please start your booking again.");
+      setErrorMessage(t("web.book.continue.missingHoldId"));
       setStatus("error");
       return;
     }
@@ -655,7 +669,7 @@ function BookContinueContent() {
         const msg =
           err instanceof FetchError
             ? err.message
-            : "This hold may have expired. Please start a new booking.";
+            : t("web.book.continue.holdMayExpired");
         setErrorMessage(msg);
         setStatus("error");
         clearBeautonomiHoldClientMarkers();
@@ -704,7 +718,7 @@ function BookContinueContent() {
         const normalizedData = (res as any)?.data ?? res;
         const holdStatus = (normalizedData as { hold_status?: string })?.hold_status;
         if (holdStatus && holdStatus !== "active" && holdStatus !== "consuming") {
-          setErrorMessage("Your reserved slot is no longer available. Please go back and select a new time.");
+          setErrorMessage(t("web.book.continue.slotNoLongerAvailable"));
           setStatus("error");
           clearBeautonomiHoldClientMarkers();
         }
@@ -714,7 +728,7 @@ function BookContinueContent() {
         const statusCode = err instanceof FetchError ? err.status : 0;
         const errorCode = err instanceof FetchError ? err.code : "";
         if (statusCode === 410 || errorCode === "HOLD_INACTIVE" || statusCode === 404) {
-          setErrorMessage("Your reserved slot is no longer available. Please go back and select a new time.");
+          setErrorMessage(t("web.book.continue.slotNoLongerAvailable"));
           setStatus("error");
           clearBeautonomiHoldClientMarkers();
         }
@@ -797,7 +811,7 @@ function BookContinueContent() {
         if (cancelled) return;
         const rawP = (res as { data?: CatalogProduct[] })?.data ?? res;
         const catalog = Array.isArray(rawP) ? rawP : [];
-        setPrefillConsumeProducts(resolvePrefillProductLines(catalog, lines));
+        setPrefillConsumeProducts(resolvePrefillProductLines(catalog, lines, t("web.book.continue.productFallback")));
       })
       .catch(() => setPrefillConsumeProducts([]));
     return () => {
@@ -865,11 +879,19 @@ function BookContinueContent() {
 
   const handleRequestNow = useCallback(async () => {
     if (!hold || !user) {
-      router.push(`/login?next=${encodeURIComponent(`/book/continue?hold_id=${holdId}`)}`);
+      const continueNext = holdId
+        ? buildBookContinuePath(holdId, embed)
+        : appendBookingEmbedQuery("/book/continue", embed);
+      const loginUrl = `/login?next=${encodeURIComponent(continueNext)}`;
+      if (embed) {
+        navigateForEmbedBreakout(loginUrl, "auth_required");
+        return;
+      }
+      router.push(loginUrl);
       return;
     }
     if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
-      setValidationError("This time slot has expired. Please go back and select a new time.");
+      setValidationError(t("web.book.continue.slotExpiredValidation"));
       return;
     }
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
@@ -897,8 +919,8 @@ function BookContinueContent() {
       const effectiveClient = hasClientFromSession ? clientInfo! : clientForm;
       if (effectiveClient && (effectiveClient.firstName || effectiveClient.lastName || effectiveClient.email)) {
         (requestPayload as Record<string, unknown>).client_info = {
-          firstName: effectiveClient.firstName?.trim() || "Guest",
-          lastName: effectiveClient.lastName?.trim() || "User",
+          firstName: effectiveClient.firstName?.trim() || t("web.book.continue.guestFallback"),
+          lastName: effectiveClient.lastName?.trim() || t("web.book.continue.userFallback"),
           email: effectiveClient.email?.trim() || undefined,
           phone: effectiveClient.phone?.trim() || undefined,
         };
@@ -915,23 +937,28 @@ function BookContinueContent() {
       const requestId = envelope.data?.id ?? envelope.id;
       if (requestId) {
         clearBeautonomiHoldClientMarkers();
-        router.replace(`/book/on-demand/waiting?requestId=${encodeURIComponent(requestId)}`);
+        router.replace(
+          appendBookingEmbedQuery(
+            `/book/on-demand/waiting?requestId=${encodeURIComponent(requestId)}`,
+            embed,
+          ),
+        );
       } else {
-        setValidationError("Could not submit request. Try again or complete a scheduled booking.");
+        setValidationError(t("web.book.continue.requestSubmitFailed"));
       }
     } catch (err) {
-      const msg = err instanceof FetchError ? err.message : "Could not submit request. Try again or complete a scheduled booking.";
+      const msg = err instanceof FetchError ? err.message : t("web.book.continue.requestSubmitFailed");
       setValidationError(msg);
     } finally {
       setRequestingNow(false);
     }
-  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router, cancellationPolicyAccepted, serverClockOffsetMs]);
+  }, [hold, user, holdId, embed, addonIds, tipAmount, clientInfo, clientForm, router, cancellationPolicyAccepted, serverClockOffsetMs]);
 
   const handleComplete = async () => {
     if (!holdId || !hold) return;
 
     if (hold.expires_at && getHoldTimeRemaining(hold.expires_at, serverClockOffsetMs).expired) {
-      setValidationError("This time slot has expired. Please go back and select a new time.");
+      setValidationError(t("web.book.continue.slotExpiredValidation"));
       return;
     }
     if (cancellationPolicyRequiresCustomerAck(hold.cancellation_policy) && !cancellationPolicyAccepted) {
@@ -944,13 +971,13 @@ function BookContinueContent() {
     const hasName = (effectiveClient.firstName ?? "").trim() || (effectiveClient.lastName ?? "").trim();
     const hasEmail = (effectiveClient.email ?? "").trim();
     if (!hasName || !hasEmail) {
-      setValidationError("Please enter your name and email to continue.");
+      setValidationError(t("web.book.continue.nameEmailRequired"));
       return;
     }
 
     const rawContinuePhone = (effectiveClient.phone ?? "").trim();
     if (rawContinuePhone && !isCompleteE164(rawContinuePhone)) {
-      setValidationError("Enter a valid phone number or leave the phone field blank.");
+      setValidationError(t("web.book.continue.invalidPhoneOrBlank"));
       return;
     }
 
@@ -962,14 +989,14 @@ function BookContinueContent() {
         String(bookingCustomValues[name]).trim() === ""
     );
     if (missingCustom.length > 0) {
-      setValidationError("Please fill in all required additional details (marked with *).");
+      setValidationError(t("web.book.engine.completeRequiredDetails"));
       return;
     }
 
     {
       const missing = getMissingRequiredProviderFormField(providerForms, providerFormValues);
       if (missing) {
-        setValidationError(`Please complete the required form: "${missing.formTitle}" (${missing.fieldName}).`);
+        setValidationError(t("web.book.continue.completeRequiredForm", { formTitle: missing.formTitle, fieldName: missing.fieldName }));
         return;
       }
     }
@@ -1032,8 +1059,8 @@ function BookContinueContent() {
               normalizePhoneToE164(rawPhone)
             : undefined;
         payload.client_info = {
-          firstName: effectiveClient.firstName.trim() || "Guest",
-          lastName: effectiveClient.lastName.trim() || "User",
+          firstName: effectiveClient.firstName.trim() || t("web.book.continue.guestFallback"),
+          lastName: effectiveClient.lastName.trim() || t("web.book.continue.userFallback"),
           email: effectiveClient.email.trim() || undefined,
           phone: phoneE164 || rawPhone || undefined,
         };
@@ -1058,16 +1085,29 @@ function BookContinueContent() {
       ) {
         payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
       }
-      const res = await fetcher.post<{
-        data?: {
-          booking_id?: string;
-          booking_number?: string;
-          payment_url?: string | null;
-          recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
-        };
-      }>(`/api/public/booking-holds/${holdId}/consume`, payload, {
-        timeoutMs: 120_000,
-      });
+      const consumeHold = () =>
+        fetcher.post<{
+          data?: {
+            booking_id?: string;
+            booking_number?: string;
+            payment_url?: string | null;
+            recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
+          };
+        }>(`/api/public/booking-holds/${holdId}/consume`, payload, {
+          timeoutMs: 120_000,
+        });
+
+      let res;
+      try {
+        res = await consumeHold();
+      } catch (err) {
+        if (err instanceof FetchError && err.code === "ONBOARDING_REQUIRED") {
+          await completeCustomerOnboardingQuietly();
+          res = await consumeHold();
+        } else {
+          throw err;
+        }
+      }
 
       const data = (res as any)?.data ?? res;
       const paymentUrl = data?.payment_url;
@@ -1079,23 +1119,23 @@ function BookContinueContent() {
           const sub = data?.recurring_subscription;
           if (sub?.pending) {
             toast.info(
-              "Complete payment to save your repeating schedule. It will appear under Account settings → Recurring bookings after payment succeeds.",
+              t("web.book.continue.completePaymentRecurring"),
             );
           }
         }
         clearBeautonomiHoldClientMarkers();
         setStatus("redirecting");
-        window.location.href = paymentUrl;
+        navigateForEmbedBreakout(paymentUrl, "payment_redirect");
         return;
       }
 
       if (subscribeRecurring && user) {
         const sub = data?.recurring_subscription;
         if (sub?.created) {
-          toast.success("Repeating schedule saved. Manage it under Account settings → Recurring bookings.");
+          toast.success(t("web.book.continue.recurringSaved"));
         } else if (sub?.pending) {
           toast.info(
-            "Your repeating schedule will be saved after payment completes.",
+            t("web.book.continue.recurringPending"),
           );
         } else if (sub && sub.created === false && sub.message) {
           toast.error(sub.message);
@@ -1115,9 +1155,12 @@ function BookContinueContent() {
         sessionStorage.removeItem("beautonomi_booking_product_cart");
         sessionStorage.removeItem("beautonomi_booking_package_id");
       } catch {}
-      const successUrl = bookingId
-        ? `/checkout/success?booking_id=${bookingId}${bookingNumber ? `&booking_number=${bookingNumber}` : ""}`
-        : "/checkout/success";
+      const successUrl = appendBookingEmbedQuery(
+        bookingId
+          ? `/checkout/success?booking_id=${bookingId}${bookingNumber ? `&booking_number=${bookingNumber}` : ""}`
+          : "/checkout/success",
+        embed,
+      );
       router.replace(successUrl);
     } catch (err) {
       /* Keep the review screen so the user can retry without losing form data. */
@@ -1125,20 +1168,23 @@ function BookContinueContent() {
         const returnPath =
           typeof window !== "undefined"
             ? `${window.location.pathname}${window.location.search}`
-            : "/book/continue";
-        router.push(
-          `/account-settings/identity-verification?return_to=${encodeURIComponent(returnPath)}`,
-        );
+            : appendBookingEmbedQuery("/book/continue", embed);
+        const verifyUrl = `/account-settings/identity-verification?return_to=${encodeURIComponent(returnPath)}`;
+        if (embed) {
+          navigateForEmbedBreakout(verifyUrl, "auth_required");
+          return;
+        }
+        router.push(verifyUrl);
         return;
       }
       let msg =
         err instanceof FetchError
           ? err.message
-          : "Failed to complete booking. Please try again.";
+          : t("web.book.continue.bookingFailed");
       if (err instanceof FetchError && err.status === 409 && err.code === "HOLD_IN_FLIGHT") {
         msg =
           err.message?.trim() ||
-          "This booking is already being processed. Please wait a moment, then try again.";
+          t("web.book.continue.bookingInFlight");
       }
       setValidationError(msg);
       setStatus("review");
@@ -1152,19 +1198,21 @@ function BookContinueContent() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: BOOKING_BG }}>
         <div className="max-w-md text-center space-y-4">
           <h1 className="text-xl font-semibold" style={{ color: BOOKING_ACCENT }}>
-            Something went wrong
+            {t("web.book.continue.somethingWrong")}
           </h1>
           <p style={{ color: BOOKING_TEXT_SECONDARY }}>{errorMessage}</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button onClick={() => window.location.reload()} variant="default">
-              Try again
+              {t("web.book.continue.tryAgain")}
             </Button>
             <Button onClick={() => router.back()} variant="outline">
-              Go back
+              {t("web.book.continue.goBack")}
             </Button>
-            <Button onClick={() => router.push("/search")} variant="ghost">
-              Find a provider
-            </Button>
+            {!embed ? (
+              <Button onClick={() => router.push("/search")} variant="ghost">
+                {t("web.book.continue.findProvider")}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1174,10 +1222,10 @@ function BookContinueContent() {
   if (status === "loading" || status === "consuming" || status === "redirecting") {
     const message =
       status === "redirecting"
-        ? "Redirecting to payment..."
+        ? t("web.book.continue.redirectingPayment")
         : status === "consuming"
-        ? "Creating your booking..."
-        : "Loading...";
+        ? t("web.book.continue.creatingBooking")
+        : t("web.book.continue.loading");
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6" style={{ backgroundColor: BOOKING_BG }}>
         <LoadingTimeout loadingMessage={message} />
@@ -1202,11 +1250,11 @@ function BookContinueContent() {
         setPromoDiscount(Number(data.discount_amount ?? data.discount_value));
       } else {
         setPromoDiscount(null);
-        setPromoError(data?.message ?? "Invalid or expired code");
+        setPromoError(data?.message ?? t("web.book.continue.invalidPromoCode"));
       }
     } catch {
       setPromoDiscount(null);
-      setPromoError("Could not validate code");
+      setPromoError(t("web.book.continue.promoValidateFailed"));
     } finally {
       setValidatingPromo(false);
     }
@@ -1227,11 +1275,11 @@ function BookContinueContent() {
         setPaymentMethod("giftcard");
       } else {
         setGiftCardValid(null);
-        setGiftCardError(data?.message ?? "Invalid or expired gift card");
+        setGiftCardError(data?.message ?? t("web.book.continue.invalidGiftCard"));
       }
     } catch {
       setGiftCardValid(null);
-      setGiftCardError("Could not validate gift card");
+      setGiftCardError(t("web.book.continue.giftCardValidateFailed"));
     } finally {
       setGiftCardValidating(false);
     }
@@ -1241,7 +1289,7 @@ function BookContinueContent() {
     if (!user || !hold) return;
     const raw = parseInt(loyaltyPointsInput.trim(), 10);
     if (!Number.isFinite(raw) || raw <= 0) {
-      setLoyaltyError("Enter a valid number of points to redeem.");
+      setLoyaltyError(t("web.book.continue.loyaltyPointsInvalid"));
       return;
     }
     setLoyaltyError(null);
@@ -1267,10 +1315,10 @@ function BookContinueContent() {
         setLoyaltyDiscountAmount(Math.round(Number(disc) * 100) / 100);
         setLoyaltyError(null);
       } else {
-        setLoyaltyError("Could not calculate redemption. Check your balance and try again.");
+        setLoyaltyError(t("web.book.continue.loyaltyRedeemFailed"));
       }
     } catch (e) {
-      setLoyaltyError(e instanceof Error ? e.message : "Could not apply loyalty points.");
+      setLoyaltyError(e instanceof Error ? e.message : t("web.book.continue.loyaltyApplyFailed"));
     } finally {
       setLoyaltyValidating(false);
     }
@@ -1356,12 +1404,12 @@ function BookContinueContent() {
       <div className="min-h-screen py-8 px-4" style={{ backgroundColor: BOOKING_BG }}>
         <div className="max-w-[430px] mx-auto space-y-6">
           <h1 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Review your booking
+            {t("web.book.continue.reviewTitle")}
           </h1>
 
           {hold.expires_at ? <HoldSlotCountdown expiresAt={hold.expires_at} clockOffsetMs={serverClockOffsetMs} /> : null}
 
-          {/* Booking summary — aligned with provider portal: Services, Add-ons, Travel, Promo, Tip, Total */}
+          {/* {t("web.book.continue.bookingSummary")} — aligned with provider portal: Services, Add-ons, Travel, Promo, Tip, Total */}
           <div
             className="rounded-3xl p-5 space-y-3 text-white"
             style={{
@@ -1370,12 +1418,12 @@ function BookContinueContent() {
               boxShadow: BOOKING_SHADOW_CARD,
             }}
           >
-            <h2 className="text-sm font-semibold opacity-90 pb-1">Booking summary</h2>
+            <h2 className="text-sm font-semibold opacity-90 pb-1">{t("web.book.continue.bookingSummary")}</h2>
             {hold.booking_services_snapshot.map((s, i) => (
               <div key={`primary-${i}`} className="border-b border-white/10 pb-2">
                 <div className="flex justify-between text-sm gap-3">
                   <span className="opacity-90 min-w-0">
-                    {s.service_name || `Service ${i + 1}`} · {s.duration_minutes} min
+                    {s.service_name || t("web.book.continue.serviceFallback", { index: i + 1 })} · {s.duration_minutes} min
                   </span>
                   <span className="opacity-95 shrink-0">{formatCurrency(s.price, s.currency)}</span>
                 </div>
@@ -1394,7 +1442,7 @@ function BookContinueContent() {
               return (
                 <div key={`participant-${pIdx}`} className="flex justify-between text-sm border-b border-white/10 pb-2">
                   <span className="opacity-90">
-                    Group: {p.name || `Participant ${pIdx + 1}`}
+                    {t("web.book.continue.groupParticipant", { name: p.name || t("web.book.continue.participantFallback", { index: pIdx + 1 }) })}
                   </span>
                   <span className="opacity-95">{formatCurrency(participantTotal, currency)}</span>
                 </div>
@@ -1421,26 +1469,26 @@ function BookContinueContent() {
             {travelFee > 0 && (
               <div className="flex justify-between text-sm border-b border-white/10 pb-2">
                 <span className="opacity-80">
-                  Travel fee{hold.travel_distance_km != null ? ` (${hold.travel_distance_km.toFixed(1)} km)` : ""}
+                  {hold.travel_distance_km != null ? t("web.book.continue.travelFeeKm", { km: hold.travel_distance_km.toFixed(1) }) : t("web.book.continue.travelFee")}
                 </span>
                 <span className="opacity-95">{formatCurrency(travelFee, currency)}</span>
               </div>
             )}
             {promoDiscountAmount > 0 && (
               <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
-                <span>Promo discount</span>
+                <span>{t("web.book.continue.promoDiscount")}</span>
                 <span>-{formatCurrency(promoDiscountAmount, currency)}</span>
               </div>
             )}
             {membershipDiscountAmount > 0 && (
               <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
-                <span>{membershipPlanName || "Membership"}{membershipDiscountPercent > 0 ? ` (${membershipDiscountPercent}%)` : ""}</span>
+                <span>{membershipPlanName || t("web.book.continue.membershipFallback")}{membershipDiscountPercent > 0 ? ` (${membershipDiscountPercent}%)` : ""}</span>
                 <span>-{formatCurrency(membershipDiscountAmount, currency)}</span>
               </div>
             )}
             {loyaltyDiscountAmount > 0 && (
               <div className="flex justify-between text-sm border-b border-white/10 pb-2" style={{ color: "#86efac" }}>
-                <span>Loyalty points ({loyaltyPointsApplied} pts)</span>
+                <span>{t("web.book.continue.loyaltyPointsLine", { points: loyaltyPointsApplied })}</span>
                 <span>-{formatCurrency(loyaltyDiscountAmount, currency)}</span>
               </div>
             )}
@@ -1448,31 +1496,40 @@ function BookContinueContent() {
               {taxAmount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="opacity-80">
-                    Tax{effectiveTaxRate > 0 ? ` (${effectiveTaxRate}%)` : ""}{isTaxInclusive ? " (incl.)" : ""}</span>
+                    {effectiveTaxRate > 0
+                      ? isTaxInclusive
+                        ? t("web.book.continue.taxIncl", { rate: effectiveTaxRate })
+                        : t("web.book.continue.taxExcl", { rate: effectiveTaxRate })
+                      : t("web.book.continue.taxGeneric")}
+                  </span>
                   <span className="opacity-95">{formatCurrency(taxAmount, currency)}</span>
                 </div>
               )}
               {serviceFeeAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-80">Platform fee{platformServiceFee.type === "percentage" && platformServiceFee.percentage > 0 ? ` (${platformServiceFee.percentage}%)` : ""}</span>
+                  <span className="opacity-80">
+                    {platformServiceFee.type === "percentage" && platformServiceFee.percentage > 0
+                      ? t("web.book.continue.platformFeePct", { pct: platformServiceFee.percentage })
+                      : t("web.book.continue.platformFee")}
+                  </span>
                   <span className="opacity-95">{formatCurrency(serviceFeeAmount, currency)}</span>
                 </div>
               )}
               {tipAmount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="opacity-80">Tip</span>
+                  <span className="opacity-80">{t("web.book.continue.tip")}</span>
                   <span className="opacity-95">{formatCurrency(tipAmount, currency)}</span>
                 </div>
               )}
               <div className="flex justify-between font-semibold text-lg pt-2">
-                <span>Total</span>
+                <span>{t("web.book.continue.total")}</span>
                 <span style={{ color: BOOKING_ACCENT }}>{formatCurrency(totalAmount, currency)}</span>
               </div>
             </div>
           </div>
 
           <div className="rounded-3xl p-5 text-sm space-y-2 border" style={{ ...cardStyle }}>
-            <h2 className="font-medium mb-3" style={{ color: BOOKING_TEXT_PRIMARY }}>Booking details</h2>
+            <h2 className="font-medium mb-3" style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.continue.bookingDetails")}</h2>
             <div className="flex gap-3 items-start">
               <Clock className="h-4 w-4 mt-0.5 shrink-0" style={{ color: BOOKING_ACCENT }} />
               <div>
@@ -1483,10 +1540,10 @@ function BookContinueContent() {
               <MapPin className="h-4 w-4 mt-0.5 shrink-0" style={{ color: BOOKING_ACCENT }} />
               <div className="space-y-0.5">
                 {hold.location_type === "at_salon" ? (
-                  <p style={{ color: BOOKING_TEXT_PRIMARY }}>At salon</p>
+                  <p style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.continue.atSalon")}</p>
                 ) : (() => {
                   const snap = hold.address_snapshot;
-                  if (!snap) return <p style={{ color: BOOKING_TEXT_SECONDARY }}>At your location</p>;
+                  if (!snap) return <p style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.continue.atYourLocation")}</p>;
                   const addressParts = [snap.line1, snap.line2, snap.city, snap.postal_code].filter(Boolean);
                   const extras = [
                     snap.apartment_unit ? `Apt/Unit: ${snap.apartment_unit}` : null,
@@ -1510,12 +1567,12 @@ function BookContinueContent() {
                       )}
                       {snap.parking_instructions && (
                         <p className="text-xs mt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                          <span className="font-medium">Parking:</span> {String(snap.parking_instructions)}
+                          <span className="font-medium">{t("web.book.continue.parking")}</span> {String(snap.parking_instructions)}
                         </p>
                       )}
                       {snap.location_landmarks && (
                         <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                          <span className="font-medium">Landmarks:</span> {String(snap.location_landmarks)}
+                          <span className="font-medium">{t("web.book.continue.landmarks")}</span> {String(snap.location_landmarks)}
                         </p>
                       )}
                     </>
@@ -1526,22 +1583,22 @@ function BookContinueContent() {
           </div>
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
-            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Your details</h2>
+            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.continue.yourDetails")}</h2>
             {clientInfo && (clientInfo.firstName || clientInfo.lastName || clientInfo.email || clientInfo.phone) ? (
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {(clientInfo.firstName || clientInfo.lastName) && (
-                  <p><span className="text-muted-foreground">Name:</span> {[clientInfo.firstName, clientInfo.lastName].filter(Boolean).join(" ")}</p>
+                  <p><span className="text-muted-foreground">{t("web.book.continue.nameLabel")}</span> {[clientInfo.firstName, clientInfo.lastName].filter(Boolean).join(" ")}</p>
                 )}
-                {clientInfo.email && <p><span className="text-muted-foreground">Email:</span> {clientInfo.email}</p>}
-                {clientInfo.phone && <p><span className="text-muted-foreground">Phone:</span> {clientInfo.phone}</p>}
+                {clientInfo.email && <p><span className="text-muted-foreground">{t("web.book.continue.emailLabel")}</span> {clientInfo.email}</p>}
+                {clientInfo.phone && <p><span className="text-muted-foreground">{t("web.book.continue.phoneLabel")}</span> {clientInfo.phone}</p>}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3 text-sm" onBlur={() => setValidationError(null)}>
                 <div className="space-y-1">
-                  <Label htmlFor="continue-first">First name *</Label>
+                  <Label htmlFor="continue-first">{t("web.book.engine.firstName")} *</Label>
                   <Input
                     id="continue-first"
-                    placeholder="First name"
+                    placeholder={t("web.book.engine.firstName")}
                     value={clientForm.firstName}
                     onChange={(e) => setClientForm((p) => ({ ...p, firstName: e.target.value }))}
                     className="rounded-xl border"
@@ -1549,10 +1606,10 @@ function BookContinueContent() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="continue-last">Last name *</Label>
+                  <Label htmlFor="continue-last">{t("web.book.engine.lastName")} *</Label>
                   <Input
                     id="continue-last"
-                    placeholder="Last name"
+                    placeholder={t("web.book.engine.lastName")}
                     value={clientForm.lastName}
                     onChange={(e) => setClientForm((p) => ({ ...p, lastName: e.target.value }))}
                     className="rounded-xl border"
@@ -1560,11 +1617,11 @@ function BookContinueContent() {
                   />
                 </div>
                 <div className="col-span-2 space-y-1">
-                  <Label htmlFor="continue-email">Email *</Label>
+                  <Label htmlFor="continue-email">{t("web.accountSettings.personalInfo.emailAddress")} *</Label>
                   <Input
                     id="continue-email"
                     type="email"
-                    placeholder="you@example.com"
+                    placeholder={t("web.book.engine.emailPlaceholder")}
                     value={clientForm.email}
                     onChange={(e) => setClientForm((p) => ({ ...p, email: e.target.value }))}
                     className="rounded-xl border"
@@ -1575,19 +1632,19 @@ function BookContinueContent() {
                 <div className="col-span-2 space-y-1">
                   <PhoneInput
                     inputId="book-continue-client-phone"
-                    label="Phone (optional)"
+                    label={t("web.book.engine.phoneOptional")}
                     value={clientForm.phone}
                     onChange={(e164) => setClientForm((p) => ({ ...p, phone: e164 }))}
-                    placeholder="Phone number"
+                    placeholder={t("web.book.gate.phonePlaceholder")}
                     className="rounded-xl"
                   />
                 </div>
               </div>
             )}
-            {specialRequests && <p className="text-sm text-muted-foreground">Notes: {specialRequests}</p>}
+            {specialRequests && <p className="text-sm text-muted-foreground">{t("web.book.continue.notesPrefix")} {specialRequests}</p>}
             {addonDetails.length > 0 && (
               <p className="text-sm text-muted-foreground">
-                Add-ons: {addonDetails.map((a) => a.title).join(", ")}
+                {t("web.book.continue.addonsPrefix")} {addonDetails.map((a) => a.title).join(", ")}
               </p>
             )}
           </div>
@@ -1596,7 +1653,7 @@ function BookContinueContent() {
             <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
               <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
                 <Repeat className="h-4 w-4" style={{ color: BOOKING_ACCENT }} />
-                Repeat this booking
+                {t("web.book.continue.repeatBooking")}
               </h2>
               <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
                 When enabled, we save the same services on a repeating schedule as soon as your booking is created.
@@ -1616,12 +1673,12 @@ function BookContinueContent() {
                     className="text-sm font-medium cursor-pointer"
                     style={{ color: BOOKING_TEXT_PRIMARY }}
                   >
-                    Turn on repeating visits
+                    {t("web.book.continue.turnOnRepeating")}
                   </Label>
                   {subscribeRecurring && (
                     <div className="space-y-1">
                       <Label htmlFor="recurring-freq" className="text-xs text-muted-foreground">
-                        How often
+                        {t("web.book.continue.howOften")}
                       </Label>
                       <select
                         id="recurring-freq"
@@ -1632,9 +1689,9 @@ function BookContinueContent() {
                         className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm min-h-[44px]"
                         style={{ borderColor: BOOKING_BORDER }}
                       >
-                        <option value="weekly">Every week</option>
-                        <option value="biweekly">Every 2 weeks</option>
-                        <option value="monthly">Every month</option>
+                        <option value="weekly">{t("web.book.continue.everyWeek")}</option>
+                        <option value="biweekly">{t("web.book.continue.everyTwoWeeks")}</option>
+                        <option value="monthly">{t("web.book.continue.everyMonth")}</option>
                       </select>
                     </div>
                   )}
@@ -1645,30 +1702,30 @@ function BookContinueContent() {
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <Tag className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> Promo code
+              <Tag className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> {t("web.book.continue.promoCode")}
             </h2>
             <div className="flex gap-2">
               <Input
-                placeholder="Enter code"
+                placeholder={t("web.book.continue.enterCode")}
                 value={promotionCode}
                 onChange={(e) => { setPromotionCode(e.target.value.toUpperCase()); setPromoError(null); }}
                 className="flex-1"
               />
               <Button type="button" variant="outline" onClick={handleValidatePromo} disabled={!promotionCode.trim() || validatingPromo}>
-                {validatingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                {validatingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : t("web.book.continue.apply")}
               </Button>
             </div>
             {promoError && <p className="text-sm text-destructive">{promoError}</p>}
-            {promoDiscount != null && promoDiscount > 0 && <p className="text-sm text-green-600">Discount applied.</p>}
+            {promoDiscount != null && promoDiscount > 0 && <p className="text-sm text-green-600">{t("web.book.continue.discountApplied")}</p>}
           </div>
 
           {user && loyaltyBalance > 0 && (
             <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
               <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                <Zap className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> Loyalty points
+                <Zap className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> {t("web.book.continue.loyaltyPoints")}
               </h2>
               <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                Your balance: <span className="font-semibold">{loyaltyBalance.toLocaleString()} pts</span>
+                {t("web.book.continue.yourBalance")} <span className="font-semibold">{loyaltyBalance.toLocaleString()} pts</span>
                 {loyaltyPointsApplied > 0 && (
                   <> · <span className="text-green-600 font-semibold">{loyaltyPointsApplied.toLocaleString()} applied (-{formatCurrency(loyaltyDiscountAmount, currency)})</span></>
                 )}
@@ -1679,7 +1736,7 @@ function BookContinueContent() {
                     type="number"
                     min={1}
                     max={loyaltyBalance}
-                    placeholder={`Up to ${loyaltyBalance.toLocaleString()} pts`}
+                    placeholder={t("web.book.continue.upToPoints", { points: loyaltyBalance.toLocaleString() })}
                     value={loyaltyPointsInput}
                     onChange={(e) => { setLoyaltyPointsInput(e.target.value); setLoyaltyError(null); }}
                     className="flex-1"
@@ -1690,7 +1747,7 @@ function BookContinueContent() {
                     onClick={handleApplyLoyalty}
                     disabled={!loyaltyPointsInput.trim() || loyaltyValidating}
                   >
-                    {loyaltyValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Redeem"}
+                    {loyaltyValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : t("web.book.continue.redeem")}
                   </Button>
                 </div>
               )}
@@ -1701,7 +1758,7 @@ function BookContinueContent() {
                   style={{ color: BOOKING_TEXT_SECONDARY }}
                   onClick={() => { setLoyaltyPointsApplied(0); setLoyaltyDiscountAmount(0); setLoyaltyPointsInput(""); }}
                 >
-                  Remove loyalty discount
+                  {t("web.book.continue.removeLoyaltyDiscount")}
                 </button>
               )}
               {loyaltyError && <p className="text-sm text-destructive">{loyaltyError}</p>}
@@ -1711,7 +1768,7 @@ function BookContinueContent() {
           {(hold.tips_enabled !== false) && (
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <Heart className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> Add a tip (optional)
+              <Heart className="h-4 w-4" style={{ color: BOOKING_ACCENT }} /> {t("web.book.continue.addTipOptional")}
             </h2>
             <div className="flex flex-wrap gap-2">
               {tipSuggestions.map((n) => (
@@ -1726,12 +1783,12 @@ function BookContinueContent() {
                     border: tipAmount === n ? "none" : `1px solid ${BOOKING_BORDER}`,
                   }}
                 >
-                  {n === 0 ? "None" : formatCurrency(n, currency)}
+                  {n === 0 ? t("web.book.continue.none") : formatCurrency(n, currency)}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <Label htmlFor="tip-custom" className="text-sm">Custom</Label>
+              <Label htmlFor="tip-custom" className="text-sm">{t("web.book.continue.custom")}</Label>
               <Input
                 id="tip-custom"
                 type="number"
@@ -1747,11 +1804,11 @@ function BookContinueContent() {
           )}
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
-            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Additional details</h2>
+            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.engine.additionalDetails")}</h2>
             <p className="text-sm text-muted-foreground">
               {bookingCustomDefinitions.some((d) => d.is_required)
-                ? "Please complete all required fields (marked with *)."
-                : "Optional information for this booking (e.g. notes, preferences)."}
+                ? t("web.book.engine.requiredFieldsHint")
+                : t("web.book.engine.optionalBookingInfo")}
             </p>
             <CustomFieldsForm
               entityType="booking"
@@ -1765,17 +1822,17 @@ function BookContinueContent() {
             <div className="rounded-3xl p-5 space-y-4 border" style={cardStyle}>
               <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
                 <FileText className="h-4 w-4" style={{ color: BOOKING_ACCENT }} />
-                Provider forms
+                {t("web.book.continue.providerForms")}
               </h2>
               <p className="text-sm text-muted-foreground">
-                Please complete the following forms as required by the provider.
+                {t("web.book.continue.providerFormsHint")}
               </p>
               {providerForms.map((form) => (
                 <div key={form.id} className="rounded-lg border bg-muted/30 p-4 space-y-3">
                   <div>
                     <h3 className="font-medium text-sm">
                       {form.title}
-                      {form.is_required && <span className="text-destructive ml-1">*</span>}
+                      {form.is_required && <span className="text-destructive ms-1">*</span>}
                     </h3>
                     {form.description && (
                       <p className="text-xs text-muted-foreground mt-0.5">{form.description}</p>
@@ -1786,13 +1843,13 @@ function BookContinueContent() {
                       <div key={field.id} className="space-y-1">
                         <Label className="text-sm">
                           {field.name}
-                          {field.is_required && <span className="text-destructive ml-1">*</span>}
+                          {field.is_required && <span className="text-destructive ms-1">*</span>}
                         </Label>
                         {field.field_type === "text" || field.field_type === "signature" ? (
                           <Input
                             value={String(providerFormValues[form.id]?.[field.id] ?? "")}
                             onChange={(e) => updateProviderFormValue(form.id, field.id, e.target.value)}
-                            placeholder={field.field_type === "signature" ? "Type your name to sign" : undefined}
+                            placeholder={field.field_type === "signature" ? t("web.book.engine.typeNameToSign") : undefined}
                             className="mt-1"
                           />
                         ) : field.field_type === "checkbox" ? (
@@ -1803,7 +1860,7 @@ function BookContinueContent() {
                                 updateProviderFormValue(form.id, field.id, checked === true)
                               }
                             />
-                            <span className="text-sm text-muted-foreground">Yes</span>
+                            <span className="text-sm text-muted-foreground">{t("web.book.continue.yes")}</span>
                           </div>
                         ) : field.field_type === "date" ? (
                           <Input
@@ -1876,7 +1933,7 @@ function BookContinueContent() {
           })()}
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
-            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>Payment</h2>
+            <h2 className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>{t("web.book.continue.payment")}</h2>
             {/* Primary payment method selector */}
             <div className="grid grid-cols-2 gap-2">
               {paystackEnabled && (
@@ -1891,7 +1948,7 @@ function BookContinueContent() {
                   }}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Pay online
+                  {t("web.book.continue.payOnline")}
                 </button>
               )}
               {allowPayInPerson && (
@@ -1906,7 +1963,7 @@ function BookContinueContent() {
                   }}
                 >
                   <Banknote className="h-4 w-4" />
-                  Pay at venue
+                  {t("web.book.continue.payAtVenue")}
                 </button>
               )}
               {user && hold.payment_wallet && walletBalance > 0 && (
@@ -1921,7 +1978,7 @@ function BookContinueContent() {
                   }}
                 >
                   <CreditCard className="h-4 w-4" />
-                  Wallet ({formatCurrency(walletBalance, currency)})
+                  {t("web.book.continue.walletBalance", { balance: formatCurrency(walletBalance, currency) })}
                 </button>
               )}
               {hold.gift_cards && (
@@ -1936,16 +1993,16 @@ function BookContinueContent() {
                   }}
                 >
                   <Tag className="h-4 w-4" />
-                  Gift card
+                  {t("web.book.continue.giftCard")}
                 </button>
               )}
             </div>
-            {/* Gift card input (only when gift card method selected or cards enabled) */}
+            {/* {t("web.book.continue.giftCard")} input (only when gift card method selected or cards enabled) */}
             {hold.gift_cards && paymentMethod === "giftcard" && (
               <div className="space-y-2 pt-1">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Gift card code"
+                    placeholder={t("web.book.continue.giftCardCode")}
                     value={giftCardCode}
                     onChange={(e) => { setGiftCardCode(e.target.value.toUpperCase()); setGiftCardError(null); setGiftCardValid(null); }}
                     className="flex-1"
@@ -1956,25 +2013,25 @@ function BookContinueContent() {
                     onClick={handleValidateGiftCard}
                     disabled={!giftCardCode.trim() || giftCardValidating}
                   >
-                    {giftCardValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+                    {giftCardValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : t("web.book.continue.apply")}
                   </Button>
                 </div>
                 {giftCardError && <p className="text-sm text-destructive">{giftCardError}</p>}
                 {giftCardValid && (
                   <p className="text-sm text-green-600">
-                    Gift card applied — balance: {formatCurrency(giftCardValid.balance, giftCardValid.currency)}
+                    {t("web.book.continue.giftCardApplied", { balance: formatCurrency(giftCardValid.balance, giftCardValid.currency) })}
                   </p>
                 )}
               </div>
             )}
             {cardOnlineBlocked && (
               <p className="text-sm pt-1" style={{ color: BOOKING_WAITLIST_TEXT }}>
-                Online card payment is unavailable for this market and this provider does not accept pay at venue. You cannot complete checkout here—please contact the salon or try another time.
+                {t("web.book.continue.cardOnlineBlocked")}
               </p>
             )}
             {(paymentMethod === "card" || paymentMethod === "wallet") && showDepositChoice && (
               <div className="space-y-2 pt-1">
-                <p className="text-xs font-medium" style={{ color: BOOKING_TEXT_SECONDARY }}>How much would you like to pay now?</p>
+                <p className="text-xs font-medium" style={{ color: BOOKING_TEXT_SECONDARY }}>{t("web.book.continue.howMuchPayNow")}</p>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -1986,9 +2043,9 @@ function BookContinueContent() {
                       borderColor: paymentOption === "deposit" ? BOOKING_ACCENT : BOOKING_BORDER,
                     }}
                   >
-                    <span>Deposit ({depositPct}%)</span>
+                    <span>{t("web.book.continue.deposit", { pct: depositPct })}</span>
                     <span className="text-lg font-bold">{formatCurrency(depositAmount, currency)}</span>
-                    <span className="text-[10px] opacity-75">{formatCurrency(remainingAfterDeposit, currency)} due at appointment</span>
+                    <span className="text-[10px] opacity-75">{t("web.book.continue.dueAtAppointment", { amount: formatCurrency(remainingAfterDeposit, currency) })}</span>
                   </button>
                   <button
                     type="button"
@@ -2000,9 +2057,9 @@ function BookContinueContent() {
                       borderColor: paymentOption === "full" ? BOOKING_ACCENT : BOOKING_BORDER,
                     }}
                   >
-                    <span>Pay in full</span>
+                    <span>{t("web.book.continue.payInFull")}</span>
                     <span className="text-lg font-bold">{formatCurrency(totalAmount, currency)}</span>
-                    <span className="text-[10px] opacity-75">Nothing due at appointment</span>
+                    <span className="text-[10px] opacity-75">{t("web.book.continue.nothingDueAtAppointment")}</span>
                   </button>
                 </div>
               </div>
@@ -2034,7 +2091,7 @@ function BookContinueContent() {
               ) : (
                 <Zap className="h-5 w-5" style={{ color: BOOKING_ACCENT }} />
               )}
-              {requestingNow ? "Submitting..." : "Request now"}
+              {requestingNow ? t("web.book.continue.submitting") : t("web.book.continue.requestNow")}
             </button>
           )}
           <button
@@ -2052,7 +2109,7 @@ function BookContinueContent() {
             {(status as string) === "consuming" ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : null}
-            Complete booking
+            {t("web.book.continue.completeBooking")}
           </button>
 
           {/* Mobile app nudge — shown to iOS/Android users only, after hydration */}
@@ -2064,7 +2121,16 @@ function BookContinueContent() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <LoadingTimeout loadingMessage="Loading..." />
+      <LoadingTimeout loadingMessage={t("web.book.continue.loading")} />
+    </div>
+  );
+}
+
+function BookContinueSuspenseFallback() {
+  const { t } = useTranslation();
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <LoadingTimeout loadingMessage={t("web.book.continue.loadingEllipsis")} />
     </div>
   );
 }
@@ -2072,13 +2138,19 @@ function BookContinueContent() {
 export default function BookContinuePage() {
   return (
     <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <LoadingTimeout loadingMessage="Loading..." />
-        </div>
-      }
+      fallback={<BookContinueSuspenseFallback />}
     >
-      <BookContinueContent />
+      <BookContinueWithBridge />
     </Suspense>
+  );
+}
+
+function BookContinueWithBridge() {
+  const searchParams = useSearchParams();
+  return (
+    <>
+      <BookingEmbedBridge active={isBookingEmbedEnabled(searchParams)} />
+      <BookContinueContent />
+    </>
   );
 }

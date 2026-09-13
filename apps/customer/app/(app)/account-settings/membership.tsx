@@ -167,7 +167,7 @@ export default function MembershipScreen() {
 
   const toggleAutoRenew = async (membership: ProviderMembership, newValue: boolean) => {
     if (newValue && !membership.card) {
-      Alert.alert("No payment card", "Please add a payment card in Payment Methods before enabling auto-renew.");
+      Alert.alert(mem("noPaymentCardTitle"), mem("noPaymentCardBody"));
       return;
     }
     setTogglingId(membership.id);
@@ -177,13 +177,13 @@ export default function MembershipScreen() {
         { membership_id: membership.id, auto_renew: newValue },
       );
       if (res.error || !res.data?.success) {
-        const msg = res.data?.message ?? getApiErrorMessage(res.error, "Failed to update auto-renew");
-        Alert.alert("Error", msg);
+        const msg = res.data?.message ?? getApiErrorMessage(res.error, mem("autoRenewUpdateFailed"));
+        Alert.alert(errTitle, msg);
       } else {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to update auto-renew"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("autoRenewUpdateFailed")));
     } finally {
       setTogglingId(null);
     }
@@ -196,19 +196,19 @@ export default function MembershipScreen() {
         "/api/me/payment-methods",
       );
       if (cardsRes.error) {
-        Alert.alert("Error", getApiErrorMessage(cardsRes.error, "Could not load saved cards"));
+        Alert.alert(errTitle, getApiErrorMessage(cardsRes.error, mem("loadCardsFailed")));
         return;
       }
       const cards = Array.isArray(cardsRes.data) ? cardsRes.data : [];
       const usable = cards.filter((c) => !c.is_expired);
       if (usable.length === 0) {
         Alert.alert(
-          "No saved cards",
-          "Add a payment card in Payment Methods, then return here to update your membership billing.",
+          mem("noSavedCardsTitle"),
+          mem("noSavedCardsBody"),
           [
-            { text: "Cancel", style: "cancel" },
+            { text: t("common.cancel"), style: "cancel" },
             {
-              text: "Payment Methods",
+              text: mem("paymentMethodsCta"),
               onPress: () => router.push("/(app)/account-settings/payments" as never),
             },
           ],
@@ -216,10 +216,10 @@ export default function MembershipScreen() {
         return;
       }
       Alert.alert(
-        membership.status === "past_due" ? "Update payment card" : "Change payment card",
-        `Choose a card for ${membership.provider_name}.`,
+        membership.status === "past_due" ? mem("updatePaymentCardTitle") : mem("changePaymentCardTitle"),
+        mem("chooseCardBody", { providerName: membership.provider_name }),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           ...usable.map((card) => ({
             text: `${(card.card_type ?? "Card").toUpperCase()} •••• ${card.last4 ?? "****"}${card.expiry_label ? ` (${card.expiry_label})` : ""}`,
             onPress: async () => {
@@ -228,21 +228,21 @@ export default function MembershipScreen() {
                 { membership_id: membership.id, payment_method_id: card.id },
               );
               if (res.error || !res.data?.success) {
-                Alert.alert("Error", res.data?.message ?? getApiErrorMessage(res.error, "Failed to update card"));
+                Alert.alert(errTitle, res.data?.message ?? getApiErrorMessage(res.error, mem("updateCardFailed")));
               } else {
                 await load();
-                Alert.alert("Done", "Payment card updated.");
+                Alert.alert(mem("doneTitle"), mem("updateCardSuccess"));
               }
             },
           })),
           {
-            text: "Add new card",
+            text: mem("addNewCardCta"),
             onPress: () => router.push("/(app)/account-settings/payments" as never),
           },
         ],
       );
     } catch (e) {
-      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to update card"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("updateCardFailed")));
     } finally {
       setUpdatingCardId(null);
     }
@@ -263,12 +263,12 @@ export default function MembershipScreen() {
               { provider_membership_id: membership.id },
             );
         if (res.error) {
-          Alert.alert(errTitle, getApiErrorMessage(res.error, "Failed to update membership"));
+          Alert.alert(errTitle, getApiErrorMessage(res.error, mem("failedToUpdateMembership")));
         } else {
           await load();
         }
       } catch (e) {
-        Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to update membership"));
+        Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("failedToUpdateMembership")));
       } finally {
         setPausingId(null);
       }
@@ -278,22 +278,22 @@ export default function MembershipScreen() {
       return;
     }
     Alert.alert(
-      "Pause membership",
-      `Pause ${membership.plan_name} with ${membership.provider_name}? Auto-renew will turn off.`,
+      mem("pauseMembershipTitle"),
+      mem("pauseMembershipBody", { planName: membership.plan_name, providerName: membership.provider_name }),
       [
-        { text: "Keep active", style: "cancel" },
-        { text: "Pause", onPress: () => void run() },
+        { text: mem("keepActiveCta"), style: "cancel" },
+        { text: mem("pauseCta"), onPress: () => void run() },
       ],
     );
   };
 
   const changePlan = async (membership: ProviderMembership) => {
     if (membership.auto_renew !== true) {
-      Alert.alert("Change plan", "Turn on auto-renew first. The new plan applies at the next renewal.");
+      Alert.alert(mem("changePlanTitle"), mem("changePlanAutoRenewFirst"));
       return;
     }
     if (!membership.provider_slug) {
-      Alert.alert("Change plan", "This provider has no public profile, so other plans cannot be loaded.");
+      Alert.alert(mem("changePlanTitle"), mem("changePlanNoPublicProfile"));
       return;
     }
     try {
@@ -302,33 +302,33 @@ export default function MembershipScreen() {
       );
       const plans = Array.isArray(res.data?.plans) ? res.data.plans : [];
       if (plans.length === 0) {
-        Alert.alert("Change plan", "No other plans available.");
+        Alert.alert(mem("changePlanTitle"), mem("changePlanNoOtherPlans"));
         return;
       }
       Alert.alert(
-        "Change plan",
-        "Takes effect at period end. Choose a plan.",
+        mem("changePlanTitle"),
+        mem("changePlanChooseBody"),
         [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel"), style: "cancel" },
           ...plans.map((plan) => ({
-            text: `${plan.name}${plan.id === membership.plan_id ? " (current)" : ""}`,
+            text: `${plan.name}${plan.id === membership.plan_id ? mem("currentPlanSuffix") : ""}`,
             onPress: async () => {
               const change = await api.post<{ scheduled?: boolean; cleared?: boolean }>(
                 "/api/me/membership/change-plan",
                 { provider_membership_id: membership.id, plan_id: plan.id },
               );
               if (change.error) {
-                Alert.alert(errTitle, getApiErrorMessage(change.error, "Failed to schedule plan change"));
+                Alert.alert(errTitle, getApiErrorMessage(change.error, mem("failedToSchedulePlanChange")));
               } else {
                 await load();
-                Alert.alert("Done", change.data?.cleared ? "Scheduled change cleared." : "Plan change scheduled for period end.");
+                Alert.alert(mem("doneTitle"), change.data?.cleared ? mem("scheduledChangeCleared") : mem("planChangeScheduled"));
               }
             },
           })),
         ],
       );
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to load plans"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("failedToLoadPlans")));
     }
   };
 
@@ -340,7 +340,7 @@ export default function MembershipScreen() {
         bookings?: Array<{ booking_number?: string | null; membership_discount_amount?: number; currency?: string }>;
       }>(`/api/me/membership/usage?provider_membership_id=${encodeURIComponent(membership.id)}`);
       if (res.error) {
-        Alert.alert(errTitle, getApiErrorMessage(res.error, "Failed to load usage"));
+        Alert.alert(errTitle, getApiErrorMessage(res.error, mem("failedToLoadUsage")));
         return;
       }
       const bookings = Array.isArray(res.data?.bookings) ? res.data.bookings : [];
@@ -348,21 +348,21 @@ export default function MembershipScreen() {
       const count = Number(res.data?.booking_count ?? bookings.length);
       const lines = bookings.slice(0, 8).map((b) => {
         const amt = Number(b.membership_discount_amount ?? 0);
-        return `${b.booking_number ?? "Booking"} · ${membership.currency} ${amt.toFixed(2)}`;
+        return `${b.booking_number ?? mem("bookingFallback")} · ${membership.currency} ${amt.toFixed(2)}`;
       });
       Alert.alert(
-        "Membership usage",
+        mem("membershipUsageTitle"),
         [
-          `${count} booking${count === 1 ? "" : "s"} used this membership.`,
-          `Saved ${membership.currency} ${total.toFixed(2)}.`,
+          count === 1 ? mem("usageBookingsCountOne") : mem("usageBookingsCount", { count: String(count) }),
+          mem("usageSaved", { currency: membership.currency, amount: total.toFixed(2) }),
           lines.length > 0 ? `\n${lines.join("\n")}` : "",
-          bookings.length > 8 ? `\n+${bookings.length - 8} more` : "",
+          bookings.length > 8 ? `\n${mem("usageMore", { count: String(bookings.length - 8) })}` : "",
         ]
           .filter(Boolean)
           .join("\n"),
       );
     } catch (e) {
-      Alert.alert(errTitle, getApiErrorMessage(e as Error, "Failed to load usage"));
+      Alert.alert(errTitle, getApiErrorMessage(e as Error, mem("failedToLoadUsage")));
     }
   };
 
@@ -393,19 +393,19 @@ export default function MembershipScreen() {
         {hasMembership ? (
           <View>
             <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 16 }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Active membership</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{mem("activeMembershipLabel")}</Text>
               <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>{membership?.name}</Text>
               {membership?.description && (
                 <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{membership.description}</Text>
               )}
               <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>
-                {membership?.billing_cycle === "yearly" ? "Billed yearly" : "Billed monthly"}
-                {membership?.expires_at && ` · Renews ${formatDateSafe(membership.expires_at)}`}
+                {membership?.billing_cycle === "yearly" ? mem("billedYearly") : mem("billedMonthly")}
+                {membership?.expires_at && mem("renewsSuffix", { date: formatDateSafe(membership.expires_at) })}
               </Text>
             </View>
             {benefits.length > 0 && (
               <View style={{ marginTop: 16 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Benefits</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{mem("benefitsTitle")}</Text>
                 {benefits.map((b: any, i: number) => (
                   <View key={i} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12, marginBottom: 8 }}>
                     <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{b.name}</Text>
@@ -416,11 +416,11 @@ export default function MembershipScreen() {
             )}
             {(savings.this_month > 0 || savings.lifetime > 0) && (
               <View style={{ backgroundColor: "#F0FDF4", borderRadius: 12, padding: 16, marginTop: 16 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Your savings</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{mem("yourSavingsTitle")}</Text>
                 <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
-                  This month: {savingsCurrency} {savings.this_month?.toFixed(2) ?? "0.00"}
+                  {mem("thisMonthLabel", { currency: savingsCurrency, amount: (savings.this_month?.toFixed(2) ?? "0.00") })}
                 </Text>
-                <Text style={{ color: Colors.gray[700] }}>Lifetime: {savingsCurrency} {savings.lifetime?.toFixed(2) ?? "0.00"}</Text>
+                <Text style={{ color: Colors.gray[700] }}>{mem("lifetimeLabel", { currency: savingsCurrency, amount: (savings.lifetime?.toFixed(2) ?? "0.00") })}</Text>
               </View>
             )}
             {membership?.auto_renew !== false && (
@@ -429,16 +429,16 @@ export default function MembershipScreen() {
                 disabled={cancelling}
                 style={{ marginTop: 16, paddingVertical: 12, borderWidth: 1, borderColor: "#EF4444", borderRadius: 12, alignItems: "center" }}
               >
-                <Text style={{ color: "#DC2626", fontWeight: "500" }}>{cancelling ? "Cancelling..." : "Cancel membership"}</Text>
+                <Text style={{ color: "#DC2626", fontWeight: "500" }}>{cancelling ? mem("cancelling") : mem("cancelMembershipCta")}</Text>
               </TouchableOpacity>
             )}
           </View>
         ) : hasSalonMemberships ? (
           <View>
             <View style={{ backgroundColor: Colors.gray[50], borderRadius: 16, padding: 16 }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>No platform membership</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{mem("noPlatformMembership")}</Text>
               <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
-                Your active salon memberships are listed below.
+                {mem("noPlatformMembershipBody")}
               </Text>
             </View>
           </View>
@@ -446,9 +446,9 @@ export default function MembershipScreen() {
 
         {hasSalonMemberships && (
           <View style={{ marginTop: 24 }}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>Salon memberships</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 12 }}>{mem("salonMembershipsTitle")}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
-              Your active memberships with providers. You get the listed discount on bookings at each salon.
+              {mem("salonMembershipsBody")}
             </Text>
             {providerMemberships.map((pm) => {
               const isPastDue = pm.status === "past_due";
@@ -478,11 +478,9 @@ export default function MembershipScreen() {
                     <View style={{ backgroundColor: "#F8FAFC", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
                       <Ionicons name="pause-circle-outline" size={18} color="#475569" style={{ marginTop: 1 }} />
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: "600", color: "#334155", fontSize: 13 }}>Paused</Text>
+                        <Text style={{ fontWeight: "600", color: "#334155", fontSize: 13 }}>{mem("pausedLabel")}</Text>
                         <Text style={{ color: "#475569", fontSize: 13, marginTop: 2 }}>
-                          Auto-renew is off
-                          {pm.paused_until ? ` until ${formatDateSafe(pm.paused_until)}` : ""}.
-                          Resume anytime to keep your benefits.
+                          {mem("pausedBody", { until: pm.paused_until ? mem("pausedUntilSuffix", { date: formatDateSafe(pm.paused_until) }) : "" })}
                         </Text>
                       </View>
                     </View>
@@ -505,10 +503,12 @@ export default function MembershipScreen() {
                     <View style={{ backgroundColor: "#FFFBEB", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
                       <Ionicons name="card-outline" size={18} color="#B45309" style={{ marginTop: 1 }} />
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontWeight: "600", color: "#B45309", fontSize: 13 }}>Add a payment method</Text>
+                        <Text style={{ fontWeight: "600", color: "#B45309", fontSize: 13 }}>{mem("addPaymentMethodTitle")}</Text>
                         <Text style={{ color: "#B45309", fontSize: 13, marginTop: 2 }}>
-                          Your {pm.plan_name} membership is active, but we couldn&apos;t save a card for renewals. Add one
-                          {pm.next_billing_at ? ` before ${formatDateSafe(pm.next_billing_at)}` : " soon"} to keep it from lapsing.
+                          {mem("addPaymentMethodBody", {
+                            planName: pm.plan_name,
+                            when: pm.next_billing_at ? mem("addPaymentWhenBefore", { date: formatDateSafe(pm.next_billing_at) }) : mem("addPaymentWhenSoon"),
+                          })}
                         </Text>
                       </View>
                     </View>
@@ -522,12 +522,12 @@ export default function MembershipScreen() {
 
                   <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8, gap: 12 }}>
                     {pm.discount_percent > 0 && (
-                      <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{pm.discount_percent}% off services</Text>
+                      <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>{mem("discountOffServices", { percent: String(pm.discount_percent) })}</Text>
                     )}
                     {pm.scheduled_plan_id ? (
                       <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                        Changes to {pm.scheduled_plan_name ?? "the selected plan"}{" "}
-                        {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : "at period end"}
+                        {mem("changesToPlan", { planName: pm.scheduled_plan_name ?? "the selected plan" })}{" "}
+                        {pm.scheduled_change_at ? formatDateSafe(pm.scheduled_change_at) : mem("atPeriodEnd")}
                       </Text>
                     ) : null}
                     {pm.auto_renew && pm.next_billing_at ? (
@@ -570,10 +570,10 @@ export default function MembershipScreen() {
                   >
                     <Text style={{ fontSize: 13, color: isPastDue ? "#DC2626" : Colors.primary, fontWeight: "600" }}>
                       {updatingCardId === pm.id
-                        ? "Loading cards…"
+                        ? mem("loadingCards")
                         : isPastDue
-                          ? "Update payment card"
-                          : "Change payment card"}
+                          ? mem("updatePaymentCardTitle")
+                          : mem("changePaymentCardTitle")}
                     </Text>
                   </TouchableOpacity>
 
@@ -595,10 +595,10 @@ export default function MembershipScreen() {
                     <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("billingHistoryTitle")} →</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => void openUsage(pm)} style={{ marginTop: 8 }}>
-                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Usage history →</Text>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("usageHistoryLink")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => void changePlan(pm)} style={{ marginTop: 8 }}>
-                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Change plan →</Text>
+                    <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("changePlanLink")}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => pauseOrResume(pm)}
@@ -606,7 +606,7 @@ export default function MembershipScreen() {
                     style={{ marginTop: 8 }}
                   >
                     <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>
-                      {pausingId === pm.id ? "Saving…" : isPaused ? "Resume membership" : "Pause membership"}
+                      {pausingId === pm.id ? mem("saving") : isPaused ? mem("resumeMembership") : mem("pauseMembershipCta")}
                     </Text>
                   </TouchableOpacity>
 
@@ -614,10 +614,10 @@ export default function MembershipScreen() {
                     <TouchableOpacity
                       onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: pm.provider_slug } })}
                       accessibilityRole="button"
-                      accessibilityLabel={`View ${pm.provider_name}`}
+                      accessibilityLabel={mem("viewProviderA11y", { name: pm.provider_name })}
                       style={{ marginTop: 4 }}
                     >
-                      <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>View provider →</Text>
+                      <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{mem("viewProviderLink")}</Text>
                     </TouchableOpacity>
                   )}
 
@@ -626,7 +626,7 @@ export default function MembershipScreen() {
                       onPress={() => cancelSalonMembership(pm)}
                       disabled={cancellingSalonId === pm.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`Cancel ${pm.plan_name} membership with ${pm.provider_name}`}
+                      accessibilityLabel={mem("cancelSalonMembershipA11y", { planName: pm.plan_name, providerName: pm.provider_name })}
                       style={{
                         marginTop: 12,
                         paddingVertical: 10,
@@ -637,7 +637,7 @@ export default function MembershipScreen() {
                       }}
                     >
                       <Text style={{ color: "#DC2626", fontWeight: "500" }}>
-                        {cancellingSalonId === pm.id ? "Cancelling..." : "Cancel salon membership"}
+                        {cancellingSalonId === pm.id ? mem("cancelling") : mem("cancelSalonMembershipCta")}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -650,9 +650,9 @@ export default function MembershipScreen() {
         {!hasMembership && !hasSalonMemberships && (
           <View style={{ marginTop: 16 }}>
             <View style={{ backgroundColor: Colors.gray[50], borderRadius: 16, padding: 16 }}>
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>No memberships yet</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{mem("noMembershipsYet")}</Text>
               <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
-                Browse provider profiles to see membership plans and subscribe.
+                {mem("noMembershipsBody")}
               </Text>
             </View>
           </View>

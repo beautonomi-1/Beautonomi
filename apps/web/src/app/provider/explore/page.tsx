@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -11,6 +12,7 @@ import { Loader2, Plus, Pencil, Trash2, Image as ImageIcon, ExternalLink, Eye, H
 import type { ExplorePost } from "@/types/explore";
 
 export default function ProviderExplorePage() {
+  const { t } = useTranslation();
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -21,7 +23,7 @@ export default function ProviderExplorePage() {
       const data = (res as any)?.data ?? res ?? [];
       setPosts(Array.isArray(data) ? data : []);
     } catch {
-      toast.error("Failed to load posts");
+      toast.error(t("web.provider.explorePage.failedToLoad"));
       setPosts([]);
     } finally {
       setIsLoading(false);
@@ -33,13 +35,13 @@ export default function ProviderExplorePage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this post?")) return;
+    if (!confirm(t("web.provider.explorePage.deleteConfirm"))) return;
     try {
       await fetcher.delete(`/api/explore/posts/${id}`);
-      toast.success("Post deleted");
+      toast.success(t("web.provider.explorePage.deleted"));
       loadPosts();
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Delete failed");
+      toast.error(e instanceof FetchError ? e.message : t("web.provider.explorePage.deleteFailed"));
     }
   };
 
@@ -51,12 +53,12 @@ export default function ProviderExplorePage() {
     >
       <div className="min-h-screen bg-white">
         <PageHeader
-          title="Explore"
-          subtitle="Create and manage posts for the explore feed"
+          title={t("web.provider.explorePage.title")}
+          subtitle={t("web.provider.explorePage.subtitle")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Explore" },
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.explorePage.title") },
           ]}
         />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 mt-6">
@@ -64,12 +66,12 @@ export default function ProviderExplorePage() {
           <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex flex-wrap items-center gap-3">
             <Gift className="w-5 h-5 text-amber-600 shrink-0" />
             <p className="text-sm text-amber-900 flex-1">
-              <strong>Earn reward points</strong> when you post to Explore. Share your work to grow visibility and unlock rewards.
+              <strong>{t("web.provider.explorePage.earnStrong")}</strong> {t("web.provider.explorePage.earnBody")}
             </p>
             <Link href="/provider/explore/new">
               <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white shrink-0">
-                <Plus className="w-4 h-4 mr-1" />
-                Post now
+                <Plus className="w-4 h-4 me-1" />
+                {t("web.provider.explorePage.postNow")}
               </Button>
             </Link>
           </div>
@@ -78,14 +80,14 @@ export default function ProviderExplorePage() {
             <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-100 flex flex-wrap gap-6">
               <div className="flex items-center gap-2">
                 <Eye className="w-5 h-5 text-gray-500" />
-                <span className="text-sm text-gray-600">Total views:</span>
+                <span className="text-sm text-gray-600">{t("web.provider.explorePage.totalViews")}</span>
                 <span className="font-semibold text-gray-900">
                   {posts.reduce((a, p) => a + (p.view_count ?? 0), 0)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <Heart className="w-5 h-5 text-gray-500" />
-                <span className="text-sm text-gray-600">Total likes:</span>
+                <span className="text-sm text-gray-600">{t("web.provider.explorePage.totalLikes")}</span>
                 <span className="font-semibold text-gray-900">
                   {posts.reduce((a, p) => a + (p.like_count ?? 0), 0)}
                 </span>
@@ -94,18 +96,18 @@ export default function ProviderExplorePage() {
                 href="/explore"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ml-auto flex items-center gap-2 text-primary text-sm font-medium hover:underline"
+                className="ms-auto flex items-center gap-2 text-primary text-sm font-medium hover:underline"
               >
                 <ExternalLink className="w-4 h-4" />
-                View on Explore
+                {t("web.provider.explorePage.viewOnExplore")}
               </Link>
             </div>
           )}
           <div className="flex justify-end mb-6">
             <Link href="/provider/explore/new">
               <Button className="bg-primary hover:bg-primary-hover text-white">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Post
+                <Plus className="w-4 h-4 me-2" />
+                {t("web.provider.explorePage.createPost")}
               </Button>
             </Link>
           </div>
@@ -116,14 +118,14 @@ export default function ProviderExplorePage() {
           ) : posts.length === 0 ? (
             <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
               <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 mb-2">No posts yet</p>
+              <p className="text-gray-600 mb-2">{t("web.provider.explorePage.noPosts")}</p>
               <p className="text-sm text-gray-500 mb-6">
-                Create your first post to appear in the explore feed and earn reward points.
+{t("web.provider.explorePage.noPostsHint")}
               </p>
               <Link href="/provider/explore/new">
                 <Button className="bg-primary hover:bg-primary-hover text-white">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Post
+                  <Plus className="w-4 h-4 me-2" />
+                  {t("web.provider.explorePage.createPost")}
                 </Button>
               </Link>
             </div>
@@ -166,7 +168,7 @@ export default function ProviderExplorePage() {
                   </div>
                   <div className="p-3">
                     <p className="text-sm text-gray-600 line-clamp-2 mb-2">
-                      {post.caption || "No caption"}
+                      {post.caption || t("web.provider.explorePage.noCaption")}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
                       <span
@@ -178,34 +180,34 @@ export default function ProviderExplorePage() {
                       >
                         {post.status}
                       </span>
-                      <span>{post.like_count} likes</span>
-                      <span>{post.comment_count ?? 0} comments</span>
+                      <span>{t("web.provider.explorePage.likes", { count: post.like_count ?? 0 })}</span>
+                      <span>{t("web.provider.explorePage.comments", { count: post.comment_count ?? 0 })}</span>
                       {typeof post.view_count === "number" && (
-                        <span>{post.view_count} views</span>
+                        <span>{t("web.provider.explorePage.views", { count: post.view_count })}</span>
                       )}
                       {post.status === "published" && (
                         <Link
                           href="/explore"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="ml-auto flex items-center gap-1 text-primary hover:underline"
+                          className="ms-auto flex items-center gap-1 text-primary hover:underline"
                         >
                           <ExternalLink className="w-3 h-3" />
-                          View on Explore
+                          {t("web.provider.explorePage.viewOnExplore")}
                         </Link>
                       )}
                     </div>
                     <div className="flex gap-2 flex-wrap">
                       <Link href={`/provider/explore/${post.id}`}>
                         <Button variant="outline" size="sm">
-                          <MessageCircle className="w-3 h-3 mr-1" />
-                          View & comments
+                          <MessageCircle className="w-3 h-3 me-1" />
+                          {t("web.provider.explorePage.viewComments")}
                         </Button>
                       </Link>
                       <Link href={`/provider/explore/${post.id}/edit`}>
                         <Button variant="outline" size="sm">
-                          <Pencil className="w-3 h-3 mr-1" />
-                          Edit
+                          <Pencil className="w-3 h-3 me-1" />
+                          {t("web.provider.common.edit")}
                         </Button>
                       </Link>
                       <Button

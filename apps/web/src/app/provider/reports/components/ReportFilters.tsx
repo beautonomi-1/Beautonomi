@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -50,26 +52,26 @@ interface ReportFiltersProps {
 }
 
 /** Calendar-correct quick ranges (inclusive), computed at click time. */
-const QUICK_DATE_OPTIONS: Array<{ label: string; range: () => DateRange }> = [
-  { label: "Today", range: () => ({ from: startOfDay(new Date()), to: new Date() }) },
+const QUICK_DATE_OPTIONS: Array<{ key: "today" | "yesterday" | "last7Days" | "last30Days" | "thisMonth" | "lastMonth" | "thisYear"; range: () => DateRange }> = [
+  { key: "today", range: () => ({ from: startOfDay(new Date()), to: new Date() }) },
   {
-    label: "Yesterday",
+    key: "yesterday",
     range: () => {
       const y = subDays(new Date(), 1);
       return { from: startOfDay(y), to: startOfDay(y) };
     },
   },
-  { label: "Last 7 days", range: () => ({ from: startOfDay(subDays(new Date(), 6)), to: new Date() }) },
-  { label: "Last 30 days", range: () => ({ from: startOfDay(subDays(new Date(), 29)), to: new Date() }) },
-  { label: "This month", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
+  { key: "last7Days", range: () => ({ from: startOfDay(subDays(new Date(), 6)), to: new Date() }) },
+  { key: "last30Days", range: () => ({ from: startOfDay(subDays(new Date(), 29)), to: new Date() }) },
+  { key: "thisMonth", range: () => ({ from: startOfMonth(new Date()), to: new Date() }) },
   {
-    label: "Last month",
+    key: "lastMonth",
     range: () => {
       const lastMonth = subMonths(new Date(), 1);
       return { from: startOfMonth(lastMonth), to: endOfMonth(lastMonth) };
     },
   },
-  { label: "This year", range: () => ({ from: startOfYear(new Date()), to: new Date() }) },
+  { key: "thisYear", range: () => ({ from: startOfYear(new Date()), to: new Date() }) },
 ];
 
 export function ReportFilters({
@@ -86,6 +88,7 @@ export function ReportFilters({
   selectedService,
   persistToUrl = true,
 }: ReportFiltersProps) {
+  const { t } = useTranslation();
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const numberOfMonths = useResponsive({ mobile: 1, tablet: 1, desktop: 2 });
   const router = useRouter();
@@ -142,11 +145,11 @@ export function ReportFilters({
           <Button
             variant="outline"
             className={cn(
-              "w-full sm:w-auto justify-start text-left font-normal",
+              "w-full sm:w-auto justify-start text-start font-normal",
               !dateRange.from && "text-muted-foreground"
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            <CalendarIcon className="me-2 h-4 w-4" />
             {dateRange.from ? (
               dateRange.to ? (
                 <>
@@ -157,23 +160,23 @@ export function ReportFilters({
                 format(dateRange.from, "LLL dd, y")
               )
             ) : (
-              <span>Pick a date range</span>
+<span>{t("web.provider.reports.filters.pickDateRange")}</span>
             )}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <div className="p-3 border-b">
-            <p className="text-sm font-medium mb-2">Quick Select</p>
+<p className="text-sm font-medium mb-2">{t("web.provider.reports.filters.quickSelect")}</p>
             <div className="grid grid-cols-2 gap-2">
               {QUICK_DATE_OPTIONS.map((option) => (
                 <Button
-                  key={option.label}
+key={option.key}
                   variant="ghost"
                   size="sm"
                   className="justify-start text-xs"
                   onClick={() => handleQuickDate(option.range())}
                 >
-                  {option.label}
+{t(`web.provider.reports.filters.${option.key}`)}
                 </Button>
               ))}
             </div>
@@ -201,10 +204,10 @@ export function ReportFilters({
           onValueChange={(value) => onStaffChange(value === "all" ? null : value)}
         >
           <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="All Staff" />
+<SelectValue placeholder={t("web.provider.reports.filters.allStaff")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Staff</SelectItem>
+<SelectItem value="all">{t("web.provider.reports.filters.allStaff")}</SelectItem>
             {staffOptions.map((staff) => (
               <SelectItem key={staff.id} value={staff.id}>
                 {staff.name}
@@ -221,10 +224,10 @@ export function ReportFilters({
           onValueChange={(value) => onServiceChange(value === "all" ? null : value)}
         >
           <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="All Services" />
+<SelectValue placeholder={t("web.provider.reports.filters.allServices")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Services</SelectItem>
+<SelectItem value="all">{t("web.provider.reports.filters.allServices")}</SelectItem>
             {serviceOptions.map((service) => (
               <SelectItem key={service.id} value={service.id}>
                 {service.name}
@@ -250,8 +253,8 @@ export function ReportFilters({
           }}
           className="w-full sm:w-auto"
         >
-          <X className="mr-2 h-4 w-4" />
-          Reset Filters
+          <X className="me-2 h-4 w-4" />
+{t("web.provider.reports.filters.resetFilters")}
         </Button>
       )}
     </div>

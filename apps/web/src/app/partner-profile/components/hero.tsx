@@ -127,9 +127,9 @@ const Hero: React.FC<{ businessName?: string }> = ({ businessName = "Provider" }
           <div className="flex items-center">
             <Link
               href="/"
-              className="flex md:hidden items-center mr-4 text-secondary mt-2 font-light text-sm"
+              className="flex md:hidden items-center me-4 text-secondary mt-2 font-light text-sm"
             >
-              <ChevronLeft className="h-5 w-5 mr-1" />
+              <ChevronLeft className="h-5 w-5 me-1" />
               <span>Home</span>
             </Link>
             <h2 className="hidden md:flex text-[26px] font-normal Airbbn-medium text-secondary">

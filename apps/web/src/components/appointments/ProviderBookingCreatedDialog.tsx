@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { providerPortalFetch } from "@/lib/http/fetcher";
 import {
   buildConfirmedAfterInlineConfirmModel,
@@ -38,6 +39,7 @@ function bannerClass(tone: "amber" | "green" | "neutral") {
 }
 
 export function ProviderBookingCreatedDialog({ open, payload, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [confirmedInline, setConfirmedInline] = useState(false);
@@ -96,16 +98,16 @@ export function ProviderBookingCreatedDialog({ open, payload, onOpenChange }: Pr
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(body?.error?.message || "Could not confirm booking");
+        throw new Error(body?.error?.message || t("web.createdSuccess.confirmFailed"));
       }
-      toast.success("Booking confirmed");
+      toast.success(t("web.createdSuccess.confirmed"));
       setConfirmedInline(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not confirm booking");
+      toast.error(error instanceof Error ? error.message : t("web.createdSuccess.confirmFailed"));
     } finally {
       setConfirming(false);
     }
-  }, [confirming, payload?.bookingId]);
+  }, [confirming, payload?.bookingId, t]);
 
   if (!payload || !model) return null;
 
@@ -153,22 +155,22 @@ export function ProviderBookingCreatedDialog({ open, payload, onOpenChange }: Pr
         <DialogFooter className="flex-col gap-2 px-6 pb-6 sm:flex-col sm:space-x-0">
           {model.showConfirmCta ? (
             <Button className="w-full" onClick={() => void handleConfirm()} disabled={confirming}>
-              {confirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Confirm booking
+              {confirming ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : null}
+              {t("booking.confirmBooking")}
             </Button>
           ) : null}
           {model.showReviewCta ? (
             <Button variant="outline" className="w-full" onClick={() => goToBookingDetail(true)}>
-              Review booking
+              {t("booking.reviewBooking")}
             </Button>
           ) : null}
           {model.showViewCta ? (
             <Button className="w-full" onClick={() => goToBookingDetail(false)}>
-              View booking
+              {t("provider.mobile.components.bookingCreatedSuccess.viewBooking")}
             </Button>
           ) : null}
           <Button variant="ghost" className="w-full text-muted-foreground" onClick={dismiss}>
-            Back to calendar
+            {t("web.booking.stepPayment.backToCalendar")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -36,6 +37,12 @@ interface CancellationReason {
 type FilterMode = "all" | "active" | "inactive";
 
 export default function CancellationReasonsScreen() {
+  const { t } = useTranslation();
+  const cr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.cancellationReasons.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<CancellationReason | null>(null);
@@ -117,7 +124,7 @@ export default function CancellationReasonsScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Reason name is required");
+      Alert.alert(cr("requiredTitle"), cr("nameRequired"));
       return;
     }
     const payload = {
@@ -132,13 +139,13 @@ export default function CancellationReasonsScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(cr("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createReason(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(cr("errorTitle"), error);
         return;
       }
     }
@@ -152,21 +159,21 @@ export default function CancellationReasonsScreen() {
       `/api/provider/cancellation-reasons/${reason.id}`,
       { is_active: !reason.is_active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(cr("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(reason: CancellationReason) {
-    Alert.alert("Delete", `Remove "${reason.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(cr("deleteTitle"), cr("deleteBody", { name: reason.name }), [
+      { text: cr("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: cr("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteReason(
             `/api/provider/cancellation-reasons/${reason.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(cr("errorTitle"), error);
           else refresh();
         },
       },
@@ -176,9 +183,9 @@ export default function CancellationReasonsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Cancellation Reasons"
+        title={cr("title")}
         showBack
-        subtitle={`${reasons?.length ?? 0} reasons`}
+        subtitle={cr("subtitle", { count: reasons?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -192,9 +199,9 @@ export default function CancellationReasonsScreen() {
       {reasons && reasons.length > 0 && (
         <View style={twStyle("mb-3")}>
           <View style={twStyle("flex-row")}>
-            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
               <StatCard
-                title="Active"
+                title={cr("statActive")}
                 value={String(activeCount)}
                 icon="checkmark-circle-outline"
                 iconColor="#22c55e"
@@ -204,7 +211,7 @@ export default function CancellationReasonsScreen() {
             </View>
             <View style={twStyle("flex-1")}>
               <StatCard
-                title="Total Used"
+                title={cr("statTotalUsed")}
                 value={String(totalUsage)}
                 icon="analytics-outline"
                 iconColor="#6366f1"
@@ -216,7 +223,7 @@ export default function CancellationReasonsScreen() {
           {topReason && (topReason.usage_count ?? 0) > 0 && (
             <View style={twStyle("mt-2 rounded-xl bg-amber-50 p-3")}>
               <Text style={twStyle("text-xs text-amber-700")}>
-                Most common: <Text style={twStyle("font-semibold")}>{topReason.name}</Text> ({topReason.usage_count} times)
+                {cr("mostCommon", { name: topReason.name, count: topReason.usage_count })}
               </Text>
             </View>
           )}
@@ -228,14 +235,14 @@ export default function CancellationReasonsScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search reasons..."
+            placeholder={cr("searchPlaceholder")}
           />
           <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
-                { label: "All", value: "all" },
-                { label: "Active", value: "active" },
-                { label: "Inactive", value: "inactive" },
+                { label: cr("filterAll"), value: "all" },
+                { label: cr("filterActive"), value: "active" },
+                { label: cr("filterInactive"), value: "inactive" },
               ]}
               selected={filter}
               onSelect={(v) => setFilter(v as FilterMode)}
@@ -249,11 +256,11 @@ export default function CancellationReasonsScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="close-circle-outline"
-          title={search || filter !== "all" ? "No matches" : "No reasons"}
+          title={search || filter !== "all" ? cr("emptyMatches") : cr("emptyTitle")}
           description={
             search || filter !== "all"
-              ? "Try different filters"
-              : "Add cancellation reasons for tracking"
+              ? cr("emptyMatchesHint")
+              : cr("emptyHint")
           }
         />
       ) : (
@@ -284,22 +291,22 @@ export default function CancellationReasonsScreen() {
                     color="#ef4444"
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row items-center")}>
-                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>
                       {reason.name}
                     </Text>
                     {!reason.is_active && (
-                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginEnd: 8 }]}>
                         <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
-                          Inactive
+                          {cr("inactive")}
                         </Text>
                       </View>
                     )}
                     {reason.requires_note && (
-                      <View style={[twStyle("rounded-full bg-amber-50 px-2 py-0.5"), { marginRight: 8 }]}>
+                      <View style={[twStyle("rounded-full bg-amber-50 px-2 py-0.5"), { marginEnd: 8 }]}>
                         <Text style={twStyle("text-[10px] font-medium text-amber-700")}>
-                          Note Required
+                          {cr("noteRequired")}
                         </Text>
                       </View>
                     )}
@@ -314,14 +321,14 @@ export default function CancellationReasonsScreen() {
                   )}
                   {reason.usage_count !== undefined && (
                     <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
-                      Used {reason.usage_count} time{reason.usage_count !== 1 ? "s" : ""}
+                      {cr("usedCount", { count: reason.usage_count })}
                     </Text>
                   )}
                 </View>
                 <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(reason)}
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   >
                     <Ionicons
                       name={
@@ -350,37 +357,37 @@ export default function CancellationReasonsScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Reason" : "New Cancellation Reason"}
+        title={editing ? cr("editTitle") : cr("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Reason *
+            {cr("reasonLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
-            onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Schedule conflict"
+            onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+            placeholder={cr("reasonPlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {cr("description")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional details..."
+            onChangeText={(text) => setForm((p) => ({ ...p, description: text }))}
+            placeholder={cr("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
           <View style={twStyle("mb-3 flex-row items-center justify-between")}>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>
-                Require Note
+                {cr("requireNote")}
               </Text>
               <Text style={twStyle("text-xs text-gray-400")}>
-                Clients must add a note when selecting this reason
+                {cr("requireNoteHint")}
               </Text>
             </View>
             <Switch
@@ -393,7 +400,7 @@ export default function CancellationReasonsScreen() {
             />
           </View>
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{cr("active")}</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
@@ -402,7 +409,7 @@ export default function CancellationReasonsScreen() {
             />
           </View>
           <ActionButton
-            label={editing ? "Update Reason" : "Add Reason"}
+            label={editing ? cr("updateReason") : cr("addReason")}
             onPress={handleSave}
             loading={creating || updatingReason}
             fullWidth

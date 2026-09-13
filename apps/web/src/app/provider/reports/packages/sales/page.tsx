@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -36,16 +37,16 @@ interface PackageSalesData {
   }>;
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  window: "Window",
-  bookingStatuses: "Statuses",
-  revenue: "Value",
-  counts: "Counts",
-};
-
 export default function PackageSalesReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const basisLabels: Record<string, string> = {
+    window: t("web.provider.reports.pages.packages/sales.basisWindow"),
+    bookingStatuses: t("web.provider.reports.pages.packages/sales.basisStatuses"),
+    revenue: t("web.provider.reports.pages.packages/sales.basisValue"),
+    counts: t("web.provider.reports.pages.packages/sales.basisCounts"),
+  };
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -105,10 +106,10 @@ export default function PackageSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/sales.title") },
         ]}
       >
         <ReportSkeleton />
@@ -120,15 +121,15 @@ export default function PackageSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/sales.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Package sales" />
-          <ReportSubscriptionRequired feature="Package sales" />
+          <PageHeader title={t("web.provider.reports.pages.packages/sales.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.packages/sales.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -138,15 +139,15 @@ export default function PackageSalesReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Package sales" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.packages/sales.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load package sales data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.packages/sales.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -159,21 +160,21 @@ export default function PackageSalesReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Package sales" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.packages/sales.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Package sales"
-          subtitle="Booked package line value by catalog bundle — scheduled appointment date in range; uses package prices / service lines, not raw booking totals."
+          title={t("web.provider.reports.pages.packages/sales.title")}
+          subtitle={t("web.provider.reports.pages.packages/sales.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              Export
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -186,13 +187,13 @@ export default function PackageSalesReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+              {data.timezone ? <span>{t("web.provider.reports.common.timezoneDot", { tz: data.timezone })}</span> : null}
               {data.fromYmd && data.toYmd ? (
                 <span>
-                  Window · {data.fromYmd} – {data.toYmd}
+                  {t("web.provider.reports.common.windowDot", { from: data.fromYmd, to: data.toYmd })}
                 </span>
               ) : null}
             </div>
@@ -202,12 +203,12 @@ export default function PackageSalesReport() {
         {basisEntries.length > 0 ? (
           <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+              <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-violet-950/95">
               {basisEntries.map(([k, v]) => (
                 <p key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{basisLabels[k] ?? k} · </span>
                   {v}
                 </p>
               ))}
@@ -218,7 +219,7 @@ export default function PackageSalesReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Package bookings</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.packages/sales.packageBookings")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -226,48 +227,48 @@ export default function PackageSalesReport() {
                 <Package className="h-5 w-5 shrink-0 text-blue-600" />
               </div>
               <p className="mt-2 text-xs text-gray-500 leading-snug">
-                Individual + group events that include a package in this window.
+{t("web.provider.reports.pages.packages/sales.packageBookingsHint")}
               </p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Booked package value</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.packages/sales.bookedPackageValue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.totalRevenue)}</p>
                 <DollarSign className="h-5 w-5 shrink-0 text-green-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500 leading-snug">Sum of packageReportBookedValue per event.</p>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">{t("web.provider.reports.pages.packages/sales.bookedPackageValueHint")}</p>
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg per booking</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.packages/sales.avgPerBooking")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-2xl font-semibold tabular-nums text-gray-900">{fmt(data.averagePackageValue)}</p>
                 <TrendingUp className="h-5 w-5 shrink-0 text-purple-600" />
               </div>
-              <p className="mt-2 text-xs text-gray-500 leading-snug">total value ÷ booking count.</p>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">{t("web.provider.reports.pages.packages/sales.avgPerBookingHint")}</p>
             </CardContent>
           </Card>
         </div>
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>By package</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.packages/sales.byPackage")}</CardTitle>
             <p className="text-sm font-normal text-gray-500 mt-1">
-              Revenue ranked — bookings column is event count for that catalog package.
+              {t("web.provider.reports.pages.packages/sales.byPackageHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.packageSales.length === 0 ? (
-              <EmptyReportState title="No package bookings" description="No qualifying package bookings in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.packages/sales.noPackageBookings")} description={t("web.provider.reports.pages.packages/sales.noPackageBookingsDesc")} />
             ) : (
               <div className="space-y-2">
                 {data.packageSales.map((pkg, index) => (
@@ -281,10 +282,12 @@ export default function PackageSalesReport() {
                       </div>
                       <p className="font-medium text-gray-900 truncate">{pkg.packageName}</p>
                     </div>
-                    <div className="text-left sm:text-right shrink-0">
+                    <div className="text-start sm:text-end shrink-0">
                       <p className="text-lg font-semibold tabular-nums text-gray-900">{fmt(pkg.revenue)}</p>
                       <p className="text-sm text-gray-600">
-                        {pkg.bookings} booking{pkg.bookings !== 1 ? "s" : ""} · avg {fmt(pkg.averageValue)}
+                        {pkg.bookings === 1
+                          ? t("web.provider.reports.pages.packages/sales.bookingAvg", { count: pkg.bookings, amount: fmt(pkg.averageValue) })
+                          : t("web.provider.reports.pages.packages/sales.bookingsAvg", { count: pkg.bookings, amount: fmt(pkg.averageValue) })}
                       </p>
                     </div>
                   </div>

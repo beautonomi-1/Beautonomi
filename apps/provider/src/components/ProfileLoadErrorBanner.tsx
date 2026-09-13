@@ -10,10 +10,13 @@ import { usePathname } from "expo-router";
 import { useProvider } from "@/providers/ProviderContext";
 import { twStyle } from "@/lib/twStyle";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 const ONBOARDING_ENTRY_ROLES = new Set(["customer", "provider_onboarding"]);
 
 export function ProfileLoadErrorBanner() {
+  const { t } = useTranslation();
+  const pe = (key: string) => t(`provider.mobile.components.profileLoadError.${key}`) as string;
   const pathname = usePathname();
   const { provider, profileLoadError, loading, refresh, role } = useProvider();
   const isOnboardingRoute = pathname?.includes("/onboarding") ?? false;
@@ -44,10 +47,10 @@ export function ProfileLoadErrorBanner() {
   if (provider) {
     return (
       <View style={twStyle("flex-row items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2")}>
-        <View style={twStyle("mr-2 flex-1 flex-row items-center")}>
-          <Ionicons name="cloud-offline-outline" size={18} color="#b45309" style={{ marginRight: 8 }} />
+        <View style={twStyle("me-2 flex-1 flex-row items-center")}>
+          <Ionicons name="cloud-offline-outline" size={18} color="#b45309" style={{ marginEnd: 8 }} />
           <Text style={twStyle("flex-1 text-xs text-amber-900")} numberOfLines={2}>
-            Profile refresh failed. Some data may be outdated.
+            {pe("refreshFailed")}
           </Text>
         </View>
         <TouchableOpacity
@@ -55,12 +58,12 @@ export function ProfileLoadErrorBanner() {
           disabled={loading}
           style={twStyle("rounded-md bg-amber-700 px-2.5 py-1.5")}
           accessibilityRole="button"
-          accessibilityLabel="Retry loading profile"
+          accessibilityLabel={pe("retryA11y")}
         >
           {loading ? (
             <ActivityIndicator size="small" color={Colors.white} />
           ) : (
-            <Text style={twStyle("text-xs font-semibold text-white")}>Retry</Text>
+            <Text style={twStyle("text-xs font-semibold text-white")}>{pe("retry")}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -68,23 +71,23 @@ export function ProfileLoadErrorBanner() {
   }
 
   return (
-    <View style={twStyle("border-l-4 border-red-500 bg-red-50 px-4 py-3")}>
+    <View style={twStyle("border-s-4 border-red-500 bg-red-50 px-4 py-3")}>
       <View style={twStyle("flex-row items-start")}>
-        <Ionicons name="cloud-offline-outline" size={22} color="#b91c1c" style={{ marginRight: 10, marginTop: 2 }} />
+        <Ionicons name="cloud-offline-outline" size={22} color="#b91c1c" style={{ marginEnd: 10, marginTop: 2 }} />
         <View style={twStyle("flex-1")}>
-          <Text style={twStyle("text-sm font-semibold text-red-900")}>Couldn&apos;t load business profile</Text>
+          <Text style={twStyle("text-sm font-semibold text-red-900")}>{pe("title")}</Text>
           <Text style={twStyle("mt-1 text-xs text-red-800")}>{profileLoadError}</Text>
           <TouchableOpacity
             onPress={() => void refresh()}
             disabled={loading}
             style={twStyle("mt-3 flex-row items-center self-start rounded-lg bg-red-700 px-3 py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Retry loading profile"
+            accessibilityLabel={pe("retryA11y")}
           >
             {loading ? (
               <ActivityIndicator size="small" color={Colors.white} />
             ) : (
-              <Text style={twStyle("text-sm font-semibold text-white")}>Retry</Text>
+              <Text style={twStyle("text-sm font-semibold text-white")}>{pe("retry")}</Text>
             )}
           </TouchableOpacity>
         </View>

@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { isMissingRelationError, migrationRequiredResponse } from "@/lib/supabase/migration-required";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 type StaffTimeCardRow = {
   id: string;
@@ -53,6 +55,16 @@ export async function GET(request: NextRequest) {
 
     const { data: timeCards, error } = await query;
 
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tenantRegion = await getTenantRegionConfig(
+      (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    );
+    const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+
     if (error) {
       if (isMissingRelationError(error)) {
         return migrationRequiredResponse("Staff time tracking");
@@ -70,8 +82,8 @@ export async function GET(request: NextRequest) {
       team_member_id: card.staff_id,
       team_member_name: card.staff?.name || "Unknown",
       date: card.date,
-      clock_in_time: card.clock_in_time ? new Date(card.clock_in_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
-      clock_out_time: card.clock_out_time ? new Date(card.clock_out_time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null,
+      clock_in_time: card.clock_in_time ? new Date(card.clock_in_time).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' }) : null,
+      clock_out_time: card.clock_out_time ? new Date(card.clock_out_time).toLocaleTimeString(intlLocale, { hour: '2-digit', minute: '2-digit' }) : null,
       clock_in_at: card.clock_in_time ?? null,
       clock_out_at: card.clock_out_time ?? null,
       notes: card.notes ?? null,

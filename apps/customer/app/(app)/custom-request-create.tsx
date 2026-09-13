@@ -515,7 +515,7 @@ export default function CustomRequestCreateScreen() {
                     backgroundColor: serviceCategoryId == null ? Colors.primaryLight : Colors.white,
                     paddingHorizontal: 14,
                     paddingVertical: 9,
-                    marginRight: 8,
+                    marginEnd: 8,
                   }}
                 >
                   <Text style={{ fontSize: 13, fontWeight: "600", color: serviceCategoryId == null ? Colors.primary : Colors.gray[600] }}>{cr("anyCategory")}</Text>
@@ -533,7 +533,7 @@ export default function CustomRequestCreateScreen() {
                         backgroundColor: active ? Colors.primaryLight : Colors.white,
                         paddingHorizontal: 14,
                         paddingVertical: 9,
-                        marginRight: 8,
+                        marginEnd: 8,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: "600", color: active ? Colors.primary : Colors.gray[600] }}>{category.name}</Text>
@@ -546,14 +546,14 @@ export default function CustomRequestCreateScreen() {
         )}
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("budgetOptionalLabel")}</Text>
         <View style={{ flexDirection: "row" }}>
-          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 12 }} placeholder={cr("budgetMin")} placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
+          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginEnd: 12 }} placeholder={cr("budgetMin")} placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
           <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("budgetMax")} placeholderTextColor={Colors.gray[400]} value={budgetMax} onChangeText={setBudgetMax} keyboardType="numeric" />
         </View>
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("durationLabel")}</Text>
         <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("durationPlaceholder")} placeholderTextColor={Colors.gray[400]} value={duration} onChangeText={setDuration} keyboardType="numeric" />
         <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>{cr("whereLabel")}</Text>
         <View style={{ flexDirection: "row" }}>
-          <TouchableOpacity onPress={() => setLocationType("at_salon")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_salon" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "transparent", marginRight: 12 }}>
+          <TouchableOpacity onPress={() => setLocationType("at_salon")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_salon" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "transparent", marginEnd: 12 }}>
             <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_salon" ? Colors.primary : Colors.gray[700] }}>{cr("atSalon")}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setLocationType("at_home")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_home" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_home" ? Colors.primaryLight : "transparent" }}>
@@ -582,14 +582,14 @@ export default function CustomRequestCreateScreen() {
               }}
             >
               <Ionicons name="search-outline" size={18} color={Colors.primary} />
-              <Text style={{ marginLeft: 10, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
+              <Text style={{ marginStart: 10, fontSize: 14, fontWeight: "600", color: Colors.primary }}>
                 {cr("searchAddress", { defaultValue: "Search or use current location" })}
               </Text>
             </TouchableOpacity>
             <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine1", { defaultValue: "Street address" })} placeholderTextColor={Colors.gray[400]} value={addressLine1} onChangeText={setAddressLine1} />
             <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressLine2", { defaultValue: "Unit / Suite (optional)" })} placeholderTextColor={Colors.gray[400]} value={addressLine2} onChangeText={setAddressLine2} />
             <View style={{ flexDirection: "row", marginBottom: 8 }}>
-              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 8 }} placeholder={cr("addressCity", { defaultValue: "City" })} placeholderTextColor={Colors.gray[400]} value={addressCity} onChangeText={setAddressCity} />
+              <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginEnd: 8 }} placeholder={cr("addressCity", { defaultValue: "City" })} placeholderTextColor={Colors.gray[400]} value={addressCity} onChangeText={setAddressCity} />
               <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder={cr("addressPostalCode", { defaultValue: "Postal Code" })} placeholderTextColor={Colors.gray[400]} value={addressPostalCode} onChangeText={setAddressPostalCode} />
             </View>
             <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 8 }} placeholder={cr("addressState", { defaultValue: "Province / State" })} placeholderTextColor={Colors.gray[400]} value={addressState} onChangeText={setAddressState} />
@@ -625,7 +625,7 @@ export default function CustomRequestCreateScreen() {
                     backgroundColor: active ? "#ECFDF5" : Colors.white,
                     paddingHorizontal: 12,
                     paddingVertical: 9,
-                    marginRight: 8,
+                    marginEnd: 8,
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: "700", color: active ? "#047857" : Colors.gray[700] }}>{labelDate(d)}</Text>
@@ -653,7 +653,7 @@ export default function CustomRequestCreateScreen() {
                     backgroundColor: active ? "#059669" : "#ECFDF5",
                     paddingHorizontal: 12,
                     paddingVertical: 8,
-                    marginRight: 8,
+                    marginEnd: 8,
                     marginBottom: 8,
                   }}
                 >
@@ -674,7 +674,7 @@ export default function CustomRequestCreateScreen() {
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {imageUrls.map((url, i) => (
-            <View key={`${url}-${i}`} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
+            <View key={`${url}-${i}`} style={{ position: "relative", marginEnd: 8, marginBottom: 8 }}>
               <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
               <Pressable
                 onPress={() => removeImage(i)}
@@ -692,7 +692,7 @@ export default function CustomRequestCreateScreen() {
               disabled={uploading}
               accessibilityRole="button"
               accessibilityLabel={cr("addPhotoA11y")}
-              style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: uploadError ? "#EF4444" : Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8, backgroundColor: Colors.gray[50] }}
+              style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: uploadError ? "#EF4444" : Colors.gray[300], alignItems: "center", justifyContent: "center", marginEnd: 8, marginBottom: 8, backgroundColor: Colors.gray[50] }}
             >
               {uploading ? (
                 <ActivityIndicator size="small" />
@@ -729,7 +729,7 @@ export default function CustomRequestCreateScreen() {
                   paddingHorizontal: 12,
                   borderRadius: 8,
                   backgroundColor: Colors.primary,
-                  marginRight: 8,
+                  marginEnd: 8,
                   opacity: uploading || imageUrls.length >= MAX_IMAGE_COUNT ? 0.6 : 1,
                 }}
               >

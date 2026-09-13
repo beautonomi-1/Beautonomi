@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -32,24 +33,34 @@ interface Location {
   name: string;
 }
 
-// §Yoco-synergy 2026-05: same relative-time format as YocoPaymentSheet so the
-// device's "Last used X ago" string reads identically on settings and picker.
-function formatLastUsedShort(iso: string): string {
-  const ms = Date.parse(iso);
-  if (!Number.isFinite(ms)) return "recently";
-  const diff = Math.max(0, Date.now() - ms);
-  const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  return `${months}mo ago`;
-}
-
 export default function YocoDevicesScreen() {
+  const { t } = useTranslation();
+  const yd = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.yocoDevices.${key}`, opts) as string,
+    [t],
+  );
+
+  // §Yoco-synergy 2026-05: same relative-time format as YocoPaymentSheet so the
+  // device's "Last used X ago" string reads identically on settings and picker.
+  const formatLastUsedShort = useCallback(
+    (iso: string): string => {
+      const ms = Date.parse(iso);
+      if (!Number.isFinite(ms)) return yd("lastUsedRecent");
+      const diff = Math.max(0, Date.now() - ms);
+      const mins = Math.round(diff / 60_000);
+      if (mins < 1) return yd("lastUsedJustNow");
+      if (mins < 60) return yd("lastUsedMinutes", { count: mins });
+      const hours = Math.round(mins / 60);
+      if (hours < 24) return yd("lastUsedHours", { count: hours });
+      const days = Math.round(hours / 24);
+      if (days < 30) return yd("lastUsedDays", { count: days });
+      const months = Math.round(days / 30);
+      return yd("lastUsedMonths", { count: months });
+    },
+    [yd],
+  );
+
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const {
     devices,
@@ -127,7 +138,7 @@ export default function YocoDevicesScreen() {
 
   async function handleSaveDevice() {
     if (!formName.trim()) {
-      Alert.alert("Required", "Device name is required.");
+      Alert.alert(yd("requiredTitle"), yd("deviceNameRequired"));
       return;
     }
 
@@ -161,12 +172,12 @@ export default function YocoDevicesScreen() {
 
   async function handleDelete(device: YocoDevice) {
     Alert.alert(
-      "Delete Device",
-      `Are you sure you want to delete "${device.name}"?`,
+      yd("deleteTitle"),
+      yd("deleteBody", { name: device.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: yd("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: yd("deleteCta"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -180,7 +191,7 @@ export default function YocoDevicesScreen() {
 
   async function handleConnect() {
     if (!secretKey.trim()) {
-      Alert.alert("Required", "Yoco secret key is required for hosted checkout.");
+      Alert.alert(yd("requiredTitle"), yd("secretKeyRequired"));
       return;
     }
     setConnecting(true);
@@ -200,12 +211,12 @@ export default function YocoDevicesScreen() {
 
   async function handleDisconnect() {
     Alert.alert(
-      "Disconnect Yoco",
-      "This will remove your Yoco integration. Card payments will no longer be processed.",
+      yd("disconnectTitle"),
+      yd("disconnectBody"),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: yd("cancel"), style: "cancel" },
         {
-          text: "Disconnect",
+          text: yd("disconnectCta"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -223,7 +234,7 @@ export default function YocoDevicesScreen() {
   if (loading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Yoco Devices" showBack />
+        <ScreenHeader title={yd("title")} showBack />
         <LoadingState />
       </ScreenContainer>
     );
@@ -232,7 +243,7 @@ export default function YocoDevicesScreen() {
   if (devicesError) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Yoco Devices" showBack />
+        <ScreenHeader title={yd("title")} showBack />
         <ErrorState message={devicesError} onRetry={reloadDevices} />
       </ScreenContainer>
     );
@@ -241,11 +252,11 @@ export default function YocoDevicesScreen() {
   if (!yocoEnabled) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Yoco Devices" showBack />
+        <ScreenHeader title={yd("title")} showBack />
         <EmptyState
           icon="card-outline"
-          title="Yoco payments are disabled"
-          description="Yoco card terminals and hosted checkout are not available for this market right now."
+          title={yd("disabledTitle")}
+          description={yd("disabledBody")}
         />
       </ScreenContainer>
     );
@@ -272,10 +283,10 @@ export default function YocoDevicesScreen() {
     !oauthConnected &&
     !integration?.reconnect_banner_dismissed_at;
   const statusLabel = oauthConnected
-    ? "Web POS connected"
+    ? yd("statusWebPos")
     : credentialMode === "checkout"
-      ? "Checkout only"
-      : "Not connected";
+      ? yd("statusCheckoutOnly")
+      : yd("statusNotConnected");
   const statusTone = oauthConnected
     ? { dot: "bg-green-500", text: "text-green-700", bg: "bg-green-50" }
     : credentialMode === "checkout"
@@ -284,33 +295,33 @@ export default function YocoDevicesScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Yoco Devices" showBack />
+      <ScreenHeader title={yd("title")} showBack />
 
       {/* ─── Integration Status ─── */}
-      <SectionHeader title="Integration" />
+      <SectionHeader title={yd("sectionIntegration")} />
       <View
         style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}
-        accessibilityLabel="Yoco integration status"
+        accessibilityLabel={yd("integrationStatusA11y")}
       >
         <View style={twStyle("flex-row items-center justify-between")}>
           <View style={twStyle("flex-row items-center flex-1")}>
             <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
               <Ionicons name="card-outline" size={20} color="#3b82f6" />
             </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("text-base font-semibold text-gray-900")}>Yoco</Text>
+            <View style={twStyle("ms-3 flex-1")}>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>{yd("brandName")}</Text>
               <Text style={twStyle("text-xs text-gray-500")}>
                 {oauthConnected
-                  ? `Connected as ${integration?.oauth_business_name || "Yoco account"}`
+                  ? yd("connectedAs", { name: integration?.oauth_business_name || yd("yocoAccountFallback") })
                   : credentialMode === "checkout"
-                    ? "Hosted checkout keys saved"
-                    : "Card & tap-to-pay"}
+                    ? yd("hostedKeysSaved")
+                    : yd("cardAndTap")}
               </Text>
             </View>
           </View>
           <View style={twStyle(`rounded-full px-3 py-1 ${statusTone.bg}`)}>
             <View style={twStyle("flex-row items-center")}>
-              <View style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${statusTone.dot}`)} />
+              <View style={twStyle(`me-1.5 h-2 w-2 rounded-full ${statusTone.dot}`)} />
               <Text style={twStyle(`text-xs font-medium ${statusTone.text}`)}>
                 {statusLabel}
               </Text>
@@ -325,16 +336,17 @@ export default function YocoDevicesScreen() {
         {showReconnectBanner ? (
           <View style={twStyle("mt-3 rounded-xl bg-amber-50 p-3")}>
             <Text style={twStyle("text-xs text-amber-900")}>
-              You have Yoco hosted-checkout keys, but Web POS terminals require an OAuth connection. Tap{" "}
-              <Text style={twStyle("font-semibold")}>Connect Yoco</Text> below to fix.
+              {yd("reconnectBannerPrefix")}
+              <Text style={twStyle("font-semibold")}>{yd("reconnectBannerLink")}</Text>
+              {yd("reconnectBannerSuffix")}
             </Text>
             <TouchableOpacity
               onPress={dismissReconnectBanner}
               style={twStyle("mt-2 self-start")}
               accessibilityRole="button"
-              accessibilityLabel="Dismiss reconnect banner"
+              accessibilityLabel={yd("dismissReconnectA11y")}
             >
-              <Text style={twStyle("text-xs font-semibold text-amber-700")}>Dismiss</Text>
+              <Text style={twStyle("text-xs font-semibold text-amber-700")}>{yd("dismiss")}</Text>
             </TouchableOpacity>
           </View>
         ) : null}
@@ -342,8 +354,9 @@ export default function YocoDevicesScreen() {
         {oauthConnected && integration?.oauth_last_refresh_error ? (
           <View style={twStyle("mt-3 rounded-xl bg-red-50 p-3")}>
             <Text style={twStyle("text-xs text-red-700")}>
-              Yoco refused our last token refresh ({integration.oauth_last_refresh_error}). Tap{" "}
-              <Text style={twStyle("font-semibold")}>Reconnect</Text> to restore Web POS.
+              {yd("tokenRefreshPrefix", { error: integration.oauth_last_refresh_error })}
+              <Text style={twStyle("font-semibold")}>{yd("reconnect")}</Text>
+              {yd("tokenRefreshSuffix")}
             </Text>
           </View>
         ) : null}
@@ -354,22 +367,22 @@ export default function YocoDevicesScreen() {
               <>
                 <TouchableOpacity
                   onPress={connectOauth}
-                  style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginRight: 8 }]}
+                  style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginEnd: 8 }]}
                   accessibilityRole="button"
-                  accessibilityLabel="Reconnect Yoco"
+                  accessibilityLabel={yd("reconnectA11y")}
                 >
-                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Reconnect</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>{yd("reconnect")}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={async () => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
                     Alert.alert(
-                      "Disconnect Yoco",
-                      "You'll need to reconnect to add new card terminals.",
+                      yd("disconnectTitle"),
+                      yd("disconnectOauthBody"),
                       [
-                        { text: "Cancel", style: "cancel" },
+                        { text: yd("cancel"), style: "cancel" },
                         {
-                          text: "Disconnect",
+                          text: yd("disconnectCta"),
                           style: "destructive",
                           onPress: async () => {
                             const ok = await disconnectOauth();
@@ -381,9 +394,9 @@ export default function YocoDevicesScreen() {
                   }}
                   style={twStyle("flex-1 items-center rounded-xl border border-red-200 bg-red-50 py-2.5")}
                   accessibilityRole="button"
-                  accessibilityLabel="Disconnect Yoco"
+                  accessibilityLabel={yd("disconnectA11y")}
                 >
-                  <Text style={twStyle("text-sm font-medium text-red-600")}>Disconnect</Text>
+                  <Text style={twStyle("text-sm font-medium text-red-600")}>{yd("disconnect")}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -391,10 +404,10 @@ export default function YocoDevicesScreen() {
                 onPress={connectOauth}
                 style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-2.5")}
                 accessibilityRole="button"
-                accessibilityLabel="Connect Yoco via OAuth"
+                accessibilityLabel={yd("connectOauthA11y")}
               >
                 <Text style={twStyle("text-sm font-medium text-white")}>
-                  {credentialMode === "checkout" ? "Connect Yoco for terminals" : "Connect Yoco"}
+                  {credentialMode === "checkout" ? yd("connectForTerminals") : yd("connectYoco")}
                 </Text>
               </TouchableOpacity>
             )}
@@ -409,12 +422,12 @@ export default function YocoDevicesScreen() {
           }}
           style={twStyle("mt-3 items-center py-2")}
           accessibilityRole="button"
-          accessibilityLabel="Use Checkout API keys instead"
+          accessibilityLabel={yd("useCheckoutKeysA11y")}
         >
           <Text style={twStyle("text-xs text-indigo-600")}>
             {credentialMode === "checkout"
-              ? "Update Checkout API keys"
-              : "Use Checkout API keys instead (online payments only)"}
+              ? yd("updateCheckoutKeys")
+              : yd("useCheckoutKeys")}
           </Text>
         </TouchableOpacity>
 
@@ -423,17 +436,17 @@ export default function YocoDevicesScreen() {
             onPress={handleDisconnect}
             style={twStyle("mt-1 items-center py-2")}
             accessibilityRole="button"
-            accessibilityLabel="Remove Checkout API keys"
+            accessibilityLabel={yd("removeCheckoutKeysA11y")}
           >
-            <Text style={twStyle("text-xs text-red-500")}>Remove Checkout API keys</Text>
+            <Text style={twStyle("text-xs text-red-500")}>{yd("removeCheckoutKeys")}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       {/* ─── Devices ─── */}
       <SectionHeader
-        title="Devices"
-        actionLabel={canAddRealDevices ? "Add" : undefined}
+        title={yd("sectionDevices")}
+        actionLabel={canAddRealDevices ? yd("add") : undefined}
         onAction={canAddRealDevices ? openAdd : undefined}
       />
 
@@ -441,10 +454,10 @@ export default function YocoDevicesScreen() {
         <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12")}>
           <Ionicons name="link-outline" size={36} color="#9ca3af" />
           <Text style={twStyle("mt-3 text-sm font-medium text-gray-500")}>
-            Connect Yoco first
+            {yd("connectFirst")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-            Tap Connect Yoco above to add Web POS terminals.
+            {yd("connectFirstHint")}
           </Text>
         </View>
       ) : !canAddRealDevices ? (
@@ -452,21 +465,21 @@ export default function YocoDevicesScreen() {
           <Ionicons name="warning-outline" size={36} color="#d97706" />
           <Text style={twStyle("mt-3 text-sm font-medium text-amber-700")}>
             {showOauthCta
-              ? "OAuth required to add card terminals"
-              : "Hosted checkout only"}
+              ? yd("oauthRequiredTitle")
+              : yd("hostedCheckoutOnlyTitle")}
           </Text>
           <Text style={twStyle("mt-1 text-xs text-amber-600 text-center px-6")}>
             {showOauthCta
-              ? "You can still take online payments via hosted checkout. Tap Connect Yoco above to unlock physical terminals."
-              : "Your account is configured for online hosted checkout only. Contact support to enable physical Web POS terminals."}
+              ? yd("oauthRequiredBody")
+              : yd("hostedCheckoutOnlyBody")}
           </Text>
         </View>
       ) : devices.length === 0 ? (
         <EmptyState
           icon="phone-portrait-outline"
-          title="No devices yet"
-          description="Add a Web POS device; Yoco assigns the device ID"
-          actionLabel="Add Device"
+          title={yd("emptyTitle")}
+          description={yd("emptyBody")}
+          actionLabel={yd("addDevice")}
           onAction={openAdd}
         />
       ) : (
@@ -475,7 +488,7 @@ export default function YocoDevicesScreen() {
             <View
               key={device.id}
               style={[twStyle("rounded-2xl border border-gray-100 bg-white p-4"), idx > 0 ? { marginTop: 12 } : undefined]}
-              accessibilityLabel={`${device.name} device`}
+              accessibilityLabel={yd("deviceA11y", { name: device.name })}
             >
               <View style={twStyle("flex-row items-center justify-between")}>
                 <View style={twStyle("flex-row items-center flex-1")}>
@@ -486,24 +499,24 @@ export default function YocoDevicesScreen() {
                   >
                     <Ionicons name="phone-portrait-outline" size={20} color={device.is_active ? "#6366f1" : "#9ca3af"} />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <View style={twStyle("flex-row flex-wrap items-center")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{device.name}</Text>
                       {/* §Yoco-synergy 2026-05: surface portable / All-Locations
                         status here too so providers running mobile bookings
                         can confirm the device they take with them. */}
                       {device.location_id == null ? (
-                        <View style={twStyle("ml-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
+                        <View style={twStyle("ms-2 rounded-full bg-indigo-100 px-2 py-0.5")}>
                           <Text style={twStyle("text-[10px] font-semibold text-indigo-700")}>
-                            portable
+                            {yd("portable")}
                           </Text>
                         </View>
                       ) : null}
                     </View>
                     <Text style={twStyle("text-xs text-gray-500")}>
                       {device.credential_mode === "virtual_checkout"
-                        ? "Hosted checkout"
-                        : "Web POS"}
+                        ? yd("hostedCheckout")
+                        : yd("webPos")}
                       {device.credential_mode !== "virtual_checkout" && device.serial_number
                         ? ` · ${device.serial_number}`
                         : ""}
@@ -511,16 +524,16 @@ export default function YocoDevicesScreen() {
                     {device.location_name ? (
                       <Text style={twStyle("text-xs text-gray-400")}>{device.location_name}</Text>
                     ) : device.location_id == null ? (
-                      <Text style={twStyle("text-xs text-gray-400")}>All locations · travels with you</Text>
+                      <Text style={twStyle("text-xs text-gray-400")}>{yd("allLocationsTravels")}</Text>
                     ) : null}
                     {/* §Yoco-synergy 2026-05: usage hint mirrors the picker
                       so providers see the same "Last used / N txns" line
                       everywhere a device appears. */}
                     {(device.last_used_at || (device.total_transactions ?? 0) > 0) ? (
                       <Text style={twStyle("text-[11px] text-gray-400 mt-0.5")}>
-                        {device.last_used_at ? `Last used ${formatLastUsedShort(device.last_used_at)}` : "Never used yet"}
+                        {device.last_used_at ? yd("lastUsed", { when: formatLastUsedShort(device.last_used_at) }) : yd("neverUsed")}
                         {(device.total_transactions ?? 0) > 0
-                          ? ` · ${device.total_transactions} txn${device.total_transactions === 1 ? "" : "s"}`
+                          ? yd("txnCount", { count: device.total_transactions })
                           : ""}
                       </Text>
                     ) : null}
@@ -529,17 +542,17 @@ export default function YocoDevicesScreen() {
 
                 <View style={twStyle("flex-row items-center")}>
                   <View
-                    style={[twStyle(`rounded-full px-2 py-0.5 ${device.is_active ? "bg-green-50" : "bg-gray-100"}`), { marginRight: 8 }]}
+                    style={[twStyle(`rounded-full px-2 py-0.5 ${device.is_active ? "bg-green-50" : "bg-gray-100"}`), { marginEnd: 8 }]}
                   >
                     <Text style={twStyle(`text-xs ${device.is_active ? "text-green-600" : "text-gray-400"}`)}>
-                      {device.is_active ? "Active" : "Inactive"}
+                      {device.is_active ? yd("active") : yd("inactive")}
                     </Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => openEdit(device)}
-                    style={[twStyle("min-h-[44px] min-w-[44px] items-center justify-center"), { marginRight: 8 }]}
+                    style={[twStyle("min-h-[44px] min-w-[44px] items-center justify-center"), { marginEnd: 8 }]}
                     accessibilityRole="button"
-                    accessibilityLabel={`Edit ${device.name}`}
+                    accessibilityLabel={yd("editA11y", { name: device.name })}
                   >
                     <Ionicons name="pencil-outline" size={18} color="#6b7280" />
                   </TouchableOpacity>
@@ -547,7 +560,7 @@ export default function YocoDevicesScreen() {
                     onPress={() => handleDelete(device)}
                     style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
                     accessibilityRole="button"
-                    accessibilityLabel={`Delete ${device.name}`}
+                    accessibilityLabel={yd("deleteA11y", { name: device.name })}
                   >
                     <Ionicons name="trash-outline" size={18} color="#ef4444" />
                   </TouchableOpacity>
@@ -564,28 +577,28 @@ export default function YocoDevicesScreen() {
       <BottomSheet
         visible={showAddSheet}
         onClose={() => setShowAddSheet(false)}
-        title={editDevice ? "Edit Device" : "Add Device"}
+        title={editDevice ? yd("editDevice") : yd("addDevice")}
         snapHeight="auto"
       >
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Device Name *</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("deviceNameLabel")}</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={formName}
             onChangeText={setFormName}
-            placeholder="e.g. Front Desk Terminal"
+            placeholder={yd("deviceNamePlaceholder")}
             placeholderTextColor="#9ca3af"
-            accessibilityLabel="Device name"
+            accessibilityLabel={yd("deviceNameA11y")}
           />
         </View>
 
         {!editDevice && (
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Device type</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{yd("deviceType")}</Text>
             <View style={twStyle("flex-row")}>
               {[
-                { value: "web_pos" as const, label: "Web POS terminal" },
-                { value: "virtual_checkout" as const, label: "Virtual checkout" },
+                { value: "web_pos" as const, label: yd("typeWebPos") },
+                { value: "virtual_checkout" as const, label: yd("typeVirtual") },
               ].map((option) => (
                 <TouchableOpacity
                   key={option.value}
@@ -596,7 +609,7 @@ export default function YocoDevicesScreen() {
                         ? "bg-indigo-600"
                         : "border border-gray-200 bg-gray-50"
                     }`),
-                    { marginRight: 8 },
+                    { marginEnd: 8 },
                   ]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: formCredentialMode === option.value }}
@@ -612,14 +625,14 @@ export default function YocoDevicesScreen() {
               ))}
             </View>
             <Text style={twStyle("mt-2 text-xs text-gray-500")}>
-              Virtual checkout creates hosted payment links and QR codes without a physical terminal.
+              {yd("virtualHint")}
             </Text>
           </View>
         )}
 
         {editDevice && editDevice.serial_number ? (
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Yoco device ID</Text>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("yocoDeviceId")}</Text>
             <Text style={twStyle("rounded-xl border border-gray-200 bg-gray-100 px-4 py-3 text-xs text-gray-600")} selectable>
               {editDevice.serial_number}
             </Text>
@@ -628,26 +641,26 @@ export default function YocoDevicesScreen() {
 
         {Array.isArray(locations) && locations.length > 0 && (
           <View style={twStyle("mb-4")}>
-            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Location</Text>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("location")}</Text>
             {/* §Yoco-synergy 2026-05: explain what "All Locations" means so
               providers know to pick it for the device they take to client
               homes (at-home / mobile bookings). */}
             <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-              &quot;All Locations&quot; marks this device as portable — used by default for at-home bookings and anywhere a salon doesn&apos;t yet have its own device.
+              {yd("locationHelp")}
             </Text>
             <View style={twStyle("flex-row flex-wrap")}>
               <TouchableOpacity
                 onPress={() => setFormLocationId(null)}
                 style={[twStyle(`rounded-full px-3 py-1.5 ${
                   !formLocationId ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"
-                }`), { marginRight: 8, marginBottom: 8 }]}
+                }`), { marginEnd: 8, marginBottom: 8 }]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: !formLocationId }}
               >
                 <Text
                   style={twStyle(`text-xs font-medium ${!formLocationId ? "text-white" : "text-gray-600"}`)}
                 >
-                  All Locations
+                  {yd("allLocations")}
                 </Text>
               </TouchableOpacity>
               {locations.map((loc) => {
@@ -658,7 +671,7 @@ export default function YocoDevicesScreen() {
                     onPress={() => setFormLocationId(loc.id)}
                     style={[twStyle(`rounded-full px-3 py-1.5 ${
                       sel ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"
-                    }`), { marginRight: 8, marginBottom: 8 }]}
+                    }`), { marginEnd: 8, marginBottom: 8 }]}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: sel }}
                   >
@@ -675,7 +688,7 @@ export default function YocoDevicesScreen() {
         )}
 
         <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-          <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{yd("activeToggle")}</Text>
           <Switch
             value={formActive}
             onValueChange={setFormActive}
@@ -685,7 +698,7 @@ export default function YocoDevicesScreen() {
         </View>
 
         <ActionButton
-          label={editDevice ? "Save Changes" : "Add Device"}
+          label={editDevice ? yd("saveChanges") : yd("addDevice")}
           onPress={handleSaveDevice}
           fullWidth
         />
@@ -695,71 +708,68 @@ export default function YocoDevicesScreen() {
       <BottomSheet
         visible={showConnectSheet}
         onClose={() => setShowConnectSheet(false)}
-        title="Connect Yoco"
-        subtitle="Enter your Yoco API credentials"
+        title={yd("connectSheetTitle")}
+        subtitle={yd("connectSheetSubtitle")}
         snapHeight="auto"
       >
         <TouchableOpacity
           onPress={() => setShowKeyHelp((v) => !v)}
           style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2.5")}
           accessibilityRole="button"
-          accessibilityLabel="How to find Yoco keys"
+          accessibilityLabel={yd("howToFindKeysA11y")}
         >
-          <Text style={twStyle("text-sm font-medium text-gray-800")}>How to find your keys</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-800")}>{yd("howToFindKeys")}</Text>
           <Ionicons name={showKeyHelp ? "chevron-up-outline" : "chevron-down-outline"} size={16} color="#6b7280" />
         </TouchableOpacity>
 
         {showKeyHelp ? (
           <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
             <Text style={twStyle("text-xs text-blue-700")}>
-              1) Sign in to Yoco dashboard.{"\n"}
-              2) Open API credentials / developer settings.{"\n"}
-              3) Copy your live secret key. Add the webhook secret too if you use hosted checkout.
+              {yd("keyHelp")}
             </Text>
           </View>
         ) : null}
 
         <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
           <Text style={twStyle("text-xs text-blue-700")}>
-            The secret key enables Yoco hosted checkout links and QR payments. Web POS card terminals still require
-            the Connect Yoco OAuth button above.
+            {yd("secretKeyEnables")}
           </Text>
         </View>
 
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Public Key (optional)</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("publicKeyLabel")}</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={apiKey}
             onChangeText={setApiKey}
-            placeholder="pk_live_..."
+            placeholder={yd("publicKeyPlaceholder")}
             placeholderTextColor="#9ca3af"
             autoCapitalize="none"
             autoCorrect={false}
-            accessibilityLabel="Yoco API key"
+            accessibilityLabel={yd("publicKeyA11y")}
           />
-          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Stored for reference. Hosted checkout only needs the secret key.</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>{yd("publicKeyHelp")}</Text>
         </View>
 
         <View style={twStyle("mb-6")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Secret Key *</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("secretKeyLabel")}</Text>
           <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-1.5")}>
             <TextInput
               style={twStyle("flex-1 py-3 text-sm text-gray-900")}
               value={secretKey}
               onChangeText={setSecretKey}
-              placeholder="sk_live_..."
+              placeholder={yd("secretKeyPlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry={!showSecretKey}
-              accessibilityLabel="Yoco secret key"
+              accessibilityLabel={yd("secretKeyA11y")}
             />
             <TouchableOpacity
               onPress={() => setShowSecretKey((v) => !v)}
               style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
               accessibilityRole="button"
-              accessibilityLabel={showSecretKey ? "Hide secret key" : "Show secret key"}
+              accessibilityLabel={showSecretKey ? yd("hideSecretA11y") : yd("showSecretA11y")}
             >
               <Ionicons
                 name={showSecretKey ? "eye-off-outline" : "eye-outline"}
@@ -768,28 +778,28 @@ export default function YocoDevicesScreen() {
               />
             </TouchableOpacity>
           </View>
-          <Text style={twStyle("mt-1 text-xs text-gray-500")}>Used server-side to create Yoco hosted checkout links.</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-500")}>{yd("secretKeyHelp")}</Text>
         </View>
 
         <View style={twStyle("mb-6")}>
-          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Webhook Secret (recommended)</Text>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{yd("webhookLabel")}</Text>
           <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-1.5")}>
             <TextInput
               style={twStyle("flex-1 py-3 text-sm text-gray-900")}
               value={webhookSecret}
               onChangeText={setWebhookSecret}
-              placeholder="whsec_..."
+              placeholder={yd("webhookPlaceholder")}
               placeholderTextColor="#9ca3af"
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry={!showWebhookSecret}
-              accessibilityLabel="Yoco webhook secret"
+              accessibilityLabel={yd("webhookA11y")}
             />
             <TouchableOpacity
               onPress={() => setShowWebhookSecret((v) => !v)}
               style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
               accessibilityRole="button"
-              accessibilityLabel={showWebhookSecret ? "Hide webhook secret" : "Show webhook secret"}
+              accessibilityLabel={showWebhookSecret ? yd("hideWebhookA11y") : yd("showWebhookA11y")}
             >
               <Ionicons
                 name={showWebhookSecret ? "eye-off-outline" : "eye-outline"}
@@ -799,12 +809,12 @@ export default function YocoDevicesScreen() {
             </TouchableOpacity>
           </View>
           <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-            Lets Beautonomi verify Yoco payment webhooks and mark hosted checkout payments as paid automatically.
+            {yd("webhookHelp")}
           </Text>
         </View>
 
         <ActionButton
-          label={connecting ? "Connecting…" : "Connect"}
+          label={connecting ? yd("connecting") : yd("connectCta")}
           onPress={handleConnect}
           loading={connecting}
           disabled={!secretKey.trim()}

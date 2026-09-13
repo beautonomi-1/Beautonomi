@@ -9,6 +9,7 @@ import {
   parseLegalDobIso,
   type LegalDobParts,
 } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { Label } from "@/components/ui/label";
 
 interface Props {
@@ -26,6 +27,8 @@ export function LegalDobPicker({
   minAge = 18,
   idPrefix = "legal-dob",
 }: Props) {
+  const { t } = useTranslation();
+  const prefix = "web.accountSettings.identityVerification.legalDob";
   const [parts, setParts] = useState<LegalDobParts>(() => parseLegalDobIso(value));
 
   useEffect(() => {
@@ -52,11 +55,11 @@ export function LegalDobPicker({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={`${idPrefix}-day`}>
-        Date of birth <span aria-hidden="true" className="text-destructive">*</span>
+        {t(`${prefix}.dateOfBirth`)} <span aria-hidden="true" className="text-destructive">*</span>
       </Label>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label htmlFor={`${idPrefix}-day`} className="sr-only">Day</label>
+          <label htmlFor={`${idPrefix}-day`} className="sr-only">{t(`${prefix}.day`)}</label>
           <select
             id={`${idPrefix}-day`}
             value={parts.day ?? ""}
@@ -68,14 +71,14 @@ export function LegalDobPicker({
             aria-describedby={error ? `${idPrefix}-err` : `${idPrefix}-hint`}
             className={selectClass(Boolean(error))}
           >
-            <option value="">Day</option>
+            <option value="">{t(`${prefix}.day`)}</option>
             {dayOptions.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor={`${idPrefix}-month`} className="sr-only">Month</label>
+          <label htmlFor={`${idPrefix}-month`} className="sr-only">{t(`${prefix}.month`)}</label>
           <select
             id={`${idPrefix}-month`}
             value={parts.month ?? ""}
@@ -90,14 +93,14 @@ export function LegalDobPicker({
             aria-required="true"
             className={selectClass(Boolean(error))}
           >
-            <option value="">Month</option>
+            <option value="">{t(`${prefix}.month`)}</option>
             {LEGAL_DOB_MONTHS.map((m) => (
-              <option key={m.value} value={m.value}>{m.label}</option>
+              <option key={m.value} value={m.value}>{t(`${prefix}.month${m.value}`)}</option>
             ))}
           </select>
         </div>
         <div>
-          <label htmlFor={`${idPrefix}-year`} className="sr-only">Year</label>
+          <label htmlFor={`${idPrefix}-year`} className="sr-only">{t(`${prefix}.year`)}</label>
           <select
             id={`${idPrefix}-year`}
             value={parts.year ?? ""}
@@ -112,7 +115,7 @@ export function LegalDobPicker({
             aria-required="true"
             className={selectClass(Boolean(error))}
           >
-            <option value="">Year</option>
+            <option value="">{t(`${prefix}.year`)}</option>
             {years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -123,7 +126,7 @@ export function LegalDobPicker({
         <p id={`${idPrefix}-err`} className="text-xs text-destructive" role="alert">{error}</p>
       ) : (
         <p id={`${idPrefix}-hint`} className="text-xs text-muted-foreground">
-          Select day, month, and year as on your ID. You must be at least {minAge}.
+          {t(`${prefix}.hint`, { minAge })}
         </p>
       )}
     </div>

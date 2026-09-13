@@ -26,6 +26,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ClientInfo {
   id: string;
@@ -65,6 +66,8 @@ export function ClientQuickView({
   onBookAppointment,
 }: ClientQuickViewProps) {
   const locale = useTenantLocaleTag();
+  const { t } = useTranslation();
+  const qv = "web.provider.portal.clientQuickView";
   if (!client) return null;
 
   const initials = client.name
@@ -91,10 +94,10 @@ export function ClientQuickView({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 bg-white">
+      <SheetContent side="end" className="w-full sm:max-w-md p-0 bg-white">
         {/* Header with Avatar */}
         <div className="bg-gradient-to-br from-primary to-[#FF6B35] p-6 text-white">
-          <SheetHeader className="text-left">
+          <SheetHeader className="text-start">
             <div className="flex items-start gap-4">
               <Avatar className="w-16 h-16 border-2 border-white/30">
                 <AvatarImage src={client.avatar_url} alt={client.name} />
@@ -116,7 +119,7 @@ export function ClientQuickView({
                         : "bg-red-500/20 text-red-100"
                     )}
                   >
-                    {client.membership_status === "active" ? "Active Member" : "Expired Member"}
+                    {client.membership_status === "active" ? t(`${qv}.activeMember`) : t(`${qv}.expiredMember`)}
                   </Badge>
                 )}
                 {client.tags && client.tags.length > 0 && (
@@ -136,15 +139,15 @@ export function ClientQuickView({
           <div className="grid grid-cols-3 gap-2 mt-4">
             <div className="bg-white/10 rounded-lg p-2 text-center">
               <p className="text-2xl font-bold">{client.total_visits || 0}</p>
-              <p className="text-xs text-white/70">Visits</p>
+              <p className="text-xs text-white/70">{t(`${qv}.visits`)}</p>
             </div>
             <div className="bg-white/10 rounded-lg p-2 text-center">
               <p className="text-lg font-bold">{formatCurrency(client.total_spent || 0)}</p>
-              <p className="text-xs text-white/70">Total Spent</p>
+              <p className="text-xs text-white/70">{t(`${qv}.totalSpent`)}</p>
             </div>
             <div className="bg-white/10 rounded-lg p-2 text-center">
               <p className="text-2xl font-bold">{client.loyalty_points || 0}</p>
-              <p className="text-xs text-white/70">Points</p>
+              <p className="text-xs text-white/70">{t(`${qv}.points`)}</p>
             </div>
           </div>
         </div>
@@ -156,7 +159,7 @@ export function ClientQuickView({
             <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
               <div>
-                <p className="text-sm font-medium text-red-700">Outstanding Balance</p>
+                <p className="text-sm font-medium text-red-700">{t(`${qv}.outstandingBalance`)}</p>
                 <p className="text-lg font-bold text-red-600">
                   {formatCurrency(client.outstanding_balance)}
                 </p>
@@ -167,7 +170,7 @@ export function ClientQuickView({
           {/* Contact Information */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-              Contact Information
+              {t(`${qv}.contactInformation`)}
             </h3>
             
             {client.phone && (
@@ -179,7 +182,7 @@ export function ClientQuickView({
                   <Phone className="w-5 h-5 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-500">Phone</p>
+                  <p className="text-xs text-gray-500">{t(`${qv}.phone`)}</p>
                   <p className="font-medium truncate">{client.phone}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -195,7 +198,7 @@ export function ClientQuickView({
                   <Mail className="w-5 h-5 text-purple-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="text-xs text-gray-500">{t(`${qv}.email`)}</p>
                   <p className="font-medium truncate">{client.email}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
@@ -208,7 +211,7 @@ export function ClientQuickView({
                   <MapPin className="w-5 h-5 text-green-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-500">Address</p>
+                  <p className="text-xs text-gray-500">{t(`${qv}.address`)}</p>
                   <p className="font-medium">{client.address}</p>
                 </div>
               </div>
@@ -220,7 +223,7 @@ export function ClientQuickView({
           {/* Visit History */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-              Visit History
+              {t(`${qv}.visitHistory`)}
             </h3>
             
             <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
@@ -228,9 +231,9 @@ export function ClientQuickView({
                 <Calendar className="w-5 h-5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500">Last Visit</p>
+                <p className="text-xs text-gray-500">{t(`${qv}.lastVisit`)}</p>
                 <p className="font-medium">
-                  {client.last_visit ? formatDate(client.last_visit) : "No visits yet"}
+                  {client.last_visit ? formatDate(client.last_visit) : t(`${qv}.noVisitsYet`)}
                 </p>
               </div>
             </div>
@@ -241,7 +244,7 @@ export function ClientQuickView({
                   <Clock className="w-5 h-5 text-gray-500" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-500">Client Since</p>
+                  <p className="text-xs text-gray-500">{t(`${qv}.clientSince`)}</p>
                   <p className="font-medium">{formatDate(client.created_at)}</p>
                 </div>
               </div>
@@ -254,12 +257,12 @@ export function ClientQuickView({
               <Separator />
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                  Preferred Services
+                  {t(`${qv}.preferredServices`)}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {client.preferred_services.map((service) => (
                     <Badge key={service} variant="secondary" className="bg-primary/10 text-primary">
-                      <Star className="w-3 h-3 mr-1" />
+                      <Star className="w-3 h-3 me-1" />
                       {service}
                     </Badge>
                   ))}
@@ -274,7 +277,7 @@ export function ClientQuickView({
               <Separator />
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                  Allergies & Sensitivities
+                  {t(`${qv}.allergies`)}
                 </h3>
                 <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                   <div className="flex items-start gap-2">
@@ -292,7 +295,7 @@ export function ClientQuickView({
               <Separator />
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                  Notes
+                  {t(`${qv}.notes`)}
                 </h3>
                 <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
                   {client.notes}
@@ -311,14 +314,14 @@ export function ClientQuickView({
               className="flex items-center gap-2"
             >
               <MessageSquare className="w-4 h-4" />
-              Message
+              {t(`${qv}.message`)}
             </Button>
             <Button
               onClick={() => onBookAppointment?.(client.id)}
               className="flex items-center gap-2 bg-primary hover:bg-primary-hover"
             >
               <Calendar className="w-4 h-4" />
-              Book
+              {t(`${qv}.book`)}
             </Button>
           </div>
           <Button
@@ -327,7 +330,7 @@ export function ClientQuickView({
             className="w-full flex items-center justify-center gap-2 text-gray-600"
           >
             <History className="w-4 h-4" />
-            View Full Profile
+            {t(`${qv}.viewFullProfile`)}
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

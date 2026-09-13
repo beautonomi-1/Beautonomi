@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 export default function ProviderServices() {
+  const { t } = useTranslation();
   const [services, setServices] = useState<OfferingCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +47,10 @@ export default function ProviderServices() {
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
-          ? "Request timed out. Please try again."
+          ? t("web.provider.common.requestTimeout")
           : err instanceof FetchError
           ? err.message
-          : "Failed to load services";
+          : t("web.provider.pages.services.failedToLoad");
       setError(errorMessage);
       console.error("Error loading services:", err);
     } finally {
@@ -57,14 +59,14 @@ export default function ProviderServices() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this service?")) return;
+    if (!confirm(t("web.provider.pages.services.deleteConfirm"))) return;
 
     try {
       await fetcher.delete(`/api/provider/services/${id}`);
-      toast.success("Service deleted successfully");
+      toast.success(t("web.provider.catalogue.services.serviceDeleted"));
       loadServices();
     } catch {
-      toast.error("Failed to delete service");
+      toast.error(t("web.provider.catalogue.services.failedToDeleteService"));
     }
   };
 
@@ -75,7 +77,7 @@ export default function ProviderServices() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading services..." />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.services.loading")} />
       </div>
     );
   }
@@ -86,12 +88,12 @@ export default function ProviderServices() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-semibold mb-2">Services</h1>
-            <p className="text-gray-600">Manage your service offerings</p>
+            <h1 className="text-3xl font-semibold mb-2">{t("web.provider.sidebar.items.services")}</h1>
+            <p className="text-gray-600">{t("web.provider.pages.services.subtitle")}</p>
           </div>
           <Button onClick={() => setShowAddModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Service
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.catalogue.services.addService")}
           </Button>
         </div>
 
@@ -100,10 +102,10 @@ export default function ProviderServices() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
-              placeholder="Search services..."
+              placeholder={t("web.provider.pages.services.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="ps-10"
             />
           </div>
         </div>
@@ -111,19 +113,19 @@ export default function ProviderServices() {
         {/* Services List */}
         {error ? (
           <EmptyState
-            title="Failed to load services"
+            title={t("web.provider.pages.services.failedToLoad")}
             description={error}
             action={{
-              label: "Retry",
+              label: t("web.provider.common.retry"),
               onClick: loadServices,
             }}
           />
         ) : filteredServices.length === 0 ? (
           <EmptyState
-            title="No services yet"
-            description="Get started by adding your first service offering"
+            title={t("web.provider.pages.services.emptyTitle")}
+            description={t("web.provider.pages.services.emptyDesc")}
             action={{
-              label: "Add Service",
+              label: t("web.provider.catalogue.services.addService"),
               onClick: () => setShowAddModal(true),
             }}
           />
@@ -169,6 +171,7 @@ function ServiceCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="bg-white border rounded-lg p-6 hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-4">
@@ -199,7 +202,7 @@ function ServiceCard({
         {service.duration_minutes && (
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4" />
-            <span>{service.duration_minutes} minutes</span>
+            <span>{t("web.provider.pages.services.durationMinutes", { count: service.duration_minutes })}</span>
           </div>
         )}
         {(service as any).category_name && (
@@ -224,7 +227,7 @@ function ServiceCard({
               : "bg-gray-100 text-gray-800"
           }`}
         >
-          {service.is_active ? "Active" : "Inactive"}
+          {service.is_active ? t("web.provider.common.active") : t("web.provider.common.inactive")}
         </span>
       </div>
     </div>
@@ -240,6 +243,7 @@ function ServiceModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { t } = useTranslation();
   const { currencyCode } = useReportCurrency();
   const [formData, setFormData] = useState({
     title: service?.title || "",
@@ -262,10 +266,10 @@ function ServiceModal({
         await fetcher.post("/api/provider/services", formData);
       }
 
-      toast.success(service ? "Service updated" : "Service created");
+      toast.success(service ? t("web.provider.pages.services.updated") : t("web.provider.pages.services.created"));
       onSave();
     } catch {
-      toast.error("Failed to save service");
+      toast.error(t("web.provider.pages.services.failedToSave"));
     } finally {
       setIsSaving(false);
     }
@@ -275,12 +279,12 @@ function ServiceModal({
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         <h2 className="text-2xl font-semibold mb-4">
-          {service ? "Edit Service" : "Add Service"}
+          {service ? t("web.provider.pages.services.editService") : t("web.provider.catalogue.services.addService")}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="title">Service Name *</Label>
+            <Label htmlFor="title">{t("web.provider.pages.services.serviceNameRequired")}</Label>
             <Input
               id="title"
               value={formData.title}
@@ -292,7 +296,7 @@ function ServiceModal({
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("web.provider.common.description")}</Label>
             <textarea
               id="description"
               value={formData.description}
@@ -305,7 +309,7 @@ function ServiceModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="price">Price ({currencyCode}) *</Label>
+              <Label htmlFor="price">{t("web.provider.pages.services.priceRequired", { currency: currencyCode })}</Label>
               <Input
                 id="price"
                 type="number"
@@ -318,7 +322,7 @@ function ServiceModal({
               />
             </div>
             <div>
-              <Label htmlFor="duration">Duration (minutes) *</Label>
+              <Label htmlFor="duration">{t("web.provider.pages.services.durationRequired")}</Label>
               <Input
                 id="duration"
                 type="number"
@@ -335,14 +339,14 @@ function ServiceModal({
           </div>
 
           <div>
-            <Label htmlFor="category">Category</Label>
+            <Label htmlFor="category">{t("web.provider.pages.services.category")}</Label>
             <Input
               id="category"
               value={formData.category_id}
               onChange={(e) =>
                 setFormData({ ...formData, category_id: e.target.value })
               }
-              placeholder="Category ID"
+              placeholder={t("web.provider.pages.services.categoryIdPlaceholder")}
             />
           </div>
 
@@ -355,15 +359,15 @@ function ServiceModal({
                 setFormData({ ...formData, is_active: e.target.checked })
               }
             />
-            <Label htmlFor="is_active">Active (visible to customers)</Label>
+            <Label htmlFor="is_active">{t("web.provider.pages.services.activeVisible")}</Label>
           </div>
 
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">
-              Cancel
+              {t("web.provider.common.cancel")}
             </Button>
             <Button type="submit" disabled={isSaving} className="flex-1">
-              {isSaving ? "Saving..." : service ? "Update" : "Create"}
+              {isSaving ? t("web.provider.common.saving") : service ? t("web.provider.common.update") : t("web.provider.common.create")}
             </Button>
           </div>
         </form>

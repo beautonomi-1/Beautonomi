@@ -2,7 +2,7 @@
  * Rounded modal prompting to save a location (e.g. from address bar / current location)
  * with label (Home, Work, Other) and full address + geocode persistence.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -15,12 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import type { AddressPickerSelection } from "./AddressPicker";
-
-const LABELS = [
-  { id: "Home", icon: "home-outline" as const },
-  { id: "Work", icon: "briefcase-outline" as const },
-  { id: "Other", icon: "location-outline" as const },
-] as const;
+import { useTranslation } from "@beautonomi/i18n";
 
 export type SaveAddressPayload = {
   label: string;
@@ -52,6 +47,20 @@ export function SaveAddressModal({
   onSaveAndUse,
   onJustUse,
 }: Props) {
+  const { t } = useTranslation();
+  const sm = (key: string, opts?: Record<string, string>) =>
+    t(`customer.mobile.components.saveAddressModal.${key}`, opts) as string;
+
+  const LABELS = useMemo(
+    () =>
+      [
+        { id: "Home", icon: "home-outline" as const, label: sm("labelHome") },
+        { id: "Work", icon: "briefcase-outline" as const, label: sm("labelWork") },
+        { id: "Other", icon: "location-outline" as const, label: sm("labelOther") },
+      ] as const,
+    [t],
+  );
+
   const [selectedLabel, setSelectedLabel] = useState<string>("Home");
   const [saving, setSaving] = useState(false);
 
@@ -68,7 +77,7 @@ export function SaveAddressModal({
       .join(", ");
 
   const handleSaveAndUse = async () => {
-    const label = selectedLabel.trim() || "Home";
+    const label = selectedLabel.trim() || sm("labelHome");
     setSaving(true);
     try {
       await onSaveAndUse({
@@ -107,19 +116,17 @@ export function SaveAddressModal({
           <View style={styles.iconWrap}>
             <Ionicons name="location" size={32} color={Colors.primary} />
           </View>
-          <Text style={styles.title}>Save this location?</Text>
-          <Text style={styles.subtitle}>
-            Store it for quick access next time (e.g. Home, Work).
-          </Text>
+          <Text style={styles.title}>{sm("title")}</Text>
+          <Text style={styles.subtitle}>{sm("subtitle")}</Text>
 
           <View style={styles.addressBlock}>
-            <Text style={styles.addressLabel}>Address</Text>
+            <Text style={styles.addressLabel}>{sm("addressLabel")}</Text>
             <Text style={styles.addressText} numberOfLines={3}>
               {fullAddressLine || selection.displayName}
             </Text>
           </View>
 
-          <Text style={styles.labelHeading}>Label</Text>
+          <Text style={styles.labelHeading}>{sm("labelHeading")}</Text>
           <View style={styles.labelRow}>
             {LABELS.map((l) => (
               <TouchableOpacity
@@ -130,7 +137,7 @@ export function SaveAddressModal({
                   selectedLabel === l.id && styles.labelPillActive,
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Label: ${l.id}`}
+                accessibilityLabel={sm("labelA11y", { label: l.label })}
                 accessibilityState={{ selected: selectedLabel === l.id }}
               >
                 <Ionicons
@@ -144,7 +151,7 @@ export function SaveAddressModal({
                     selectedLabel === l.id && styles.labelPillTextActive,
                   ]}
                 >
-                  {l.id}
+                  {l.label}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -155,14 +162,14 @@ export function SaveAddressModal({
             disabled={saving}
             style={[styles.primaryButton, saving && styles.primaryButtonDisabled]}
             accessibilityRole="button"
-            accessibilityLabel="Save and use this address"
+            accessibilityLabel={sm("saveAndUseA11y")}
           >
             {saving ? (
               <ActivityIndicator size="small" color={Colors.white} />
             ) : (
               <>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                <Text style={styles.primaryButtonText}>Save & use</Text>
+                <Text style={styles.primaryButtonText}>{sm("saveAndUse")}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -172,9 +179,9 @@ export function SaveAddressModal({
             disabled={saving}
             style={styles.secondaryButton}
             accessibilityRole="button"
-            accessibilityLabel="Use without saving"
+            accessibilityLabel={sm("justUseA11y")}
           >
-            <Text style={styles.secondaryButtonText}>Just use for now</Text>
+            <Text style={styles.secondaryButtonText}>{sm("justUse")}</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
@@ -290,7 +297,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: Colors.gray[600],
-    marginLeft: 6,
+    marginStart: 6,
   },
   labelPillTextActive: {
     color: Colors.primary,

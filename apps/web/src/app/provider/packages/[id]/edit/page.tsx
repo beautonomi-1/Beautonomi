@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
@@ -56,9 +57,9 @@ interface PackageItem {
   product_variant?: ProductVariant | null;
 }
 
-function formatVariantLabel(variant: ProductVariant): string {
+function formatVariantLabel(variant: ProductVariant, fallback: string): string {
   const optionLabel = variant.option_values ? Object.values(variant.option_values).filter(Boolean).join(" / ") : "";
-  return optionLabel || variant.sku || "Variant";
+  return optionLabel || variant.sku || fallback;
 }
 
 export default function EditPackagePage({
@@ -67,6 +68,7 @@ export default function EditPackagePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { t } = useTranslation();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -98,7 +100,7 @@ export default function EditPackagePage({
 
       const pkg = unpackPackageDetailPayload(pkgResponse);
       if (!pkg) {
-        throw new Error("Package not found");
+        throw new Error(t("web.provider.pages.packages/[id]/edit.packageNotFound"));
       }
       setFormData({
         name: String(pkg.name ?? ""),
@@ -144,7 +146,7 @@ export default function EditPackagePage({
       });
       setItems(existingItems);
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to load package");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.packages/[id]/edit.failedToLoad"));
       console.error("Error loading package:", err);
       router.push("/provider/packages");
     } finally {
@@ -154,7 +156,7 @@ export default function EditPackagePage({
 
   const addItem = () => {
     if (services.length === 0 && products.length === 0) {
-      toast.error("No services or products available.");
+      toast.error(t("web.provider.pages.packages/[id]/edit.noServicesOrProducts"));
       return;
     }
     setItems([...items, { type: "service", quantity: 1 }]);
@@ -203,31 +205,31 @@ export default function EditPackagePage({
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
-    if (!formData.name.trim()) newErrors.name = "Package name is required";
+    if (!formData.name.trim()) newErrors.name = t("web.provider.pages.packages/new.packageNameRequired");
     if (!formData.price || parseFloat(formData.price) <= 0)
-      newErrors.price = "Price must be a positive number";
+      newErrors.price = t("web.provider.pages.packages/new.pricePositive");
     if (formData.discount_percentage) {
       const d = parseFloat(formData.discount_percentage);
       if (isNaN(d) || d < 0 || d > 100)
-        newErrors.discount_percentage = "Discount must be between 0 and 100";
+        newErrors.discount_percentage = t("web.provider.pages.packages/new.discountRange");
     }
     if (items.length === 0) {
-      newErrors.items = "At least one service or product is required";
+      newErrors.items = t("web.provider.pages.packages/new.atLeastOneItem");
     } else {
       items.forEach((item, i) => {
         if (item.type === "service" && !item.offering_id)
-          newErrors[`item_${i}`] = "Please select a service";
+          newErrors[`item_${i}`] = t("web.provider.pages.packages/new.pleaseSelectService");
         else if (item.type === "product" && !item.product_id)
-          newErrors[`item_${i}`] = "Please select a product";
+          newErrors[`item_${i}`] = t("web.provider.pages.packages/new.pleaseSelectProduct");
         else if (
           item.type === "product" &&
           item.product?.has_variants &&
           (item.product.variants?.length ?? 0) > 0 &&
           !item.product_variant_id
         )
-          newErrors[`item_${i}`] = "Please select a product variant";
+          newErrors[`item_${i}`] = t("web.provider.pages.packages/new.pleaseSelectVariant");
         if (item.quantity < 1)
-          newErrors[`quantity_${i}`] = "Quantity must be at least 1";
+          newErrors[`quantity_${i}`] = t("web.provider.pages.packages/new.quantityAtLeast1");
       });
     }
     setErrors(newErrors);
@@ -237,7 +239,7 @@ export default function EditPackagePage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) {
-      toast.error("Please fix the errors in the form");
+      toast.error(t("web.provider.pages.packages/new.pleaseFixErrors"));
       return;
     }
     try {
@@ -259,10 +261,10 @@ export default function EditPackagePage({
         })),
       };
       await fetcher.patch(`/api/provider/packages/${id}`, payload);
-      toast.success("Package updated successfully");
+      toast.success(t("web.provider.pages.packages/[id]/edit.updatedSuccessfully"));
       router.push("/provider/packages");
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to update package");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.packages/[id]/edit.failedToUpdate"));
       console.error("Error updating package:", err);
     } finally {
       setIsLoading(false);
@@ -273,13 +275,13 @@ export default function EditPackagePage({
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Packages", href: "/provider/packages" },
-          { label: "Edit Package" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.packages"), href: "/provider/packages" },
+          { label: t("web.provider.pages.packages/[id]/edit.editPackage") },
         ]}
       >
-        <LoadingTimeout loadingMessage="Loading package..." />
+        <LoadingTimeout loadingMessage={t("web.provider.pages.packages/[id]/edit.loadingPackage")} />
       </SettingsDetailLayout>
     );
   }
@@ -287,34 +289,34 @@ export default function EditPackagePage({
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Packages", href: "/provider/packages" },
-        { label: "Edit Package" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.packages"), href: "/provider/packages" },
+        { label: t("web.provider.pages.packages/[id]/edit.editPackage") },
       ]}
       showCloseButton={true}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Edit Package"
-          subtitle="Update your package details and included items"
+          title={t("web.provider.pages.packages/[id]/edit.editPackage")}
+          subtitle={t("web.provider.pages.packages/[id]/edit.subtitle")}
         />
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Package Details</CardTitle>
+              <CardTitle>{t("web.provider.pages.packages/new.packageDetails")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="name">
-                  Package Name <span className="text-red-500">*</span>
+{t("web.provider.pages.packages/new.packageName")} <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g., Complete Beauty Package"
+                  placeholder={t("web.provider.pages.packages/new.eGCompleteBeauty")}
                   className={errors.name ? "border-red-500" : ""}
                 />
                 {errors.name && (
@@ -323,14 +325,14 @@ export default function EditPackagePage({
               </div>
 
               <div>
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("web.provider.pages.packages/new.description")}</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  placeholder="Describe what's included in this package..."
+                  placeholder={t("web.provider.pages.packages/new.describeWhatsIncluded")}
                   rows={4}
                 />
               </div>
@@ -338,7 +340,7 @@ export default function EditPackagePage({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="price">
-                    Price <span className="text-red-500">*</span>
+{t("web.provider.pages.packages/new.price")} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="price"
@@ -347,7 +349,7 @@ export default function EditPackagePage({
                     min="0"
                     value={formData.price}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="0.00"
+                    placeholder={t("web.provider.pages.packages/new.n000")}
                     className={errors.price ? "border-red-500" : ""}
                   />
                   {errors.price && (
@@ -355,7 +357,7 @@ export default function EditPackagePage({
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="currency">Currency</Label>
+                  <Label htmlFor="currency">{t("web.provider.pages.packages/new.currency")}</Label>
                   <Input
                     id="currency"
                     value={formData.currency}
@@ -369,7 +371,7 @@ export default function EditPackagePage({
 
               <div>
                 <Label htmlFor="discount_percentage">
-                  Discount Percentage (optional)
+{t("web.provider.pages.packages/new.discountOptional")}
                 </Label>
                 <Input
                   id="discount_percentage"
@@ -381,7 +383,7 @@ export default function EditPackagePage({
                   onChange={(e) =>
                     setFormData({ ...formData, discount_percentage: e.target.value })
                   }
-                  placeholder="0"
+                  placeholder={t("web.provider.pages.packages/new.n0")}
                   className={errors.discount_percentage ? "border-red-500" : ""}
                 />
                 {errors.discount_percentage && (
@@ -390,7 +392,7 @@ export default function EditPackagePage({
                   </p>
                 )}
                 <p className="text-sm text-gray-500 mt-1">
-                  Percentage discount applied to the total package price
+{t("web.provider.pages.packages/new.discountHint")}
                 </p>
               </div>
 
@@ -402,7 +404,7 @@ export default function EditPackagePage({
                     setFormData({ ...formData, is_active: checked })
                   }
                 />
-                <Label htmlFor="is_active">Package is active</Label>
+                <Label htmlFor="is_active">{t("web.provider.pages.packages/new.packageIsActive")}</Label>
               </div>
             </CardContent>
           </Card>
@@ -410,7 +412,7 @@ export default function EditPackagePage({
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Items Included</CardTitle>
+                <CardTitle>{t("web.provider.pages.packages/new.itemsIncluded")}</CardTitle>
                 <Button
                   type="button"
                   variant="outline"
@@ -418,8 +420,8 @@ export default function EditPackagePage({
                   onClick={addItem}
                   disabled={services.length === 0 && products.length === 0}
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Item
+                  <Plus className="w-4 h-4 me-2" />
+{t("web.provider.pages.packages/new.addItem")}
                 </Button>
               </div>
             </CardHeader>
@@ -431,7 +433,7 @@ export default function EditPackagePage({
                 <div className="text-center py-6">
                   <Package className="w-10 h-10 mx-auto mb-3 text-gray-400" />
                   <p className="text-gray-500 text-sm">
-                    No items added yet. Click "Add Item" to include services or products.
+{t("web.provider.pages.packages/[id]/edit.emptyItems")}
                   </p>
                 </div>
               )}
@@ -442,7 +444,7 @@ export default function EditPackagePage({
                 >
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium text-gray-700">
-                      Item {index + 1}
+{t("web.provider.pages.packages/[id]/edit.itemN", { n: index + 1 })}
                     </span>
                     <Button
                       type="button"
@@ -457,7 +459,7 @@ export default function EditPackagePage({
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
-                      <Label className="text-xs">Type</Label>
+                      <Label className="text-xs">{t("web.provider.pages.packages/new.type")}</Label>
                       <Select
                         value={item.type}
                         onValueChange={(v) => updateItem(index, "type", v)}
@@ -466,15 +468,15 @@ export default function EditPackagePage({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="service">Service</SelectItem>
-                          <SelectItem value="product">Product</SelectItem>
+                          <SelectItem value="service">{t("web.provider.common.service")}</SelectItem>
+                          <SelectItem value="product">{t("web.provider.pages.packages/new.product")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div>
                       <Label className="text-xs">
-                        {item.type === "service" ? "Service" : "Product"}
+                        {item.type === "service" ? t("web.provider.common.service") : t("web.provider.pages.packages/new.product")}
                       </Label>
                       {item.type === "service" ? (
                         <Select
@@ -484,7 +486,7 @@ export default function EditPackagePage({
                           <SelectTrigger
                             className={`h-9 ${errors[`item_${index}`] ? "border-red-500" : ""}`}
                           >
-                            <SelectValue placeholder="Select service" />
+                            <SelectValue placeholder={t("web.provider.pages.packages/[id]/edit.selectService")} />
                           </SelectTrigger>
                           <SelectContent>
                             {services.map((s) => (
@@ -503,7 +505,7 @@ export default function EditPackagePage({
                             <SelectTrigger
                               className={`h-9 ${errors[`item_${index}`] ? "border-red-500" : ""}`}
                             >
-                              <SelectValue placeholder="Select product" />
+                              <SelectValue placeholder={t("web.provider.pages.packages/[id]/edit.selectProduct")} />
                             </SelectTrigger>
                             <SelectContent>
                               {products.map((p) => (
@@ -515,24 +517,24 @@ export default function EditPackagePage({
                           </Select>
                           {item.product?.has_variants && (item.product.variants?.length ?? 0) > 0 && (
                             <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3">
-                              <Label className="text-xs text-purple-900">Variant</Label>
+                              <Label className="text-xs text-purple-900">{t("web.provider.pages.packages/new.variant")}</Label>
                               <Select
                                 value={item.product_variant_id ?? ""}
                                 onValueChange={(v) => updateItem(index, "product_variant_id", v)}
                               >
                                 <SelectTrigger className="mt-1 h-9 bg-white">
-                                  <SelectValue placeholder="Choose variant" />
+                                  <SelectValue placeholder={t("web.provider.pages.packages/[id]/edit.chooseVariant")} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {item.product.variants?.map((variant) => (
                                     <SelectItem key={variant.id} value={variant.id}>
-                                      {formatVariantLabel(variant)} - {item.product?.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
+                                      {formatVariantLabel(variant, t("web.provider.pages.packages/new.variant"))} - {item.product?.currency || LAST_RESORT_CURRENCY} {variant.retail_price}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                               <p className="mt-1 text-xs text-purple-700">
-                                Pick the exact size, colour, or option included in this package.
+{t("web.provider.pages.packages/[id]/edit.variantHint")}
                               </p>
                             </div>
                           )}
@@ -546,7 +548,7 @@ export default function EditPackagePage({
                     </div>
 
                     <div>
-                      <Label className="text-xs">Quantity</Label>
+                      <Label className="text-xs">{t("web.provider.pages.packages/new.quantity")}</Label>
                       <Input
                         type="number"
                         min="1"
@@ -574,14 +576,14 @@ export default function EditPackagePage({
               variant="outline"
               onClick={() => router.push("/provider/packages")}
             >
-              Cancel
+{t("web.provider.common.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving…" : "Save Changes"}
+              {isLoading ? t("web.provider.common.savingEllipsis") : t("web.provider.settings.common.saveChanges")}
             </Button>
           </div>
         </form>

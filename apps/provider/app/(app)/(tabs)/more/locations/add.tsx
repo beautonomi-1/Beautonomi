@@ -68,11 +68,16 @@ export default function AddLocationScreen() {
   }, [latitude, longitude]);
 
   const { t } = useTranslation();
+  const al = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.addLocation." + key, opts) as string,
+    [t],
+  );
   const FIELD_LABELS: Record<string, string> = {
-    name: "Location name",
-    address_line1: "Address line 1",
-    city: "City",
-    country: "Country",
+    name: al("fieldName"),
+    address_line1: al("fieldAddressLine1"),
+    city: al("fieldCity"),
+    country: al("fieldCountry"),
   };
 
   const handleSave = useCallback(async () => {
@@ -123,20 +128,20 @@ export default function AddLocationScreen() {
     setSaving(false);
     if (res.error) {
       const code = (res.error as { code?: string }).code;
-      const msg = res.error.message || "Could not add location.";
+      const msg = res.error.message || al("addFailed");
       if (isPlanGateErrorCode(code)) {
         showPlanGateAlert({ message: msg, errorCode: code, router });
       } else {
-        Alert.alert("Error", msg);
+        Alert.alert(al("errorTitle"), msg);
       }
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Saved", "Location added.", [
-      { text: "OK", onPress: () => router.back() },
+    Alert.alert(al("savedTitle"), al("savedBody"), [
+      { text: al("ok"), onPress: () => router.back() },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, router, t]);
+  }, [name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, router, t, al]);
 
   const handleUseCurrentLocationPin = useCallback(async () => {
     if (locating) return;
@@ -149,11 +154,11 @@ export default function AddLocationScreen() {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
-      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const defaultCountry = country.trim() || tenantCountryFallback() || al("defaultCountry");
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
-        setAddressLine1(mapped.address_line1 || address_line1 || "Current location");
-        setCity(mapped.city || city || "—");
+        setAddressLine1(mapped.address_line1 || address_line1 || al("currentLocationFallback"));
+        setCity(mapped.city || city || al("dash"));
         setState(mapped.state || "");
         setPostalCode(mapped.postal_code || "");
         setCountry(mapped.country || defaultCountry);
@@ -168,15 +173,15 @@ export default function AddLocationScreen() {
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (e) {
-      Alert.alert("Location error", e instanceof Error ? e.message : "Could not fetch current location.");
+      Alert.alert(al("locationErrorTitle"), e instanceof Error ? e.message : al("locationErrorBody"));
     } finally {
       setLocating(false);
     }
-  }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country]);
+  }, [locating, country, address_line1, city, errors.address_line1, errors.city, errors.country, al]);
 
   const handleDropPinConfirm = useCallback(
     async (lat: number, lng: number) => {
-      const defaultCountry = country.trim() || tenantCountryFallback() || "South Africa";
+      const defaultCountry = country.trim() || tenantCountryFallback() || al("defaultCountry");
       const mapped = await reverseGeocodeCoordinates(lat, lng, defaultCountry);
       if (mapped) {
         setAddressLine1(mapped.address_line1);
@@ -196,12 +201,12 @@ export default function AddLocationScreen() {
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     },
-    [country, errors.address_line1, errors.city, errors.country],
+    [country, errors.address_line1, errors.city, errors.country, al],
   );
 
   return (
     <ScreenContainer scrollable={false} keyboardAvoiding={false}>
-      <ScreenHeader title="Add location" onBack={() => router.back()} />
+      <ScreenHeader title={al("title")} onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior="padding"
         style={{ flex: 1 }}
@@ -216,7 +221,7 @@ export default function AddLocationScreen() {
         >
           <View style={{ paddingHorizontal: 16 }}>
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Location name *</Text>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("nameLabel")}</Text>
               <TextInput
                 style={{
                   borderRadius: 12,
@@ -233,7 +238,7 @@ export default function AddLocationScreen() {
                   setName(t);
                   if (errors.name) setErrors((e) => ({ ...e, name: "" }));
                 }}
-                placeholder="e.g. Main salon"
+                placeholder={al("namePlaceholder")}
                 placeholderTextColor="#9ca3af"
               />
               {errors.name ? (
@@ -245,9 +250,9 @@ export default function AddLocationScreen() {
               ) : null}
             </View>
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address *</Text>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("addressLabel")}</Text>
               <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
-                Search for an address to fill city, state, postal code and coordinates automatically, or type manually.
+                {al("addressHint")}
               </Text>
               <AddressAutocomplete
                 value={address_line1}
@@ -264,7 +269,7 @@ export default function AddLocationScreen() {
                   if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                 }}
                 onBlur={(text) => setAddressLine1(text)}
-                placeholder="Street address or search…"
+                placeholder={al("addressPlaceholder")}
                 label={undefined}
                 countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
                 defaultCountryName={country.trim() || undefined}
@@ -290,7 +295,7 @@ export default function AddLocationScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 7,
                   }}
-                  accessibilityLabel="Use current location"
+                  accessibilityLabel={al("useCurrentLocationA11y")}
                   accessibilityRole="button"
                 >
                   {locating ? (
@@ -298,8 +303,8 @@ export default function AddLocationScreen() {
                   ) : (
                     <Ionicons name="locate-outline" size={16} color="#2563eb" />
                   )}
-                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: "#1d4ed8" }}>
-                    {locating ? "Locating…" : "Current location"}
+                  <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: "#1d4ed8" }}>
+                    {locating ? al("locating") : al("currentLocation")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -314,12 +319,12 @@ export default function AddLocationScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 7,
                   }}
-                  accessibilityLabel="Drop pin on map"
+                  accessibilityLabel={al("dropPinA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="map-outline" size={16} color={Colors.gray[700]} />
-                  <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
-                    Drop pin on map
+                  <Text style={{ marginStart: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>
+                    {al("dropPin")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -333,7 +338,7 @@ export default function AddLocationScreen() {
                     zoom={15}
                   />
                   <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500], textAlign: "center" }}>
-                    Map preview
+                    {al("mapPreview")}
                   </Text>
                 </View>
               ) : null}
@@ -346,18 +351,18 @@ export default function AddLocationScreen() {
               ) : null}
             </View>
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address line 2</Text>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("addressLine2")}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={address_line2}
                 onChangeText={setAddressLine2}
-                placeholder="Suite, floor, etc."
+                placeholder={al("addressLine2Placeholder")}
                 placeholderTextColor="#9ca3af"
               />
             </View>
             <View style={{ marginBottom: 16, flexDirection: "row" }}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>City *</Text>
+              <View style={{ flex: 1, marginEnd: 12 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("cityLabel")}</Text>
                 <TextInput
                   style={{
                     borderRadius: 12,
@@ -374,7 +379,7 @@ export default function AddLocationScreen() {
                     setCity(t);
                     if (errors.city) setErrors((e) => ({ ...e, city: "" }));
                   }}
-                  placeholder="City"
+                  placeholder={al("cityPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.city ? (
@@ -384,7 +389,7 @@ export default function AddLocationScreen() {
                 ) : null}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Country *</Text>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("countryLabel")}</Text>
                 <TextInput
                   style={{
                     borderRadius: 12,
@@ -401,7 +406,7 @@ export default function AddLocationScreen() {
                     setCountry(t);
                     if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                   }}
-                  placeholder="Country"
+                  placeholder={al("countryPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.country ? (
@@ -412,23 +417,23 @@ export default function AddLocationScreen() {
               </View>
             </View>
             <View style={{ marginBottom: 16, flexDirection: "row" }}>
-              <View style={{ flex: 1, marginRight: 12 }}>
-                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>State / Province</Text>
+              <View style={{ flex: 1, marginEnd: 12 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("stateLabel")}</Text>
                 <TextInput
                   style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                   value={state}
                   onChangeText={setState}
-                  placeholder="Optional"
+                  placeholder={al("optionalPlaceholder")}
                   placeholderTextColor="#9ca3af"
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Postal code</Text>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{al("postalCode")}</Text>
                 <TextInput
                   style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                   value={postal_code}
                   onChangeText={setPostalCode}
-                  placeholder="Optional"
+                  placeholder={al("optionalPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   keyboardType="default"
                 />
@@ -436,15 +441,15 @@ export default function AddLocationScreen() {
             </View>
             <View style={{ marginBottom: 24 }}>
               <E164PhoneField
-                label="Phone"
+                label={al("phoneLabel")}
                 valueE164={phoneE164}
                 onChangeE164={setPhoneE164}
                 showHint={false}
-                accessibilityLabel="Location phone"
+                accessibilityLabel={al("phoneA11y")}
               />
             </View>
             <ActionButton
-              label="Add location"
+              label={al("addCta")}
               variant="primary"
               onPress={handleSave}
               loading={saving}

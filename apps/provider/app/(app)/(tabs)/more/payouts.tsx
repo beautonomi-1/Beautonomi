@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, Redirect } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useProviderStackBack } from "@/lib/provider-tab-navigation";
 import { useApi, useApiMutation, MONEY_SURFACE_STALE_TIME_MS, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
 import { useFocusRevalidate } from "@/hooks/useFocusRevalidate";
@@ -25,6 +26,7 @@ import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatCurrency } from "@/lib/format";
 import { PayoutReconciliationCard, type PayoutReconciliation } from "@/components/PayoutReconciliationCard";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -66,14 +68,16 @@ interface NextDateData {
   next_payout_description?: string;
 }
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, dash = "—"): string {
+  if (typeof value !== "string" || !value) return dash;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return dash;
   return parsed.toLocaleDateString();
 }
 
-function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
+type PayoutT = (key: string, opts?: Record<string, unknown>) => string;
+
+function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">, po: PayoutT): {
   label: string;
   description: string;
   icon: IoniconName;
@@ -85,8 +89,8 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   const status = payout.status;
   if (status === "failed" && payout.rejected_at) {
     return {
-      label: "Rejected",
-      description: "Finance rejected this payout request. The amount is released back when applicable.",
+      label: po("statusRejected"),
+      description: po("statusRejectedDesc"),
       icon: "close-circle-outline",
       chipBg: "bg-orange-100",
       chipText: "text-orange-800",
@@ -96,8 +100,8 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   }
   if (status === "completed") {
     return {
-      label: "Paid",
-      description: "Money has been recorded as paid out.",
+      label: po("statusPaid"),
+      description: po("statusPaidDesc"),
       icon: "checkmark-circle-outline",
       chipBg: "bg-green-100",
       chipText: "text-green-800",
@@ -107,8 +111,8 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   }
   if (status === "processing") {
     return {
-      label: "Processing",
-      description: "Finance is processing the payout or waiting for Paystack settlement.",
+      label: po("statusProcessing"),
+      description: po("statusProcessingDesc"),
       icon: "sync-outline",
       chipBg: "bg-blue-100",
       chipText: "text-blue-800",
@@ -118,8 +122,8 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   }
   if (status === "failed") {
     return {
-      label: "Failed",
-      description: "This payout was not completed. The amount is released back when applicable.",
+      label: po("statusFailed"),
+      description: po("statusFailedDesc"),
       icon: "alert-circle-outline",
       chipBg: "bg-red-100",
       chipText: "text-red-800",
@@ -128,8 +132,8 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
     };
   }
   return {
-    label: "Pending",
-    description: "Submitted and waiting for finance approval.",
+    label: po("statusPending"),
+    description: po("statusPendingDesc"),
     icon: "time-outline",
     chipBg: "bg-amber-100",
     chipText: "text-amber-800",
@@ -138,11 +142,11 @@ function payoutStatusMeta(payout: Pick<Payout, "status" | "rejected_at">): {
   };
 }
 
-function formatAccountLabel(account: PayoutAccount | undefined): string {
-  if (!account) return "Primary payout account";
+function formatAccountLabel(account: PayoutAccount | undefined, po: PayoutT): string {
+  if (!account) return po("primaryPayoutAccount");
   const last4 = account.account_number_last4 ?? String(account.account_number ?? "").slice(-4);
   const suffix = last4 ? ` ****${last4}` : "";
-  return `${account.account_name ?? "Bank account"}${account.bank_name ? ` (${account.bank_name}${suffix})` : suffix}`;
+  return `${account.account_name ?? po("bankAccount")}${account.bank_name ? ` (${account.bank_name}${suffix})` : suffix}`;
 }
 
 function confirmPayoutRequest(params: {
@@ -151,14 +155,22 @@ function confirmPayoutRequest(params: {
   available: string;
   pending: string;
   schedule?: string;
+  po: PayoutT;
 }): Promise<boolean> {
   return new Promise((resolve) => {
+    const { po } = params;
     Alert.alert(
-      "Review payout request",
-      `Amount: ${params.amount}\nTo: ${params.account}\nAvailable after this request: ${params.available}\nPending queue: ${params.pending}${params.schedule ? `\nSchedule: ${params.schedule}` : ""}\n\nOnly platform-held payoutable earnings are withdrawn. Cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly are not included.`,
+      po("confirmTitle"),
+      po("confirmBody", {
+        amount: params.amount,
+        account: params.account,
+        available: params.available,
+        pending: params.pending,
+        scheduleLine: params.schedule ? po("confirmScheduleLine", { schedule: params.schedule }) : "",
+      }),
       [
-        { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-        { text: "Submit request", onPress: () => resolve(true) },
+        { text: po("cancel"), style: "cancel", onPress: () => resolve(false) },
+        { text: po("submitRequest"), onPress: () => resolve(true) },
       ],
     );
   });
@@ -166,6 +178,12 @@ function confirmPayoutRequest(params: {
 
 /** Content-only for use in Finance hub (Payouts tab). */
 export function PayoutsContent() {
+  const { t } = useTranslation();
+  const po = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.payouts." + key, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -237,7 +255,7 @@ export function PayoutsContent() {
     const raw = parseFloat(amount.replace(/,/g, "."));
     const num = Math.round((raw + Number.EPSILON) * 100) / 100;
     if (Number.isNaN(raw) || Number.isNaN(num) || num <= 0) {
-      Alert.alert("Invalid amount", "Enter a valid amount greater than 0.");
+      Alert.alert(po("invalidAmountTitle"), po("invalidAmountBody"));
       return;
     }
     // §Provider-audit 2026-04 (round 5): pre-validate against minimum and
@@ -246,36 +264,40 @@ export function PayoutsContent() {
     // remain authoritative (guards against stale UI balance).
     if (minimumPayout != null && num < minimumPayout) {
       Alert.alert(
-        "Below minimum",
-        `Minimum payout is ${formatCurrency(minimumPayout, defaultCurrency)}.`,
+        po("belowMinimumTitle"),
+        po("belowMinimumBody", { amount: formatCurrency(minimumPayout, defaultCurrency) }),
       );
       return;
     }
     if (payoutBalanceUnavailable) {
-      Alert.alert("Balance unavailable", "Withdrawable balance is still loading. Pull to refresh and try again.");
+      Alert.alert(po("balanceUnavailableTitle"), po("balanceUnavailableBody"));
       return;
     }
     if (num > Math.round((availableBalance + Number.EPSILON) * 100) / 100 + 1e-6) {
       Alert.alert(
-        "Insufficient balance",
-        `Available: ${formatCurrency(availableBalance, defaultCurrency)}. You requested ${formatCurrency(num, defaultCurrency)}.`,
+        po("insufficientTitle"),
+        po("insufficientBody", {
+          available: formatCurrency(availableBalance, defaultCurrency),
+          requested: formatCurrency(num, defaultCurrency),
+        }),
       );
       return;
     }
     const selectedAccount = preferredAccount;
     if (!selectedAccount) {
-      Alert.alert("Bank account required", "Add a payout account before requesting a payout.");
+      Alert.alert(po("bankRequiredTitle"), po("bankRequiredBody"));
       return;
     }
     const scheduleLabel = nextDate?.next_payout_date
-      ? `${nextDate.payout_schedule ?? "weekly"} · next run ${formatDateSafe(nextDate.next_payout_date)}`
+      ? po("scheduleNextRun", { schedule: nextDate.payout_schedule ?? po("weekly"), date: formatDateSafe(nextDate.next_payout_date, po("dash")) })
       : nextDate?.payout_schedule;
     const confirmed = await confirmPayoutRequest({
       amount: formatCurrency(num, defaultCurrency),
-      account: formatAccountLabel(selectedAccount),
+      account: formatAccountLabel(selectedAccount, po),
       available: formatCurrency(Math.max(0, availableBalance - num), defaultCurrency),
       pending: formatCurrency(pendingPayouts, defaultCurrency),
       schedule: scheduleLabel,
+      po,
     });
     if (!confirmed) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -286,7 +308,7 @@ export function PayoutsContent() {
     };
     const { error: err } = await postPayout("/api/provider/payouts", body);
     if (err) {
-      Alert.alert("Error", err);
+      Alert.alert(po("errorTitle"), err);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -313,6 +335,7 @@ export function PayoutsContent() {
     pendingPayouts,
     defaultCurrency,
     nextDate,
+    po,
   ]);
 
   if (loading && !payoutsList) {
@@ -344,31 +367,29 @@ export function PayoutsContent() {
         {!canRequestPayouts && teamAccess != null && (
           <View style={twStyle("mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3")}>
             <Text style={twStyle("text-sm text-amber-900")}>
-              Payout requests require Edit settings permission. Ask a business owner or manager if you
-              need access.
+              {po("permissionBanner")}
             </Text>
           </View>
         )}
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
-          <Text style={twStyle("text-sm text-emerald-700 mb-1")}>All-time available to withdraw</Text>
+          <Text style={twStyle("text-sm text-emerald-700 mb-1")}>{po("availableToWithdraw")}</Text>
           <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
-            {payoutBalanceUnavailable ? "—" : formatCurrency(availableBalance, defaultCurrency)}
+            {payoutBalanceUnavailable ? po("dash") : formatCurrency(availableBalance, defaultCurrency)}
           </Text>
           {payoutBalanceUnavailable ? (
             <Text style={twStyle("text-xs text-amber-700 mt-1")}>
-              Withdrawable balance is still loading. Pull to refresh.
+              {po("balanceLoading")}
             </Text>
           ) : pendingPayouts > 0 ? (
             <Text style={twStyle("text-xs text-amber-700 mt-1")}>
-              {formatCurrency(pendingPayouts, defaultCurrency)} pending payout
+              {po("pendingPayout", { amount: formatCurrency(pendingPayouts, defaultCurrency) })}
             </Text>
           ) : null}
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-            Minimum payout:{" "}
-            {minimumPayout != null ? formatCurrency(minimumPayout, defaultCurrency) : "—"}
+            {po("minimumPayout", { amount: minimumPayout != null ? formatCurrency(minimumPayout, defaultCurrency) : po("dash") })}
           </Text>
           <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-            Business-wide balance (not filtered by branch). Platform-held payoutable money after completed payouts and pending requests. Cash, EFT, manual card, and card machines (Yoco/PayCloud) you collected directly are excluded.
+            {po("balanceHint")}
           </Text>
         </View>
 
@@ -381,29 +402,29 @@ export function PayoutsContent() {
         ) : null}
         <View style={twStyle("mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4")}>
           <View style={twStyle("flex-row items-start")}>
-            <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-xl bg-blue-100")}>
+            <View style={twStyle("me-3 h-10 w-10 items-center justify-center rounded-xl bg-blue-100")}>
               <Ionicons name="calendar-outline" size={20} color="#2563eb" />
             </View>
             <View style={twStyle("flex-1")}>
               <Text style={twStyle("text-sm font-semibold text-blue-950")}>
-                {nextDate?.payout_schedule ? `${nextDate.payout_schedule} payout schedule` : "Payout schedule"}
+                {nextDate?.payout_schedule ? po("payoutScheduleNamed", { schedule: nextDate.payout_schedule }) : po("payoutSchedule")}
               </Text>
               <Text style={twStyle("mt-1 text-xs leading-5 text-blue-800")}>
-                {nextDate?.next_payout_description ?? "Request a payout when your available balance reaches the minimum."}
+                {nextDate?.next_payout_description ?? po("scheduleFallback")}
               </Text>
               <View style={twStyle("mt-2 flex-row flex-wrap")}>
                 {nextDate?.next_payout_date ? (
-                  <Text style={twStyle("mr-3 text-xs font-medium text-blue-900")}>
-                    Next run: {formatDateSafe(nextDate.next_payout_date)}
+                  <Text style={twStyle("me-3 text-xs font-medium text-blue-900")}>
+                    {po("nextRun", { date: formatDateSafe(nextDate.next_payout_date, po("dash")) })}
                   </Text>
                 ) : null}
                 {(nextDate?.payout_hold_days ?? 0) > 0 ? (
                   <Text style={twStyle("text-xs font-medium text-amber-800")}>
-                    {nextDate?.payout_hold_days} day hold on new earnings
+                    {po("holdDays", { count: nextDate?.payout_hold_days })}
                   </Text>
                 ) : (
                   <Text style={twStyle("text-xs font-medium text-blue-900")}>
-                    No payout hold configured
+                    {po("noHold")}
                   </Text>
                 )}
               </View>
@@ -416,9 +437,9 @@ export function PayoutsContent() {
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-emerald-100")}>
               <Ionicons name="wallet-outline" size={32} color="#059669" />
             </View>
-            <Text style={twStyle("text-center font-semibold text-gray-900")}>No payouts yet</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>{po("emptyTitle")}</Text>
             <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
-              Request a payout to withdraw your all-time available balance to your bank account.
+              {po("emptyDesc")}
             </Text>
             {canRequestPayouts ? (
               <TouchableOpacity
@@ -432,8 +453,8 @@ export function PayoutsContent() {
                 style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3")}
               >
                 <Ionicons name="cash-outline" size={20} color="#fff" />
-                <Text style={twStyle("ml-2 font-medium text-white")}>
-                  {activeAccounts.length === 0 ? "Add bank account" : "Request payout"}
+                <Text style={twStyle("ms-2 font-medium text-white")}>
+                  {activeAccounts.length === 0 ? po("addBankAccount") : po("requestPayout")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -447,8 +468,8 @@ export function PayoutsContent() {
                 setBankAccountId(null);
                 if (!canRequestPayouts) {
                   Alert.alert(
-                    "Permission required",
-                    'Payout requests need Edit settings permission. Ask your business owner to enable it under Settings → Team → Permissions.',
+                    po("permissionRequiredTitle"),
+                    po("permissionRequiredBody"),
                   );
                   return;
                 }
@@ -461,10 +482,10 @@ export function PayoutsContent() {
               style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3")}
             >
               <Ionicons name="cash-outline" size={18} color="#059669" />
-              <Text style={twStyle("ml-2 font-medium text-emerald-700")}>Request payout</Text>
+              <Text style={twStyle("ms-2 font-medium text-emerald-700")}>{po("requestPayout")}</Text>
             </TouchableOpacity>
             {payouts.map((p) => {
-              const meta = payoutStatusMeta(p);
+              const meta = payoutStatusMeta(p, po);
               return (
                 <View
                   key={p.id}
@@ -474,14 +495,14 @@ export function PayoutsContent() {
                     <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${meta.iconBg}`)}>
                       <Ionicons name={meta.icon} size={20} color={meta.iconColor} />
                     </View>
-                    <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("ms-3 flex-1")}>
                       <View style={twStyle("flex-row items-start justify-between")}>
                         <View style={twStyle("flex-1")}>
                           <Text style={twStyle("font-semibold text-gray-900")}>
                             {formatCurrency(p.amount, p.currency || defaultCurrency)}
                           </Text>
                           <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                            Requested {formatDateSafe(p.requested_at ?? p.created_at)}
+                            {po("requested", { date: formatDateSafe(p.requested_at ?? p.created_at, po("dash")) })}
                           </Text>
                         </View>
                         <View style={twStyle(`rounded-full px-2.5 py-1 ${meta.chipBg}`)}>
@@ -492,12 +513,12 @@ export function PayoutsContent() {
                       </View>
                       <Text style={twStyle("mt-2 text-xs leading-5 text-gray-600")}>
                         {p.status === "failed" && p.failure_reason
-                          ? `Reason: ${p.failure_reason}`
+                          ? po("reason", { reason: p.failure_reason })
                           : meta.description}
                       </Text>
                       {p.processed_at ? (
                         <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                          Updated {formatDateSafe(p.processed_at)}
+                          {po("updated", { date: formatDateSafe(p.processed_at, po("dash")) })}
                         </Text>
                       ) : null}
                     </View>
@@ -512,28 +533,28 @@ export function PayoutsContent() {
       <BottomSheet
         visible={requestOpen && canRequestPayouts}
         onClose={() => setRequestOpen(false)}
-        title="Request payout"
-        subtitle="Withdraw from your all-time available balance"
+        title={po("sheetTitle")}
+        subtitle={po("sheetSubtitle")}
       >
         <Text style={twStyle("mb-1 text-sm text-emerald-700")}>
-          Available: {formatCurrency(availableBalance, defaultCurrency)}
+          {po("availableAmount", { amount: formatCurrency(availableBalance, defaultCurrency) })}
         </Text>
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
           <Text style={twStyle("text-sm font-medium text-gray-700")}>
-            Amount ({defaultCurrency}) *
+            {po("amountLabel", { currency: defaultCurrency })}
           </Text>
           {availableBalance > 0 && (
             <TouchableOpacity
               onPress={() => setAmount(availableBalance.toFixed(2))}
               style={twStyle("rounded-full bg-emerald-50 px-3 py-1 border border-emerald-200")}
             >
-              <Text style={twStyle("text-xs font-semibold text-emerald-700")}>Max</Text>
+              <Text style={twStyle("text-xs font-semibold text-emerald-700")}>{po("max")}</Text>
             </TouchableOpacity>
           )}
         </View>
         <TextInput
           style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="0.00"
+          placeholder={po("amountPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={amount}
           onChangeText={setAmount}
@@ -541,12 +562,12 @@ export function PayoutsContent() {
         />
         <Text style={twStyle("mb-4 text-xs text-gray-500")}>
           {minimumPayout != null
-            ? `Min ${formatCurrency(minimumPayout, defaultCurrency)} · Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`
-            : `Available ${formatCurrency(availableBalance, defaultCurrency)} · Pending ${formatCurrency(pendingPayouts, defaultCurrency)}`}
+            ? po("amountHintMin", { min: formatCurrency(minimumPayout, defaultCurrency), available: formatCurrency(availableBalance, defaultCurrency), pending: formatCurrency(pendingPayouts, defaultCurrency) })
+            : po("amountHint", { available: formatCurrency(availableBalance, defaultCurrency), pending: formatCurrency(pendingPayouts, defaultCurrency) })}
         </Text>
         {activeAccounts.length > 0 ? (
           <>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Bank account</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{po("bankAccountLabel")}</Text>
             <ScrollView style={twStyle("mb-4 max-h-32")} nestedScrollEnabled>
               {activeAccounts.map((a) => (
                 <TouchableOpacity
@@ -554,7 +575,7 @@ export function PayoutsContent() {
                   onPress={() => setBankAccountId(bankAccountId === a.id ? null : a.id)}
                   style={twStyle(`mb-2 rounded-xl border px-4 py-3 ${preferredAccount?.id === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}
                 >
-                  <Text style={twStyle("font-medium text-gray-900")}>{a.account_name ?? "Bank account"}</Text>
+                  <Text style={twStyle("font-medium text-gray-900")}>{a.account_name ?? po("bankAccount")}</Text>
                   {(a.account_number_last4 || a.account_number || a.bank_name) && (
                     <Text style={twStyle("text-xs text-gray-500")}>
                       {a.bank_name ? `${a.bank_name} · ` : ""}
@@ -574,22 +595,22 @@ export function PayoutsContent() {
             style={twStyle("mb-4 flex-row items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}
           >
             <Ionicons name="card-outline" size={18} color="#b45309" />
-            <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-amber-900")}>
-              Add a bank account before requesting a payout
+            <Text style={twStyle("ms-2 flex-1 text-sm font-medium text-amber-900")}>
+              {po("addBankBeforeRequest")}
             </Text>
-            <Ionicons name="chevron-forward" size={16} color="#b45309" />
+            <DirectionalIcon name="chevron-forward" size={16} color="#b45309" />
           </TouchableOpacity>
         )}
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{po("notesOptional")}</Text>
         <TextInput
           style={twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-          placeholder="Reference or note"
+          placeholder={po("notesPlaceholder")}
           placeholderTextColor="#9ca3af"
           value={notes}
           onChangeText={setNotes}
         />
         <ActionButton
-          label={requesting ? "Submitting…" : "Request payout"}
+          label={requesting ? po("submitting") : po("requestPayout")}
           onPress={handleRequestPayout}
           loading={requesting}
           disabled={activeAccounts.length === 0}

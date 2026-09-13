@@ -13,12 +13,15 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
 import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
 
 const AccountSettingsNavbar: React.FC = () => {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user, signOut } = useAuth();
+  const prefix = "web.layout.accountSettingsNavbar";
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -45,7 +48,7 @@ const AccountSettingsNavbar: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex-shrink-0">
-            <PlatformLogo alt="Beautonomi Logo" className="h-10 w-auto" />
+            <PlatformLogo alt={t(`${prefix}.logoAlt`)} className="h-10 w-auto" />
           </Link>
 
           {/* Mobile search is in the main bottom nav; keep header light here */}
@@ -58,7 +61,7 @@ const AccountSettingsNavbar: React.FC = () => {
               className="hidden md:flex items-center gap-2 text-sm font-normal text-gray-700 hover:text-primary transition-colors"
             >
               <Settings className="h-5 w-5" />
-              <span>Account</span>
+              <span>{t(`${prefix}.account`)}</span>
             </Link>
 
             {/* Notifications Bell - Only show when user is logged in */}
@@ -70,7 +73,7 @@ const AccountSettingsNavbar: React.FC = () => {
                 <Link
                   href="/account-settings"
                   className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-                  aria-label="Account and profile"
+                  aria-label={t(`${prefix}.accountProfileAria`)}
                 >
                   <User className="h-6 w-6 text-gray-700" />
                 </Link>
@@ -78,14 +81,14 @@ const AccountSettingsNavbar: React.FC = () => {
                   href="/explore/saved"
                   className="hidden md:inline-flex text-sm text-gray-600 hover:text-gray-900 px-1"
                 >
-                  Saved
+                  {t(`${prefix}.saved`)}
                 </Link>
                 <button
                   type="button"
                   onClick={handleSignOut}
                   className="hidden md:inline-flex text-sm text-gray-600 hover:text-gray-900 px-1"
                 >
-                  Sign out
+                  {t("common.signOut")}
                 </button>
               </>
             ) : (
@@ -93,7 +96,7 @@ const AccountSettingsNavbar: React.FC = () => {
                 type="button"
                 onClick={() => setIsLoginModalOpen(true)}
                 className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-                aria-label="Sign in"
+                aria-label={t(`${prefix}.signInAria`)}
               >
                 <User className="h-6 w-6 text-gray-700" />
               </button>
@@ -112,9 +115,9 @@ const AccountSettingsNavbar: React.FC = () => {
                     <Menu className="h-6 w-6" />
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="w-80 bg-white">
+                <SheetContent side="end" className="w-80 bg-white">
                   <SheetHeader>
-                    <SheetTitle>Menu</SheetTitle>
+                    <SheetTitle>{t("web.layout.landingNavbar.menu")}</SheetTitle>
                   </SheetHeader>
                   <div className="mt-6 space-y-2">
                     <Link
@@ -122,7 +125,7 @@ const AccountSettingsNavbar: React.FC = () => {
                       className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                       onClick={() => setIsMenuOpen(false)}
                     >
-                      Explore
+                      {t("web.layout.explore")}
                     </Link>
                     {user && (
                       <Link
@@ -130,7 +133,7 @@ const AccountSettingsNavbar: React.FC = () => {
                         className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                         onClick={() => setIsMenuOpen(false)}
                       >
-                        Saved Posts
+                        {t(`${prefix}.savedPosts`)}
                       </Link>
                     )}
                     <Link
@@ -138,14 +141,14 @@ const AccountSettingsNavbar: React.FC = () => {
                       className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                       onClick={() => setIsMenuOpen(false)}
                     >
-                      Search Providers
+                      {t(`${prefix}.searchProviders`)}
                     </Link>
                     <Link
                       href="/account-settings"
                       className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                       onClick={() => setIsMenuOpen(false)}
                     >
-                      Account Settings
+                      {t(`${prefix}.accountSettings`)}
                     </Link>
                     {user && (
                       <>
@@ -154,9 +157,9 @@ const AccountSettingsNavbar: React.FC = () => {
                             handleSignOut();
                             setIsMenuOpen(false);
                           }}
-                          className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
+                          className="block w-full text-start px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                         >
-                          Sign Out
+                          {t("web.layout.header.signOut")}
                         </button>
                       </>
                     )}
@@ -166,9 +169,9 @@ const AccountSettingsNavbar: React.FC = () => {
                           setIsLoginModalOpen(true);
                           setIsMenuOpen(false);
                         }}
-                        className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
+                        className="block w-full text-start px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
                       >
-                        Sign In
+                        {t("web.layout.landingNavbar.signIn")}
                       </button>
                     )}
                   </div>

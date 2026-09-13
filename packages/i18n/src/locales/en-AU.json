@@ -1,0 +1,169 @@
+{
+  "provider": {
+    "mobile": {
+      "screens": {
+        "scheduleCard": {
+          "statusPending": "Pending",
+          "statusAwaitingPayment": "Awaiting payment",
+          "statusConfirmed": "Confirmed",
+          "statusBooked": "Booked",
+          "statusWaiting": "Waiting",
+          "statusCheckedIn": "Checked in",
+          "statusInProgress": "In progress",
+          "statusCompleted": "Completed",
+          "statusCancelled": "Cancelled",
+          "statusNoShow": "No show",
+          "unscheduled": "Unscheduled",
+          "bookingFallback": "Booking",
+          "serviceFallback": "Service",
+          "paid": "Paid",
+          "partPaid": "Part paid",
+          "paymentDue": "Payment due",
+          "houseCall": "House call",
+          "groupBooking": "Group",
+          "recurring": "Recurring",
+          "customOffer": "Custom offer",
+          "walkIn": "Walk-in"
+        },
+        "etaPicker": {
+          "estimatedArrival": "Estimated arrival",
+          "minutesA11y": "{{minutes}} minutes",
+          "minutesShort": "{{minutes}} min",
+          "notSure": "Not sure",
+          "custom": "Custom",
+          "customPlaceholder": "Minutes (1–240)",
+          "apply": "Apply"
+        }
+      }
+    }
+  },
+  "web": {
+    "layout": {
+      "mobileSearch": {
+        "anyTime": "Any time",
+        "recentLocations": "Recent locations",
+        "checkingAvailability": "Checking availability…"
+      },
+      "bottomNav": {
+        "home": "Home",
+        "search": "Search",
+        "bookings": "Bookings",
+        "chats": "Chats",
+        "wishlists": "Saved",
+        "login": "Log in"
+      }
+    },
+    "global": {
+      "searchBar": {
+        "recentLocations": "Recent locations",
+        "checkingAvailability": "Checking availability…"
+      },
+      "loginModal": {
+        "welcomeBack": "Welcome back",
+        "joinBeautonomi": "Join Beautonomi",
+        "signInSubtitle": "Sign in to book, manage appointments, and more."
+      }
+    },
+    "login": {
+      "loggedInSuccess": "Logged in successfully!",
+      "codeSentValidMin": "Code sent. Valid for about {{minutes}} min.",
+      "codeSentCheckInbox": "Code sent. Check your inbox (and spam folder).",
+      "newCodeSent": "A new verification code has been sent.",
+      "redirectingGoogle": "Redirecting to Google…",
+      "redirectingApple": "Redirecting to Apple…",
+      "verifying": "Verifying…",
+      "verifyAndContinue": "Verify & continue",
+      "useDifferentNumber": "Use a different number",
+      "emailOtpHint": "We'll email you a {{length}}-digit verification code (valid about {{minutes}} {{minuteLabel}}). No password needed.",
+      "usePasswordInstead": "Use password instead",
+      "codeValidFor": "Code valid for",
+      "useDifferentEmail": "Use a different email",
+      "capsLockOn": "Caps Lock is on.",
+      "signingIn": "Signing in…",
+      "signInWithEmailCode": "Sign in with an email code instead",
+      "legalBefore": "By continuing, you agree to our",
+      "legalTerms": "Terms of Service",
+      "legalAnd": "and",
+      "legalPrivacy": "Privacy Policy",
+      "legalAfter": ".",
+      "errors": {
+        "validPhoneWithCountry": "Please enter a valid phone number with country code (e.g. +27 82 345 6789).",
+        "loginFailed": "Login failed. Please try again."
+      }
+    },
+    "cards": {
+      "viewListingA11y": "View {{name}}, {{rating}}, {{reviews}}",
+      "listingPhotoA11y": "{{name}} listing photo",
+      "ratingA11y": "Rating: {{rating}}, {{reviews}}",
+      "kmAway": "{{km}} km away"
+    },
+    "categories": {
+      "afro": "Afro"
+    }
+  },
+  "customer": {
+    "mobile": {
+      "screens": {
+        "partnerProfile": {
+          "showAllPhotos": "Show all {{count}} photos",
+          "pleaseWait": "Please wait...",
+          "customDropImagesOnly": "Please drop image files only (PNG, JPG, WebP, GIF).",
+          "customImageTooLarge": "\"{{name}}\" is over 5MB. Choose a smaller image.",
+          "customMaxImages": "Maximum 6 images allowed",
+          "customImagesUploaded": "{{count}} images uploaded",
+          "customUploadFailed": "Failed to upload images",
+          "customNeedStreetCity": "Please provide at least a street address and city for at-home services",
+          "customBudgetOrder": "Maximum budget must be greater than or equal to minimum budget",
+          "customRequestSent": "Custom request sent",
+          "customSendFailed": "Failed to send request",
+          "customTplWedding": "Wedding/Event",
+          "customTplWeddingBody": "I'm looking for services for my wedding/event. I need...",
+          "customTplOccasion": "Special Occasion",
+          "customTplOccasionBody": "I have a special occasion coming up and would like...",
+          "customTplPackage": "Package Deal",
+          "customTplPackageBody": "I'm interested in a custom package that includes...",
+          "customTplGroup": "Group Booking",
+          "customTplGroupBody": "I'd like to book services for a group of people...",
+          "customLookingFor": "What are you looking for?",
+          "customCharCount": "{{count}} characters",
+          "customCharsMin": "{{count}} / 10 chars min",
+          "customDescriptionPlaceholder": "Example: I'm planning a wedding and need a complete bridal package including hair, makeup, and nails...",
+          "customDescriptionTip": "Tip: Include the occasion, number of people, preferred style, and any special requirements",
+          "customBudgetRange": "Budget Range",
+          "customOptional": "(Optional)",
+          "customBudgetMin": "Minimum ({{currency}})",
+          "customBudgetMax": "Maximum ({{currency}})",
+          "customBudgetTip": "Helps the provider create a quote that fits your budget",
+          "customWhenHowLong": "When & How Long",
+          "customPreferredWhen": "Preferred Date & Time",
+          "customEstimatedDuration": "Estimated Duration",
+          "customMinutes": "minutes",
+          "customFlexibleHint": "Flexible? Leave blank and the provider will suggest available times",
+          "customServiceLocation": "Service Location",
+          "customSearchAddress": "Search address",
+          "customSearchAddressPlaceholder": "Start typing your street address…",
+          "customAddressHint": "Pick a suggestion for the best match, or finish typing and add city / postal code below.",
+          "customUnitOptional": "Unit / suite (optional)",
+          "customUnitPlaceholder": "Apartment, floor, building…",
+          "customCity": "City",
+          "customPostal": "Postal code",
+          "customProvince": "Province / state",
+          "customInspiration": "Inspiration Photos",
+          "customUploading": "Uploading images...",
+          "customMaxReached": "Maximum 6 images reached",
+          "customClickUpload": "Click to upload or drag and drop",
+          "customImageTypes": "PNG, JPG, WebP, GIF up to 5MB each",
+          "customInspirationAlt": "Inspiration {{index}}",
+          "customRemoveImage": "Remove image",
+          "customPasteUrls": "Or paste image URLs (one per line or comma-separated)",
+          "customImagesAdded": "{{count}} / 6 images added",
+          "customShareVision": "Share up to 6 inspiration images to help us understand your vision",
+          "customCancel": "Cancel",
+          "customSending": "Sending request...",
+          "customSend": "Send request",
+          "messageProvider": "Message"
+        }
+      }
+    }
+  }
+}

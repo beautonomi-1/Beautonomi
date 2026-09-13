@@ -49,7 +49,7 @@ export default function GettingStartedGuides() {
           href="/learn"
           className="flex items-center font-normal  text-sm text-secondary"
         >
-          Browse all topics <ArrowRightIcon className="ml-1 h-4 w-4" />
+          Browse all topics <ArrowRightIcon className="ms-1 h-4 w-4" />
         </Link>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 ">

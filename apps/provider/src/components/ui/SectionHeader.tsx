@@ -10,7 +10,7 @@ interface SectionHeaderProps {
 export function SectionHeader({ title, subtitle, actionLabel, onAction }: SectionHeaderProps) {
   return (
     <View style={{ marginBottom: 12, marginTop: 24, flexDirection: "row", alignItems: subtitle ? "flex-start" : "center", justifyContent: "space-between" }}>
-      <View style={{ flex: 1, paddingRight: 8 }}>
+      <View style={{ flex: 1, paddingEnd: 8 }}>
         <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>{title}</Text>
         {subtitle ? (
           <Text style={{ marginTop: 4, fontSize: 12, color: "#6b7280", lineHeight: 16 }}>{subtitle}</Text>

@@ -10,12 +10,14 @@ import { useAuth } from "@/providers/AuthProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useCustomerBookingsRealtime } from "@/hooks/useSupabaseRealtime";
 import type { Booking } from "@/types/beautonomi";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function BookingsPageClient({
   initialUpcoming,
 }: {
   initialUpcoming: Booking[];
 }) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("upcoming");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { user } = useAuth();
@@ -46,15 +48,15 @@ export default function BookingsPageClient({
         <BackButton href="/account-settings" />
         <Breadcrumb
           items={[
-            { label: "Account", href: "/account-settings" },
-            { label: "Bookings" },
+            { label: t("web.accountSettings.bookings.breadcrumbAccount"), href: "/account-settings" },
+            { label: t("web.accountSettings.bookings.breadcrumbBookings") },
           ]}
         />
 
         <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6">
-          <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-2">Bookings</h1>
+          <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-2">{t("web.accountSettings.bookings.page.title")}</h1>
           <p className="text-sm md:text-base text-gray-600 font-light">
-            Manage your appointments and view your booking history
+            {t("web.accountSettings.bookings.page.subtitle")}
           </p>
         </div>
 
@@ -65,19 +67,19 @@ export default function BookingsPageClient({
                 value="upcoming"
                 className="text-sm md:text-base font-medium data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-sm transition-all"
               >
-                Upcoming
+                {t("web.accountSettings.bookings.page.upcoming")}
               </TabsTrigger>
               <TabsTrigger
                 value="past"
                 className="text-sm md:text-base font-medium data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-sm transition-all"
               >
-                Past
+                {t("web.accountSettings.bookings.page.past")}
               </TabsTrigger>
               <TabsTrigger
                 value="cancelled"
                 className="text-sm md:text-base font-medium data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-sm transition-all"
               >
-                Cancelled
+                {t("web.accountSettings.bookings.page.cancelled")}
               </TabsTrigger>
             </TabsList>
 
@@ -106,12 +108,12 @@ export default function BookingsPageClient({
 
           <div className="mt-8 pt-6 border-t border-gray-200/50">
             <p className="text-xs md:text-sm font-light text-gray-600 text-center">
-              Can&apos;t find your reservation here?{" "}
+              {t("web.accountSettings.bookings.page.cantFind")}{" "}
               <Link
                 href="/help"
                 className="underline text-[#FF0077] hover:text-[#D60565] font-medium transition-colors"
               >
-                Visit the Help Center
+                {t("web.accountSettings.bookings.page.visitHelpCenter")}
               </Link>
             </p>
           </div>

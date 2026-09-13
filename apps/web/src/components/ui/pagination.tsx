@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -25,6 +27,7 @@ export default function Pagination({
   className,
   showPageNumbers = true,
 }: PaginationProps) {
+  const { t } = useTranslation();
   if (totalPages <= 1) {
     return null;
   }
@@ -75,7 +78,7 @@ export default function Pagination({
         className="flex items-center gap-1"
       >
         <ChevronLeft className="h-4 w-4" />
-        Previous
+        {t("web.ui.pagination.previous")}
       </Button>
 
       {showPageNumbers && (
@@ -112,7 +115,7 @@ export default function Pagination({
         disabled={currentPage === totalPages}
         className="flex items-center gap-1"
       >
-        Next
+        {t("common.next")}
         <ChevronRight className="h-4 w-4" />
       </Button>
     </div>

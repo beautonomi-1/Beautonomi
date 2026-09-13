@@ -52,10 +52,10 @@ function SidebarNode({
         href={`/learn/${node.slug}`}
         onClick={onNavigate}
         className={cn(
-          "flex min-h-[44px] items-center gap-2 rounded-xl pl-3 pr-3 py-2.5 text-sm font-medium transition-all duration-200 ease-in-out border-0 relative",
+          "flex min-h-[44px] items-center gap-2 rounded-xl ps-3 pe-3 py-2.5 text-sm font-medium transition-all duration-200 ease-in-out border-0 relative",
           isActive ? "bg-transparent text-black font-bold" : "text-zinc-600 hover:bg-zinc-100 hover:text-black"
         )}
-        style={{ paddingLeft: pl }}
+        style={{ paddingInlineStart: pl }}
       >
         {isActive && (
           <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
@@ -117,7 +117,7 @@ function TopicSidebarTree({
             <AccordionItem key={key} value={key} className="border-0">
               <AccordionTrigger className="min-h-[44px] py-2 px-3 text-sm font-medium text-black hover:no-underline hover:bg-zinc-100 rounded-xl transition-all duration-200 ease-in-out [&[data-state=open]>svg]:rotate-180">
                 {Icon && <Icon className="h-4 w-4 shrink-0 text-zinc-500" />}
-                <span className="ml-2">{label}</span>
+                <span className="ms-2">{label}</span>
               </AccordionTrigger>
               <AccordionContent className="pb-1 pt-0">
                 <ul className="space-y-0.5">
@@ -141,7 +141,7 @@ function SidebarSkeleton() {
       {[1, 2, 3].map((i) => (
         <div key={i} className="mb-3">
           <div className="h-10 bg-zinc-100 rounded-xl mb-2" />
-          <div className="space-y-1.5 pl-2">
+          <div className="space-y-1.5 ps-2">
             {[1, 2].map((j) => (
               <div key={j} className="h-9 bg-zinc-100/80 rounded-xl" />
             ))}
@@ -182,7 +182,7 @@ function TopicSidebar({
             <AccordionItem key={key} value={key} className="border-0">
               <AccordionTrigger className="min-h-[44px] py-2 px-3 text-sm font-medium text-black hover:no-underline hover:bg-zinc-100 rounded-xl transition-all duration-200 ease-in-out [&[data-state=open]>svg]:rotate-180">
                 {Icon && <Icon className="h-4 w-4 shrink-0 text-zinc-500" />}
-                <span className="ml-2">{label}</span>
+                <span className="ms-2">{label}</span>
               </AccordionTrigger>
               <AccordionContent className="pb-1 pt-0">
                 <ul className="space-y-0.5">
@@ -194,7 +194,7 @@ function TopicSidebar({
                           href={`/learn/${c.slug}`}
                           onClick={onNavigate}
                           className={cn(
-                            "flex min-h-[44px] items-center gap-2 rounded-xl pl-3 pr-3 py-2.5 text-sm font-medium transition-all duration-200 ease-in-out border-0 relative",
+                            "flex min-h-[44px] items-center gap-2 rounded-xl ps-3 pe-3 py-2.5 text-sm font-medium transition-all duration-200 ease-in-out border-0 relative",
                             isActive
                               ? "bg-transparent text-black font-bold"
                               : "text-zinc-600 hover:bg-zinc-100 hover:text-black",
@@ -323,7 +323,7 @@ function LearnLayoutInner({
           >
             Learning Center
           </Link>
-          <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md ml-4">
+          <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md ms-4">
             <SearchWithSuggestions
               value={searchQ}
               onChange={setSearchQ}
@@ -335,7 +335,7 @@ function LearnLayoutInner({
             <button
               type="button"
               onClick={() => setSearchOverlayOpen(true)}
-              className="md:hidden flex-1 flex min-w-0 ml-2 min-h-[44px] items-center gap-2 rounded-full border border-zinc-200/50 bg-white/70 backdrop-blur-xl px-4 text-left text-sm text-zinc-500 transition-all duration-200 ease-in-out active:scale-[0.97]"
+              className="md:hidden flex-1 flex min-w-0 ms-2 min-h-[44px] items-center gap-2 rounded-full border border-zinc-200/50 bg-white/70 backdrop-blur-xl px-4 text-start text-sm text-zinc-500 transition-all duration-200 ease-in-out active:scale-[0.97]"
             >
               <Search className="h-4 w-4 shrink-0" />
               <span>Search articles...</span>
@@ -363,7 +363,7 @@ function LearnLayoutInner({
                 type="button"
                 ref={drawerCloseButtonRef}
                 onClick={() => setDrawerOpen(false)}
-                className="h-10 w-10 min-w-[44px] min-h-[44px] rounded-full text-zinc-600 hover:bg-zinc-100 active:bg-zinc-200 inline-flex items-center justify-center touch-manipulation -mr-1"
+                className="h-10 w-10 min-w-[44px] min-h-[44px] rounded-full text-zinc-600 hover:bg-zinc-100 active:bg-zinc-200 inline-flex items-center justify-center touch-manipulation -me-1"
                 aria-label="Close topics menu"
               >
                 <X className="h-5 w-5" aria-hidden />
@@ -375,7 +375,7 @@ function LearnLayoutInner({
       )}
 
       <div className="flex">
-        <aside className="hidden md:block w-60 lg:w-64 shrink-0 sticky top-[57px] self-start border-r border-zinc-200/50 backdrop-blur-xl bg-white/70 max-h-[calc(100vh-57px)] overflow-y-auto py-4 px-2">
+        <aside className="hidden md:block w-60 lg:w-64 shrink-0 sticky top-[57px] self-start border-e border-zinc-200/50 backdrop-blur-xl bg-white/70 max-h-[calc(100vh-57px)] overflow-y-auto py-4 px-2">
           {categoriesLoading ? (
             <SidebarSkeleton />
           ) : tree && tree.length > 0 ? (

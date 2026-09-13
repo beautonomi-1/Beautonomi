@@ -10,6 +10,7 @@ import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 type HottestPicksSectionProps = {
   categorySlug?: string;
@@ -22,6 +23,7 @@ const HottestPicksSection = ({
   initialProviders,
   initialHydrated = false,
 }: HottestPicksSectionProps) => {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<PublicProviderCard[]>(() =>
     initialHydrated ? (initialProviders ?? []) : [],
   );
@@ -101,7 +103,7 @@ const HottestPicksSection = ({
     return (
       <div className="mb-8 md:mb-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading hottest picks..." onRetry={handleRetry} />
+          <LoadingTimeout loadingMessage={t("web.home.loadingHottest")} onRetry={handleRetry} />
         </div>
       </div>
     );
@@ -114,17 +116,17 @@ const HottestPicksSection = ({
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           {error ? (
             <EmptyState
-              title="Unable to load providers"
+              title={t("web.home.unableToLoadProviders")}
               description={error}
               action={{
-                label: "Retry",
+                label: t("web.home.retry"),
                 onClick: handleRetry,
               }}
             />
           ) : (
             <EmptyState
-              title="No trending providers yet"
-              description="Check back later for hottest picks"
+              title={t("web.home.noHottest")}
+              description={t("web.home.noHottestHint")}
             />
           )}
         </div>
@@ -149,11 +151,11 @@ const HottestPicksSection = ({
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
             <Flame className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Hottest Picks</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{t("web.home.hottestPicks")}</h2>
           </div>
           <Link href="/more-hottest-pick-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            View all
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            {t("web.home.viewAll")}
+            <ArrowRight className="ms-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>
         {/* Mobile: Horizontal scroll with peek effect, Desktop: Grid */}

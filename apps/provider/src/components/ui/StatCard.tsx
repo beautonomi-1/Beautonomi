@@ -26,7 +26,7 @@ export function StatCard({
   return (
     <View style={[ { borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, minWidth: 0 }, compact ? { padding: 12 } : { padding: 16 } ]}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <View style={{ flex: 1, minWidth: 0, paddingRight: icon ? 4 : 0 }}>
+        <View style={{ flex: 1, minWidth: 0, paddingEnd: icon ? 4 : 0 }}>
           <Text
             style={{ fontSize: compact ? 11 : 12, fontWeight: "500", letterSpacing: 0.3, color: Colors.gray[500] }}
             numberOfLines={2}
@@ -60,7 +60,7 @@ export function StatCard({
               />
               <Text
                 style={{
-                  marginLeft: 4,
+                  marginStart: 4,
                   fontSize: 12,
                   fontWeight: "500",
                   color: trend.value >= 0 ? "#16a34a" : "#ef4444",
@@ -76,7 +76,7 @@ export function StatCard({
         {icon && (
           <View
             style={[
-              { backgroundColor: iconBg, marginLeft: 4, alignItems: "center", justifyContent: "center", borderRadius: 12, flexShrink: 0 },
+              { backgroundColor: iconBg, marginStart: 4, alignItems: "center", justifyContent: "center", borderRadius: 12, flexShrink: 0 },
               compact ? { height: 32, width: 32 } : { height: 36, width: 36 },
             ]}
           >

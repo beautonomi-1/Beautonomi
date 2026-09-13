@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
@@ -49,6 +50,12 @@ const COLORS = [
 ];
 
 export default function ResourceGroupsScreen() {
+  const { t } = useTranslation();
+  const rg = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.resourceGroups.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ResourceGroup | null>(null);
@@ -121,7 +128,7 @@ export default function ResourceGroupsScreen() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      Alert.alert("Required", "Name is required");
+      Alert.alert(rg("requiredTitle"), rg("requiredBody"));
       return;
     }
     const payload = {
@@ -136,13 +143,13 @@ export default function ResourceGroupsScreen() {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(rg("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createGroup(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(rg("errorTitle"), error);
         return;
       }
     }
@@ -156,21 +163,21 @@ export default function ResourceGroupsScreen() {
       `/api/provider/resource-groups/${group.id}`,
       { is_active: !group.is_active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(rg("errorTitle"), error);
     else refresh();
   }
 
   function handleDelete(group: ResourceGroup) {
-    Alert.alert("Delete", `Remove "${group.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(rg("deleteTitle"), rg("deleteBody", { name: group.name }), [
+      { text: rg("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: rg("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteGroup(
             `/api/provider/resource-groups/${group.id}`
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(rg("errorTitle"), error);
           else refresh();
         },
       },
@@ -180,9 +187,9 @@ export default function ResourceGroupsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Resource Groups"
+        title={rg("title")}
         showBack
-        subtitle={`${groups?.length ?? 0} groups`}
+        subtitle={rg("subtitle", { count: groups?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
@@ -196,9 +203,9 @@ export default function ResourceGroupsScreen() {
       {/* Stats */}
       {groups && groups.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
-          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+          <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
             <StatCard
-              title="Active"
+              title={rg("statActive")}
               value={String(activeCount)}
               icon="layers-outline"
               iconColor="#22c55e"
@@ -208,7 +215,7 @@ export default function ResourceGroupsScreen() {
           </View>
           <View style={twStyle("flex-1")}>
             <StatCard
-              title="Resources"
+              title={rg("statResources")}
               value={String(totalResources)}
               icon="cube-outline"
               iconColor="#6366f1"
@@ -225,7 +232,7 @@ export default function ResourceGroupsScreen() {
           <SearchBar
             value={search}
             onChangeText={setSearch}
-            placeholder="Search groups..."
+            placeholder={rg("searchPlaceholder")}
           />
         </View>
       )}
@@ -235,11 +242,11 @@ export default function ResourceGroupsScreen() {
       ) : !filtered.length ? (
         <EmptyState
           icon="layers-outline"
-          title={search ? "No matches" : "No resource groups"}
+          title={search ? rg("emptyMatches") : rg("emptyTitle")}
           description={
             search
-              ? "Try a different search"
-              : "Organize resources into groups"
+              ? rg("emptyMatchesHint")
+              : rg("emptyHint")
           }
         />
       ) : (
@@ -268,15 +275,15 @@ export default function ResourceGroupsScreen() {
                     style={[twStyle("h-4 w-4 rounded-full"), { backgroundColor: group.color }]}
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("ms-3 flex-1")}>
                   <View style={twStyle("flex-row items-center")}>
-                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginEnd: 8 }]}>
                       {group.name}
                     </Text>
                     {!group.is_active && (
                       <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
                         <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
-                          Inactive
+                          {rg("inactive")}
                         </Text>
                       </View>
                     )}
@@ -288,14 +295,14 @@ export default function ResourceGroupsScreen() {
                   )}
                   {group.resource_count !== undefined && (
                     <Text style={twStyle("mt-0.5 text-xs text-indigo-500")}>
-                      {group.resource_count} resource{group.resource_count !== 1 ? "s" : ""}
+                      {rg("resourceCount", { count: group.resource_count })}
                     </Text>
                   )}
                 </View>
                 <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(group)}
-                    style={[twStyle("rounded-full p-1"), { marginRight: 8 }]}
+                    style={[twStyle("rounded-full p-1"), { marginEnd: 8 }]}
                   >
                     <Ionicons
                       name={group.is_active ? "eye-outline" : "eye-off-outline"}
@@ -316,38 +323,38 @@ export default function ResourceGroupsScreen() {
       <BottomSheet
         visible={showForm}
         onClose={() => setShowForm(false)}
-        title={editing ? "Edit Resource Group" : "New Resource Group"}
+        title={editing ? rg("editTitle") : rg("newTitle")}
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Name *
+            {rg("nameLabel")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
-            onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-            placeholder="e.g. Treatment Rooms"
+            onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+            placeholder={rg("namePlaceholder")}
             placeholderTextColor="#9ca3af"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Description
+            {rg("description")}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
-            onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-            placeholder="Optional..."
+            onChangeText={(text) => setForm((p) => ({ ...p, description: text }))}
+            placeholder={rg("descriptionPlaceholder")}
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{rg("color")}</Text>
           <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
                 style={[twStyle(`h-10 w-10 items-center justify-center rounded-full ${
                   form.color === c ? "border-2 border-gray-900" : ""
-                }`), { backgroundColor: c, marginRight: 12, marginBottom: 12 }]}
+                }`), { backgroundColor: c, marginEnd: 12, marginBottom: 12 }]}
                 onPress={() => setForm((p) => ({ ...p, color: c }))}
               >
                 {form.color === c && (
@@ -357,7 +364,7 @@ export default function ResourceGroupsScreen() {
             ))}
           </View>
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>{rg("active")}</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -366,7 +373,7 @@ export default function ResourceGroupsScreen() {
             />
           </View>
           <ActionButton
-            label={editing ? "Update Group" : "Create Group"}
+            label={editing ? rg("updateGroup") : rg("createGroup")}
             onPress={handleSave}
             loading={creating || updating}
             fullWidth

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useCallback, useEffect, useState } from "react";
 import { Smartphone, X } from "lucide-react";
 import AppDownloadButtons from "@/app/become-a-partner/components/app-download-buttons";
@@ -20,6 +22,7 @@ function isDismissed(): boolean {
 }
 
 export function ProviderDashboardAppDownloadCard() {
+  const { t } = useTranslation();
   const { isDesktop } = useMobile();
   const { apps, hasLinks } = useProviderAppLinks();
   const [visible, setVisible] = useState(false);
@@ -51,23 +54,22 @@ export function ProviderDashboardAppDownloadCard() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-gray-900">Get the app</h3>
+            <h3 className="text-sm font-semibold text-gray-900">{t("web.providerExtras.getTheApp")}</h3>
             <button
               type="button"
               onClick={dismiss}
               className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              aria-label="Dismiss app download tip"
+              aria-label={t("web.providerExtras.dismissAppDownload")}
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            Manage bookings, messages, and payments from your phone — scan the QR or pick your
-            store below.
+            {t("web.providerExtras.getTheAppBody")}
           </p>
           <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:items-center sm:gap-8">
             <ProviderAppDownloadQr url={qrUrl} size={140} />
-            <div className="min-w-0 flex-1 [&>div]:items-start [&>div]:text-left">
+            <div className="min-w-0 flex-1 [&>div]:items-start [&>div]:text-start">
               <AppDownloadButtons />
             </div>
           </div>

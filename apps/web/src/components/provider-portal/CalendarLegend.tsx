@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,48 +18,49 @@ interface CalendarLegendProps {
 }
 
 export function CalendarLegend({ className, variant = "default" }: CalendarLegendProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const statusItems = [
     {
       status: "booked",
-      label: "Confirmed",
+      labelKey: "web.provider.calendarMobile.statusConfirmed",
       color: "bg-[#4fd1c5]",
       textColor: "text-[#4fd1c5]",
     },
     {
       status: "started",
-      label: "In Service",
+      labelKey: "web.provider.calendarMobile.statusInService",
       color: "bg-[#f472b6]",
       textColor: "text-[#f472b6]",
     },
     {
       status: "completed",
-      label: "Completed",
+      labelKey: "web.provider.calendarMobile.statusCompleted",
       color: "bg-gray-400",
       textColor: "text-gray-400",
     },
     {
       status: "cancelled",
-      label: "Cancelled",
+      labelKey: "web.provider.calendarMobile.statusCancelled",
       color: "bg-red-400",
       textColor: "text-red-400",
     },
     {
       status: "no_show",
-      label: "No Show",
+      labelKey: "web.provider.calendarMobile.statusNoShow",
       color: "bg-orange-400",
       textColor: "text-orange-400",
     },
   ];
 
   const serviceColors = [
-    { name: "Haircut", color: "bg-[#7dd3d8]" },
-    { name: "Color", color: "bg-[#f8d59f]" },
-    { name: "Highlight", color: "bg-[#ffe0b2]" },
-    { name: "Facial", color: "bg-[#e0e0e0]" },
-    { name: "Nail", color: "bg-[#b3e0f2]" },
-    { name: "Balayage", color: "bg-[#f8bbd0]" },
+    { nameKey: "web.calendarLegend.haircut", color: "bg-[#7dd3d8]" },
+    { nameKey: "web.calendarLegend.color", color: "bg-[#f8d59f]" },
+    { nameKey: "web.calendarLegend.highlight", color: "bg-[#ffe0b2]" },
+    { nameKey: "web.calendarLegend.facial", color: "bg-[#e0e0e0]" },
+    { nameKey: "web.calendarLegend.nail", color: "bg-[#b3e0f2]" },
+    { nameKey: "web.calendarLegend.balayage", color: "bg-[#f8bbd0]" },
   ];
 
   // Inline variant - simple horizontal list
@@ -67,7 +70,7 @@ export function CalendarLegend({ className, variant = "default" }: CalendarLegen
         {statusItems.map((item) => (
           <div key={item.status} className="flex items-center gap-1.5">
             <div className={cn("w-2.5 h-2.5 rounded-full", item.color)} />
-            <span className="text-gray-600">{item.label}</span>
+            <span className="text-gray-600">{t(item.labelKey)}</span>
           </div>
         ))}
       </div>
@@ -84,7 +87,7 @@ export function CalendarLegend({ className, variant = "default" }: CalendarLegen
             size="sm" 
             className="w-full justify-between text-xs text-gray-600 h-8"
           >
-            <span>View Legend</span>
+            <span>{t("web.calendarLegend.viewLegend")}</span>
             {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </Button>
         </CollapsibleTrigger>
@@ -93,7 +96,7 @@ export function CalendarLegend({ className, variant = "default" }: CalendarLegen
             {statusItems.map((item) => (
               <div key={item.status} className="flex items-center gap-1.5">
                 <div className={cn("w-2 h-2 rounded-full", item.color)} />
-                <span className="text-[10px] text-gray-600">{item.label}</span>
+                <span className="text-[10px] text-gray-600">{t(item.labelKey)}</span>
               </div>
             ))}
           </div>
@@ -108,12 +111,12 @@ export function CalendarLegend({ className, variant = "default" }: CalendarLegen
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* Status Legend */}
         <div className="flex items-center gap-4">
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</span>
+          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t("web.provider.common.statusLabel")}</span>
           <div className="flex items-center gap-4">
             {statusItems.map((item) => (
               <div key={item.status} className="flex items-center gap-1.5">
                 <div className={cn("w-3 h-3 rounded-full", item.color)} />
-                <span className="text-xs text-gray-600">{item.label}</span>
+                <span className="text-xs text-gray-600">{t(item.labelKey)}</span>
               </div>
             ))}
           </div>
@@ -123,12 +126,12 @@ export function CalendarLegend({ className, variant = "default" }: CalendarLegen
 
         {/* Service Colors Legend */}
         <div className="flex items-center gap-4">
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Services</span>
+          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t("web.book.engine.services")}</span>
           <div className="flex items-center gap-3">
             {serviceColors.map((item) => (
-              <div key={item.name} className="flex items-center gap-1.5">
+              <div key={item.nameKey} className="flex items-center gap-1.5">
                 <div className={cn("w-3 h-3 rounded", item.color)} />
-                <span className="text-xs text-gray-600">{item.name}</span>
+                <span className="text-xs text-gray-600">{t(item.nameKey)}</span>
               </div>
             ))}
           </div>

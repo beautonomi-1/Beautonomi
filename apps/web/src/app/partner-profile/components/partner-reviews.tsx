@@ -5,6 +5,7 @@ import { Star } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 type Review = {
   id: string;
@@ -33,6 +34,7 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const { pp } = usePartnerProfileT();
 
   useEffect(() => {
     const loadReviews = async () => {
@@ -53,7 +55,7 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
         const errorMessage =
           err instanceof FetchError
             ? err.message
-            : "Failed to load reviews";
+            : pp("failedLoadReviews");
         setError(errorMessage);
         console.error("Error loading reviews:", err);
       } finally {
@@ -74,14 +76,14 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
   });
 
   const sanitizeReviewerName = (name: string) => {
-    if (!name || /anon/i.test(name.trim())) return "Verified customer";
+    if (!name || /anon/i.test(name.trim())) return pp("verifiedCustomer");
     return name;
   };
 
   if (isLoading) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <LoadingTimeout loadingMessage="Loading reviews..." />
+        <LoadingTimeout loadingMessage={pp("loadingReviews")} />
       </div>
     );
   }
@@ -90,7 +92,7 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
         <EmptyState
-          title="Failed to load reviews"
+          title={pp("failedLoadReviews")}
           description={error}
         />
       </div>
@@ -100,10 +102,10 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
   if (reviews.length === 0) {
     return (
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-        <h2 className="text-2xl font-semibold mb-6">Reviews</h2>
+        <h2 className="text-2xl font-semibold mb-6">{pp("tabReviews")}</h2>
         <EmptyState
-          title="No reviews yet"
-          description="This provider hasn't received any reviews yet. Be the first to review!"
+          title={pp("noReviewsYet")}
+          description={pp("noReviewsHint")}
         />
       </div>
     );
@@ -113,7 +115,7 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
       <section className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-5 md:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
-          Customer reviews
+          {pp("customerReviews")}
         </p>
         <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-end gap-3">
@@ -124,13 +126,13 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
               </span>
             </div>
             <span className="pb-1 text-sm text-gray-600">
-              {voteCount.toLocaleString()} {voteCount === 1 ? "review" : "reviews"}
+              {voteCount === 1 ? pp("reviewCountLabelOne", { count: voteCount }) : pp("reviewCountLabelOther", { count: voteCount.toLocaleString() })}
             </span>
           </div>
           <div className="w-full md:max-w-sm">
             {ratingsBreakdown.map((row) => (
               <div key={row.stars} className="flex items-center gap-2 py-1">
-                <span className="w-3 text-right text-xs font-medium text-gray-600">{row.stars}</span>
+                <span className="w-3 text-end text-xs font-medium text-gray-600">{row.stars}</span>
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
                   <div
                     className="h-full rounded-full bg-amber-400"
@@ -190,8 +192,8 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
               </div>
               <p className="mt-3 text-sm leading-6 text-gray-700 md:text-[15px]">{review.text}</p>
               {review.provider_response && (
-                <div className="mt-3 rounded-xl border-l-4 border-pink-400 bg-pink-50/50 p-3 md:p-4">
-                  <p className="text-xs font-semibold text-pink-600 mb-1">Provider reply</p>
+                <div className="mt-3 rounded-xl border-s-4 border-pink-400 bg-pink-50/50 p-3 md:p-4">
+                  <p className="text-xs font-semibold text-pink-600 mb-1">{pp("providerReply")}</p>
                   <p className="text-sm text-gray-700 leading-relaxed">{review.provider_response}</p>
                   {review.provider_response_at && (
                     <p className="text-xs text-gray-400 mt-2">
@@ -211,7 +213,7 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
             onClick={() => setShowAll(true)}
             className="text-sm font-medium text-gray-700 underline hover:text-gray-900"
           >
-            See all {reviews.length} reviews
+            {pp("seeAllReviews", { count: reviews.length })}
           </button>
         </div>
       )}

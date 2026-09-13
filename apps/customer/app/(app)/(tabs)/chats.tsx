@@ -28,6 +28,7 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ConversationSkeleton } from "@/components/Skeleton";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { useTranslation } from "@beautonomi/i18n";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 interface Conversation {
   id: string;
@@ -46,8 +47,8 @@ function formatTime(iso: string | null | undefined) {
   const d = new Date(iso);
   const now = new Date();
   const diff = now.getTime() - d.getTime();
-  if (diff < 86400000) return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (diff < 86400000) return d.toLocaleTimeString(getTenantLocaleTag(), { hour: "2-digit", minute: "2-digit", hour12: true });
+  return d.toLocaleDateString(getTenantLocaleTag(), { month: "short", day: "numeric" });
 }
 
 export default function ChatsScreen() {
@@ -303,7 +304,7 @@ export default function ChatsScreen() {
             }
           }}
           activeOpacity={0.8}
-          style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[200], overflow: "hidden", marginRight: 16 }}
+          style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[200], overflow: "hidden", marginEnd: 16 }}
         >
           {item.provider?.thumbnail_url ? (
             <Image
@@ -343,7 +344,7 @@ export default function ChatsScreen() {
           onPress={openActions}
           accessibilityRole="button"
           accessibilityLabel={tc("conversationActionsA11y")}
-          style={{ marginLeft: 10, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100] }}
+          style={{ marginStart: 10, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[100] }}
         >
           <Ionicons name="ellipsis-vertical" size={16} color={Colors.gray[600]} />
         </TouchableOpacity>
@@ -437,7 +438,7 @@ export default function ChatsScreen() {
             paddingVertical: 8,
           }}
         >
-          <Text style={{ color: Colors.gray[400], marginRight: 6 }}>🔎</Text>
+          <Text style={{ color: Colors.gray[400], marginEnd: 6 }}>🔎</Text>
           <TextInput
             value={search}
             onChangeText={setSearch}

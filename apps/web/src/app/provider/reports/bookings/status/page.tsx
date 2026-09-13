@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -67,6 +69,7 @@ function statusStyle(status: string): { bar: string; dot: string } {
 export default function BookingStatusReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -120,10 +123,10 @@ export default function BookingStatusReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking status" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/status.title") },
         ]}
       >
         <ReportSkeleton />
@@ -135,15 +138,15 @@ export default function BookingStatusReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking status" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/status.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Booking status" />
-          <ReportSubscriptionRequired feature="Booking status" />
+          <PageHeader title={t("web.provider.reports.pages.bookings/status.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.bookings/status.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -153,15 +156,15 @@ export default function BookingStatusReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Booking status" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.bookings/status.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load booking status data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.bookings/status.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -170,18 +173,18 @@ export default function BookingStatusReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Booking status" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.bookings/status.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="booking-status-report">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <PageHeader
-            title="Booking status"
-            subtitle="Scheduled appointments by lifecycle — counts vs ledger net by current status"
+            title={t("web.provider.reports.pages.bookings/status.title")}
+            subtitle={t("web.provider.reports.pages.bookings/status.subtitle")}
           />
           <div className="flex gap-2">
             <Button
@@ -194,20 +197,20 @@ export default function BookingStatusReport() {
               className="min-h-[44px] touch-manipulation gap-2"
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export CSV</span>
-              <span className="sm:hidden">CSV</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportCsv")}</span>
+              <span className="sm:hidden">{t("web.provider.common.csv")}</span>
             </Button>
             <Button
               variant="outline"
               onClick={() => {
                 if (!data) return;
-                exportToPDF("booking-status-report", "booking-status-report", "Booking status report");
+                exportToPDF("booking-status-report", "booking-status-report", t("web.provider.reports.pages.bookings/status.pdfTitle"));
               }}
               className="min-h-[44px] touch-manipulation gap-2"
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Export PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportPdf")}</span>
+              <span className="sm:hidden">{t("web.provider.common.pdf")}</span>
             </Button>
           </div>
         </div>
@@ -218,11 +221,11 @@ export default function BookingStatusReport() {
           <div className="flex gap-3 rounded-xl border border-sky-200/90 bg-sky-50/95 px-4 py-3 text-sm leading-relaxed text-sky-950">
             <Info className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
             <div>
-              <p className="font-medium text-sky-900">Facts & definitions</p>
+              <p className="font-medium text-sky-900">{t("web.provider.reports.common.factsAndDefinitions")}</p>
               <p className="mt-1">{data.basisNote}</p>
               {data.ledgerTransactionTypes?.length ? (
                 <p className="mt-2 text-xs text-sky-900/85">
-                  Ledger net includes: {data.ledgerTransactionTypes.join(", ")}
+{t("web.provider.reports.pages.bookings/status.ledgerNetIncludes", { types: data.ledgerTransactionTypes.join(", ") })}
                 </p>
               ) : null}
             </div>
@@ -232,8 +235,8 @@ export default function BookingStatusReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Appointments in window</CardTitle>
-              <p className="text-xs text-gray-500">By scheduled date — all statuses</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/status.appointmentsInWindow")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/status.byScheduledDate")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -247,8 +250,8 @@ export default function BookingStatusReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Completed</CardTitle>
-              <p className="text-xs text-gray-500">Share of appointments in window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.common.status.completed")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/status.shareOfAppointments")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -262,8 +265,8 @@ export default function BookingStatusReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Cancelled</CardTitle>
-              <p className="text-xs text-gray-500">Share of appointments in window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.common.status.cancelled")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/status.shareOfAppointments")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -277,8 +280,8 @@ export default function BookingStatusReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">No-show</CardTitle>
-              <p className="text-xs text-gray-500">Share of appointments in window</p>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.bookings/status.noShow")}</CardTitle>
+              <p className="text-xs text-gray-500">{t("web.provider.reports.pages.bookings/status.shareOfAppointments")}</p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -294,23 +297,23 @@ export default function BookingStatusReport() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Mix by status</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Share of scheduled appointments (counts).</p>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/status.mixByStatus")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.bookings/status.shareOfScheduled")}</p>
             </CardHeader>
             <CardContent>
               {data.totalBookings > 0 ? (
                 <BookingStatusPieChart rows={data.bookingsByStatus} />
               ) : (
-                <p className="py-8 text-center text-sm text-gray-500">No appointments in this range.</p>
+                <p className="py-8 text-center text-sm text-gray-500">{t("web.provider.reports.pages.bookings/status.noAppointmentsInRange")}</p>
               )}
             </CardContent>
           </Card>
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Ledger net by status</CardTitle>
+              <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/status.ledgerNetByStatus")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Sum of booking-linked ledger net where the booking currently sits in this status.
+                {t("web.provider.reports.pages.bookings/status.ledgerNetByStatusHint")}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -327,7 +330,7 @@ export default function BookingStatusReport() {
                       <span className="tabular-nums text-gray-700">
                         {fmt(item.revenue)}{" "}
                         <span className="text-xs text-gray-400">
-                          ({item.count} · {pct.toFixed(1)}%)
+{t("web.provider.reports.pages.bookings/status.countShare", { count: item.count, pct: pct.toFixed(1) })}
                         </span>
                       </span>
                     </div>
@@ -343,29 +346,29 @@ export default function BookingStatusReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Detail table</CardTitle>
+            <CardTitle className="text-lg">{t("web.provider.reports.pages.bookings/status.detailTable")}</CardTitle>
           </CardHeader>
           <CardContent>
             {data.bookingsByStatus.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-600">No booking data for the selected period.</p>
+              <p className="py-8 text-center text-sm text-gray-600">{t("web.provider.reports.pages.bookings/status.noBookingData")}</p>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-gray-100">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-200 bg-gray-50/80">
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Count</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Share</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Ledger net</th>
+                      <th className="px-4 py-3 text-start font-semibold text-gray-700">{t("web.provider.common.statusLabel")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.bookings/status.count")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.bookings/status.share")}</th>
+                      <th className="px-4 py-3 text-end font-semibold text-gray-700">{t("web.provider.reports.pages.staff/performance.ledgerNet")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.bookingsByStatus.map((item) => (
                       <tr key={item.status} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-4 py-3 font-medium text-gray-900">{formatStatusLabel(item.status)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-800">{item.count}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-gray-600">{item.percentage.toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-gray-900">{fmt(item.revenue)}</td>
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-800">{item.count}</td>
+                        <td className="px-4 py-3 text-end tabular-nums text-gray-600">{item.percentage.toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-end font-medium tabular-nums text-gray-900">{fmt(item.revenue)}</td>
                       </tr>
                     ))}
                   </tbody>

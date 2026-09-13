@@ -10,6 +10,7 @@ type BookingRow = {
   id: string;
   customer_id: string;
   provider_id: string;
+  status?: string | null;
   scheduled_at: string;
   location_type: string;
   location_id: string | null;
@@ -40,6 +41,35 @@ type BookingAddonRow = {
   currency?: string | null;
 };
 
+/** Link the paid checkout visit to the series. Confirm it when it is still a request. */
+export function recurringSeedVisitUpdate(
+  seriesId: string,
+  status: string | null | undefined,
+): { recurring_series_id: string; status?: "confirmed" } {
+  if (status === "pending") {
+    return { recurring_series_id: seriesId, status: "confirmed" };
+  }
+  return { recurring_series_id: seriesId };
+}
+
+async function attachSeedVisitToSeries(
+  admin: SupabaseClient,
+  bookingId: string,
+  seriesId: string,
+  currentStatus?: string | null,
+): Promise<void> {
+  const patch = recurringSeedVisitUpdate(seriesId, currentStatus);
+  const { error } = await admin.from("bookings").update(patch).eq("id", bookingId);
+  if (error) {
+    console.error("[recurring] failed to attach seed booking to series", bookingId, error);
+    return;
+  }
+  if (patch.status === "confirmed") {
+    const { sendBookingConfirmationNotification } = await import("@/lib/bookings/notifications");
+    await sendBookingConfirmationNotification(bookingId);
+  }
+}
+
 /**
  * After a booking exists (and payment succeeded when applicable), create a customer recurring row.
  * Idempotent via `metadata.source_booking_id`.
@@ -61,13 +91,24 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
     .maybeSingle();
 
   if (existing) {
+    const { data: seed } = await admin
+      .from("bookings")
+      .select("status")
+      .eq("id", bookingId)
+      .maybeSingle();
+    await attachSeedVisitToSeries(
+      admin,
+      bookingId,
+      (existing as { id: string }).id,
+      (seed as { status?: string | null } | null)?.status,
+    );
     return { ok: true as const };
   }
 
   const { data: booking, error: bErr } = await admin
     .from("bookings")
     .select(
-      "id, customer_id, provider_id, scheduled_at, location_type, location_id, address_line1, address_city, address_country, address_postal_code, address_latitude, address_longitude, payment_status, subtotal, discount_amount, promotion_discount_amount, membership_discount_amount, tax_amount, tax_rate, service_fee_percentage, service_fee_amount, tip_amount, travel_fee, total_amount",
+      "id, customer_id, provider_id, status, scheduled_at, location_type, location_id, address_line1, address_city, address_country, address_postal_code, address_latitude, address_longitude, payment_status, subtotal, discount_amount, promotion_discount_amount, membership_discount_amount, tax_amount, tax_rate, service_fee_percentage, service_fee_amount, tip_amount, travel_fee, total_amount",
     )
     .eq("id", bookingId)
     .single();
@@ -219,7 +260,7 @@ export async function insertCustomerRecurringSeriesFromPaidBooking(params: {
 
   const seriesId = (insertedSeries as { id?: string } | null)?.id;
   if (seriesId) {
-    await admin.from("bookings").update({ recurring_series_id: seriesId }).eq("id", bookingId);
+    await attachSeedVisitToSeries(admin, bookingId, seriesId, b.status);
   }
 
   return { ok: true as const };

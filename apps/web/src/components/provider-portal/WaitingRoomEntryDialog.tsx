@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { WaitingRoomEntry, TeamMember, ServiceItem } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 
 interface WaitingRoomEntryDialogProps {
@@ -39,6 +40,7 @@ export function WaitingRoomEntryDialog({
   entry,
   onSuccess,
 }: WaitingRoomEntryDialogProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -99,7 +101,7 @@ export function WaitingRoomEntryDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.client_phone?.trim() && !isCompleteE164(formData.client_phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.waitingRoomEntryDialog.invalidPhone"));
       return;
     }
     setIsLoading(true);
@@ -119,16 +121,16 @@ export function WaitingRoomEntryDialog({
 
       if (entry) {
         await providerApi.updateWaitingRoomEntry(entry.id, entryData);
-        toast.success("Waiting room entry updated");
+        toast.success(t("web.provider.waitingRoomEntryDialog.updated"));
       } else {
         await providerApi.addToWaitingRoom(entryData);
-        toast.success("Client added to waiting room");
+        toast.success(t("web.provider.waitingRoomEntryDialog.added"));
       }
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save waiting room entry:", error);
-      toast.error("Failed to save waiting room entry");
+      toast.error(t("web.provider.waitingRoomEntryDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -139,14 +141,14 @@ export function WaitingRoomEntryDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {entry ? "Edit Waiting Room Entry" : "Add to Waiting Room"}
+            {entry ? t("web.provider.waitingRoomEntryDialog.editTitle") : t("web.provider.waitingRoomEntryDialog.addTitle")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="client_name">Client Name *</Label>
+              <Label htmlFor="client_name">{t("web.provider.waitingRoomEntryDialog.clientName")}</Label>
               <Input
                 id="client_name"
                 value={formData.client_name}
@@ -155,7 +157,7 @@ export function WaitingRoomEntryDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="waiting-room-client-phone">Phone (optional)</Label>
+              <Label htmlFor="waiting-room-client-phone">{t("web.provider.waitingRoomEntryDialog.phoneOptional")}</Label>
               <PhoneInput
                 label=""
                 inputId="waiting-room-client-phone"
@@ -167,7 +169,7 @@ export function WaitingRoomEntryDialog({
           </div>
 
           <div>
-            <Label htmlFor="client_email">Email</Label>
+            <Label htmlFor="client_email">{t("web.provider.waitingRoomEntryDialog.email")}</Label>
             <Input
               id="client_email"
               type="email"
@@ -178,7 +180,7 @@ export function WaitingRoomEntryDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="service_id">Service</Label>
+              <Label htmlFor="service_id">{t("web.provider.waitingRoomEntryDialog.service")}</Label>
               <Select
                 value={formData.service_id || RADIX_SELECT_ANY}
                 onValueChange={(value) => {
@@ -195,10 +197,10 @@ export function WaitingRoomEntryDialog({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select service" />
+                  <SelectValue placeholder={t("web.provider.waitingRoomEntryDialog.selectService")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_ANY}>Any service</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>{t("web.provider.waitingRoomEntryDialog.anyService")}</SelectItem>
                   {services.map((service) => (
                     <SelectItem key={service.id} value={service.id}>
                       {service.name}
@@ -208,7 +210,7 @@ export function WaitingRoomEntryDialog({
               </Select>
             </div>
             <div>
-              <Label htmlFor="team_member_id">Preferred Team Member</Label>
+              <Label htmlFor="team_member_id">{t("web.provider.waitingRoomEntryDialog.preferredTeamMember")}</Label>
               <Select
                 value={formData.team_member_id || RADIX_SELECT_ANY}
                 onValueChange={(value) =>
@@ -219,10 +221,10 @@ export function WaitingRoomEntryDialog({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Any team member" />
+                  <SelectValue placeholder={t("web.provider.waitingRoomEntryDialog.anyTeamMember")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_ANY}>Any team member</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>{t("web.provider.waitingRoomEntryDialog.anyTeamMember")}</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
@@ -234,7 +236,7 @@ export function WaitingRoomEntryDialog({
           </div>
 
           <div>
-            <Label htmlFor="estimated_wait_time">Estimated Wait Time (minutes)</Label>
+            <Label htmlFor="estimated_wait_time">{t("web.provider.waitingRoomEntryDialog.estimatedWait")}</Label>
             <Input
               id="estimated_wait_time"
               type="number"
@@ -246,12 +248,12 @@ export function WaitingRoomEntryDialog({
                   estimated_wait_time: parseInt(e.target.value) || undefined,
                 })
               }
-              placeholder="Optional"
+              placeholder={t("web.provider.waitingRoomEntryDialog.optional")}
             />
           </div>
 
           <div>
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes">{t("web.provider.waitingRoomEntryDialog.notes")}</Label>
             <Textarea
               id="notes"
               value={formData.notes}
@@ -267,14 +269,14 @@ export function WaitingRoomEntryDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.waitingRoomEntryDialog.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : entry ? "Update" : "Add to Waiting Room"}
+              {isLoading ? t("web.provider.waitingRoomEntryDialog.saving") : entry ? t("web.provider.waitingRoomEntryDialog.update") : t("web.provider.waitingRoomEntryDialog.addCta")}
             </Button>
           </DialogFooter>
         </form>

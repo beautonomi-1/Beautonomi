@@ -72,6 +72,7 @@ import {
 } from "@/stores/time-block-sidebar-store";
 import type { TeamMember, TimeBlock } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
+import { useTranslation } from "@beautonomi/i18n";
 
 // ============================================================================
 // PROPS
@@ -110,14 +111,23 @@ const BlockTypeIcon: React.FC<{ type: BlockType; className?: string }> = ({ type
 // ============================================================================
 
 const WEEKDAYS = [
-  { value: 0, label: "Sun" },
-  { value: 1, label: "Mon" },
-  { value: 2, label: "Tue" },
-  { value: 3, label: "Wed" },
-  { value: 4, label: "Thu" },
-  { value: 5, label: "Fri" },
-  { value: 6, label: "Sat" },
-];
+  { value: 0, labelKey: "weekdaySun" },
+  { value: 1, labelKey: "weekdayMon" },
+  { value: 2, labelKey: "weekdayTue" },
+  { value: 3, labelKey: "weekdayWed" },
+  { value: 4, labelKey: "weekdayThu" },
+  { value: 5, labelKey: "weekdayFri" },
+  { value: 6, labelKey: "weekdaySat" },
+] as const;
+
+const BLOCK_TYPE_LABEL_KEYS: Record<BlockType, string> = {
+  break: "typeBreak",
+  lunch: "typeLunch",
+  meeting: "typeMeeting",
+  personal: "typePersonal",
+  travel: "typeTravel",
+  custom: "typeCustom",
+};
 
 interface WeekdaySelectorProps {
   selected: number[];
@@ -125,6 +135,7 @@ interface WeekdaySelectorProps {
 }
 
 const WeekdaySelector: React.FC<WeekdaySelectorProps> = ({ selected, onChange }) => {
+  const { t } = useTranslation();
   const toggleDay = (day: number) => {
     if (selected.includes(day)) {
       onChange(selected.filter(d => d !== day));
@@ -147,7 +158,7 @@ const WeekdaySelector: React.FC<WeekdaySelectorProps> = ({ selected, onChange })
               : "bg-gray-100 text-gray-600 hover:bg-gray-200"
           )}
         >
-          {day.label}
+          {t(`web.calendar.timeBlockSidebar.${day.labelKey}`)}
         </button>
       ))}
     </div>
@@ -168,6 +179,7 @@ export function TimeBlockSidebar({
   onTimeBlockDeleted,
   onRefresh,
 }: TimeBlockSidebarProps) {
+  const { t } = useTranslation();
   // Use either prop name for callbacks
   const handleBlockCreated = onBlockCreated || onTimeBlockCreated;
   const handleBlockUpdated = onBlockUpdated || onTimeBlockUpdated;
@@ -199,22 +211,22 @@ export function TimeBlockSidebar({
 
     // Validate
     if (!draft.staffId) {
-      toast.error("Please select a team member");
+      toast.error(t("web.calendar.timeBlockSidebar.selectTeamMember"));
       return;
     }
     if (!draft.startTime || !draft.endTime) {
-      toast.error("Please select start and end times");
+      toast.error(t("web.calendar.timeBlockSidebar.selectTimes"));
       return;
     }
     if (draft.startTime >= draft.endTime) {
-      toast.error("End time must be after start time");
+      toast.error(t("web.calendar.timeBlockSidebar.endAfterStart"));
       return;
     }
 
     setBlockSaving(true);
     try {
       const blockData: Partial<TimeBlock> = {
-        name: draft.name || BLOCK_TYPE_CONFIG[draft.blockType].label,
+        name: draft.name || t(`web.calendar.timeBlockSidebar.${BLOCK_TYPE_LABEL_KEYS[draft.blockType]}`),
         description: draft.description,
         team_member_id: draft.staffId || (null as any),
         team_member_name: draft.staffName || teamMembers.find(m => m.id === draft.staffId)?.name,
@@ -232,12 +244,12 @@ export function TimeBlockSidebar({
 
       if (mode === "create") {
         const created = await providerApi.createTimeBlock(blockData);
-        toast.success("Time block created");
+        toast.success(t("web.calendar.timeBlockSidebar.created"));
         handleBlockCreated?.(created);
         closeBlockSidebar();
       } else if (mode === "edit" && selectedBlock) {
         const updated = await providerApi.updateTimeBlock(selectedBlock.id, blockData);
-        toast.success("Time block updated");
+        toast.success(t("web.calendar.timeBlockSidebar.updated"));
         handleBlockUpdated?.(updated);
         closeBlockSidebar();
       }
@@ -245,7 +257,7 @@ export function TimeBlockSidebar({
       onRefresh?.();
     } catch (error) {
       console.error("Failed to save time block:", error);
-      toast.error("Failed to save time block");
+      toast.error(t("web.calendar.timeBlockSidebar.saveFailed"));
     } finally {
       setBlockSaving(false);
     }
@@ -257,13 +269,13 @@ export function TimeBlockSidebar({
     setBlockSaving(true);
     try {
       await providerApi.deleteTimeBlock(selectedBlock.id);
-      toast.success("Time block deleted");
+      toast.success(t("web.calendar.timeBlockSidebar.deleted"));
       handleBlockDeleted?.(selectedBlock.id);
       closeBlockSidebar();
       onRefresh?.();
     } catch (error) {
       console.error("Failed to delete time block:", error);
-      toast.error("Failed to delete time block");
+      toast.error(t("web.calendar.timeBlockSidebar.deleteFailed"));
     } finally {
       setBlockSaving(false);
       setShowDeleteDialog(false);
@@ -279,7 +291,7 @@ export function TimeBlockSidebar({
     const config = BLOCK_TYPE_CONFIG[blockType];
 
     return (
-      <div className="w-full sm:w-[380px] sm:max-w-[380px] flex flex-col flex-shrink-0 bg-white border-l border-gray-200 shadow-lg h-full overflow-x-hidden overflow-y-auto box-border">
+      <div className="w-full sm:w-[380px] sm:max-w-[380px] flex flex-col flex-shrink-0 bg-white border-s border-gray-200 shadow-lg h-full overflow-x-hidden overflow-y-auto box-border">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-white flex-shrink-0 min-w-0">
           <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -292,8 +304,8 @@ export function TimeBlockSidebar({
               </span>
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">{selectedBlock.name || "Time Block"}</h2>
-              <p className="text-xs text-gray-500">{config.label}</p>
+              <h2 className="font-semibold text-gray-900">{selectedBlock.name || t("web.calendar.timeBlockSidebar.timeBlockFallback")}</h2>
+              <p className="text-xs text-gray-500">{t(`web.calendar.timeBlockSidebar.${BLOCK_TYPE_LABEL_KEYS[blockType]}`)}</p>
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
@@ -307,7 +319,7 @@ export function TimeBlockSidebar({
             {/* Date & Time */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Date & Time
+                {t("web.calendar.timeBlockSidebar.dateTime")}
               </Label>
               <div className="flex items-center gap-2 text-sm">
                 <CalendarIcon className="w-4 h-4 text-gray-400" />
@@ -323,7 +335,7 @@ export function TimeBlockSidebar({
             {selectedBlock.team_member_name && (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Staff
+                  {t("web.calendar.timeBlockSidebar.staff")}
                 </Label>
                 <div className="flex items-center gap-2 text-sm">
                   <User className="w-4 h-4 text-gray-400" />
@@ -336,15 +348,16 @@ export function TimeBlockSidebar({
             {selectedBlock.is_recurring && selectedBlock.recurrence_rule && (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Repeating
+                  {t("web.calendar.timeBlockSidebar.repeating")}
                 </Label>
                 <div className="flex items-center gap-2 text-sm">
                   <Repeat className="w-4 h-4 text-gray-400" />
                   <span>
-                    Weekly on{" "}
-                    {selectedBlock.recurrence_rule.days_of_week
-                      ?.map(d => WEEKDAYS[d].label)
-                      .join(", ")}
+                    {t("web.calendar.timeBlockSidebar.weeklyOn", {
+                      days: selectedBlock.recurrence_rule.days_of_week
+                        ?.map((d) => t(`web.calendar.timeBlockSidebar.${WEEKDAYS[d]?.labelKey ?? "weekdaySun"}`))
+                        .join(", "),
+                    })}
                   </span>
                 </div>
               </div>
@@ -354,7 +367,7 @@ export function TimeBlockSidebar({
             {selectedBlock.description && (
               <div className="space-y-2">
                 <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Notes
+                  {t("web.calendar.timeBlockSidebar.notes")}
                 </Label>
                 <p className="text-sm text-gray-600">{selectedBlock.description}</p>
               </div>
@@ -369,8 +382,8 @@ export function TimeBlockSidebar({
             className="flex-1"
             onClick={() => switchBlockToEditMode()}
           >
-            <Edit3 className="w-4 h-4 mr-2" />
-            Edit
+            <Edit3 className="w-4 h-4 me-2" />
+            {t("web.calendar.timeBlockSidebar.edit")}
           </Button>
           <Button
             variant="outline"
@@ -385,18 +398,18 @@ export function TimeBlockSidebar({
         <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Time Block?</AlertDialogTitle>
+              <AlertDialogTitle>{t("web.calendar.timeBlockSidebar.deleteTitle")}</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete this time block. This action cannot be undone.
+                {t("web.calendar.timeBlockSidebar.deleteDescription")}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("web.calendar.timeBlockSidebar.cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteBlock}
                 className="bg-red-600 hover:bg-red-700"
               >
-                Delete
+                {t("web.calendar.timeBlockSidebar.delete")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -411,7 +424,7 @@ export function TimeBlockSidebar({
 
   if ((mode === "create" || mode === "edit") && draft) {
     return (
-      <div className="w-full sm:w-[380px] sm:max-w-[380px] flex flex-col flex-shrink-0 bg-white border-l border-gray-200 shadow-lg h-full overflow-x-hidden overflow-y-auto box-border">
+      <div className="w-full sm:w-[380px] sm:max-w-[380px] flex flex-col flex-shrink-0 bg-white border-s border-gray-200 shadow-lg h-full overflow-x-hidden overflow-y-auto box-border">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b bg-white flex-shrink-0 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -426,7 +439,7 @@ export function TimeBlockSidebar({
               </Button>
             )}
             <h2 className="font-semibold text-gray-900">
-              {mode === "create" ? "New Time Block" : "Edit Time Block"}
+              {mode === "create" ? t("web.calendar.timeBlockSidebar.titleNew") : t("web.calendar.timeBlockSidebar.titleEdit")}
             </h2>
           </div>
           <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
@@ -440,7 +453,7 @@ export function TimeBlockSidebar({
             {/* Block Type */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Block Type
+                {t("web.calendar.timeBlockSidebar.blockType")}
               </Label>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(BLOCK_TYPE_CONFIG) as BlockType[]).map(type => {
@@ -469,7 +482,7 @@ export function TimeBlockSidebar({
                         "text-xs font-medium",
                         isSelected ? "text-[#FF0077]" : "text-gray-600"
                       )}>
-                        {config.label}
+                        {t(`web.calendar.timeBlockSidebar.${BLOCK_TYPE_LABEL_KEYS[type]}`)}
                       </span>
                     </button>
                   );
@@ -480,19 +493,19 @@ export function TimeBlockSidebar({
             {/* Name */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Name (optional)
+                {t("web.calendar.timeBlockSidebar.nameOptional")}
               </Label>
               <Input
                 value={draft.name || ""}
                 onChange={(e) => updateBlockDraft({ name: e.target.value })}
-                placeholder={BLOCK_TYPE_CONFIG[draft.blockType].label}
+                placeholder={t(`web.calendar.timeBlockSidebar.${BLOCK_TYPE_LABEL_KEYS[draft.blockType]}`)}
               />
             </div>
 
             {/* Staff */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Team Member
+                {t("web.calendar.timeBlockSidebar.teamMember")}
               </Label>
               <Select
                 value={draft.staffId}
@@ -502,7 +515,7 @@ export function TimeBlockSidebar({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select team member" />
+                  <SelectValue placeholder={t("web.calendar.timeBlockSidebar.selectTeamMemberPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {teamMembers.map(member => (
@@ -517,18 +530,18 @@ export function TimeBlockSidebar({
             {/* Date */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Date
+                {t("web.calendar.timeBlockSidebar.date")}
               </Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal"
+                    className="w-full justify-start text-start font-normal"
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    <CalendarIcon className="me-2 h-4 w-4" />
                     {draft.date
                       ? format(new Date(draft.date), "PPP")
-                      : "Select date"}
+                      : t("web.calendar.timeBlockSidebar.selectDate")}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
@@ -549,7 +562,7 @@ export function TimeBlockSidebar({
             {/* Time */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Time
+                {t("web.calendar.timeBlockSidebar.time")}
               </Label>
               <div className="flex gap-2 items-center">
                 <Input
@@ -558,7 +571,7 @@ export function TimeBlockSidebar({
                   onChange={(e) => updateBlockDraft({ startTime: e.target.value })}
                   className="flex-1"
                 />
-                <span className="text-gray-400">to</span>
+                <span className="text-gray-400">{t("web.calendar.timeBlockSidebar.to")}</span>
                 <Input
                   type="time"
                   value={draft.endTime}
@@ -572,7 +585,7 @@ export function TimeBlockSidebar({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Repeat Weekly
+                  {t("web.calendar.timeBlockSidebar.repeatWeekly")}
                 </Label>
                 <Switch
                   checked={draft.isRepeating}
@@ -581,24 +594,24 @@ export function TimeBlockSidebar({
               </div>
               
               {draft.isRepeating && (
-                <div className="space-y-3 pl-0">
+                <div className="space-y-3 ps-0">
                   <WeekdaySelector
                     selected={draft.repeatDays || []}
                     onChange={(days) => updateBlockDraft({ repeatDays: days })}
                   />
                   
                   <div className="space-y-2">
-                    <Label className="text-xs text-gray-500">Repeat until (optional)</Label>
+                    <Label className="text-xs text-gray-500">{t("web.calendar.timeBlockSidebar.repeatUntil")}</Label>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
-                          className="w-full justify-start text-left font-normal"
+                          className="w-full justify-start text-start font-normal"
                         >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          <CalendarIcon className="me-2 h-4 w-4" />
                           {draft.repeatUntil
                             ? format(new Date(draft.repeatUntil), "PPP")
-                            : "No end date"}
+                            : t("web.calendar.timeBlockSidebar.noEndDate")}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
@@ -622,12 +635,12 @@ export function TimeBlockSidebar({
             {/* Description */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Notes (optional)
+                {t("web.calendar.timeBlockSidebar.notesOptional")}
               </Label>
               <Textarea
                 value={draft.description || ""}
                 onChange={(e) => updateBlockDraft({ description: e.target.value })}
-                placeholder="Add any notes..."
+                placeholder={t("web.calendar.timeBlockSidebar.notesPlaceholder")}
                 rows={3}
               />
             </div>
@@ -637,7 +650,7 @@ export function TimeBlockSidebar({
         {/* Footer */}
         <div className="p-4 border-t bg-white flex-shrink-0 flex gap-2">
           <Button variant="outline" onClick={handleClose} className="flex-1">
-            Cancel
+            {t("web.calendar.timeBlockSidebar.cancel")}
           </Button>
           <Button
             onClick={handleSave}
@@ -645,11 +658,11 @@ export function TimeBlockSidebar({
             className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
           >
             {isSaving ? (
-              "Saving..."
+              t("web.calendar.timeBlockSidebar.saving")
             ) : (
               <>
-                <Save className="w-4 h-4 mr-2" />
-                {mode === "create" ? "Create Block" : "Save Changes"}
+                <Save className="w-4 h-4 me-2" />
+                {mode === "create" ? t("web.calendar.timeBlockSidebar.createBlock") : t("web.calendar.timeBlockSidebar.saveChanges")}
               </>
             )}
           </Button>

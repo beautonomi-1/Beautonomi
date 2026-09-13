@@ -1,43 +1,44 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ChevronRight, MessageSquare, Megaphone, Star } from "lucide-react";
 
-const ITEMS = [
-  {
-    icon: Star,
-    label: "Reviews",
-    subtitle: "Respond to customer feedback",
-    href: "/provider/reviews",
-  },
-  {
-    icon: MessageSquare,
-    label: "Messages",
-    subtitle: "Client conversations & custom offers",
-    href: "/provider/messaging",
-  },
-  {
-    icon: Megaphone,
-    label: "Marketing campaigns",
-    subtitle: "Email, SMS & WhatsApp campaigns",
-    href: "/provider/marketing/campaigns",
-  },
-];
-
 export default function EngagementHubPage() {
+  const { t } = useTranslation();
+  const items = [
+    {
+      icon: Star,
+      label: t("web.provider.sidebar.items.reviews"),
+      subtitle: t("web.provider.pages.engagement.reviewsDesc"),
+      href: "/provider/reviews",
+    },
+    {
+      icon: MessageSquare,
+      label: t("web.provider.sidebar.items.messages"),
+      subtitle: t("web.provider.pages.engagement.messagesDesc"),
+      href: "/provider/messaging",
+    },
+    {
+      icon: Megaphone,
+      label: t("web.provider.pages.engagement.campaigns"),
+      subtitle: t("web.provider.pages.engagement.campaignsDesc"),
+      href: "/provider/marketing/campaigns",
+    },
+  ];
   return (
     <div>
       <PageHeader
-        title="Engagement"
-        subtitle="Reviews, messaging & marketing"
+title={t("web.provider.pages.engagement.title")}
+subtitle={t("web.provider.pages.engagement.subtitle")}
         breadcrumbs={[
-          { label: "More", href: "/provider/more" },
-          { label: "Engagement" },
+{ label: t("web.provider.moreHub.title"), href: "/provider/more" },
+{ label: t("web.provider.pages.engagement.title") },
         ]}
       />
       <div className="mt-6 space-y-2">
-        {ITEMS.map((item) => {
+{items.map((item) => {
           const Icon = item.icon;
           return (
             <Link

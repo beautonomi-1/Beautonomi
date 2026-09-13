@@ -7,6 +7,7 @@ import { useState, useCallback, useEffect } from "react";
 import { View, Text, TouchableOpacity, DeviceEventEmitter } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -21,6 +22,7 @@ import {
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface SetupStep {
   id: string;
@@ -46,6 +48,12 @@ interface SetupStatus {
 }
 
 export default function SetupStatusScreen() {
+  const { t } = useTranslation();
+  const ss = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.setupStatus.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data: status, loading, refresh } =
@@ -94,7 +102,7 @@ export default function SetupStatusScreen() {
   if (loading && !status) {
     return (
       <ScreenContainer scrollable={false}>
-        <LoadingState message="Loading setup status…" />
+        <LoadingState message={ss("loading")} />
       </ScreenContainer>
     );
   }
@@ -107,9 +115,9 @@ export default function SetupStatusScreen() {
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
       <ScreenHeader
-        title="Setup checklist"
+        title={ss("title")}
         showBack
-        subtitle="Steps to start accepting bookings"
+        subtitle={ss("subtitle")}
       />
 
       {status && (
@@ -125,16 +133,19 @@ export default function SetupStatusScreen() {
             )}
           >
             <View style={twStyle("flex-row items-center justify-between mb-3")}>
-              <View style={twStyle("flex-1 pr-4")}>
+              <View style={twStyle("flex-1 pe-4")}>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
                   {status.isComplete
-                    ? "You're ready to go! 🎉"
-                    : "Complete your setup"}
+                    ? ss("readyTitle")
+                    : ss("completeTitle")}
                 </Text>
                 <Text style={twStyle("mt-1 text-sm text-gray-500")}>
                   {status.isComplete
-                    ? "Your profile is live. You can now accept bookings."
-                    : `${completedRequired} of ${requiredSteps.length} required steps done`}
+                    ? ss("readyBody")
+                    : ss("requiredProgress", {
+                        completed: completedRequired,
+                        total: requiredSteps.length,
+                      })}
                 </Text>
               </View>
               <View
@@ -194,7 +205,7 @@ export default function SetupStatusScreen() {
                   "mb-3 flex-row items-center gap-3 rounded-2xl border border-primary/30 bg-primary p-4",
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Continue setup"
+                accessibilityLabel={ss("continueSetup")}
               >
                 <View
                   style={twStyle(
@@ -205,13 +216,13 @@ export default function SetupStatusScreen() {
                 </View>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-white")}>
-                    Continue setup
+                    {ss("continueSetup")}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-white/80")}>
-                    Go to your next incomplete step
+                    {ss("continueSetupHint")}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#fff" />
+                <DirectionalIcon name="chevron-forward" size={16} color="#fff" />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -223,7 +234,7 @@ export default function SetupStatusScreen() {
                   "mb-5 flex-row items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4",
                 )}
                 accessibilityRole="button"
-                accessibilityLabel="Open quick setup wizard"
+                accessibilityLabel={ss("wizardA11y")}
               >
                 <View
                   style={twStyle(
@@ -238,13 +249,13 @@ export default function SetupStatusScreen() {
                 </View>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                    Or use the full guided wizard
+                    {ss("wizardTitle")}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    Complete everything in one guided flow
+                    {ss("wizardHint")}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                <DirectionalIcon name="chevron-forward" size={16} color="#9ca3af" />
               </TouchableOpacity>
             </>
           )}
@@ -257,7 +268,7 @@ export default function SetupStatusScreen() {
                   "mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400"
                 )}
               >
-                Required
+                {ss("required")}
               </Text>
               <View style={twStyle("gap-2 mb-5")}>
                 {requiredSteps.map((step) => (
@@ -279,7 +290,7 @@ export default function SetupStatusScreen() {
                   "mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400"
                 )}
               >
-                Boost your profile
+                {ss("boostProfile")}
               </Text>
               <View style={twStyle("gap-2")}>
                 {optionalSteps.map((step) => (
@@ -303,7 +314,7 @@ export default function SetupStatusScreen() {
           )}
         >
           <Text style={twStyle("text-sm text-gray-500 text-center")}>
-            No setup steps found. Complete onboarding first.
+            {ss("emptySteps")}
           </Text>
         </View>
       )}
@@ -343,7 +354,7 @@ function StepRow({
       <View
         style={[
           twStyle(
-            "h-9 w-9 items-center justify-center rounded-full mr-3"
+            "h-9 w-9 items-center justify-center rounded-full me-3"
           ),
           {
             backgroundColor: step.completed
@@ -388,7 +399,7 @@ function StepRow({
         </Text>
       </View>
 
-      <Ionicons name="chevron-forward" size={14} color="#d1d5db" />
+      <DirectionalIcon name="chevron-forward" size={14} color="#d1d5db" />
     </TouchableOpacity>
   );
 }

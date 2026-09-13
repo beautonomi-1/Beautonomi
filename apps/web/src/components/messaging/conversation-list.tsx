@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import { useState } from "react";
 import { useClientMounted } from "@/hooks/use-client-mounted";
 import { Search, MessageSquare, Pin } from "lucide-react";
@@ -44,6 +46,7 @@ export default function ConversationList({
   isProviderView = false,
 }: ConversationListProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const { t } = useTranslation();
   const clientMounted = useClientMounted();
 
   const filteredConversations = sortConversationsPinFirst(
@@ -76,7 +79,7 @@ export default function ConversationList({
     if (isToday(date)) {
       return format(date, "HH:mm");
     } else if (isYesterday(date)) {
-      return "Yesterday";
+      return t("time.yesterday");
     } else {
       return format(date, "dd/MM/yy");
     }
@@ -85,8 +88,8 @@ export default function ConversationList({
   const getConversationName = (conv: Conversation) => {
     // For provider view, show customer name; for customer view, show provider name
     return isProviderView 
-      ? (conv.customer_name || conv.provider_name || "Unknown")
-      : (conv.provider_name || conv.customer_name || "Unknown");
+      ? (conv.customer_name || conv.provider_name || t("web.messagingList.unknown"))
+      : (conv.provider_name || conv.customer_name || t("web.messagingList.unknown"));
   };
 
   const getConversationAvatar = (conv: Conversation) => {
@@ -94,16 +97,16 @@ export default function ConversationList({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white border-r border-[#e9edef]">
+    <div className="flex flex-col h-full bg-white border-e border-[#e9edef]">
       {/* Search Header */}
       <div className="bg-[#f0f2f5] px-3 md:px-4 py-2.5 md:py-3 border-b border-[#e9edef] sticky top-0 z-10">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#667781] w-4 h-4 pointer-events-none" />
           <Input
-            placeholder="Search or start new chat"
+            placeholder={t("web.messagingList.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 rounded-lg bg-white border-[#e9edef] text-sm md:text-base py-5 md:py-6 focus-visible:ring-2 focus-visible:ring-[#008489]"
+            className="ps-10 rounded-lg bg-white border-[#e9edef] text-sm md:text-base py-5 md:py-6 focus-visible:ring-2 focus-visible:ring-[#008489]"
             autoComplete="off"
           />
         </div>
@@ -113,14 +116,14 @@ export default function ConversationList({
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-[#667781] text-sm">Loading conversations...</div>
+            <div className="text-[#667781] text-sm">{t("web.messagingList.loading")}</div>
           </div>
         ) : filteredConversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center">
             <MessageSquare className="w-12 h-12 text-[#667781] mb-4" />
-            <p className="text-[#667781] text-sm font-medium">No conversations</p>
+            <p className="text-[#667781] text-sm font-medium">{t("web.messagingList.emptyTitle")}</p>
             <p className="text-[#667781] text-xs mt-1">
-              {searchQuery ? "No results found" : "Your conversations will appear here"}
+              {searchQuery ? t("common.noResults") : t("web.messagingList.emptyHint")}
             </p>
           </div>
         ) : (
@@ -144,14 +147,14 @@ export default function ConversationList({
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="font-semibold text-sm md:text-base text-[#111b21] truncate flex items-center gap-1 min-w-0">
                         {conversation.is_pinned ? (
-                          <Pin className="w-3.5 h-3.5 text-primary shrink-0" aria-label="Pinned" />
+                          <Pin className="w-3.5 h-3.5 text-primary shrink-0" aria-label={t("web.messagingList.pinned")} />
                         ) : null}
                         <span className="truncate">{getConversationName(conversation)}</span>
                         {isProviderView && conversation.customer_identity_verified ? (
                           <VerifiedBadge verified iconOnly />
                         ) : null}
                       </h3>
-                      <span className="text-xs text-[#667781] flex-shrink-0 ml-2">
+                      <span className="text-xs text-[#667781] flex-shrink-0 ms-2">
                         {formatTime(conversation.last_message_at)}
                       </span>
                     </div>
@@ -160,8 +163,8 @@ export default function ConversationList({
                         {conversation.last_message_preview 
                           ? conversation.last_message_preview
                           : conversation.booking_number
-                          ? `Booking #${conversation.booking_number}`
-                          : "No messages yet"}
+                          ? t("web.messaging.whatsappChat.bookingNumber", { number: conversation.booking_number })
+                          : t("web.messaging.whatsappChat.noMessagesYet")}
                       </p>
                       {conversation.unread_count > 0 && (
                         <span className="bg-[#008489] text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] text-center flex-shrink-0">

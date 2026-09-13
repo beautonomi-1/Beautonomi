@@ -10,9 +10,12 @@ import Link from "next/link";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_BOOKING_START } from "@/lib/analytics/amplitude/types";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
+import type { PublicProviderBookingSeed } from "@/lib/data/getPublicProviderDetail";
 
 interface Props {
   providerSlug: string;
+  initialProvider?: PublicProviderBookingSeed | null;
 }
 
 /**
@@ -25,7 +28,8 @@ interface Props {
  * auto-hydrated profile). The defensive client hop below covers stale-cookie cases
  * where the server probe missed an active Supabase session.
  */
-export default function BookProviderClient({ providerSlug }: Props) {
+export default function BookProviderClient({ providerSlug, initialProvider = null }: Props) {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, isLoading: authLoading } = useAuth();
@@ -47,7 +51,18 @@ export default function BookProviderClient({ providerSlug }: Props) {
     slug: string;
     business_name: string;
     timezone?: string | null;
-  } | null>(null);
+    locations?: PublicProviderBookingSeed["locations"];
+  } | null>(() =>
+    initialProvider
+      ? {
+          id: initialProvider.id,
+          slug: initialProvider.slug,
+          business_name: initialProvider.business_name,
+          timezone: initialProvider.timezone,
+          locations: initialProvider.locations,
+        }
+      : null,
+  );
   const [onlineBookingDisabled, setOnlineBookingDisabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { track, isReady } = useAmplitude();
@@ -57,12 +72,18 @@ export default function BookProviderClient({ providerSlug }: Props) {
     if (!providerSlug) return;
     const load = async () => {
       try {
-        const provRes = await fetcher.get<{
-          data: { id: string; slug: string; business_name: string; timezone?: string | null };
-        }>(
-          `/api/public/providers/${encodeURIComponent(providerSlug)}`,
-        );
-        setProvider(provRes.data);
+        if (!initialProvider) {
+          const provRes = await fetcher.get<{
+            data: {
+              id: string;
+              slug: string;
+              business_name: string;
+              timezone?: string | null;
+              locations?: PublicProviderBookingSeed["locations"];
+            };
+          }>(`/api/public/providers/${encodeURIComponent(providerSlug)}`);
+          setProvider(provRes.data);
+        }
         try {
           await fetcher.get(`/api/public/providers/${encodeURIComponent(providerSlug)}/online-booking-settings`);
           setOnlineBookingDisabled(false);
@@ -72,11 +93,13 @@ export default function BookProviderClient({ providerSlug }: Props) {
           }
         }
       } catch (err) {
-        setError(err instanceof FetchError ? err.message : "Failed to load provider");
+        if (!initialProvider) {
+          setError(err instanceof FetchError ? err.message : t("web.book.providerClient.loadFailed"));
+        }
       }
     };
     load();
-  }, [providerSlug]);
+  }, [providerSlug, initialProvider, t]);
 
   useEffect(() => {
     if (provider && isReady && !bookingStartTracked.current) {
@@ -99,7 +122,7 @@ export default function BookProviderClient({ providerSlug }: Props) {
   if (shouldRedirectToLegacyFlow) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <LoadingTimeout loadingMessage="Loading your booking..." />
+        <LoadingTimeout loadingMessage={t("web.book.providerClient.loadingYourBooking")} />
       </div>
     );
   }
@@ -107,7 +130,7 @@ export default function BookProviderClient({ providerSlug }: Props) {
   if (!provider) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <LoadingTimeout loadingMessage="Loading booking..." />
+        <LoadingTimeout loadingMessage={t("web.book.providerClient.loadingBooking")} />
       </div>
     );
   }
@@ -116,13 +139,15 @@ export default function BookProviderClient({ providerSlug }: Props) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
         <div className="max-w-md text-center space-y-4">
-          <h1 className="text-xl font-semibold">Online booking is not available</h1>
+          <h1 className="text-xl font-semibold">{t("web.book.providerClient.onlineBookingUnavailable")}</h1>
           <p className="text-muted-foreground">
-            {provider.business_name} has not enabled online booking. Please contact them directly to book.
+            {t("web.book.providerClient.onlineBookingDisabled", { name: provider.business_name })}
           </p>
-          <Button asChild variant="outline">
-            <Link href="/search">Find another provider</Link>
-          </Button>
+          {!embed ? (
+            <Button asChild variant="outline">
+              <Link href="/search">{t("web.book.providerClient.findAnotherProvider")}</Link>
+            </Button>
+          ) : null}
         </div>
       </div>
     );

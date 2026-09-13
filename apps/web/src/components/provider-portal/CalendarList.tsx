@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import type { Appointment, TeamMember } from "@/lib/provider-portal/types";
 import { cn } from "@/lib/utils";
@@ -91,6 +93,7 @@ export function CalendarList({
   startHour: _startHour = 8,
   endHour: _endHour = 20,
 }: CalendarListProps) {
+  const { t } = useTranslation();
   const getDatesForView = () => {
     const dates: Date[] = [];
     const start = new Date(selectedDate);
@@ -170,7 +173,7 @@ export function CalendarList({
                 <div>
                   <h3 className="text-base font-semibold text-gray-900">
                     {isToday(date)
-                      ? "Today"
+                      ? t("time.today")
                       : format(date, "EEEE, MMMM d")}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
@@ -178,17 +181,12 @@ export function CalendarList({
                   </p>
                 </div>
                 <div className="text-sm text-gray-500">
-                  {byTeamMember.reduce(
-                    (sum, group) => sum + group.appointments.length,
-                    0
-                  )}{" "}
-                  appointment
-                  {byTeamMember.reduce(
-                    (sum, group) => sum + group.appointments.length,
-                    0
-                  ) !== 1
-                    ? "s"
-                    : ""}
+                  {t("web.provider.printSchedule.appointmentCount", {
+                    count: byTeamMember.reduce(
+                      (sum, group) => sum + group.appointments.length,
+                      0
+                    ),
+                  })}
                 </div>
               </div>
             </div>
@@ -196,7 +194,7 @@ export function CalendarList({
             {/* Appointments List */}
             {!hasAppointments ? (
               <div className="px-4 py-8 text-center">
-                <p className="text-sm text-gray-500">No appointments scheduled</p>
+                <p className="text-sm text-gray-500">{t("web.provider.calendarList.noAppointmentsScheduled")}</p>
                 <button
                   onClick={() => {
                     const defaultMemberId = teamMembers[0]?.id || "";
@@ -204,7 +202,7 @@ export function CalendarList({
                   }}
                   className="mt-2 text-sm text-primary hover:underline"
                 >
-                  Add appointment
+                  {t("web.provider.calendarMobile.addAppointment")}
                 </button>
               </div>
             ) : (
@@ -228,7 +226,7 @@ export function CalendarList({
                       </div>
 
                       {/* Appointments for this team member */}
-                      <div className="space-y-2 ml-10">
+                      <div className="space-y-2 ms-10">
                         {memberAppts.map((apt) => {
                           const style = getAppointmentStyle(apt.status);
                           const StatusIcon = style.icon;
@@ -246,7 +244,7 @@ export function CalendarList({
                               key={apt.id}
                               onClick={() => onAppointmentClick?.(apt)}
                               className={cn(
-                                "w-full text-left rounded-lg p-3 border-2 transition-all",
+                                "w-full text-start rounded-lg p-3 border-2 transition-all",
                                 "active:scale-[0.98] touch-manipulation",
                                 "min-h-[80px] flex flex-col gap-1.5",
                                 style.bg,

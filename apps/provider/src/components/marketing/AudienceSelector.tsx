@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { Colors } from "@/constants/colors";
@@ -36,11 +37,11 @@ interface ProviderClient {
 type ClientsResponse = ProviderClient[] | { data?: ProviderClient[] };
 
 const LAST_BOOKING_OPTIONS = [
-  { label: "Any time", value: undefined as number | undefined },
-  { label: "7 days", value: 7 },
-  { label: "30 days", value: 30 },
-  { label: "90 days", value: 90 },
-  { label: "6 months", value: 180 },
+  { labelKey: "lastAnyTime", value: undefined as number | undefined },
+  { labelKey: "last7Days", value: 7 },
+  { labelKey: "last30Days", value: 30 },
+  { labelKey: "last90Days", value: 90 },
+  { labelKey: "last6Months", value: 180 },
 ];
 
 export interface AudienceValue {
@@ -84,6 +85,12 @@ function NumberField({
 }
 
 export function AudienceSelector({ value, onChange }: Props) {
+  const { t } = useTranslation();
+  const as = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.audienceSelector.${key}`, opts) as string,
+    [t],
+  );
   const { recipientType, segmentCriteria, recipientIds } = value;
   const [search, setSearch] = useState("");
   const clientsApi = useApi<ClientsResponse>("/api/provider/clients?limit=200", {
@@ -128,15 +135,15 @@ export function AudienceSelector({ value, onChange }: Props) {
     [onChange, value, recipientIds],
   );
 
-  const TYPE_OPTIONS: { key: RecipientType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "all_clients", label: "All clients", icon: "people-outline" },
-    { key: "segment", label: "Segment", icon: "filter-outline" },
-    { key: "custom", label: "Specific", icon: "person-add-outline" },
+  const TYPE_OPTIONS: { key: RecipientType; labelKey: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+    { key: "all_clients", labelKey: "allClients", icon: "people-outline" },
+    { key: "segment", labelKey: "segment", icon: "filter-outline" },
+    { key: "custom", labelKey: "specific", icon: "person-add-outline" },
   ];
 
   return (
     <View>
-      <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Audience</Text>
+      <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{as("audience")}</Text>
       <View style={{ flexDirection: "row", gap: 8 }}>
         {TYPE_OPTIONS.map((opt) => {
           const active = recipientType === opt.key;
@@ -147,7 +154,7 @@ export function AudienceSelector({ value, onChange }: Props) {
               style={{ flex: 1, alignItems: "center", gap: 4, borderRadius: 12, borderWidth: 1, borderColor: active ? ACCENT : Colors.gray[200], backgroundColor: active ? "#eef2ff" : Colors.white, paddingVertical: 10 }}
             >
               <Ionicons name={opt.icon} size={18} color={active ? ACCENT : Colors.gray[500]} />
-              <Text style={{ fontSize: 12, fontWeight: "600", color: active ? ACCENT : Colors.gray[600] }}>{opt.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: active ? ACCENT : Colors.gray[600] }}>{as(opt.labelKey)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -155,7 +162,7 @@ export function AudienceSelector({ value, onChange }: Props) {
 
       {recipientType === "all_clients" ? (
         <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
-          Sends to every saved client with a valid contact for this channel.
+          {as("allClientsHint")}
         </Text>
       ) : null}
 
@@ -163,30 +170,30 @@ export function AudienceSelector({ value, onChange }: Props) {
         <View style={{ marginTop: 12, gap: 12 }}>
           <View style={{ flexDirection: "row", gap: 12 }}>
             <NumberField
-              label="Min bookings"
+              label={as("minBookings")}
               value={segmentCriteria.min_bookings}
               onChange={(n) => setCriteria({ min_bookings: n })}
-              placeholder="0"
+              placeholder={as("placeholderZero")}
             />
             <NumberField
-              label="Min spent (R)"
+              label={as("minSpent")}
               value={segmentCriteria.min_spent}
               onChange={(n) => setCriteria({ min_spent: n })}
-              placeholder="0"
+              placeholder={as("placeholderZero")}
             />
           </View>
           <View>
-            <Text style={{ marginBottom: 6, fontSize: 12, color: Colors.gray[500] }}>Last booking within</Text>
+            <Text style={{ marginBottom: 6, fontSize: 12, color: Colors.gray[500] }}>{as("lastBookingWithin")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
               {LAST_BOOKING_OPTIONS.map((opt) => {
                 const active = segmentCriteria.last_booking_days === opt.value;
                 return (
                   <TouchableOpacity
-                    key={opt.label}
+                    key={opt.labelKey}
                     onPress={() => setCriteria({ last_booking_days: opt.value })}
                     style={{ borderRadius: 9999, borderWidth: 1, borderColor: active ? ACCENT : Colors.gray[200], backgroundColor: active ? "#eef2ff" : Colors.white, paddingHorizontal: 12, paddingVertical: 6 }}
                   >
-                    <Text style={{ fontSize: 13, fontWeight: "500", color: active ? ACCENT : Colors.gray[600] }}>{opt.label}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "500", color: active ? ACCENT : Colors.gray[600] }}>{as(opt.labelKey)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -201,10 +208,10 @@ export function AudienceSelector({ value, onChange }: Props) {
               size={20}
               color={segmentCriteria.is_favorite ? ACCENT : Colors.gray[400]}
             />
-            <Text style={{ fontSize: 14, color: Colors.gray[700] }}>Only favourite clients</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{as("onlyFavourites")}</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-            We&apos;ll calculate the exact recipient count when you create the campaign.
+            {as("recipientCountHint")}
           </Text>
         </View>
       ) : null}
@@ -213,11 +220,11 @@ export function AudienceSelector({ value, onChange }: Props) {
         <View style={{ marginTop: 12 }}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-              {recipientIds.length} selected
+              {as("selectedCount", { count: recipientIds.length })}
             </Text>
             {recipientIds.length > 0 ? (
               <TouchableOpacity onPress={() => onChange({ ...value, recipientIds: [] })}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: ACCENT }}>Clear</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: ACCENT }}>{as("clear")}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -226,7 +233,7 @@ export function AudienceSelector({ value, onChange }: Props) {
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search clients"
+              placeholder={as("searchClients")}
               placeholderTextColor="#9ca3af"
               style={{ flex: 1, paddingHorizontal: 8, paddingVertical: 8, fontSize: 15, color: Colors.gray[900] }}
             />
@@ -239,7 +246,7 @@ export function AudienceSelector({ value, onChange }: Props) {
             ) : filtered.length === 0 ? (
               <View style={{ paddingVertical: 24, alignItems: "center" }}>
                 <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
-                  {search ? "No clients match your search" : "No clients found"}
+                  {search ? as("noMatch") : as("noClients")}
                 </Text>
               </View>
             ) : (
@@ -259,10 +266,10 @@ export function AudienceSelector({ value, onChange }: Props) {
                       />
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
-                          {c.customer?.full_name || "Client"}
+                          {c.customer?.full_name || as("clientFallback")}
                         </Text>
                         <Text style={{ fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>
-                          {c.customer?.email || c.customer?.phone || "No contact"}
+                          {c.customer?.email || c.customer?.phone || as("noContact")}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -272,7 +279,7 @@ export function AudienceSelector({ value, onChange }: Props) {
             )}
           </View>
           {clientsApi.error ? (
-            <Text style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>Couldn&apos;t load clients. Pull to refresh and try again.</Text>
+            <Text style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{as("loadFailed")}</Text>
           ) : null}
         </View>
       ) : null}

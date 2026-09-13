@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -26,10 +27,10 @@ import type {
 type PeriodChip = "today" | "week" | "month";
 type PeriodApiKey = "today" | "this_week" | "this_month";
 
-const PERIOD_OPTIONS: { label: string; value: PeriodChip }[] = [
-  { label: "Today", value: "today" },
-  { label: "This week", value: "week" },
-  { label: "This month", value: "month" },
+const PERIOD_OPTIONS: { value: PeriodChip }[] = [
+  { value: "today" },
+  { value: "week" },
+  { value: "month" },
 ];
 
 function periodApiKey(chip: PeriodChip): PeriodApiKey {
@@ -38,10 +39,16 @@ function periodApiKey(chip: PeriodChip): PeriodApiKey {
   return "today";
 }
 
-function periodLabel(chip: PeriodChip): string {
-  if (chip === "week") return "This week";
-  if (chip === "month") return "This month";
-  return "Today";
+function periodChipLabel(chip: PeriodChip, t: (key: string) => string): string {
+  if (chip === "week") return t("web.provider.dashboard.insights.periodWeek");
+  if (chip === "month") return t("web.provider.dashboard.insights.periodMonth");
+  return t("web.provider.dashboard.insights.periodToday");
+}
+
+function periodTitleLabel(chip: PeriodChip, t: (key: string) => string): string {
+  if (chip === "week") return t("web.provider.dashboard.insights.periodTitleWeek");
+  if (chip === "month") return t("web.provider.dashboard.insights.periodTitleMonth");
+  return t("web.provider.dashboard.insights.periodTitleToday");
 }
 
 function legacyPeriodSlice(stats: ProviderDashboardStats, chip: PeriodChip): DashboardPeriodSlice {
@@ -91,14 +98,15 @@ function legacyPeriodSlice(stats: ProviderDashboardStats, chip: PeriodChip): Das
 }
 
 function GrowthBadge({ pct }: { pct: number }) {
-  if (pct === 0) return <span className="text-xs text-gray-500">vs prior period</span>;
+  const { t } = useTranslation();
+  if (pct === 0) return <span className="text-xs text-gray-500">{t("web.provider.reports.common.vsPriorPeriod")}</span>;
   const up = pct > 0;
   const Icon = up ? TrendingUp : TrendingDown;
   return (
     <span className={`inline-flex items-center gap-1 text-xs font-medium ${up ? "text-green-600" : "text-red-600"}`}>
       <Icon className="h-3.5 w-3.5" />
       {up ? "+" : ""}
-      {pct.toFixed(0)}% vs prior
+      {t("web.provider.dashboard.insights.vsPrior", { pct: pct.toFixed(0) })}
     </span>
   );
 }
@@ -110,6 +118,7 @@ export function DashboardInsightsPanel({
   stats: ProviderDashboardStats;
   tenantCurrency: string;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const [periodChip, setPeriodChip] = useState<PeriodChip>("today");
@@ -122,7 +131,7 @@ export function DashboardInsightsPanel({
   const activeComparison: DashboardPeriodComparison | null =
     stats.period_comparison?.[periodKey] ?? null;
   const insights = stats.insights;
-  const periodTitle = periodLabel(periodChip).toLowerCase();
+  const periodTitle = periodTitleLabel(periodChip, t);
 
   const channelTotal =
     (activePeriod.channel_mix?.online ?? 0) +
@@ -139,10 +148,10 @@ export function DashboardInsightsPanel({
       {stats.booking_eligibility?.can_accept_online_bookings === false && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
           <div>
-            <p className="text-sm font-semibold text-amber-900">Online bookings paused</p>
+            <p className="text-sm font-semibold text-amber-900">{t("web.provider.dashboard.insights.onlinePaused")}</p>
             <p className="mt-0.5 text-sm text-amber-700">
               {stats.booking_eligibility.booking_limit_message ??
-                "You've reached your monthly online booking limit on your current plan. Upgrade for unlimited bookings."}
+t("web.provider.dashboard.insights.onlinePausedDefault")}
             </p>
           </div>
           <Button
@@ -151,7 +160,7 @@ export function DashboardInsightsPanel({
             className="border-amber-300 bg-white shrink-0"
             onClick={() => router.push("/provider/subscription")}
           >
-            View plans
+            {t("web.provider.settings.pages.calendar-integration.viewPlans")}
           </Button>
         </div>
       )}
@@ -169,31 +178,31 @@ export function DashboardInsightsPanel({
             }`}
             aria-pressed={periodChip === opt.value}
           >
-            {opt.label}
+            {periodChipLabel(opt.value, t)}
           </button>
         ))}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-lg border bg-white p-4" aria-label={`Revenue earned ${periodTitle}`}>
-          <p className="text-xs text-gray-500 mb-1">Revenue earned ({periodTitle})</p>
+        <div className="rounded-lg border bg-white p-4" aria-label={t("web.provider.dashboard.insights.revenueA11y", { period: periodTitle })}>
+          <p className="text-xs text-gray-500 mb-1">{t("web.provider.dashboard.insights.revenueEarned", { period: periodTitle })}</p>
           <p className="text-2xl font-semibold">{formatCurrency(activePeriod.revenue, tenantCurrency)}</p>
           {activeComparison ? <GrowthBadge pct={activeComparison.revenue_growth_pct} /> : null}
-          <p className="text-xs text-gray-400 mt-1">Payment date basis</p>
+          <p className="text-xs text-gray-400 mt-1">{t("web.provider.dashboard.insights.paymentDateBasis")}</p>
         </div>
-        <div className="rounded-lg border bg-white p-4" aria-label={`Appointments ${periodTitle}`}>
-          <p className="text-xs text-gray-500 mb-1">Appointments ({periodTitle})</p>
+        <div className="rounded-lg border bg-white p-4" aria-label={t("web.provider.dashboard.insights.appointmentsA11y", { period: periodTitle })}>
+          <p className="text-xs text-gray-500 mb-1">{t("web.provider.dashboard.insights.appointments", { period: periodTitle })}</p>
           <p className="text-2xl font-semibold">{activePeriod.appointments}</p>
           {activeComparison ? <GrowthBadge pct={activeComparison.appointments_growth_pct} /> : null}
-          <p className="text-xs text-gray-400 mt-1">Scheduled date basis</p>
+          <p className="text-xs text-gray-400 mt-1">{t("web.provider.dashboard.insights.scheduledDateBasis")}</p>
         </div>
-        <div className="rounded-lg border bg-white p-4" aria-label={`Retail sales ${periodTitle}`}>
-          <p className="text-xs text-gray-500 mb-1">Retail sales ({periodTitle})</p>
+        <div className="rounded-lg border bg-white p-4" aria-label={t("web.provider.dashboard.insights.retailA11y", { period: periodTitle })}>
+          <p className="text-xs text-gray-500 mb-1">{t("web.provider.dashboard.insights.retailSales", { period: periodTitle })}</p>
           <p className="text-2xl font-semibold">
             {formatCurrency(activePeriod.retail_sales, tenantCurrency)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {activePeriod.retail_sales_count} sale{activePeriod.retail_sales_count === 1 ? "" : "s"}
+{t("web.provider.dashboard.insights.saleCount", { count: activePeriod.retail_sales_count })}
           </p>
         </div>
       </div>
@@ -201,20 +210,20 @@ export function DashboardInsightsPanel({
       {channelTotal > 0 ? (
         <div className="rounded-lg border bg-white p-4 sm:p-5">
           <h3 className="text-sm font-semibold text-gray-900 mb-1">
-            Appointments by channel ({periodTitle})
+{t("web.provider.dashboard.insights.appointmentsByChannel", { period: periodTitle })}
           </h3>
           <p className="text-xs text-gray-400 mb-3">
-            Appointment counts — not revenue. Channel earnings are in Reports → Bookings.
+{t("web.provider.dashboard.insights.channelHint")}
           </p>
           <div className="grid grid-cols-3 gap-3">
             {(
               [
-                ["Online", activePeriod.channel_mix?.online ?? 0, "text-blue-600"],
-                ["Walk-in", activePeriod.channel_mix?.walk_in ?? 0, "text-amber-600"],
-                ["Provider", activePeriod.channel_mix?.provider ?? 0, "text-violet-600"],
+                [t("web.provider.dashboard.insights.online"), activePeriod.channel_mix?.online ?? 0, "text-blue-600", "online"],
+                [t("web.provider.dashboard.insights.walkIn"), activePeriod.channel_mix?.walk_in ?? 0, "text-amber-600", "walk-in"],
+                [t("web.provider.dashboard.insights.provider"), activePeriod.channel_mix?.provider ?? 0, "text-violet-600", "provider"],
               ] as const
-            ).map(([label, count, color]) => (
-              <div key={label} className="text-center rounded-lg border border-gray-100 p-3" aria-label={`${count} ${label} bookings`}>
+            ).map(([label, count, color, key]) => (
+              <div key={key} className="text-center rounded-lg border border-gray-100 p-3" aria-label={t("web.provider.dashboard.insights.channelBookingsA11y", { count, label })}>
                 <p className={`text-xl font-bold ${color}`}>{count}</p>
                 <p className="text-xs text-gray-500 mt-1">{label}</p>
               </div>
@@ -228,46 +237,46 @@ export function DashboardInsightsPanel({
           size="sm"
           className="bg-gray-900 hover:bg-gray-800"
           onClick={() => router.push("/provider/calendar?new=1")}
-          aria-label="Create new booking"
+          aria-label={t("web.provider.dashboard.insights.newBookingA11y")}
         >
-          <Plus className="h-4 w-4 mr-1.5" />
-          New
+          <Plus className="h-4 w-4 me-1.5" />
+          {t("web.provider.dashboard.insights.new")}
         </Button>
         <Button
           size="sm"
           variant="outline"
           onClick={() => router.push("/provider/calendar?walk_in=true")}
-          aria-label="Create walk-in appointment"
+          aria-label={t("web.provider.dashboard.insights.walkInApptA11y")}
         >
-          <Footprints className="h-4 w-4 mr-1.5" />
-          Walk-in appt
+          <Footprints className="h-4 w-4 me-1.5" />
+          {t("web.provider.dashboard.insights.walkInAppt")}
         </Button>
         <Button
           size="sm"
           variant="outline"
           onClick={() => router.push("/provider/ecommerce/walk-in")}
-          aria-label="Start retail product sale"
+          aria-label={t("web.provider.dashboard.insights.retailBtnA11y")}
         >
-          <ShoppingBag className="h-4 w-4 mr-1.5" />
-          Retail
+          <ShoppingBag className="h-4 w-4 me-1.5" />
+          {t("web.provider.dashboard.insights.retail")}
         </Button>
         {unifiedPosEnabled ? (
         <Button
           size="sm"
           variant="outline"
           onClick={() => router.push("/provider/sales")}
-          aria-label="Open sell and point of sale"
+          aria-label={t("web.provider.dashboard.insights.sellPosA11y")}
         >
-          <CreditCard className="h-4 w-4 mr-1.5" />
-          Sell / POS
+          <CreditCard className="h-4 w-4 me-1.5" />
+          {t("web.provider.dashboard.insights.sellPos")}
         </Button>
         ) : null}
       </div>
 
       {insights?.weekly_revenue && insights.weekly_revenue.length > 0 ? (
         <div className="rounded-lg border bg-white p-4 sm:p-5">
-          <h3 className="text-sm font-semibold text-gray-900 mb-4">Earnings trend (last 7 days)</h3>
-          <div className="flex items-end gap-2 h-32" role="img" aria-label="Seven day revenue chart">
+          <h3 className="text-sm font-semibold text-gray-900 mb-4">{t("web.provider.dashboard.insights.earningsTrend")}</h3>
+          <div className="flex items-end gap-2 h-32" role="img" aria-label={t("web.provider.dashboard.insights.chartA11y")}>
             {insights.weekly_revenue.map((d) => (
               <div key={d.day} className="flex-1 flex flex-col items-center justify-end h-full">
                 <div
@@ -290,10 +299,10 @@ export function DashboardInsightsPanel({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-gray-500" />
-                Upcoming (next 7 days)
+{t("web.provider.dashboard.insights.upcoming")}
               </h3>
               <Button variant="ghost" size="sm" onClick={() => router.push("/provider/calendar")}>
-                View calendar
+                {t("web.provider.dashboard.widgets.viewCalendar")}
               </Button>
             </div>
             <div className="space-y-2">
@@ -301,7 +310,7 @@ export function DashboardInsightsPanel({
                 <button
                   key={b.id}
                   type="button"
-                  className="w-full text-left rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors"
+                  className="w-full text-start rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors"
                   onClick={() =>
                     router.push(
                       b.is_group_booking && b.group_booking_id
@@ -309,12 +318,12 @@ export function DashboardInsightsPanel({
                         : `/provider/bookings/${b.id}`,
                     )
                   }
-                  aria-label={`Upcoming booking ${b.customers?.full_name ?? "Walk-in"}`}
+                  aria-label={t("web.provider.dashboard.insights.upcomingBookingA11y", { name: b.customers?.full_name ?? t("web.provider.dashboard.insights.walkIn") })}
                 >
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {b.customers?.full_name ?? "Walk-in"}
+                        {b.customers?.full_name ?? t("web.provider.dashboard.insights.walkIn")}
                       </p>
                       <p className="text-xs text-gray-500">
                         {format(new Date(b.scheduled_at), "EEE, MMM d · h:mm a")}
@@ -330,14 +339,14 @@ export function DashboardInsightsPanel({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed bg-gray-50 p-6 text-center text-sm text-gray-500">
-            No upcoming appointments in the next 7 days
+{t("web.provider.dashboard.insights.noUpcoming")}
           </div>
         )}
 
         {insights?.top_services && insights.top_services.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 sm:p-5">
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Top services (last 30 days)</h3>
-            <p className="text-xs text-gray-500 mb-3">Fixed 30-day window</p>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">{t("web.provider.dashboard.insights.topServices")}</h3>
+            <p className="text-xs text-gray-500 mb-3">{t("web.provider.dashboard.insights.fixedWindow")}</p>
             <div className="space-y-3">
               {insights.top_services.map((svc, idx) => {
                 const maxRev = insights.top_services[0]?.total_revenue || 1;
@@ -345,7 +354,7 @@ export function DashboardInsightsPanel({
                 return (
                   <div key={`${svc.service_name}-${idx}`}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-gray-900 truncate pr-2">{svc.service_name}</span>
+                      <span className="font-medium text-gray-900 truncate pe-2">{svc.service_name}</span>
                       <span className="font-semibold shrink-0">
                         {formatCurrency(svc.total_revenue, tenantCurrency)}
                       </span>
@@ -353,7 +362,7 @@ export function DashboardInsightsPanel({
                     <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                       <div className="h-full rounded-full bg-indigo-400" style={{ width: `${width}%` }} />
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{svc.booking_count} bookings</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{t("web.provider.dashboard.insights.bookingsCount", { count: svc.booking_count })}</p>
                   </div>
                 );
               })}
@@ -361,7 +370,7 @@ export function DashboardInsightsPanel({
           </div>
         ) : (
           <div className="rounded-lg border border-dashed bg-gray-50 p-6 text-center text-sm text-gray-500">
-            No service data yet
+{t("web.provider.dashboard.insights.noServiceData")}
           </div>
         )}
       </div>
@@ -371,10 +380,10 @@ export function DashboardInsightsPanel({
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
               <Activity className="h-4 w-4 text-gray-500" />
-              Recent activity
+{t("web.provider.dashboard.insights.recentActivity")}
             </h3>
             <Button variant="ghost" size="sm" onClick={() => router.push("/provider/bookings")}>
-              View all
+              {t("web.provider.common.viewAll")}
             </Button>
           </div>
           {insights.basis?.activity_window ? (
@@ -385,7 +394,7 @@ export function DashboardInsightsPanel({
               <button
                 key={item.id}
                 type="button"
-                className="w-full text-left py-3 hover:bg-gray-50 transition-colors px-1"
+                className="w-full text-start py-3 hover:bg-gray-50 transition-colors px-1"
                 onClick={() => {
                   if (item.data?.booking_id) router.push(`/provider/bookings/${item.data.booking_id}`);
                   else if (item.data?.product_order_id)
@@ -406,10 +415,10 @@ export function DashboardInsightsPanel({
       {(stats.bookings_truncated || stats.ledger_truncated) && (
         <p className="text-xs text-gray-500 px-1">
           {stats.bookings_truncated && stats.ledger_truncated
-            ? "Some booking and ledger totals may be incomplete for very high-volume accounts."
+            ? t("web.provider.dashboard.insights.truncatedBoth")
             : stats.bookings_truncated
-              ? "Booking status counts may be incomplete for very high-volume accounts."
-              : "Period earnings may be incomplete for very high-volume accounts."}
+              ? t("web.provider.dashboard.insights.truncatedBookings")
+              : t("web.provider.dashboard.insights.truncatedLedger")}
         </p>
       )}
 

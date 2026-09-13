@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -58,6 +59,7 @@ export function LazyImage({
   onLoad,
   onError,
 }: LazyImageProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isInView, setIsInView] = useState(priority);
@@ -111,7 +113,7 @@ export function LazyImage({
         )}
         style={!fill && width && height ? { width, height } : undefined}
       >
-        <span className="text-xs">Image unavailable</span>
+        <span className="text-xs">{t("web.ui.lazyImage.unavailable")}</span>
       </div>
     );
   }

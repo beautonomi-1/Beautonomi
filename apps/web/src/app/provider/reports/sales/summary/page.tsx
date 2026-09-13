@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
@@ -52,6 +53,7 @@ interface SalesSummaryData {
 
 export default function SalesSummaryReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
+  const { t } = useTranslation();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -111,7 +113,7 @@ export default function SalesSummaryReport() {
       const exportData = formatReportDataForExport(data as unknown as ReportRow, "sales-summary", exportCurrency);
       exportToCSV(exportData, "sales-summary-report");
     } else {
-      exportToPDF("sales-summary-report", "sales-summary-report", "Sales Summary Report");
+      exportToPDF("sales-summary-report", "sales-summary-report", t("web.provider.reports.pages.sales/summary.reportTitle"));
     }
   };
 
@@ -119,10 +121,10 @@ export default function SalesSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/summary.title") },
         ]}
       >
         <ReportSkeleton />
@@ -134,18 +136,18 @@ export default function SalesSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/summary.title") },
         ]}
       >
         <div className="space-y-6">
           <PageHeader
-            title="Sales Summary"
-            subtitle="Track revenue, bookings, and service performance"
+            title={t("web.provider.reports.pages.sales/summary.title")}
+            subtitle={t("web.provider.reports.pages.sales/summary.subtitleGate")}
           />
-          <ReportSubscriptionRequired feature="Sales summary" message={subscriptionGateMessage} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.sales/summary.feature")} message={subscriptionGateMessage} />
         </div>
       </SettingsDetailLayout>
     );
@@ -155,15 +157,15 @@ export default function SalesSummaryReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Sales Summary" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.sales/summary.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load sales summary data"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.sales/summary.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -172,29 +174,29 @@ export default function SalesSummaryReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Sales Summary" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.sales/summary.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6" id="sales-summary-report">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <PageHeader
-            title="Sales Summary"
-            subtitle="Ledger net vs recorded takings and scheduled appointments"
+            title={t("web.provider.reports.pages.sales/summary.title")}
+            subtitle={t("web.provider.reports.pages.sales/summary.subtitle")}
           />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => handleExport("csv")} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export CSV</span>
-              <span className="sm:hidden">CSV</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportCsv")}</span>
+              <span className="sm:hidden">{t("web.provider.common.csv")}</span>
             </Button>
             <Button variant="outline" onClick={() => handleExport("pdf")} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Export PDF</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">{t("web.provider.common.exportPdf")}</span>
+              <span className="sm:hidden">{t("web.provider.common.pdf")}</span>
             </Button>
           </div>
         </div>
@@ -225,10 +227,10 @@ export default function SalesSummaryReport() {
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">
-                Total recognized revenue
+                {t("web.provider.reports.pages.sales/summary.totalRecognizedRevenue")}
               </CardTitle>
               <p className="text-xs text-gray-500">
-                Net provider amounts in finance_transactions for this period (earnings, travel, tips, and retail where ledgered).
+                {t("web.provider.reports.pages.sales/summary.totalRecognizedHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -245,28 +247,28 @@ export default function SalesSummaryReport() {
                   <span className={data.revenueGrowth >= 0 ? "text-green-700" : "text-red-700"}>
                     {Math.abs(data.revenueGrowth).toFixed(1)}%
                   </span>
-                  <span className="text-gray-400">vs prior period</span>
+                  <span className="text-gray-400">{t("web.provider.reports.common.vsPriorPeriod")}</span>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-1 gap-3 border-t border-gray-100 pt-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Appointments (ledger)</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.reports.pages.sales/summary.appointmentsLedger")}</p>
                   <p className="text-lg font-semibold text-gray-900">
                     {fmt(data.appointmentLedgerRevenue ?? data.totalRevenue)}
                   </p>
                 </div>
                 {(data.retailLedgerRevenue ?? 0) > 0 ? (
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Retail & products (ledger)</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.reports.pages.sales/summary.retailProductsLedger")}</p>
                     <p className="text-lg font-semibold text-gray-900">{fmt(data.retailLedgerRevenue ?? 0)}</p>
                     {data.retailOrderCount != null ? (
-                      <p className="text-xs text-gray-500">{data.retailOrderCount} order(s)</p>
+                      <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/summary.ordersCount", { count: data.retailOrderCount })}</p>
                     ) : null}
                   </div>
                 ) : (
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Retail & products</p>
-                    <p className="text-sm text-gray-500">No ledger retail in range</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{t("web.provider.reports.pages.sales/summary.retailProducts")}</p>
+                    <p className="text-sm text-gray-500">{t("web.provider.reports.pages.sales/summary.noLedgerRetail")}</p>
                   </div>
                 )}
               </div>
@@ -277,10 +279,10 @@ export default function SalesSummaryReport() {
             <Card className="border-gray-200 shadow-sm border-emerald-100 bg-emerald-50/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-emerald-900">
-                  Recorded takings (logged in-app)
+                  {t("web.provider.reports.pages.sales/summary.recordedTakings")}
                 </CardTitle>
                 <p className="text-xs text-emerald-800/90">
-                  Cash-register style — not the same as platform settlement or bank deposits.
+                  {t("web.provider.reports.pages.sales/summary.recordedTakingsHint")}
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -289,29 +291,29 @@ export default function SalesSummaryReport() {
                 </p>
                 <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
                   <div>
-                    <p className="text-gray-500">Booking payments</p>
+                    <p className="text-gray-500">{t("web.provider.reports.pages.sales/summary.bookingPayments")}</p>
                     <p className="font-medium text-gray-900 tabular-nums">{fmt(data.recordedTakings.bookingPaymentsTotal)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Wallet on bookings</p>
+                    <p className="text-gray-500">{t("web.provider.reports.pages.sales/summary.walletOnBookings")}</p>
                     <p className="font-medium text-gray-900 tabular-nums">{fmt(data.recordedTakings.walletTotal)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Retail & legacy sales</p>
+                    <p className="text-gray-500">{t("web.provider.reports.pages.sales/summary.retailLegacySales")}</p>
                     <p className="font-medium text-gray-900 tabular-nums">{fmt(data.recordedTakings.retailAndLegacySalesTotal)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Tips (ledger)</p>
+                    <p className="text-gray-500">{t("web.provider.reports.pages.sales/summary.tipsLedger")}</p>
                     <p className="font-medium text-gray-900 tabular-nums">{fmt(data.recordedTakings.tipsTotal)}</p>
                   </div>
                   <div>
-                    <p className="text-gray-500">Cancellation fees</p>
+                    <p className="text-gray-500">{t("web.provider.reports.pages.sales/summary.cancellationFees")}</p>
                     <p className="font-medium text-gray-900 tabular-nums">{fmt(data.recordedTakings.cancellationFeesTotal)}</p>
                   </div>
                 </div>
                 {Object.entries(data.recordedTakings.byPaymentMethod).some(([, v]) => Number(v) > 0.005) ? (
                   <div className="border-t border-emerald-100 pt-3">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-emerald-900">By payment method</p>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-emerald-900">{t("web.provider.reports.pages.sales/summary.byPaymentMethod")}</p>
                     <ul className="space-y-1 text-sm">
                       {Object.entries(data.recordedTakings.byPaymentMethod)
                         .filter(([, amt]) => Number(amt) > 0.005)
@@ -333,8 +335,8 @@ export default function SalesSummaryReport() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-7">
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Scheduled appointments</CardTitle>
-                <p className="text-xs text-gray-500">Service dates in range (all statuses).</p>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/summary.scheduledAppointments")}</CardTitle>
+                <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/summary.scheduledAppointmentsHint")}</p>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
@@ -355,21 +357,21 @@ export default function SalesSummaryReport() {
 
             <Card className="border-gray-200 shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">With ledger activity</CardTitle>
-                <p className="text-xs text-gray-500">Appointments that had net ledger recognition in range.</p>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/summary.withLedgerActivity")}</CardTitle>
+                <p className="text-xs text-gray-500">{t("web.provider.reports.pages.sales/summary.withLedgerActivityHint")}</p>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {data.bookingsWithLedgerActivity ?? "—"}
+                  {data.bookingsWithLedgerActivity ?? t("web.provider.common.emDash")}
                 </p>
               </CardContent>
             </Card>
 
             <Card className="border-gray-200 shadow-sm sm:col-span-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">Avg ledger per active appointment</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.sales/summary.avgLedgerPerActive")}</CardTitle>
                 <p className="text-xs text-gray-500">
-                  Appointment ledger total ÷ appointments with activity (excludes retail-only orders).
+                  {t("web.provider.reports.pages.sales/summary.avgLedgerPerActiveHint")}
                 </p>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center justify-between gap-2">
@@ -387,8 +389,8 @@ export default function SalesSummaryReport() {
         {data.revenueByDay.length > 0 && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue trend</CardTitle>
-              <p className="text-sm font-normal text-gray-500">Daily totals use ledger recognition dates.</p>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueTrend")}</CardTitle>
+              <p className="text-sm font-normal text-gray-500">{t("web.provider.reports.pages.sales/summary.revenueTrendHint")}</p>
             </CardHeader>
             <CardContent>
               <RevenueChart data={data.revenueByDay} type="line" />
@@ -400,9 +402,9 @@ export default function SalesSummaryReport() {
         {data.revenueByDay.length > 0 && (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue by day</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueByDay")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Revenue column = ledger activity that day. Booking counts = appointments scheduled that calendar day (can differ).
+                {t("web.provider.reports.pages.sales/summary.revenueByDayHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -417,7 +419,7 @@ export default function SalesSummaryReport() {
                         {format(new Date(day.date + "T12:00:00"), "MMM dd, yyyy")}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {day.bookings} scheduled appointment{day.bookings !== 1 ? "s" : ""}
+                        {t("web.provider.reports.pages.sales/summary.scheduledAppointmentsCount", { count: day.bookings })}
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums text-gray-900">
@@ -434,9 +436,9 @@ export default function SalesSummaryReport() {
         {data.revenueByService && data.revenueByService.length > 0 ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue by service line</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueByService")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Appointment revenue split by booking line price share (each line uses its offering title — variants are separate offerings). Retail shown separately when present.
+                {t("web.provider.reports.pages.sales/summary.revenueByServiceHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -453,7 +455,7 @@ export default function SalesSummaryReport() {
                         {service.serviceName}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {service.bookings} {isRetail ? `order${service.bookings !== 1 ? "s" : ""}` : `appointment${service.bookings !== 1 ? "s" : ""}`}
+                        {t(isRetail ? "web.provider.reports.pages.sales/summary.ordersCount" : "web.provider.reports.pages.sales/summary.appointmentsCount", { count: service.bookings })}
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums text-gray-900">
@@ -468,11 +470,11 @@ export default function SalesSummaryReport() {
         ) : (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue by service line</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueByService")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600 text-center py-8">
-                No service revenue data available for the selected period.
+                {t("web.provider.reports.pages.sales/summary.noServiceRevenue")}
               </p>
             </CardContent>
           </Card>
@@ -482,9 +484,9 @@ export default function SalesSummaryReport() {
         {data.revenueByStaff && data.revenueByStaff.length > 0 ? (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue by staff</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueByStaff")}</CardTitle>
               <p className="text-sm font-normal text-gray-500">
-                Allocated from each booking’s ledger net by share of line items assigned to staff (retail not included).
+                {t("web.provider.reports.pages.sales/summary.revenueByStaffHint")}
               </p>
             </CardHeader>
             <CardContent>
@@ -499,7 +501,7 @@ export default function SalesSummaryReport() {
                         {staff.staffName}
                       </p>
                       <p className="text-xs text-gray-600">
-                        {staff.bookings} appointment{staff.bookings !== 1 ? "s" : ""}
+                        {t("web.provider.reports.pages.sales/summary.appointmentsCount", { count: staff.bookings })}
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums text-gray-900">
@@ -513,11 +515,11 @@ export default function SalesSummaryReport() {
         ) : (
           <Card className="border-gray-200 shadow-sm">
             <CardHeader>
-              <CardTitle>Revenue by staff</CardTitle>
+              <CardTitle>{t("web.provider.reports.pages.sales/summary.revenueByStaff")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-sm text-gray-600 text-center py-8">
-                No staff revenue data available for the selected period.
+                {t("web.provider.reports.pages.sales/summary.noStaffRevenue")}
               </p>
             </CardContent>
           </Card>

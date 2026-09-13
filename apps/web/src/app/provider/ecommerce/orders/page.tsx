@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -68,25 +69,55 @@ interface ProductOrder {
 
 type ProductOrderStatusCounts = Record<string, number>;
 
-const STATUS_ACTIONS: Record<string, { next: string; label: string; color: string }[]> = {
-  pending: [
-    { next: "confirmed", label: "Confirm Order", color: "bg-blue-600 hover:bg-blue-700" },
-    { next: "cancelled", label: "Cancel", color: "bg-red-600 hover:bg-red-700" },
-  ],
-  confirmed: [
-    { next: "processing", label: "Start Processing", color: "bg-purple-600 hover:bg-purple-700" },
-  ],
-  processing: [
-    { next: "shipped", label: "Mark Shipped", color: "bg-indigo-600 hover:bg-indigo-700" },
-    { next: "ready_for_collection", label: "Ready for Collection", color: "bg-teal-600 hover:bg-teal-700" },
-  ],
-  shipped: [
-    { next: "delivered", label: "Mark Delivered", color: "bg-green-600 hover:bg-green-700" },
-  ],
-  ready_for_collection: [
-    { next: "delivered", label: "Collected", color: "bg-green-600 hover:bg-green-700" },
-  ],
-};
+function statusActions(t: (k: string) => string): Record<string, { next: string; label: string; color: string }[]> {
+  return {
+    pending: [
+      { next: "confirmed", label: t("web.provider.pages.ecommerce/orders.confirmOrder"), color: "bg-blue-600 hover:bg-blue-700" },
+      { next: "cancelled", label: t("web.provider.common.cancel"), color: "bg-red-600 hover:bg-red-700" },
+    ],
+    confirmed: [
+      { next: "processing", label: t("web.provider.pages.ecommerce/orders.startProcessing"), color: "bg-purple-600 hover:bg-purple-700" },
+    ],
+    processing: [
+      { next: "shipped", label: t("web.provider.pages.ecommerce/orders.markShipped"), color: "bg-indigo-600 hover:bg-indigo-700" },
+      { next: "ready_for_collection", label: t("web.provider.pages.ecommerce/orders.readyForCollection"), color: "bg-teal-600 hover:bg-teal-700" },
+    ],
+    shipped: [
+      { next: "delivered", label: t("web.provider.pages.ecommerce/orders.markDelivered"), color: "bg-green-600 hover:bg-green-700" },
+    ],
+    ready_for_collection: [
+      { next: "delivered", label: t("web.provider.pages.ecommerce/orders.collected"), color: "bg-green-600 hover:bg-green-700" },
+    ],
+  };
+}
+
+function statusFilterTabs(t: (k: string) => string) {
+  return [
+    { value: "", label: t("web.provider.common.all") },
+    { value: "pending", label: t("web.provider.common.status.pending") },
+    { value: "confirmed", label: t("web.provider.pages.ecommerce/orders.confirmed") },
+    { value: "processing", label: t("web.provider.pages.ecommerce/orders.processing") },
+    { value: "ready_for_collection", label: t("web.provider.pages.ecommerce/orders.readyForCollectionFilter") },
+    { value: "shipped", label: t("web.provider.pages.ecommerce/orders.shipped") },
+    { value: "delivered", label: t("web.provider.pages.ecommerce/orders.delivered") },
+    { value: "cancelled", label: t("web.provider.common.status.cancelled") },
+  ];
+}
+
+function ecommerceStatusLabel(t: (k: string) => string, status: string) {
+  const map: Record<string, string> = {
+    pending: t("web.provider.pages.ecommerce/orders.statusPending"),
+    confirmed: t("web.provider.pages.ecommerce/orders.statusConfirmed"),
+    processing: t("web.provider.pages.ecommerce/orders.statusProcessing"),
+    ready_for_collection: t("web.provider.pages.ecommerce/orders.statusReady"),
+    shipped: t("web.provider.pages.ecommerce/orders.statusShipped"),
+    delivered: t("web.provider.pages.ecommerce/orders.statusDelivered"),
+    cancelled: t("web.provider.pages.ecommerce/orders.statusCancelled"),
+    refunded: t("web.provider.pages.ecommerce/orders.statusRefunded"),
+    paid: t("web.provider.pages.ecommerce/orders.paid"),
+  };
+  return map[status] ?? status.replace(/_/g, " ");
+}
 
 const STATUS_OPTIONS = [
   "pending",
@@ -101,17 +132,6 @@ const STATUS_OPTIONS = [
 
 const ACTION_REQUIRED_STATUSES = new Set(["pending", "confirmed", "processing", "ready_for_collection", "shipped"]);
 
-const STATUS_FILTER_TABS = [
-  { value: "", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "processing", label: "Processing" },
-  { value: "ready_for_collection", label: "Ready for collection" },
-  { value: "shipped", label: "Shipped" },
-  { value: "delivered", label: "Delivered" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
 const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
   pending: "outline",
   confirmed: "secondary",
@@ -123,6 +143,7 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
 };
 
 export default function ProviderProductOrdersPage() {
+  const { t } = useTranslation();
   const yocoEnabled = useFeatureFlag("payment_yoco");
   const paycloudEnabled = useFeatureFlag("payment_paycloud");
   const { ready: paycloudReady, blockers, terminals } = usePaycloudCollectReady();
@@ -187,7 +208,7 @@ export default function ProviderProductOrdersPage() {
         setTotalPages(res.data.pagination.totalPages);
       }
     } catch {
-      setError("Failed to load orders");
+      setError(t("web.provider.pages.ecommerce/orders.failedToLoad"));
     }
     setLoading(false);
   }, [page, statusFilter]);
@@ -297,7 +318,7 @@ export default function ProviderProductOrdersPage() {
     }
     if (newStatus === "refunded") {
       if (!canProcessPayments) {
-        setError("You do not have permission to refund orders.");
+        setError(t("web.provider.pages.ecommerce/orders.noRefundPermission"));
         return;
       }
       const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
@@ -314,9 +335,9 @@ export default function ProviderProductOrdersPage() {
     if (newStatus === "cancelled") {
       const order = orders.find((o) => o.id === orderId) ?? prefetchedFocusOrder;
       if (order?.payment_status === "paid") {
-        const reason = window.prompt("Cancellation reason for this paid order");
+        const reason = window.prompt(t("web.provider.pages.ecommerce/orders.cancelReasonPrompt"));
         if (!reason?.trim()) {
-          setError("Cancellation reason is required for paid orders.");
+          setError(t("web.provider.pages.ecommerce/orders.cancelReasonRequired"));
           return;
         }
         await submitStatusUpdate(orderId, newStatus, { cancellation_reason: reason.trim() });
@@ -336,7 +357,7 @@ export default function ProviderProductOrdersPage() {
       clearFetcherCache();
       await fetchOrders();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to update line");
+      setError(e instanceof Error ? e.message : t("web.provider.pages.ecommerce/orders.failedToUpdateLine"));
     }
     setUpdating(null);
   };
@@ -367,7 +388,7 @@ export default function ProviderProductOrdersPage() {
       fetchOrders();
       setRefundDialog(null);
     } catch (e: any) {
-      setError(e?.message || "Failed to update order status");
+      setError(e?.message || t("web.provider.pages.ecommerce/orders.failedToUpdateStatus"));
     }
     setUpdating(null);
     setTrackingDialog(null);
@@ -396,19 +417,19 @@ export default function ProviderProductOrdersPage() {
       setYocoDialogOpen(false);
       setYocoOrder(null);
     } catch {
-      setError("Card charged, but recording collection failed. Retry recording payment with the same reference.");
+      setError(t("web.provider.pages.ecommerce/orders.collectRecordFailed"));
     }
   };
 
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Product Orders</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t("web.provider.pages.ecommerce/orders.title")}</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Manage customer product purchases and fulfillment
+          {t("web.provider.pages.ecommerce/orders.subtitle")}
           {actionRequiredCount > 0 && (
-            <span className="ml-2 font-medium text-pink-700">
-              {actionRequiredCount} need action
+            <span className="ms-2 font-medium text-pink-700">
+              {t("web.provider.pages.ecommerce/orders.needAction", { count: actionRequiredCount })}
             </span>
           )}
         </p>
@@ -422,7 +443,7 @@ export default function ProviderProductOrdersPage() {
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
-        {STATUS_FILTER_TABS.map(
+        {statusFilterTabs(t).map(
           ({ value, label }) => {
             const count = value ? Number(statusCounts[value] ?? 0) : totalOrderCount;
             const isSelected = statusFilter === value;
@@ -461,16 +482,16 @@ export default function ProviderProductOrdersPage() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-gray-500">Loading...</div>
+          <div className="p-12 text-center text-gray-500">{t("web.provider.reports.hub.loading")}</div>
         ) : displayOrders.length === 0 ? (
           <div className="p-12 text-center">
             <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">No orders found</p>
+            <p className="text-gray-500">{t("web.provider.pages.ecommerce/orders.noOrders")}</p>
           </div>
         ) : (
           <div className="divide-y">
             {displayOrders.map((o) => {
-              const actions = STATUS_ACTIONS[o.status] ?? [];
+              const actions = statusActions(t)[o.status] ?? [];
               const isFocus = Boolean(focusOrderId && o.id === focusOrderId);
               const subtotal = Number(o.subtotal ?? 0);
               const taxAmount = Number(o.tax_amount ?? 0);
@@ -521,17 +542,17 @@ export default function ProviderProductOrdersPage() {
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="font-bold text-gray-900 text-lg">{o.order_number}</span>
                         <Badge variant={STATUS_BADGE[o.status] ?? "outline"}>
-                          {o.status.replace(/_/g, " ")}
+                          {ecommerceStatusLabel(t, o.status)}
                         </Badge>
                         <Badge variant={o.payment_status === "paid" ? "default" : "outline"}>
-                          {o.payment_status}
+                          {ecommerceStatusLabel(t, o.payment_status)}
                         </Badge>
                         {o.order_source === "appointment" && (
-                          <Badge variant="outline">appointment pickup</Badge>
+                          <Badge variant="outline">{t("web.provider.pages.ecommerce/orders.appointmentPickup")}</Badge>
                         )}
                       </div>
                       <p className="text-sm text-gray-700 break-words inline-flex items-center gap-1.5 flex-wrap">
-                        <span className="font-medium">{o.customer?.full_name || o.customer_name || "Appointment customer"}</span>
+                        <span className="font-medium">{o.customer?.full_name || o.customer_name || t("web.provider.pages.ecommerce/orders.appointmentCustomer")}</span>
                         {o.customer?.identity_verified ? (
                           <VerifiedBadge verified iconOnly />
                         ) : null}
@@ -558,14 +579,14 @@ export default function ProviderProductOrdersPage() {
                               value={from}
                               disabled={lineLocked || from === "delivered" || from === "cancelled"}
                               onChange={(e) => void handleLineFulfilment(o.id, item.id, e.target.value)}
-                              aria-label={`Fulfilment for ${item.product_name}`}
-                              className="ml-auto rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 disabled:opacity-50"
+                              aria-label={t("web.provider.pages.ecommerce/orders.fulfilmentFor", { name: item.product_name })}
+                              className="ms-auto rounded border border-gray-200 bg-white px-1.5 py-0.5 text-xs text-gray-700 disabled:opacity-50"
                             >
                               {LINE_FULFILMENT_STATUSES.filter(
                                 (status) => status === from || isValidLineTransition(from, status),
                               ).map((status) => (
                                 <option key={status} value={status}>
-                                  {status.replace(/_/g, " ")}
+                                  {ecommerceStatusLabel(t, status)}
                                 </option>
                               ))}
                             </select>
@@ -574,45 +595,45 @@ export default function ProviderProductOrdersPage() {
                         })}
                       </div>
                       {o.tracking_number && (
-                        <p className="text-xs text-blue-600 mt-2">Tracking: {o.tracking_number}</p>
+                        <p className="text-xs text-blue-600 mt-2">{t("web.provider.pages.ecommerce/orders.tracking", { number: o.tracking_number })}</p>
                       )}
                     </div>
-                    <div className="text-left sm:text-right shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
+                    <div className="text-start sm:text-end shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
                       <p className="text-xl font-bold text-gray-900">{formatMoney(totalAmount)}</p>
                       <div className="mt-2 space-y-0.5 text-xs text-gray-500">
-                        {subtotal > 0 && <p>Items: {formatMoney(subtotal)}</p>}
-                        {taxAmount > 0 && <p>Tax/VAT: {formatMoney(taxAmount)}</p>}
-                        {deliveryFee > 0 && <p>Delivery: {formatMoney(deliveryFee)}</p>}
-                        {discountAmount > 0 && <p>Discount: -{formatMoney(discountAmount)}</p>}
+                        {subtotal > 0 && <p>{t("web.provider.pages.ecommerce/orders.items", { amount: formatMoney(subtotal) })}</p>}
+                        {taxAmount > 0 && <p>{t("web.provider.pages.ecommerce/orders.taxVat", { amount: formatMoney(taxAmount) })}</p>}
+                        {deliveryFee > 0 && <p>{t("web.provider.pages.ecommerce/orders.delivery", { amount: formatMoney(deliveryFee) })}</p>}
+                        {discountAmount > 0 && <p>{t("web.provider.pages.ecommerce/orders.discount", { amount: formatMoney(discountAmount) })}</p>}
                         {Number(o.gift_card_amount ?? 0) > 0 && (
-                          <p>Gift card: -{formatMoney(Number(o.gift_card_amount))}</p>
+                          <p>{t("web.provider.pages.ecommerce/orders.giftCard", { amount: formatMoney(Number(o.gift_card_amount)) })}</p>
                         )}
-                        {o.promotion_code ? <p>Promotion: {o.promotion_code}</p> : null}
-                        {platformFee > 0 && <p>Platform fee: -{formatMoney(platformFee)}</p>}
+                        {o.promotion_code ? <p>{t("web.provider.pages.ecommerce/orders.promotion", { code: o.promotion_code })}</p> : null}
+                        {platformFee > 0 && <p>{t("web.provider.pages.ecommerce/orders.platformFee", { amount: formatMoney(platformFee) })}</p>}
                         <p className="font-medium text-gray-700">
                           {isAppointmentOrder
-                            ? "Included in booking total"
-                            : `Provider earnings: ${formatMoney(providerEarnings)}`}
+                            ? t("web.provider.pages.ecommerce/orders.includedInBooking")
+                            : t("web.provider.pages.ecommerce/orders.providerEarnings", { amount: formatMoney(providerEarnings) })}
                         </p>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
                         {isAppointmentOrder
-                          ? "Appointment pickup"
-                          : o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
+                          ? t("web.provider.pages.ecommerce/orders.appointmentPickupTitle")
+                          : o.fulfillment_type === "delivery" ? t("web.provider.pages.ecommerce/orders.deliveryLabel") : t("web.provider.pages.ecommerce/orders.collection")}
                       </p>
                       <select
                         value={o.status}
                         onChange={(e) => handleStatusUpdate(o.id, e.target.value)}
                         disabled={updating === o.id || o.status === "cancelled" || o.status === "refunded"}
                         className="mt-3 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 disabled:opacity-50"
-                        aria-label={`Update order ${o.order_number} status`}
+                        aria-label={t("web.provider.pages.ecommerce/orders.updateStatusAria", { number: o.order_number })}
                       >
                         {STATUS_OPTIONS.filter(
                           (status) => status !== "refunded" || canRefundOrder || o.status === "refunded",
                         ).map((status) => (
                           <option key={status} value={status}>
-                            {status.replace(/_/g, " ")}
+                            {ecommerceStatusLabel(t, status)}
                           </option>
                         ))}
                       </select>
@@ -620,7 +641,7 @@ export default function ProviderProductOrdersPage() {
                         <ShareReceiptButton
                           kind="provider-order"
                           subjectId={o.id}
-                          label="Share"
+                          label={t("web.provider.pages.ecommerce/orders.share")}
                           className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 inline-flex items-center gap-1"
                         />
                         <a
@@ -629,7 +650,7 @@ export default function ProviderProductOrdersPage() {
                           rel="noopener noreferrer"
                           className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50"
                         >
-                          Download receipt
+                          {t("web.provider.pages.ecommerce/orders.downloadReceipt")}
                         </a>
                         {actions.length > 0 &&
                           actions.map((a) => (
@@ -668,7 +689,7 @@ export default function ProviderProductOrdersPage() {
                             onClick={() => openYocoCollection(o)}
                             className="px-3 py-1.5 text-xs font-medium text-white rounded-lg bg-gray-900 hover:bg-black"
                           >
-                            Collect with Yoco
+                            {t("web.provider.pages.ecommerce/orders.collectWithYoco")}
                           </button>
                         ) : null}
                       </div>
@@ -718,7 +739,7 @@ export default function ProviderProductOrdersPage() {
           <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
+          <span className="text-sm text-gray-600">{t("web.provider.pages.ecommerce/orders.pageOf", { page, total: totalPages })}</span>
           <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -729,25 +750,25 @@ export default function ProviderProductOrdersPage() {
       {trackingDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Shipping details</h3>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">{t("web.provider.pages.ecommerce/orders.shippingDetails")}</h3>
             <p className="text-sm text-gray-500 mb-4">
-              All fields are optional — add what you have and customers will see it on their order.
+              {t("web.provider.pages.ecommerce/orders.shippingHint")}
             </p>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tracking number</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.trackingNumber")}</label>
             <Input
               value={trackingInput}
               onChange={(e) => setTrackingInput(e.target.value)}
-              placeholder="e.g. TRACK-12345"
+              placeholder={t("web.provider.pages.ecommerce/orders.trackingPlaceholder")}
               className="mb-3"
             />
-            <label className="block text-xs font-medium text-gray-600 mb-1">Carrier / courier</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.carrier")}</label>
             <Input
               value={carrierInput}
               onChange={(e) => setCarrierInput(e.target.value)}
-              placeholder="e.g. Aramex, DHL, Paxi"
+              placeholder={t("web.provider.pages.ecommerce/orders.carrierPlaceholder")}
               className="mb-3"
             />
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tracking URL</label>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.trackingUrl")}</label>
             <Input
               value={trackingUrlInput}
               onChange={(e) => setTrackingUrlInput(e.target.value)}
@@ -756,20 +777,20 @@ export default function ProviderProductOrdersPage() {
               className="mb-1"
             />
             <p className="text-xs text-gray-500 mb-4">
-              Paste the carrier&apos;s tracking page so customers can click through from their order.
+              {t("web.provider.pages.ecommerce/orders.trackingUrlHint")}
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setTrackingDialog(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 border rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                {t("web.provider.common.cancel")}
               </button>
               <button
                 onClick={() => {
                   const urlTrim = trackingUrlInput.trim();
                   if (urlTrim && !/^https?:\/\//i.test(urlTrim)) {
-                    setError("Tracking URL must start with http:// or https://");
+                    setError(t("web.provider.pages.ecommerce/orders.trackingUrlInvalid"));
                     return;
                   }
                   submitStatusUpdate(trackingDialog.orderId, trackingDialog.status, {
@@ -781,7 +802,7 @@ export default function ProviderProductOrdersPage() {
                 disabled={updating === trackingDialog.orderId}
                 className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
               >
-                {updating ? "Updating..." : "Confirm & Ship"}
+                {updating ? t("web.provider.pages.ecommerce/orders.updating") : t("web.provider.pages.ecommerce/orders.confirmShip")}
               </button>
             </div>
           </div>
@@ -792,13 +813,13 @@ export default function ProviderProductOrdersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl space-y-4">
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Refund order</h3>
+              <h3 className="text-lg font-bold text-gray-900">{t("web.provider.pages.ecommerce/orders.refundOrder")}</h3>
               <p className="text-sm text-gray-500">
-                Order {refundDialog.order_number} · Paid {formatMoney(Number(refundDialog.total_amount ?? 0))}
+                {t("web.provider.pages.ecommerce/orders.refundOrderMeta", { number: refundDialog.order_number, amount: formatMoney(Number(refundDialog.total_amount ?? 0)) })}
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Refund amount</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.refundAmount")}</label>
               <Input
                 type="number"
                 value={refundAmountInput}
@@ -810,7 +831,7 @@ export default function ProviderProductOrdersPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Refund method</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.refundMethod")}</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -821,13 +842,13 @@ export default function ProviderProductOrdersPage() {
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
-                  In person (cash)
+                  {t("web.provider.pages.ecommerce/orders.inPersonCash")}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     if (!refundDialog.customer?.id) {
-                      setError("This order has no customer account to credit. Refund in person instead.");
+                      setError(t("web.provider.pages.ecommerce/orders.noCustomerCredit"));
                       return;
                     }
                     setRefundMethodInput("store_credit");
@@ -839,21 +860,21 @@ export default function ProviderProductOrdersPage() {
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
-                  Wallet credit
+                  {t("web.provider.pages.ecommerce/orders.walletCredit")}
                 </button>
               </div>
               <p className="mt-1.5 text-xs text-gray-500">
                 {refundMethodInput === "cash"
-                  ? "Records the refund as returned to the customer in person. No wallet credit is issued."
-                  : "Adds store credit to the customer's wallet for a future purchase."}
+                  ? t("web.provider.pages.ecommerce/orders.cashHint")
+                  : t("web.provider.pages.ecommerce/orders.walletHint")}
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Reason (optional)</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{t("web.provider.pages.ecommerce/orders.reasonOptional")}</label>
               <Input
                 value={refundReasonInput}
                 onChange={(e) => setRefundReasonInput(e.target.value)}
-                placeholder="e.g. Damaged item, customer request"
+                placeholder={t("web.provider.pages.ecommerce/orders.reasonPlaceholder")}
               />
             </div>
             <div className="flex gap-3 justify-end pt-1">
@@ -861,14 +882,14 @@ export default function ProviderProductOrdersPage() {
                 onClick={() => setRefundDialog(null)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 border rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                {t("web.provider.common.cancel")}
               </button>
               <button
                 onClick={() => {
                   const amount = parseFloat(refundAmountInput);
                   const total = Number(refundDialog.total_amount ?? 0);
                   if (!Number.isFinite(amount) || amount <= 0 || amount > total + 0.01) {
-                    setError(`Refund amount must be between 0 and ${formatMoney(total)}.`);
+                    setError(t("web.provider.pages.ecommerce/orders.refundAmountRange", { amount: formatMoney(total) }));
                     return;
                   }
                   submitStatusUpdate(refundDialog.id, "refunded", undefined, {
@@ -880,7 +901,7 @@ export default function ProviderProductOrdersPage() {
                 disabled={updating === refundDialog.id}
                 className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
               >
-                {updating === refundDialog.id ? "Processing..." : "Confirm refund"}
+                {updating === refundDialog.id ? t("web.provider.pages.ecommerce/orders.processingRefund") : t("web.provider.pages.ecommerce/orders.confirmRefund")}
               </button>
             </div>
           </div>

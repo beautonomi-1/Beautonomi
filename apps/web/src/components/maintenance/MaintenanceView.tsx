@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -16,6 +18,7 @@ function parseEndAt(iso: string | null | undefined): number | null {
 }
 
 function Countdown({ endAtMs, label }: { endAtMs: number; label?: string | null }) {
+  const { t } = useTranslation();
   const [left, setLeft] = useState(endAtMs - Date.now());
 
   useEffect(() => {
@@ -39,10 +42,10 @@ function Countdown({ endAtMs, label }: { endAtMs: number; label?: string | null 
       {label && <p className="text-sm font-medium text-muted-foreground">{label}</p>}
       <div className="flex justify-center gap-3 sm:gap-4">
         {[
-          [d, "Days"],
-          [h, "Hours"],
-          [m, "Min"],
-          [s, "Sec"],
+          [d, t("web.maintenance.days")],
+          [h, t("web.maintenance.hours")],
+          [m, t("web.maintenance.min")],
+          [s, t("web.maintenance.sec")],
         ].map(([v, lbl]) => (
           <div key={lbl} className="flex flex-col items-center rounded-lg bg-muted/80 px-3 py-2 min-w-[64px]">
             <span className="text-2xl font-semibold tabular-nums">{String(v).padStart(2, "0")}</span>
@@ -64,6 +67,7 @@ export interface MaintenanceViewProps {
 }
 
 export default function MaintenanceView({ config, siteName: siteNameProp, logoUrl: logoUrlProp, scope = "public_site" }: MaintenanceViewProps) {
+  const { t } = useTranslation();
   const { branding } = usePlatformSettings();
   const siteName = siteNameProp ?? branding?.site_name ?? "Beautonomi";
   const logoUrl = logoUrlProp ?? branding?.logo_url ?? FALLBACK_LOGO;
@@ -88,12 +92,12 @@ export default function MaintenanceView({ config, siteName: siteNameProp, logoUr
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error ?? "Something went wrong. Please try again.");
+        setError(data?.error ?? t("web.maintenance.genericError"));
         return;
       }
       setSubmitted(true);
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError(t("web.maintenance.genericError"));
     } finally {
       setSubmitting(false);
     }
@@ -127,20 +131,20 @@ export default function MaintenanceView({ config, siteName: siteNameProp, logoUr
               <form onSubmit={handleSubmit} className="flex flex-col gap-3">
                 <Input
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder={t("web.maintenance.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full"
-                  aria-label="Email for notifications"
+                  aria-label={t("web.maintenance.emailA11y")}
                   disabled={submitting}
                 />
                 {error && <p className="text-sm text-destructive">{error}</p>}
                 <Button type="submit" className="w-full" disabled={submitting}>
-                  {submitting ? "Sending…" : config.cta_label}
+                  {submitting ? t("web.auth.inlineSignup.sendingEllipsis") : config.cta_label}
                 </Button>
               </form>
             ) : (
-              <p className="text-sm text-muted-foreground">Thanks! We&apos;ll notify you when we&apos;re back.</p>
+              <p className="text-sm text-muted-foreground">{t("web.maintenance.thanks")}</p>
             )}
           </div>
         )}

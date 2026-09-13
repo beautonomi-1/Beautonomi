@@ -1,5 +1,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+/** After first missing-table error in dev, skip MV reads for this process (migrations not applied). */
+let devMvUnavailable = false;
+let devMvWarned = false;
+
+/** Returns true when the error means MV tables are absent (dev without migration 824). */
+function markDevMvUnavailable(error: { message?: string } | null): boolean {
+  if (process.env.NODE_ENV === "production" || !error?.message) return false;
+  if (
+    error.message.includes("schema cache") ||
+    error.message.includes("does not exist") ||
+    error.message.includes("Could not find the table")
+  ) {
+    devMvUnavailable = true;
+    return true;
+  }
+  return false;
+}
+
 export interface PublicHomeMvProviderRow {
   tenant_id: string;
   provider_id: string;
@@ -19,6 +37,7 @@ export async function fetchPublicHomeTopRatedFromMv(
   tenantId: string,
   limit = 20,
 ): Promise<PublicHomeMvProviderRow[]> {
+  if (devMvUnavailable) return [];
   const { data, error } = await supabase
     .from("public_home_top_rated" as never)
     .select(
@@ -28,7 +47,11 @@ export async function fetchPublicHomeTopRatedFromMv(
     .lte("rank_in_tenant", limit)
     .order("rank_in_tenant", { ascending: true });
   if (error) {
-    console.warn("[public_home_top_rated_mv] read failed:", error.message);
+    const missingTable = markDevMvUnavailable(error);
+    if (!missingTable && !devMvWarned) {
+      devMvWarned = true;
+      console.warn("[public_home_top_rated_mv] read failed:", error.message);
+    }
     return [];
   }
   return (data ?? []) as PublicHomeMvProviderRow[];
@@ -43,6 +66,7 @@ export async function fetchPublicHomeHottestFromMv(
   tenantId: string,
   limit = 12,
 ): Promise<string[]> {
+  if (devMvUnavailable) return [];
   const { data, error } = await supabase
     .from("public_home_hottest" as never)
     .select("provider_id, rank_in_tenant")
@@ -50,7 +74,11 @@ export async function fetchPublicHomeHottestFromMv(
     .lte("rank_in_tenant", limit)
     .order("rank_in_tenant", { ascending: true });
   if (error) {
-    console.warn("[public_home_hottest_mv] read failed:", error.message);
+    const missingTable = markDevMvUnavailable(error);
+    if (!missingTable && !devMvWarned) {
+      devMvWarned = true;
+      console.warn("[public_home_hottest_mv] read failed:", error.message);
+    }
     return [];
   }
   return ((data ?? []) as { provider_id: string }[]).map((r) => r.provider_id);

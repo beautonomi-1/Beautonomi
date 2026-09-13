@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   View,
   Text,
@@ -37,6 +38,7 @@ import {
   MERGE_TAG_PREVIEW_SAMPLE,
   substituteMergeTags,
 } from "@/lib/marketing/campaign-merge-tags";
+import { formatMoney } from "@beautonomi/utils";
 
 interface CampaignForm {
   name: string;
@@ -76,7 +78,7 @@ const TOPUP_PRESETS_ZAR = [50, 100, 200, 500];
 
 function formatZar(value: number | null | undefined): string {
   const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
-  return `R${n.toFixed(2)}`;
+  return formatMoney(n, "ZAR");
 }
 
 interface Campaign {
@@ -149,7 +151,43 @@ function campaignStatusStyles(status: string): { wrap: string; text: string } {
 }
 
 /** Content-only for use in Marketing hub (Campaigns tab). */
+function channelLabel(type: string, m: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (type === "email") return m("channelEmail");
+  if (type === "sms") return m("channelSms");
+  if (type === "whatsapp") return m("channelWhatsapp");
+  return type.toUpperCase();
+}
+
+function typeLabel(type: string, m: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (type === "email") return m("typeEmail");
+  if (type === "sms") return m("typeSms");
+  if (type === "whatsapp") return m("typeWhatsapp");
+  return type;
+}
+
+function statusLabel(status: string, m: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (status === "sent") return m("statusSent");
+  if (status === "draft") return m("statusDraft");
+  if (status === "scheduled") return m("statusScheduled");
+  if (status === "sending") return m("statusSending");
+  if (status === "cancelled") return m("statusCancelled");
+  return status;
+}
+
+function audienceLabel(value: string, m: (key: string, opts?: Record<string, unknown>) => string): string {
+  if (value === "all_clients") return m("audienceAllClients");
+  if (value === "segment") return m("audienceSegment");
+  if (value === "custom") return m("audienceCustom");
+  return value.replace(/_/g, " ");
+}
+
 export function MarketingCampaignsContent() {
+  const { t } = useTranslation();
+  const m = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.marketing.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -181,16 +219,16 @@ export function MarketingCampaignsContent() {
   const submitTopUp = useCallback(async () => {
     const amount = Number(topUpAmount);
     if (!Number.isFinite(amount) || amount < 10) {
-      Alert.alert("Invalid amount", "Enter an amount of at least R10.");
+      Alert.alert(m("invalidAmountTitle"), m("invalidAmountBody"));
       return;
     }
     const result = await credits.topUp(amount);
     if (result.ok) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setTopUpOpen(false);
-      Alert.alert("Credits added", "Your marketing credit balance has been topped up.");
+      Alert.alert(m("creditsAddedTitle"), m("creditsAddedBody"));
     } else if (!result.cancelled) {
-      Alert.alert("Top-up not completed", result.message ?? "Please try again.");
+      Alert.alert(m("topUpFailedTitle"), result.message ?? m("tryAgain"));
     }
   }, [topUpAmount, credits]);
 
@@ -198,15 +236,15 @@ export function MarketingCampaignsContent() {
 
   const createCampaign = useCallback(async () => {
     if (!form.name.trim() || !form.content.trim()) {
-      Alert.alert("Missing details", "Name and content are required.");
+      Alert.alert(m("missingDetailsTitle"), m("missingDetailsBody"));
       return;
     }
     if (form.type === "email" && !form.subject.trim()) {
-      Alert.alert("Missing subject", "Email campaigns require a subject.");
+      Alert.alert(m("missingSubjectTitle"), m("missingSubjectBody"));
       return;
     }
     if (form.recipientType === "custom" && form.recipientIds.length === 0) {
-      Alert.alert("No recipients", "Pick at least one client, or choose a different audience.");
+      Alert.alert(m("noRecipientsTitle"), m("noRecipientsBody"));
       return;
     }
     let scheduled_at: string | undefined;
@@ -214,7 +252,7 @@ export function MarketingCampaignsContent() {
     if (rawSchedule) {
       const parsed = Date.parse(rawSchedule);
       if (!Number.isFinite(parsed)) {
-        Alert.alert("Invalid schedule", "Use a valid date/time (e.g. 2026-05-01T09:00:00 or your device locale format).");
+        Alert.alert(m("invalidScheduleTitle"), m("invalidScheduleBody"));
         return;
       }
       scheduled_at = new Date(parsed).toISOString();
@@ -232,9 +270,9 @@ export function MarketingCampaignsContent() {
         ...(scheduled_at ? { scheduled_at } : {}),
       });
       if (res.error || !res.data || typeof res.data !== "object" || !("id" in res.data)) {
-        const msg = getApiErrorMessage(res.error, "Try again.");
+        const msg = getApiErrorMessage(res.error, m("tryAgainShort"));
         const code = (res.error as { code?: string } | undefined)?.code;
-        showPlanGateAlert({ title: "Could not create campaign", message: msg, errorCode: code, router });
+        showPlanGateAlert({ title: m("createFailedTitle"), message: msg, errorCode: code, router });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -244,8 +282,8 @@ export function MarketingCampaignsContent() {
       refresh();
     } catch (e: unknown) {
       showPlanGateAlert({
-        title: "Could not create campaign",
-        message: getApiErrorMessage(e, "Try again."),
+        title: m("createFailedTitle"),
+        message: getApiErrorMessage(e, m("tryAgainShort")),
         errorCode: (e as { code?: string } | undefined)?.code,
         router,
       });
@@ -257,11 +295,11 @@ export function MarketingCampaignsContent() {
   const sendTest = useCallback(async () => {
     const to = testRecipient.trim();
     if (!to) {
-      Alert.alert("Add a test recipient", form.type === "email" ? "Enter an email address to send the test to." : "Enter a phone number to send the test to.");
+      Alert.alert(m("addTestRecipientTitle"), form.type === "email" ? m("addTestRecipientEmail") : m("addTestRecipientPhone"));
       return;
     }
     if (!form.content.trim()) {
-      Alert.alert("Nothing to send", "Add some message content first.");
+      Alert.alert(m("nothingToSendTitle"), m("nothingToSendBody"));
       return;
     }
     setSendingTest(true);
@@ -270,27 +308,27 @@ export function MarketingCampaignsContent() {
         "/api/provider/campaigns/test-send",
         {
           type: form.type,
-          subject: form.type === "email" ? form.subject.trim() || "Test message" : undefined,
+          subject: form.type === "email" ? form.subject.trim() || m("testSubjectFallback") : undefined,
           content: form.content.trim(),
           to,
         },
       );
       if (res.error) {
         showPlanGateAlert({
-          title: "Test not sent",
-          message: getApiErrorMessage(res.error, "Try again."),
+          title: m("testNotSentTitle"),
+          message: getApiErrorMessage(res.error, m("tryAgainShort")),
           errorCode: (res.error as { code?: string } | undefined)?.code,
           router,
         });
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Test sent", `We sent a sample ${form.type.toUpperCase()} to ${to}.`);
+      Alert.alert(m("testSentTitle"), m("testSentBody", { channel: channelLabel(form.type, m), to }));
       void credits.refresh();
     } catch (e: unknown) {
       showPlanGateAlert({
-        title: "Test not sent",
-        message: getApiErrorMessage(e, "Try again."),
+        title: m("testNotSentTitle"),
+        message: getApiErrorMessage(e, m("tryAgainShort")),
         errorCode: (e as { code?: string } | undefined)?.code,
         router,
       });
@@ -324,11 +362,11 @@ export function MarketingCampaignsContent() {
   const saveCampaignEdit = useCallback(async () => {
     if (!editingCampaignId) return;
     if (!form.name.trim() || !form.content.trim()) {
-      Alert.alert("Missing details", "Name and content are required.");
+      Alert.alert(m("missingDetailsTitle"), m("missingDetailsBody"));
       return;
     }
     if (form.type === "email" && !form.subject.trim()) {
-      Alert.alert("Missing subject", "Email campaigns require a subject.");
+      Alert.alert(m("missingSubjectTitle"), m("missingSubjectBody"));
       return;
     }
     let scheduled_at: string | null = null;
@@ -336,7 +374,7 @@ export function MarketingCampaignsContent() {
     if (rawSchedule) {
       const parsed = Date.parse(rawSchedule);
       if (!Number.isFinite(parsed)) {
-        Alert.alert("Invalid schedule", "Use a valid date/time.");
+        Alert.alert(m("invalidScheduleTitle"), m("invalidScheduleShort"));
         return;
       }
       scheduled_at = new Date(parsed).toISOString();
@@ -351,7 +389,7 @@ export function MarketingCampaignsContent() {
         scheduled_at,
       });
       if (res.error) {
-        Alert.alert("Could not update campaign", getApiErrorMessage(res.error, "Try again."));
+        Alert.alert(m("updateFailedTitle"), getApiErrorMessage(res.error, m("tryAgainShort")));
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -365,15 +403,15 @@ export function MarketingCampaignsContent() {
 
   const deleteCampaign = useCallback(
     (campaign: Campaign) => {
-      Alert.alert("Delete draft?", `Remove "${campaign.name}"? This cannot be undone.`, [
-        { text: "Cancel", style: "cancel" },
+      Alert.alert(m("deleteDraftTitle"), m("deleteDraftBody", { name: campaign.name }), [
+        { text: m("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: m("delete"),
           style: "destructive",
           onPress: async () => {
             const res = await api.delete(`/api/provider/campaigns/${campaign.id}`);
             if (res.error) {
-              Alert.alert("Could not delete", getApiErrorMessage(res.error, "Try again."));
+              Alert.alert(m("deleteFailedTitle"), getApiErrorMessage(res.error, m("tryAgainShort")));
               return;
             }
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -391,8 +429,8 @@ export function MarketingCampaignsContent() {
       const res = await api.post<{ message?: string; sent_count?: number; failed_count?: number }>(`/api/provider/campaigns/${id}/send`, {});
       if (res.error) {
         showPlanGateAlert({
-          title: "Could not send campaign",
-          message: getApiErrorMessage(res.error, "Try again."),
+          title: m("sendFailedTitle"),
+          message: getApiErrorMessage(res.error, m("tryAgainShort")),
           errorCode: (res.error as { code?: string } | undefined)?.code,
           router,
         });
@@ -402,16 +440,16 @@ export function MarketingCampaignsContent() {
       const sent = res.data?.sent_count ?? 0;
       const failed = res.data?.failed_count ?? 0;
       Alert.alert(
-        "Campaign sent",
+        m("campaignSentTitle"),
         failed > 0
-          ? `Delivered to ${sent} recipient${sent !== 1 ? "s" : ""}. ${failed} couldn't be delivered.`
-          : `Delivered to ${sent} recipient${sent !== 1 ? "s" : ""}.`,
+          ? m("campaignSentPartial", { count: sent, failed })
+          : m("campaignSentOk", { count: sent }),
       );
       await Promise.all([refresh(), credits.refresh()]);
     } catch (e: unknown) {
       showPlanGateAlert({
-        title: "Could not send campaign",
-        message: getApiErrorMessage(e, "Try again."),
+        title: m("sendFailedTitle"),
+        message: getApiErrorMessage(e, m("tryAgainShort")),
         errorCode: (e as { code?: string } | undefined)?.code,
         router,
       });
@@ -425,8 +463,7 @@ export function MarketingCampaignsContent() {
   // balance is short — matching the web portal and preventing partial sends.
   const confirmSend = useCallback(async (campaign: Campaign) => {
     const recipients = campaign.total_recipients ?? 0;
-    const channelLabel = String(campaign.type || "").toUpperCase();
-    const plural = recipients !== 1 ? "s" : "";
+    const channel = channelLabel(String(campaign.type || ""), m);
 
     let est: CampaignCostEstimate | null = null;
     try {
@@ -441,38 +478,43 @@ export function MarketingCampaignsContent() {
     if (est && est.debited_on_platform_path && est.estimated_cost_zar > 0) {
       if (!est.sufficient) {
         Alert.alert(
-          "Not enough marketing credit",
-          `This ${channelLabel} campaign to ${recipients} recipient${plural} costs about ${formatZar(est.estimated_cost_zar)}, but your balance is ${formatZar(est.current_balance_zar)}.${
-            shouldUseAppleIap()
-              ? " Marketing credit top-ups are not available on iOS."
-              : ""
-          }`,
+          m("insufficientCreditTitle"),
+          `${m("insufficientCredit", {
+            channel,
+            count: recipients,
+            cost: formatZar(est.estimated_cost_zar),
+            balance: formatZar(est.current_balance_zar),
+          })}${shouldUseAppleIap() ? m("insufficientCreditIos") : ""}`,
           shouldUseAppleIap()
-            ? [{ text: "OK", style: "cancel" }]
+            ? [{ text: m("ok"), style: "cancel" }]
             : [
-                { text: "Cancel", style: "cancel" },
-                { text: "Top up", onPress: () => { setTopUpOpen(true); } },
+                { text: m("cancel"), style: "cancel" },
+                { text: m("topUp"), onPress: () => { setTopUpOpen(true); } },
               ],
         );
         return;
       }
       Alert.alert(
-        "Send campaign?",
-        `Send this ${channelLabel} campaign to ${recipients} recipient${plural} for about ${formatZar(est.estimated_cost_zar)} in marketing credit?`,
+        m("sendConfirmTitle"),
+        m("sendConfirmWithCost", {
+          channel,
+          count: recipients,
+          cost: formatZar(est.estimated_cost_zar),
+        }),
         [
-          { text: "Cancel", style: "cancel" },
-          { text: "Send", onPress: () => { void performSend(campaign.id); } },
+          { text: m("cancel"), style: "cancel" },
+          { text: m("send"), onPress: () => { void performSend(campaign.id); } },
         ],
       );
       return;
     }
 
     Alert.alert(
-      "Send campaign?",
-      `Send this ${channelLabel} campaign to ${recipients} recipient${plural} now?`,
+      m("sendConfirmTitle"),
+      m("sendConfirmNow", { channel, count: recipients }),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Send", onPress: () => { void performSend(campaign.id); } },
+        { text: m("cancel"), style: "cancel" },
+        { text: m("send"), onPress: () => { void performSend(campaign.id); } },
       ],
     );
   }, [performSend]);
@@ -519,8 +561,8 @@ export function MarketingCampaignsContent() {
             style={twStyle("flex-row items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2")}
             activeOpacity={0.8}
           >
-            <Ionicons name="add" size={16} color="#4338ca" style={{ marginRight: 6 }} />
-            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>Create campaign</Text>
+            <Ionicons name="add" size={16} color="#4338ca" style={{ marginEnd: 6 }} />
+            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>{m("createCampaign")}</Text>
           </TouchableOpacity>
         </View>
         {campaigns.length === 0 ? (
@@ -528,15 +570,15 @@ export function MarketingCampaignsContent() {
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-red-100")}>
               <Ionicons name="megaphone-outline" size={32} color="#ef4444" />
             </View>
-            <Text style={twStyle("text-center font-semibold text-gray-900")}>No campaigns yet</Text>
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>{m("emptyTitle")}</Text>
             <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
-              Create email, SMS or WhatsApp campaigns to reach all your clients. You&apos;ll see the estimated credit cost before each campaign sends.
+              {m("emptyBody")}
             </Text>
           </View>
         ) : (
           <>
             <Text style={twStyle("mb-3 text-sm text-gray-500")}>
-              {total} campaign{total !== 1 ? "s" : ""}
+              {m("campaignCount", { count: total })}
             </Text>
             {campaigns.map((c) => {
               const st = campaignStatusStyles(c.status);
@@ -555,47 +597,54 @@ export function MarketingCampaignsContent() {
                     color="#ef4444"
                   />
                 </View>
-                <View style={twStyle("ml-3 flex-1 min-w-0")}>
+                <View style={twStyle("ms-3 flex-1 min-w-0")}>
                   <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                     {c.name}
                   </Text>
                   <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
-                    {c.type}
-                    {c.recipient_type ? ` · ${String(c.recipient_type).replace(/_/g, " ")}` : ""}
+                    {typeLabel(c.type, m)}
+                    {c.recipient_type ? ` · ${audienceLabel(String(c.recipient_type), m)}` : ""}
                   </Text>
                   {c.type === "email" && c.subject ? (
                     <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>
-                      Subject: {c.subject}
+                      {m("subjectLine", { subject: c.subject })}
                     </Text>
                   ) : null}
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {c.sent_at
-                      ? `Sent ${formatDateSafe(c.sent_at)} · ${c.sent_count ?? 0}/${Math.max(c.total_recipients ?? 0, 1)} delivered`
+                      ? m("sentMeta", {
+                          date: formatDateSafe(c.sent_at),
+                          sent: c.sent_count ?? 0,
+                          total: Math.max(c.total_recipients ?? 0, 1),
+                        })
                       : c.scheduled_at
-                        ? `Scheduled ${formatDateSafe(c.scheduled_at)} · ${c.total_recipients ?? 0} recipients`
-                        : `${c.total_recipients ?? 0} recipient${(c.total_recipients ?? 0) !== 1 ? "s" : ""}`}
+                        ? m("scheduledMeta", {
+                            date: formatDateSafe(c.scheduled_at),
+                            count: c.total_recipients ?? 0,
+                          })
+                        : m("recipientsMeta", { count: c.total_recipients ?? 0 })}
                   </Text>
                   {(c.total_recipients ?? 0) === 0 && (c.status === "draft" || c.status === "scheduled") ? (
                     <Text style={twStyle("mt-1 text-xs text-amber-700")}>
-                      No clients match this campaign yet — add clients or choose a different audience in Clients.
+                      {m("noMatchingClients")}
                     </Text>
                   ) : null}
                 </View>
                 <View style={twStyle(`rounded-full px-2.5 py-1 ${st.wrap}`)}>
                   <Text style={twStyle(`text-xs font-medium ${st.text}`)}>
-                    {c.status}
+                    {statusLabel(c.status, m)}
                   </Text>
                 </View>
                 {canEditDraft ? (
-                  <View style={twStyle("ml-2 items-end gap-1")}>
+                  <View style={twStyle("ms-2 items-end gap-1")}>
                     <TouchableOpacity
                       onPress={() => openEditCampaign(c)}
                       style={twStyle("rounded-full border border-gray-200 bg-white px-3 py-1.5")}
                     >
-                      <Text style={twStyle("text-xs font-semibold text-gray-700")}>Edit</Text>
+                      <Text style={twStyle("text-xs font-semibold text-gray-700")}>{m("edit")}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => deleteCampaign(c)}>
-                      <Text style={twStyle("text-xs font-medium text-red-600")}>Delete</Text>
+                      <Text style={twStyle("text-xs font-medium text-red-600")}>{m("delete")}</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -603,10 +652,10 @@ export function MarketingCampaignsContent() {
                   <TouchableOpacity
                     onPress={() => confirmSend(c)}
                     disabled={sendingId === c.id}
-                    style={twStyle("ml-2 rounded-full bg-indigo-600 px-3 py-1.5")}
+                    style={twStyle("ms-2 rounded-full bg-indigo-600 px-3 py-1.5")}
                   >
                     <Text style={twStyle("text-xs font-semibold text-white")}>
-                      {sendingId === c.id ? "Sending..." : "Send"}
+                      {sendingId === c.id ? m("sending") : m("send")}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -618,22 +667,22 @@ export function MarketingCampaignsContent() {
         <BottomSheet
           visible={createOpen}
           onClose={() => !creating && setCreateOpen(false)}
-          title="Create campaign"
-          subtitle="Reach all clients via email, SMS, or WhatsApp"
+          title={m("createCampaign")}
+          subtitle={m("createSheetSubtitle")}
         >
           <View style={twStyle("gap-3 pb-6")}>
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Campaign name</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("campaignName")}</Text>
               <TextInput
                 value={form.name}
-                onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-                placeholder="e.g. March promo"
+                onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
+                placeholder={m("namePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
             </View>
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Channel</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("channel")}</Text>
               <View style={twStyle("flex-row gap-2")}>
                 {(["email", "sms", "whatsapp"] as const).map((channel) => (
                   <TouchableOpacity
@@ -642,7 +691,7 @@ export function MarketingCampaignsContent() {
                     style={twStyle(`rounded-xl px-3 py-2 ${form.type === channel ? "bg-indigo-600" : "border border-gray-200 bg-white"}`)}
                   >
                     <Text style={twStyle(`text-sm font-medium ${form.type === channel ? "text-white" : "text-gray-700"}`)}>
-                      {channel.toUpperCase()}
+                      {channelLabel(channel, m)}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -650,22 +699,22 @@ export function MarketingCampaignsContent() {
             </View>
             {form.type === "email" && (
               <View>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Subject</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("subject")}</Text>
                 <TextInput
                   value={form.subject}
-                  onChangeText={(t) => setForm((p) => ({ ...p, subject: t }))}
-                  placeholder="Email subject"
+                  onChangeText={(text) => setForm((p) => ({ ...p, subject: text }))}
+                  placeholder={m("subjectPlaceholder")}
                   placeholderTextColor="#9ca3af"
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
             )}
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Message</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("message")}</Text>
               <TextInput
                 value={form.content}
-                onChangeText={(t) => setForm((p) => ({ ...p, content: t }))}
-                placeholder="Write your campaign message..."
+                onChangeText={(text) => setForm((p) => ({ ...p, content: text }))}
+                placeholder={m("messagePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 multiline
                 textAlignVertical="top"
@@ -683,7 +732,7 @@ export function MarketingCampaignsContent() {
                 ))}
               </View>
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                Tap a tag to personalise. We swap them per recipient on send.
+                {m("mergeTagsHint")}
               </Text>
             </View>
 
@@ -712,36 +761,36 @@ export function MarketingCampaignsContent() {
                   name={showPreview ? "eye-off-outline" : "eye-outline"}
                   size={16}
                   color="#4338ca"
-                  style={{ marginRight: 6 }}
+                  style={{ marginEnd: 6 }}
                 />
                 <Text style={twStyle("text-sm font-semibold text-indigo-800")}>
-                  {showPreview ? "Hide preview" : "Preview message"}
+                  {showPreview ? m("hidePreview") : m("previewMessage")}
                 </Text>
               </TouchableOpacity>
               {showPreview ? (
                 <View style={twStyle("mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
                   {form.type === "email" ? (
                     <Text style={twStyle("mb-1 text-sm font-semibold text-gray-900")}>
-                      {substituteMergeTags(form.subject || "Email subject", MERGE_TAG_PREVIEW_SAMPLE)}
+                      {substituteMergeTags(form.subject || m("subjectPlaceholder"), MERGE_TAG_PREVIEW_SAMPLE)}
                     </Text>
                   ) : null}
                   <Text style={twStyle("text-sm text-gray-700")}>
-                    {substituteMergeTags(form.content || "Your message preview appears here…", MERGE_TAG_PREVIEW_SAMPLE)}
+                    {substituteMergeTags(form.content || m("previewEmpty"), MERGE_TAG_PREVIEW_SAMPLE)}
                   </Text>
                   <Text style={twStyle("mt-2 text-[11px] text-gray-400")}>
-                    Sample shown for {MERGE_TAG_PREVIEW_SAMPLE.customer_name}.
+                    {m("previewSample", { name: MERGE_TAG_PREVIEW_SAMPLE.customer_name })}
                   </Text>
                 </View>
               ) : null}
             </View>
 
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Send a test</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("sendATest")}</Text>
               <View style={twStyle("flex-row items-center gap-2")}>
                 <TextInput
                   value={testRecipient}
                   onChangeText={setTestRecipient}
-                  placeholder={form.type === "email" ? "you@example.com" : "+27 82 000 0000"}
+                  placeholder={form.type === "email" ? m("testEmailPlaceholder") : m("testPhonePlaceholder")}
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -754,37 +803,37 @@ export function MarketingCampaignsContent() {
                   style={twStyle(`rounded-xl px-4 py-3 ${sendingTest ? "bg-indigo-300" : "bg-indigo-600"}`)}
                 >
                   <Text style={twStyle("text-sm font-semibold text-white")}>
-                    {sendingTest ? "Sending…" : "Test"}
+                    {sendingTest ? m("sendingEllipsis") : m("test")}
                   </Text>
                 </TouchableOpacity>
               </View>
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                Sends one real message so you can check formatting{credits.creditsApply ? " (uses 1 credit)" : ""}.
+                {credits.creditsApply ? m("testHintWithCredit") : m("testHint")}
               </Text>
             </View>
 
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Schedule send (optional)</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("scheduleOptional")}</Text>
               <TextInput
                 value={form.scheduledAt}
-                onChangeText={(t) => setForm((p) => ({ ...p, scheduledAt: t }))}
-                placeholder="e.g. 2026-05-01T09:00:00 — leave empty for draft now"
+                onChangeText={(text) => setForm((p) => ({ ...p, scheduledAt: text }))}
+                placeholder={m("schedulePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="none"
                 autoCorrect={false}
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
               <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                When set, the campaign is saved as scheduled; tap Send on the list to deliver (same as web).
+                {m("scheduleHint")}
               </Text>
             </View>
             <ActionButton
               label={
                 creating
-                  ? "Creating..."
+                  ? m("creating")
                   : form.scheduledAt.trim()
-                    ? "Create scheduled campaign"
-                    : "Create draft"
+                    ? m("createScheduled")
+                    : m("createDraft")
               }
               onPress={createCampaign}
               loading={creating}
@@ -801,40 +850,40 @@ export function MarketingCampaignsContent() {
             setEditingCampaignId(null);
             setForm(emptyCampaignForm());
           }}
-          title="Edit campaign"
-          subtitle="Draft and scheduled campaigns can be updated before sending"
+          title={m("editTitle")}
+          subtitle={m("editSubtitle")}
         >
           <View style={twStyle("gap-3 pb-6")}>
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Campaign name</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("campaignName")}</Text>
               <TextInput
                 value={form.name}
-                onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
+                onChangeText={(text) => setForm((p) => ({ ...p, name: text }))}
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
             </View>
             {form.type === "email" ? (
               <View>
-                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Subject</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("subject")}</Text>
                 <TextInput
                   value={form.subject}
-                  onChangeText={(t) => setForm((p) => ({ ...p, subject: t }))}
+                  onChangeText={(text) => setForm((p) => ({ ...p, subject: text }))}
                   style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
             ) : null}
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Message</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("message")}</Text>
               <TextInput
                 value={form.content}
-                onChangeText={(t) => setForm((p) => ({ ...p, content: t }))}
+                onChangeText={(text) => setForm((p) => ({ ...p, content: text }))}
                 multiline
                 textAlignVertical="top"
                 style={twStyle("min-h-[110px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
             </View>
             <ActionButton
-              label={savingEdit ? "Saving…" : "Save changes"}
+              label={savingEdit ? m("saving") : m("saveChanges")}
               onPress={saveCampaignEdit}
               loading={savingEdit}
               disabled={savingEdit}
@@ -845,12 +894,12 @@ export function MarketingCampaignsContent() {
         <BottomSheet
           visible={topUpOpen}
           onClose={() => !credits.toppingUp && setTopUpOpen(false)}
-          title="Top up marketing credit"
-          subtitle="Prepaid credit funds email, SMS and WhatsApp campaigns sent via Beautonomi."
+          title={m("topUpTitle")}
+          subtitle={m("topUpSubtitle")}
         >
           <View style={twStyle("gap-4 pb-6")}>
             <View>
-              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Choose an amount</Text>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{m("chooseAmount")}</Text>
               <View style={twStyle("flex-row flex-wrap gap-2")}>
                 {TOPUP_PRESETS_ZAR.map((preset) => {
                   const active = topUpAmount === String(preset);
@@ -869,7 +918,7 @@ export function MarketingCampaignsContent() {
               </View>
             </View>
             <View>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Or enter an amount (ZAR)</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{m("enterAmountZar")}</Text>
               <TextInput
                 value={topUpAmount}
                 onChangeText={(t) => setTopUpAmount(t.replace(/[^0-9.]/g, ""))}
@@ -878,10 +927,10 @@ export function MarketingCampaignsContent() {
                 placeholderTextColor="#9ca3af"
                 style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               />
-              <Text style={twStyle("mt-1 text-xs text-gray-500")}>Minimum R10. Paid securely via Paystack.</Text>
+              <Text style={twStyle("mt-1 text-xs text-gray-500")}>{m("minPaystack")}</Text>
             </View>
             <ActionButton
-              label={credits.toppingUp ? "Opening payment…" : `Top up ${formatZar(Number(topUpAmount) || 0)}`}
+              label={credits.toppingUp ? m("openingPayment") : m("topUpAmountCta", { amount: formatZar(Number(topUpAmount) || 0) })}
               onPress={submitTopUp}
               loading={credits.toppingUp}
               disabled={credits.toppingUp || !(Number(topUpAmount) >= 10)}
@@ -894,9 +943,10 @@ export function MarketingCampaignsContent() {
 }
 
 export default function MarketingScreen() {
+  const { t } = useTranslation();
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Marketing" showBack subtitle="Campaigns & automation" />
+      <ScreenHeader title={t("provider.mobile.screens.marketing.title")} showBack subtitle={t("provider.mobile.screens.marketing.subtitle")} />
       <MarketingCampaignsContent />
     </ScreenContainer>
   );

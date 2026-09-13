@@ -2,6 +2,7 @@
 
 import { CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
+import { useTranslation } from "@beautonomi/i18n";
 import { Switch } from "@/components/ui/switch";
 import type { TeamMember, Salon } from "@/lib/provider-portal/types";
 import type { AppointmentService } from "@/components/appointments/types";
@@ -46,27 +47,6 @@ interface AppointmentReviewStepProps {
   products?: Array<{ productName: string; totalPrice: number }>;
 }
 
-const KIND_LABELS: Record<AppointmentKindValue, string> = {
-  in_salon: "In salon",
-  walk_in: "Walk-in",
-  at_home: "At home",
-};
-
-const PAYMENT_LABELS: Record<CreatePaymentMethod, string> = {
-  pay_later: "Pay later",
-  cash: "Cash / in person",
-  card: "Card — already taken",
-  payment_link: "Payment link",
-  yoco_pos: "Yoco terminal",
-  paycloud_terminal: "Card machine (PayCloud)",
-  paystack_terminal: "Paystack terminal",
-};
-
-function formatTaxLabel(taxRate: number, taxInclusive: boolean): string {
-  const pct = (Math.round(taxRate * 10000) / 100).toFixed(1);
-  return taxInclusive ? `VAT (${pct}% incl.)` : `Tax (${pct}%)`;
-}
-
 export function AppointmentReviewStep({
   clientName,
   clientId,
@@ -86,7 +66,7 @@ export function AppointmentReviewStep({
   collectDeposit = false,
   depositPercentage = 50,
   discountAmount = 0,
-  discountLabel = "Discount",
+  discountLabel,
   tipAmount = 0,
   isRecurring = false,
   subtotal = 0,
@@ -97,8 +77,10 @@ export function AppointmentReviewStep({
   durationMinutes = 0,
   products = [],
 }: AppointmentReviewStepProps) {
+  const { t } = useTranslation();
+  const prefix = "web.provider.portal.appointmentReview";
   const { format: formatMoney } = useProviderMoneyFormat();
-  const staffName = teamMembers.find((m) => m.id === staffId)?.name ?? "Unassigned";
+  const staffName = teamMembers.find((m) => m.id === staffId)?.name ?? t(`${prefix}.unassigned`);
   const locationName = locations.find((l) => l.id === locationId)?.name;
   const depositAmount = collectDeposit ? (totalAmount * depositPercentage) / 100 : 0;
   const totalDuration =
@@ -108,51 +90,75 @@ export function AppointmentReviewStep({
       return sum + s.duration + addonMin;
     }, 0);
 
+  const kindLabels: Record<AppointmentKindValue, string> = {
+    in_salon: t(`${prefix}.kindInSalon`),
+    walk_in: t(`${prefix}.kindWalkIn`),
+    at_home: t(`${prefix}.kindAtHome`),
+  };
+
+  const paymentLabels: Record<CreatePaymentMethod, string> = {
+    pay_later: t(`${prefix}.payLater`),
+    cash: t(`${prefix}.payCash`),
+    card: t(`${prefix}.payCard`),
+    payment_link: t(`${prefix}.payPaymentLink`),
+    yoco_pos: t(`${prefix}.payYocoPos`),
+    paycloud_terminal: t(`${prefix}.payPaycloud`),
+    paystack_terminal: t(`${prefix}.payPaystack`),
+  };
+
+  const formatTaxLabel = (rate: number, inclusive: boolean): string => {
+    const pct = (Math.round(rate * 10000) / 100).toFixed(1);
+    return inclusive ? t(`${prefix}.taxInclusive`, { pct }) : t(`${prefix}.taxExclusive`, { pct });
+  };
+
   return (
     <div className="space-y-4 pb-4">
       <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
         <CheckCircle2 className="h-5 w-5 shrink-0" />
-        <p className="text-sm font-medium">Review and confirm booking details</p>
+        <p className="text-sm font-medium">{t(`${prefix}.reviewBanner`)}</p>
       </div>
 
       <BookingSectionCard>
-        <BookingSectionLabel className="mb-3">Summary</BookingSectionLabel>
-        <BookingSummaryRow label="Client" value={clientName || "—"} />
-        <BookingSummaryRow label="Staff" value={staffName} />
-        <BookingSummaryRow label="Type" value={KIND_LABELS[appointmentKind]} />
-        {locationName ? <BookingSummaryRow label="Location" value={locationName} /> : null}
+        <BookingSectionLabel className="mb-3">{t(`${prefix}.summary`)}</BookingSectionLabel>
+        <BookingSummaryRow label={t(`${prefix}.client`)} value={clientName || "—"} />
+        <BookingSummaryRow label={t(`${prefix}.staff`)} value={staffName} />
+        <BookingSummaryRow label={t(`${prefix}.type`)} value={kindLabels[appointmentKind]} />
+        {locationName ? <BookingSummaryRow label={t(`${prefix}.location`)} value={locationName} /> : null}
         {date && startTime ? (
           <BookingSummaryRow
-            label="When"
-            value={`${format(new Date(`${date}T${startTime}`), "EEE d MMM")} · ${startTime}`}
+            label={t(`${prefix}.when`)}
+            value={t(`${prefix}.whenValue`, {
+              date: format(new Date(`${date}T${startTime}`), "EEE d MMM"),
+              time: startTime,
+            })}
           />
         ) : null}
         {totalDuration > 0 ? (
-          <BookingSummaryRow label="Duration" value={`${totalDuration} min`} />
+          <BookingSummaryRow label={t(`${prefix}.duration`)} value={t(`${prefix}.durationMin`, { count: totalDuration })} />
         ) : null}
-        <BookingSummaryRow label="Payment" value={PAYMENT_LABELS[paymentMethod]} />
+        <BookingSummaryRow label={t(`${prefix}.payment`)} value={paymentLabels[paymentMethod]} />
         {collectDeposit ? (
           <BookingSummaryRow
-            label="Deposit"
-            value={`${depositPercentage}% (${formatMoney(depositAmount)} due now)`}
+            label={t(`${prefix}.deposit`)}
+            value={t(`${prefix}.depositValue`, { pct: depositPercentage, amount: formatMoney(depositAmount) })}
           />
         ) : null}
-        {isRecurring ? <BookingSummaryRow label="Repeating" value="Yes" /> : null}
+        {isRecurring ? <BookingSummaryRow label={t(`${prefix}.repeating`)} value={t("common.yes")} /> : null}
       </BookingSectionCard>
 
       <BookingSectionCard>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-900">Notify client</p>
+            <p className="text-sm font-medium text-gray-900">{t(`${prefix}.notifyClient`)}</p>
             <p className="text-xs text-gray-500">
-              {sendNotification ? "Send booking confirmation" : "Silent booking — no notification"}
+              {sendNotification ? t(`${prefix}.sendConfirmation`) : t(`${prefix}.silentBooking`)}
             </p>
           </div>
           {onSendNotificationChange ? (
             <Switch checked={sendNotification} onCheckedChange={onSendNotificationChange} />
           ) : (
             <span className="text-sm text-gray-700">
-              {sendNotification ? "Yes" : "No — silent booking"}
+              {sendNotification ? t("common.yes") : t(`${prefix}.silentNo`)}
             </span>
           )}
         </div>
@@ -163,23 +169,23 @@ export function AppointmentReviewStep({
       ) : null}
 
       <BookingSectionCard>
-        <BookingSectionLabel className="mb-3">Pricing</BookingSectionLabel>
-        {subtotal > 0 ? <BookingSummaryRow label="Subtotal" value={formatMoney(subtotal)} /> : null}
-        {travelFee > 0 ? <BookingSummaryRow label="Travel fee" value={formatMoney(travelFee)} /> : null}
+        <BookingSectionLabel className="mb-3">{t(`${prefix}.pricing`)}</BookingSectionLabel>
+        {subtotal > 0 ? <BookingSummaryRow label={t(`${prefix}.subtotal`)} value={formatMoney(subtotal)} /> : null}
+        {travelFee > 0 ? <BookingSummaryRow label={t(`${prefix}.travelFee`)} value={formatMoney(travelFee)} /> : null}
         {discountAmount > 0 ? (
-          <BookingSummaryRow label={discountLabel} value={`−${formatMoney(discountAmount)}`} />
+          <BookingSummaryRow label={discountLabel || t(`${prefix}.discount`)} value={`−${formatMoney(discountAmount)}`} />
         ) : null}
         {taxAmount > 0 ? (
           <BookingSummaryRow
-            label={taxRate > 0 ? formatTaxLabel(taxRate, taxInclusive) : "Tax"}
+            label={taxRate > 0 ? formatTaxLabel(taxRate, taxInclusive) : t(`${prefix}.tax`)}
             value={formatMoney(taxAmount)}
           />
         ) : null}
-        {tipAmount > 0 ? <BookingSummaryRow label="Tip" value={formatMoney(tipAmount)} /> : null}
-        <BookingSummaryRow label="Total" value={formatMoney(totalAmount)} emphasize />
+        {tipAmount > 0 ? <BookingSummaryRow label={t(`${prefix}.tip`)} value={formatMoney(tipAmount)} /> : null}
+        <BookingSummaryRow label={t(`${prefix}.total`)} value={formatMoney(totalAmount)} emphasize />
         {collectDeposit ? (
           <BookingSummaryRow
-            label="Due now (deposit)"
+            label={t(`${prefix}.dueNowDeposit`)}
             value={formatMoney(depositAmount)}
             emphasize
           />
@@ -187,16 +193,16 @@ export function AppointmentReviewStep({
       </BookingSectionCard>
 
       <BookingSectionCard>
-        <BookingSectionLabel className="mb-3">Services</BookingSectionLabel>
+        <BookingSectionLabel className="mb-3">{t(`${prefix}.services`)}</BookingSectionLabel>
         {services.length === 0 ? (
-          <p className="text-sm text-gray-500">No services selected</p>
+          <p className="text-sm text-gray-500">{t(`${prefix}.noServices`)}</p>
         ) : (
           <ul className="divide-y divide-gray-100">
             {services.map((svc) => (
               <li key={svc.id} className="flex justify-between gap-3 py-2 text-sm">
                 <span className="text-gray-900">{svc.serviceName}</span>
                 <span className="shrink-0 text-gray-600 tabular-nums">
-                  {formatMoney(svc.price)} · {svc.duration} min
+                  {t(`${prefix}.serviceMeta`, { price: formatMoney(svc.price), count: svc.duration })}
                 </span>
               </li>
             ))}
@@ -206,7 +212,7 @@ export function AppointmentReviewStep({
 
       {products.length > 0 ? (
         <BookingSectionCard>
-          <BookingSectionLabel className="mb-3">Products</BookingSectionLabel>
+          <BookingSectionLabel className="mb-3">{t(`${prefix}.products`)}</BookingSectionLabel>
           <ul className="divide-y divide-gray-100">
             {products.map((p) => (
               <li key={p.productName} className="flex justify-between gap-3 py-2 text-sm">
@@ -220,7 +226,7 @@ export function AppointmentReviewStep({
 
       {notes ? (
         <BookingSectionCard>
-          <BookingSectionLabel className="mb-2">Notes</BookingSectionLabel>
+          <BookingSectionLabel className="mb-2">{t(`${prefix}.notes`)}</BookingSectionLabel>
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
         </BookingSectionCard>
       ) : null}

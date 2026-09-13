@@ -11,6 +11,7 @@ import {
   Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -22,8 +23,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { verticalFlatListPerf } from "@/lib/flatListPerformance";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
-/* ─── types (aligned with API: hours_before, refund_percentage, is_default) ─── */
 interface CancellationPolicy {
   id: string;
   name: string;
@@ -48,10 +49,10 @@ interface PolicyForm {
   location_type: "at_salon" | "at_home" | "both" | null;
 }
 
-const LOCATION_LABELS: Record<string, string> = {
-  at_salon: "In-salon",
-  at_home: "At-home",
-  both: "All locations",
+const LOCATION_KEYS: Record<string, string> = {
+  at_salon: "locationInSalon",
+  at_home: "locationAtHome",
+  both: "locationAll",
 };
 
 const EMPTY_FORM: PolicyForm = {
@@ -64,8 +65,13 @@ const EMPTY_FORM: PolicyForm = {
   location_type: null,
 };
 
-/* ─── screen ─── */
 export default function CancellationPoliciesScreen() {
+  const { t } = useTranslation();
+  const cp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.cancellationPolicies.${key}`, opts) as string,
+    [t],
+  );
   useResponsive();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -89,7 +95,6 @@ export default function CancellationPoliciesScreen() {
 
   const isSaving = creating || updating;
 
-  /* ─── handlers ─── */
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -130,14 +135,14 @@ export default function CancellationPoliciesScreen() {
 
   function validateForm(): boolean {
     const errs: Partial<Record<keyof PolicyForm, string>> = {};
-    if (!form.name.trim()) errs.name = "Policy name is required";
+    if (!form.name.trim()) errs.name = cp("nameRequired");
     const amount = parseFloat(form.fee_amount);
-    if (isNaN(amount) || amount < 0) errs.fee_amount = "Must be a positive number";
-    else if (form.fee_type === "percentage" && amount > 100) errs.fee_amount = "Cannot exceed 100%";
+    if (isNaN(amount) || amount < 0) errs.fee_amount = cp("positiveNumber");
+    else if (form.fee_type === "percentage" && amount > 100) errs.fee_amount = cp("cannotExceed100");
     const hours = parseInt(form.hours_before, 10);
-    if (isNaN(hours) || hours < 0) errs.hours_before = "Must be 0 or more hours";
+    if (isNaN(hours) || hours < 0) errs.hours_before = cp("hoursMin");
     const refund = parseInt(form.refund_percentage, 10);
-    if (isNaN(refund) || refund < 0 || refund > 100) errs.refund_percentage = "Must be 0-100";
+    if (isNaN(refund) || refund < 0 || refund > 100) errs.refund_percentage = cp("refundRange");
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -162,19 +167,19 @@ export default function CancellationPoliciesScreen() {
         payload,
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(cp("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Updated", "Policy updated successfully.");
+      Alert.alert(cp("updatedTitle"), cp("updatedBody"));
     } else {
       const { error } = await createPolicy(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(cp("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Created", "New cancellation policy added.");
+      Alert.alert(cp("createdTitle"), cp("createdBody"));
     }
     setSheetVisible(false);
     refresh();
@@ -187,7 +192,7 @@ export default function CancellationPoliciesScreen() {
       {},
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(cp("errorTitle"), error);
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -196,12 +201,12 @@ export default function CancellationPoliciesScreen() {
 
   function handleDelete(policy: CancellationPolicy) {
     Alert.alert(
-      "Delete Policy",
-      `Are you sure you want to delete "${policy.name}"? This cannot be undone.`,
+      cp("deleteTitle"),
+      cp("deleteBody", { name: policy.name }),
       [
-        { text: "Cancel", style: "cancel" },
+        { text: cp("cancel"), style: "cancel" },
         {
-          text: "Delete",
+          text: cp("delete"),
           style: "destructive",
           onPress: async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -209,7 +214,7 @@ export default function CancellationPoliciesScreen() {
               `/api/provider/cancellation-policies/${policy.id}`,
             );
             if (error) {
-              Alert.alert("Error", error);
+              Alert.alert(cp("errorTitle"), error);
             } else {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               refresh();
@@ -220,18 +225,24 @@ export default function CancellationPoliciesScreen() {
     );
   }
 
-  /* ─── render ─── */
+  const locationOptions = [
+    { value: null, label: cp("locationAny") },
+    { value: "at_salon" as const, label: cp("locationInSalon") },
+    { value: "at_home" as const, label: cp("locationAtHome") },
+    { value: "both" as const, label: cp("locationBoth") },
+  ];
+
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Cancellation Policies"
+        title={cp("title")}
         showBack
-        subtitle={`${policies?.length ?? 0} ${(policies?.length ?? 0) === 1 ? "policy" : "policies"}`}
+        subtitle={cp("subtitle", { count: policies?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
             onPress={openAddSheet}
-            accessibilityLabel="Add new cancellation policy"
+            accessibilityLabel={cp("addPolicyA11y")}
             accessibilityRole="button"
           >
             <Ionicons name="add" size={22} color="#fff" />
@@ -242,14 +253,14 @@ export default function CancellationPoliciesScreen() {
       <TouchableOpacity
         style={twStyle("mx-4 mb-3 flex-row items-center rounded-xl border border-amber-100 bg-amber-50 px-4 py-3")}
         onPress={() => router.push("/(app)/(tabs)/more/settings/payments" as never)}
-        accessibilityLabel="Configure no-show fees in payment settings"
+        accessibilityLabel={cp("noShowFeesA11y")}
         accessibilityRole="button"
       >
         <Ionicons name="alert-circle-outline" size={18} color="#d97706" />
-        <Text style={twStyle("ml-2 flex-1 text-sm text-amber-900")}>
-          No-show fees are configured under Payment Settings.
+        <Text style={twStyle("ms-2 flex-1 text-sm text-amber-900")}>
+          {cp("noShowFeesHint")}
         </Text>
-        <Ionicons name="chevron-forward" size={16} color="#d97706" />
+        <DirectionalIcon name="chevron-forward" size={16} color="#d97706" />
       </TouchableOpacity>
 
       {loading && !policies ? (
@@ -257,9 +268,9 @@ export default function CancellationPoliciesScreen() {
       ) : !policies || policies.length === 0 ? (
         <EmptyState
           icon="close-circle-outline"
-          title="No policies"
-          description="Set up late-cancellation rules so customers know when refunds apply."
-          actionLabel="Add Policy"
+          title={cp("emptyTitle")}
+          description={cp("emptyDescription")}
+          actionLabel={cp("addPolicy")}
           onAction={openAddSheet}
         />
       ) : (
@@ -275,9 +286,8 @@ export default function CancellationPoliciesScreen() {
           renderItem={({ item: policy }: { item: CancellationPolicy }) => (
             <View
               style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
-              accessibilityLabel={`Cancellation policy ${policy.name}`}
+              accessibilityLabel={cp("policyA11y", { name: policy.name })}
             >
-              {/* Header */}
               <View style={twStyle("flex-row items-start justify-between")}>
                 <View style={twStyle("flex-1")}>
                   <Text style={twStyle("text-base font-semibold text-gray-900")}>
@@ -290,68 +300,73 @@ export default function CancellationPoliciesScreen() {
                   <Text
                     style={twStyle(`text-xs font-medium ${policy.is_default ? "text-indigo-700" : "text-gray-500"}`)}
                   >
-                    {policy.is_default ? "Default" : "Custom"}
+                    {policy.is_default ? cp("default") : cp("custom")}
                   </Text>
                 </View>
               </View>
 
               <View style={twStyle("mt-2")}>
                 <Text style={twStyle("text-xs text-gray-600")}>
-                  More than {policy.hours_before}h before: full wallet refund
+                  {cp("moreThanHours", { hours: policy.hours_before })}
                 </Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
-                  Within {policy.hours_before}h (late): {policy.refund_percentage}% refund of amounts paid
+                  {cp("withinHoursLate", { hours: policy.hours_before, percent: policy.refund_percentage })}
                 </Text>
                 {policy.refund_percentage === 0 && policy.fee_amount > 0 ? (
                   <Text style={twStyle("mt-0.5 text-xs text-gray-600")}>
-                    Late fee:{" "}
-                    {policy.fee_type === "percentage"
-                      ? `${policy.fee_amount}%`
-                      : formatCurrency(policy.fee_amount)}
+                    {cp("lateFee", {
+                      amount:
+                        policy.fee_type === "percentage"
+                          ? cp("percentAmount", { amount: policy.fee_amount })
+                          : formatCurrency(policy.fee_amount),
+                    })}
                   </Text>
                 ) : null}
                 {policy.location_type ? (
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                    Applies to: {LOCATION_LABELS[policy.location_type] ?? policy.location_type}
+                    {cp("appliesTo", {
+                      scope: LOCATION_KEYS[policy.location_type]
+                        ? cp(LOCATION_KEYS[policy.location_type])
+                        : policy.location_type,
+                    })}
                   </Text>
                 ) : null}
               </View>
 
-              {/* Actions */}
               <View style={twStyle("mt-3 flex-row flex-wrap items-center border-t border-gray-50 pt-3")}>
                 {!policy.is_default && (
                   <TouchableOpacity
-                    style={[twStyle("mb-2 flex-row items-center justify-center rounded-lg bg-indigo-50 px-3 py-2"), { marginRight: 8 }]}
+                    style={[twStyle("mb-2 flex-row items-center justify-center rounded-lg bg-indigo-50 px-3 py-2"), { marginEnd: 8 }]}
                     onPress={() => handleSetDefault(policy)}
-                    accessibilityLabel={`Set ${policy.name} as default policy`}
+                    accessibilityLabel={cp("setDefaultA11y", { name: policy.name })}
                     accessibilityRole="button"
                   >
                     <Ionicons name="star-outline" size={14} color="#4f46e5" />
-                    <Text style={twStyle("ml-1 text-xs font-medium text-indigo-700")}>
-                      Set default
+                    <Text style={twStyle("ms-1 text-xs font-medium text-indigo-700")}>
+                      {cp("setDefault")}
                     </Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"), { marginRight: 8 }]}
+                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"), { marginEnd: 8 }]}
                   onPress={() => openEditSheet(policy)}
-                  accessibilityLabel={`Edit ${policy.name} policy`}
+                  accessibilityLabel={cp("editA11y", { name: policy.name })}
                   accessibilityRole="button"
                 >
                   <Ionicons name="create-outline" size={14} color="#6b7280" />
-                  <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>
-                    Edit
+                  <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")}>
+                    {cp("edit")}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={twStyle("flex-row items-center justify-center rounded-lg bg-red-50 px-4 py-2")}
                   onPress={() => handleDelete(policy)}
-                  accessibilityLabel={`Delete ${policy.name} policy`}
+                  accessibilityLabel={cp("deleteA11y", { name: policy.name })}
                   accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                  <Text style={twStyle("ml-1 text-xs font-medium text-red-600")}>
-                    Delete
+                  <Text style={twStyle("ms-1 text-xs font-medium text-red-600")}>
+                    {cp("delete")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -360,62 +375,58 @@ export default function CancellationPoliciesScreen() {
         />
       )}
 
-      {/* ─── Add / Edit Bottom Sheet ─── */}
       <BottomSheet
         visible={sheetVisible}
         onClose={() => setSheetVisible(false)}
-        title={editingId ? "Edit Policy" : "Add Policy"}
+        title={editingId ? cp("editPolicy") : cp("addPolicy")}
         snapHeight="half"
       >
-        {/* Name */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Policy Name <Text style={twStyle("text-red-500")}>*</Text>
+            {cp("policyNameLabel")}
           </Text>
           <TextInput
             style={twStyle(`rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.name ? "border-red-400" : "border-gray-200"}`)}
             value={form.name}
             onChangeText={(v) => { updateField("name", v); setFormErrors((prev) => ({ ...prev, name: undefined })); }}
-            placeholder="e.g. Standard cancellation"
+            placeholder={cp("policyNamePlaceholder")}
             placeholderTextColor="#9ca3af"
-            accessibilityLabel="Policy name"
+            accessibilityLabel={cp("policyNameA11y")}
           />
           {formErrors.name && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.name}</Text>}
         </View>
 
-        {/* Fee Type */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-            Fee Type
+            {cp("feeType")}
           </Text>
           <View style={twStyle("flex-row")}>
             {(["percentage", "fixed"] as const).map((type) => (
               <TouchableOpacity
                 key={type}
-                style={[twStyle(`flex-1 items-center rounded-xl py-3 ${form.fee_type === type ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), type === "percentage" ? { marginRight: 8 } : undefined]}
+                style={[twStyle(`flex-1 items-center rounded-xl py-3 ${form.fee_type === type ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), type === "percentage" ? { marginEnd: 8 } : undefined]}
                 onPress={() => updateField("fee_type", type)}
-                accessibilityLabel={`Fee type ${type}`}
+                accessibilityLabel={cp("feeTypeA11y", { type: type === "percentage" ? cp("feeTypePercentage") : cp("feeTypeFixed") })}
                 accessibilityRole="button"
               >
                 <Text
-                  style={twStyle(`text-sm font-medium capitalize ${form.fee_type === type ? "text-white" : "text-gray-600"}`)}
+                  style={twStyle(`text-sm font-medium ${form.fee_type === type ? "text-white" : "text-gray-600"}`)}
                 >
-                  {type}
+                  {type === "percentage" ? cp("feeTypePercentage") : cp("feeTypeFixed")}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Fee Amount */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Fee Amount
+            {cp("feeAmount")}
           </Text>
           <View style={twStyle("flex-row items-center")}>
             {form.fee_type === "fixed" && (
-              <Text style={twStyle("mr-2 text-lg font-semibold text-gray-400")}>
-                R
+              <Text style={twStyle("me-2 text-lg font-semibold text-gray-400")}>
+                {cp("currencyPrefix")}
               </Text>
             )}
             <TextInput
@@ -425,21 +436,20 @@ export default function CancellationPoliciesScreen() {
               keyboardType="decimal-pad"
               placeholder={form.fee_type === "percentage" ? "50" : "100.00"}
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="Fee amount"
+              accessibilityLabel={cp("feeAmountA11y")}
             />
             {form.fee_type === "percentage" && (
-              <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>
-                %
+              <Text style={twStyle("ms-2 text-lg font-semibold text-gray-400")}>
+                {cp("percentSymbol")}
               </Text>
             )}
           </View>
           {formErrors.fee_amount && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.fee_amount}</Text>}
         </View>
 
-        {/* Hours Before */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Hours Before Appointment
+            {cp("hoursBefore")}
           </Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
@@ -449,17 +459,16 @@ export default function CancellationPoliciesScreen() {
               keyboardType="number-pad"
               placeholder="24"
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="Hours before appointment"
+              accessibilityLabel={cp("hoursBeforeA11y")}
             />
-            <Text style={twStyle("ml-2 text-sm text-gray-400")}>hours</Text>
+            <Text style={twStyle("ms-2 text-sm text-gray-400")}>{cp("hoursSuffix")}</Text>
           </View>
           {formErrors.hours_before && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.hours_before}</Text>}
         </View>
 
-        {/* Refund Percentage */}
         <View style={twStyle("mb-4")}>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Refund Percentage
+            {cp("refundPercentage")}
           </Text>
           <View style={twStyle("flex-row items-center")}>
             <TextInput
@@ -469,37 +478,29 @@ export default function CancellationPoliciesScreen() {
               keyboardType="number-pad"
               placeholder="0"
               placeholderTextColor="#9ca3af"
-              accessibilityLabel="Refund percentage"
+              accessibilityLabel={cp("refundPercentageA11y")}
             />
-            <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>
-              %
+            <Text style={twStyle("ms-2 text-lg font-semibold text-gray-400")}>
+              {cp("percentSymbol")}
             </Text>
           </View>
           {formErrors.refund_percentage && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.refund_percentage}</Text>}
         </View>
 
-        {/* Location type */}
         <View style={twStyle("mb-4")}>
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Applies to</Text>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{cp("appliesToLabel")}</Text>
           <View style={twStyle("flex-row flex-wrap")}>
-            {(
-              [
-                { value: null, label: "Any" },
-                { value: "at_salon", label: "In-salon" },
-                { value: "at_home", label: "At-home" },
-                { value: "both", label: "Both" },
-              ] as const
-            ).map((opt) => {
+            {locationOptions.map((opt) => {
               const selected = form.location_type === opt.value;
               return (
                 <TouchableOpacity
                   key={opt.label}
                   style={[
                     twStyle(`rounded-full px-3 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`),
-                    { marginRight: 8, marginBottom: 8 },
+                    { marginEnd: 8, marginBottom: 8 },
                   ]}
                   onPress={() => updateField("location_type", opt.value)}
-                  accessibilityLabel={`Location scope ${opt.label}`}
+                  accessibilityLabel={cp("locationScopeA11y", { label: opt.label })}
                   accessibilityRole="button"
                 >
                   <Text
@@ -513,28 +514,26 @@ export default function CancellationPoliciesScreen() {
           </View>
         </View>
 
-        {/* Default Toggle */}
         <View style={twStyle("mb-6 flex-row items-center justify-between rounded-xl bg-gray-50 px-4 py-3")}>
           <Text style={twStyle("text-sm font-medium text-gray-700")}>
-            Set as Default Policy
+            {cp("setAsDefault")}
           </Text>
           <Switch
             value={form.is_default}
             onValueChange={(v) => updateField("is_default", v)}
             trackColor={{ false: "#d1d5db", true: "#818cf8" }}
             thumbColor={form.is_default ? "#6366f1" : "#f3f4f6"}
-            accessibilityLabel="Toggle default policy"
+            accessibilityLabel={cp("toggleDefaultA11y")}
           />
         </View>
 
-        {/* Save */}
         <ActionButton
           label={
             isSaving
-              ? "Saving…"
+              ? cp("saving")
               : editingId
-                ? "Update Policy"
-                : "Add Policy"
+                ? cp("updatePolicy")
+                : cp("addPolicy")
           }
           onPress={handleSave}
           loading={isSaving}

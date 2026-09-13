@@ -8,6 +8,7 @@ import {
   type ListRenderItemInfo,
   useWindowDimensions,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { format, isSameDay } from "date-fns";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -56,7 +57,7 @@ const BookingDateChip = memo(function BookingDateChip({
                 : "border border-gray-200 bg-white"
           }`,
         ),
-        { minWidth, marginRight: 8 },
+        { minWidth, marginEnd: 8 },
       ]}
       onPress={() => onSelectDate(d)}
       accessibilityRole="radio"
@@ -167,6 +168,12 @@ type PeriodFilterTabsProps = {
 };
 
 function PeriodFilterTabs({ periods, activeFilter, onFilterChange }: PeriodFilterTabsProps) {
+  const { t } = useTranslation();
+  const bt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookingDateTimePicker.${key}`, opts) as string,
+    [t],
+  );
   if (periods.length <= 1) return null;
 
   const handlePress = (period: BookingSlotPeriod) => {
@@ -190,7 +197,7 @@ function PeriodFilterTabs({ periods, activeFilter, onFilterChange }: PeriodFilte
             onPress={() => handlePress(p.period)}
             style={[
               twStyle(
-                `mr-2 flex-row items-center rounded-full border px-3 ${
+                `me-2 flex-row items-center rounded-full border px-3 ${
                   isActive
                     ? "border-gray-800 bg-gray-900"
                     : "border-gray-200 bg-gray-50"
@@ -200,7 +207,7 @@ function PeriodFilterTabs({ periods, activeFilter, onFilterChange }: PeriodFilte
             ]}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={isActive ? `Showing ${p.label} only. Tap to show all.` : `Filter to ${p.label}`}
+            accessibilityLabel={isActive ? bt("showingPeriodOnlyA11y", { label: p.label }) : bt("filterToA11y", { label: p.label })}
           >
             <Ionicons
               name={PERIOD_ICONS[p.period]}
@@ -209,7 +216,7 @@ function PeriodFilterTabs({ periods, activeFilter, onFilterChange }: PeriodFilte
             />
             <Text
               style={twStyle(
-                `ml-1 text-xs font-semibold ${isActive ? "text-gray-200" : "text-gray-600"}`,
+                `ms-1 text-xs font-semibold ${isActive ? "text-gray-200" : "text-gray-600"}`,
               )}
             >
               {p.label}
@@ -218,7 +225,7 @@ function PeriodFilterTabs({ periods, activeFilter, onFilterChange }: PeriodFilte
               <View
                 style={[
                   twStyle(
-                    `ml-1.5 items-center justify-center rounded-full ${
+                    `ms-1.5 items-center justify-center rounded-full ${
                       isActive ? "bg-white/20" : "bg-emerald-100"
                     }`,
                   ),
@@ -260,6 +267,12 @@ const BookingTimeSlotChip = memo(function BookingTimeSlotChip({
   columnIndex,
   onSelect,
 }: TimeSlotChipProps) {
+  const { t } = useTranslation();
+  const bt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookingDateTimePicker.${key}`, opts) as string,
+    [t],
+  );
   const unavailable = !row.available;
 
   const handlePress = useCallback(() => {
@@ -285,7 +298,7 @@ const BookingTimeSlotChip = memo(function BookingTimeSlotChip({
           justifyContent: "center",
           alignItems: "center",
           marginBottom: 8,
-          marginRight: columnIndex % 3 === 2 ? 0 : 8,
+          marginEnd: columnIndex % 3 === 2 ? 0 : 8,
         },
       ]}
       onPress={handlePress}
@@ -293,8 +306,10 @@ const BookingTimeSlotChip = memo(function BookingTimeSlotChip({
       accessibilityState={{ checked: isActive, disabled: unavailable }}
       accessibilityLabel={
         unavailable
-          ? `${row.time}, unavailable${row.reason ? `, ${row.reason}` : ""}`
-          : `Time ${row.time}`
+          ? row.reason
+            ? bt("unavailableWithReasonA11y", { time: row.time, reason: row.reason })
+            : bt("unavailableA11y", { time: row.time })
+          : bt("timeA11y", { time: row.time })
       }
     >
       <Text
@@ -329,7 +344,7 @@ function SlotGridSkeleton({ chipWidth }: { chipWidth: number }) {
             key={i}
             style={[
               twStyle("mb-2 rounded-xl bg-gray-100"),
-              { width: chipWidth, height: 44, marginRight: i % 3 === 2 ? 0 : 8 },
+              { width: chipWidth, height: 44, marginEnd: i % 3 === 2 ? 0 : 8 },
             ]}
           />
         ))}
@@ -355,6 +370,12 @@ function PeriodSlotGroups({
   onSelectTime,
   chipWidth,
 }: PeriodSlotGroupsProps) {
+  const { t } = useTranslation();
+  const bt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookingDateTimePicker.${key}`, opts) as string,
+    [t],
+  );
   return (
     <>
       {grouped.map((group) => {
@@ -367,12 +388,12 @@ function PeriodSlotGroups({
                 name={PERIOD_ICONS[group.period]}
                 size={13}
                 color="#6b7280"
-                style={{ marginRight: 5 }}
+                style={{ marginEnd: 5 }}
               />
               <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
                 {group.label}
               </Text>
-              <View style={twStyle("ml-auto flex-row items-center")}>
+              <View style={twStyle("ms-auto flex-row items-center")}>
                 <View
                   style={[
                     twStyle(`rounded-full ${openCount > 0 ? "bg-emerald-100" : "bg-gray-100"}`),
@@ -384,7 +405,7 @@ function PeriodSlotGroups({
                       `text-[10px] font-bold ${openCount > 0 ? "text-emerald-700" : "text-gray-400"}`,
                     )}
                   >
-                    {openCount} open
+                    {bt("openCount", { count: openCount })}
                   </Text>
                 </View>
               </View>
@@ -441,6 +462,12 @@ export function BookingTimeSlotGrid({
   showLegend = true,
   showNextAvailable = true,
 }: BookingTimeSlotGridProps) {
+  const { t } = useTranslation();
+  const bt = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.components.bookingDateTimePicker.${key}`, opts) as string,
+    [t],
+  );
   const { width: windowWidth } = useWindowDimensions();
   const timeSlotGridOuterWidth = Math.min(windowWidth - 32, 400);
   const timeSlotChipWidth = Math.max(64, Math.floor((timeSlotGridOuterWidth - 16) / 3));
@@ -487,7 +514,7 @@ export function BookingTimeSlotGrid({
   if (loading && rows.length === 0) {
     return (
       <View>
-        <Text style={twStyle("mb-3 text-center text-sm text-gray-500")}>Loading times…</Text>
+        <Text style={twStyle("mb-3 text-center text-sm text-gray-500")}>{bt("loadingTimes")}</Text>
         <SlotGridSkeleton chipWidth={timeSlotChipWidth} />
       </View>
     );
@@ -498,9 +525,9 @@ export function BookingTimeSlotGrid({
     return (
       <View style={twStyle("items-center py-8")}>
         <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
-        <Text style={twStyle("mt-3 text-sm text-gray-500")}>No times available for this date</Text>
+        <Text style={twStyle("mt-3 text-sm text-gray-500")}>{bt("noTimes")}</Text>
         <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-          Try a different day or adjust your services
+          {bt("noTimesHint")}
         </Text>
       </View>
     );
@@ -511,16 +538,16 @@ export function BookingTimeSlotGrid({
       {/* Soft "updating" indicator while new results load */}
       {loading ? (
         <Text style={twStyle("mb-2 text-center text-xs font-medium text-gray-400")}>
-          Updating times…
+          {bt("updatingTimes")}
         </Text>
       ) : null}
 
       {/* Timezone label */}
       {providerTimezone ? (
         <View style={twStyle("mb-3 flex-row items-center")}>
-          <Ionicons name="time-outline" size={12} color="#9ca3af" style={{ marginRight: 4 }} />
+          <Ionicons name="time-outline" size={12} color="#9ca3af" style={{ marginEnd: 4 }} />
           <Text style={twStyle("text-xs text-gray-400")}>
-            Times in {providerTimezone.replace(/_/g, " ")}
+            {bt("timesIn", { timezone: providerTimezone.replace(/_/g, " ") })}
           </Text>
         </View>
       ) : null}
@@ -533,11 +560,11 @@ export function BookingTimeSlotGrid({
             "mb-3 flex-row items-center self-start rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5",
           )}
           accessibilityRole="button"
-          accessibilityLabel={`Jump to next available: ${nextSlot.time}`}
+          accessibilityLabel={bt("nextAvailableA11y", { time: nextSlot.time })}
         >
           <Ionicons name="flash-outline" size={13} color="#059669" />
-          <Text style={twStyle("ml-1.5 text-xs font-semibold text-emerald-800")}>
-            Next available: {nextSlot.time}
+          <Text style={twStyle("ms-1.5 text-xs font-semibold text-emerald-800")}>
+            {bt("nextAvailable", { time: nextSlot.time })}
           </Text>
         </TouchableOpacity>
       ) : null}
@@ -546,12 +573,12 @@ export function BookingTimeSlotGrid({
       {showLegend ? (
         <View style={twStyle("mb-3 flex-row flex-wrap items-center gap-x-4")}>
           <View style={twStyle("flex-row items-center")}>
-            <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
-            <Text style={twStyle("text-xs text-gray-500")}>Open</Text>
+            <View style={twStyle("me-1.5 h-2 w-2 rounded-full bg-emerald-400")} />
+            <Text style={twStyle("text-xs text-gray-500")}>{bt("open")}</Text>
           </View>
           <View style={twStyle("flex-row items-center")}>
-            <View style={twStyle("mr-1.5 h-2 w-2 rounded-full bg-red-300")} />
-            <Text style={twStyle("text-xs text-gray-500")}>Unavailable</Text>
+            <View style={twStyle("me-1.5 h-2 w-2 rounded-full bg-red-300")} />
+            <Text style={twStyle("text-xs text-gray-500")}>{bt("unavailable")}</Text>
           </View>
         </View>
       ) : null}
@@ -574,10 +601,10 @@ export function BookingTimeSlotGrid({
             "mb-3 flex-row items-center self-start rounded-full border border-gray-200 bg-gray-100 px-3 py-1",
           )}
           accessibilityRole="button"
-          accessibilityLabel="Clear filter, show all times"
+          accessibilityLabel={bt("clearFilterA11y")}
         >
           <Ionicons name="close-circle" size={13} color="#6b7280" />
-          <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>Show all times</Text>
+          <Text style={twStyle("ms-1 text-xs font-medium text-gray-600")}>{bt("showAllTimes")}</Text>
         </TouchableOpacity>
       ) : null}
 

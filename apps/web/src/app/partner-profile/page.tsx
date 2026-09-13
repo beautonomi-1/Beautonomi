@@ -5,7 +5,9 @@ import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
 } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import { headers } from "next/headers";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
@@ -31,11 +33,13 @@ export async function generateMetadata({
   const h = await headers();
   const hostRaw = (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
   const path = "/partner-profile";
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
 
   if (!slugDecoded) {
     return {
-      title: "Provider Profile | Beautonomi",
-      description: "Discover beauty services from verified providers on Beautonomi",
+      title: t("web.seo.providerProfileTitle") as string,
+      description: t("web.seo.providerProfileDescription") as string,
     };
   }
 
@@ -44,21 +48,19 @@ export async function generateMetadata({
   const { provider, providerFull } = await getPublicProviderDetail(slugDecoded, lat, lng);
   if (!provider || !providerFull) {
     return {
-      title: "Provider Not Found | Beautonomi",
-      description: "The provider you're looking for doesn't exist on Beautonomi.",
+      title: t("web.seo.providerProfileNotFoundTitle") as string,
+      description: t("web.seo.providerProfileNotFoundDescription") as string,
     };
   }
 
-  const title = `${provider.business_name} | Beautonomi`;
-  const locationText =
-    provider.city && provider.country
-      ? `${provider.city}, ${provider.country}`
-      : provider.city || provider.country || "";
+  const title = t("web.seo.providerProfileNamedTitle", {
+    name: provider.business_name,
+  }) as string;
   const description = providerFull.description
     ? `${providerFull.description.substring(0, 155)}${providerFull.description.length > 155 ? "..." : ""}`
-    : `Discover ${provider.business_name} on Beautonomi${locationText ? ` in ${locationText}` : ""}. ${
-        provider.rating ? `Rated ${provider.rating.toFixed(1)}/5` : ""
-      }${provider.review_count ? ` with ${provider.review_count} reviews` : ""}.`;
+    : (t("web.seo.providerProfileNamedDescription", {
+        name: provider.business_name,
+      }) as string);
 
   const profileUrl = `${origin}${path}?slug=${encodeURIComponent(slugDecoded)}`;
   const ogImage = resolvePartnerProfileOpenGraphImageUrl(origin, slugDecoded, provider);
@@ -68,7 +70,7 @@ export async function generateMetadata({
     description,
     alternates: {
       canonical: profileUrl,
-      languages: getHreflangAlternateUrls(`${path}?slug=${encodeURIComponent(slugDecoded)}`),
+      languages: await hreflangForPath(`${path}?slug=${encodeURIComponent(slugDecoded)}`),
     },
     openGraph: {
       title,
@@ -96,15 +98,17 @@ export default async function PartnerProfilePage({
 }) {
   const sp = await searchParams;
   const slug = parsePartnerProfileSlug(sp);
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
 
   if (!slug) {
     return (
       <div className="min-h-screen bg-white pb-20 md:pb-0">
         <BeautonomiHeader />
         <div className="container mx-auto px-4 py-16 text-center">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Provider not found</h1>
-          <p className="text-gray-500 mb-4">Please provide a provider slug.</p>
-          <a href="/" className="text-[#FF0077] hover:underline">Go Home</a>
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">{t("customer.mobile.screens.partnerProfile.providerNotFound")}</h1>
+          <p className="text-gray-500 mb-4">{t("customer.mobile.screens.partnerProfile.pleaseProvideSlug")}</p>
+          <a href="/" className="text-[#FF0077] hover:underline">{t("customer.mobile.screens.partnerProfile.goHome")}</a>
         </div>
         <Footer />
         <BottomNav />

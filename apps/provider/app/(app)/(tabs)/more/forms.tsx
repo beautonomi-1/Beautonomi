@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -77,23 +78,23 @@ const EMPTY_FIELD: FieldFormData = {
   is_required: false,
 };
 
-const FORM_TYPES: { label: string; value: FormType }[] = [
-  { label: "Intake", value: "intake" },
-  { label: "Consent", value: "consent" },
-  { label: "Waiver", value: "waiver" },
+const FORM_TYPES: { labelKey: string; value: FormType }[] = [
+  { labelKey: "typeIntake", value: "intake" },
+  { labelKey: "typeConsent", value: "consent" },
+  { labelKey: "typeWaiver", value: "waiver" },
 ];
 
-const FIELD_TYPES: { label: string; value: FieldType; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { label: "Text", value: "text", icon: "text-outline" },
-  { label: "Checkbox", value: "checkbox", icon: "checkbox-outline" },
-  { label: "Signature", value: "signature", icon: "pencil-outline" },
-  { label: "Date", value: "date", icon: "calendar-outline" },
+const FIELD_TYPES: { labelKey: string; value: FieldType; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { labelKey: "fieldText", value: "text", icon: "text-outline" },
+  { labelKey: "fieldCheckbox", value: "checkbox", icon: "checkbox-outline" },
+  { labelKey: "fieldSignature", value: "signature", icon: "pencil-outline" },
+  { labelKey: "fieldDate", value: "date", icon: "calendar-outline" },
 ];
 
 const SUGGESTED_FORMS = [
-  { title: "Client Intake", type: "intake" as FormType, description: "Basic client information and health history" },
-  { title: "COVID Waiver", type: "waiver" as FormType, description: "COVID-19 safety acknowledgment" },
-  { title: "Consent Form", type: "consent" as FormType, description: "Service consent and liability waiver" },
+  { titleKey: "suggestIntakeTitle", descKey: "suggestIntakeDesc", type: "intake" as FormType },
+  { titleKey: "suggestCovidTitle", descKey: "suggestCovidDesc", type: "waiver" as FormType },
+  { titleKey: "suggestConsentTitle", descKey: "suggestConsentDesc", type: "consent" as FormType },
 ];
 
 function getTypeColor(type: FormType): { color: string; bg: string } {
@@ -118,6 +119,12 @@ function getTypeIcon(type: FormType): keyof typeof Ionicons.glyphMap {
 
 export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   useResponsive();
+  const { t } = useTranslation();
+  const f = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.forms.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const expandParams = useLocalSearchParams<{ expandId?: string | string[] }>();
   const expandIdRaw = Array.isArray(expandParams.expandId)
@@ -177,7 +184,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
 
   async function handleSaveForm() {
     if (!form.title.trim()) {
-      Alert.alert("Error", "Form title is required");
+      Alert.alert(f("errorTitle"), f("titleRequired"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -195,13 +202,13 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         payload
       );
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(f("errorTitle"), error);
         return;
       }
     } else {
       const { error } = await createForm(payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(f("errorTitle"), error);
         return;
       }
     }
@@ -212,7 +219,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
 
   async function handleSaveField() {
     if (!fieldForm.name.trim() || !activeFormId) {
-      Alert.alert("Error", "Field name is required");
+      Alert.alert(f("errorTitle"), f("fieldNameRequired"));
       return;
     }
 
@@ -227,7 +234,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       payload
     );
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(f("errorTitle"), error);
       return;
     }
 
@@ -237,17 +244,17 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
 
   async function handleDeleteForm(template: FormTemplate) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert("Delete Form", `Delete "${template.title}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(f("deleteFormTitle"), f("deleteFormBody", { title: template.title }), [
+      { text: f("cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: f("delete"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteForm(
             `/api/provider/forms/${template.id}`,
             {}
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(f("errorTitle"), error);
           else refresh();
         },
       },
@@ -255,17 +262,17 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   }
 
   async function handleDeleteField(formId: string, fieldId: string) {
-    Alert.alert("Remove Field", "Remove this field from the form?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(f("removeFieldTitle"), f("removeFieldBody"), [
+      { text: f("cancel"), style: "cancel" },
       {
-        text: "Remove",
+        text: f("remove"),
         style: "destructive",
         onPress: async () => {
           const { error } = await deleteForm(
             `/api/provider/forms/${formId}/fields/${fieldId}`,
             {}
           );
-          if (error) Alert.alert("Error", error);
+          if (error) Alert.alert(f("errorTitle"), error);
           else refresh();
         },
       },
@@ -277,15 +284,15 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       `/api/provider/forms/${template.id}`,
       { is_active: !template.is_active }
     );
-    if (error) Alert.alert("Error", error);
+    if (error) Alert.alert(f("errorTitle"), error);
     else refresh();
   }
 
   function handleSuggestion(suggestion: typeof SUGGESTED_FORMS[0]) {
     setEditingForm(null);
     setForm({
-      title: suggestion.title,
-      description: suggestion.description,
+      title: f(suggestion.titleKey),
+      description: f(suggestion.descKey),
       form_type: suggestion.type,
       is_required: false,
     });
@@ -306,11 +313,11 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       <TouchableOpacity
         style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 12 }}
         onPress={openAddForm}
-        accessibilityLabel="Add new form"
+        accessibilityLabel={f("addFormA11y")}
         accessibilityRole="button"
       >
         <Ionicons name="add" size={20} color="#fff" />
-        <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>Add Form</Text>
+        <Text style={{ marginStart: 8, fontWeight: "600", color: Colors.white }}>{f("addForm")}</Text>
       </TouchableOpacity>
 
       {/* Form list */}
@@ -320,30 +327,31 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         <View style={{ flex: 1 }}>
           <EmptyState
             icon="document-text-outline"
-            title="No forms yet"
-            description="Create intake forms, consent forms, or waivers for your clients"
+            title={f("emptyTitle")}
+            description={f("emptyDescription")}
           />
 
           {/* Suggestions */}
           <View style={{ marginTop: 16 }}>
-            <SectionHeader title="Quick Start" />
+            <SectionHeader title={f("quickStart")} />
             <View>
               {SUGGESTED_FORMS.map((s, i) => {
                 const typeStyle = getTypeColor(s.type);
+                const suggestionTitle = f(s.titleKey);
                 return (
                   <TouchableOpacity
-                    key={s.title}
+                    key={s.titleKey}
                     style={{ flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
                     onPress={() => handleSuggestion(s)}
-                    accessibilityLabel={`Create ${s.title}`}
+                    accessibilityLabel={f("createSuggestionA11y", { title: suggestionTitle })}
                     accessibilityRole="button"
                   >
                     <View style={{ backgroundColor: typeStyle.bg, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
                       <Ionicons name={getTypeIcon(s.type)} size={20} color={typeStyle.color} />
                     </View>
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{s.title}</Text>
-                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{s.description}</Text>
+                    <View style={{ marginStart: 12, flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{suggestionTitle}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{f(s.descKey)}</Text>
                     </View>
                     <Ionicons name="add-circle-outline" size={20} color="#6366f1" />
                   </TouchableOpacity>
@@ -356,7 +364,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         <FlatList
           {...verticalFlatListPerf}
           data={forms}
-          keyExtractor={(f: FormTemplate) => f.id}
+          keyExtractor={(item: FormTemplate) => item.id}
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -383,7 +391,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                     setExpandedForm(isExpanded ? null : template.id)
                   }
                   onLongPress={() => handleDeleteForm(template)}
-                  accessibilityLabel={`${isExpanded ? "Collapse" : "Expand"} ${template.title}`}
+                  accessibilityLabel={isExpanded ? f("collapseA11y", { title: template.title }) : f("expandA11y", { title: template.title })}
                   accessibilityRole="button"
                 >
                   <View
@@ -395,21 +403,23 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                       color={typeStyle.color}
                     />
                   </View>
-                  <View style={{ marginLeft: 12, flex: 1 }}>
+                  <View style={{ marginStart: 12, flex: 1 }}>
                     <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                       {template.title}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                       <Text
-                        style={{ fontSize: 12, textTransform: "capitalize", color: typeStyle.color, marginRight: 8 }}
+                        style={{ fontSize: 12, textTransform: "capitalize", color: typeStyle.color, marginEnd: 8 }}
                       >
-                        {template.form_type}
+                        {FORM_TYPES.find((ft) => ft.value === template.form_type)
+                          ? f(FORM_TYPES.find((ft) => ft.value === template.form_type)!.labelKey)
+                          : template.form_type}
                       </Text>
                       {template.is_required && (
-                        <Text style={{ fontSize: 12, color: "#ef4444", marginRight: 8 }}>Required</Text>
+                        <Text style={{ fontSize: 12, color: "#ef4444", marginEnd: 8 }}>{f("required")}</Text>
                       )}
                       <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
-                        {template.fields?.length ?? 0} fields
+                        {f("fieldsCount", { count: template.fields?.length ?? 0 })}
                       </Text>
                     </View>
                   </View>
@@ -417,9 +427,9 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                     <TouchableOpacity
                       hitSlop={8}
                       onPress={() => handleToggleActive(template)}
-                      accessibilityLabel={`Toggle ${template.title} active status`}
+                      accessibilityLabel={f("toggleActiveA11y", { title: template.title })}
                       accessibilityRole="switch"
-                      style={{ marginRight: 8 }}
+                      style={{ marginEnd: 8 }}
                     >
                       <View
                         style={{
@@ -437,8 +447,8 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                             width: 16,
                             borderRadius: 8,
                             backgroundColor: Colors.white,
-                            marginLeft: template.is_active ? 16 : 0,
-                            marginRight: template.is_active ? 0 : 16,
+                            marginStart: template.is_active ? 16 : 0,
+                            marginEnd: template.is_active ? 0 : 16,
                           }}
                         />
                       </View>
@@ -478,23 +488,23 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                                   size={16}
                                   color="#6b7280"
                                 />
-                                <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[700] }}>
+                                <Text style={{ marginStart: 8, fontSize: 14, color: Colors.gray[700] }}>
                                   {field.name}
                                 </Text>
                                 {field.is_required && (
-                                  <Text style={{ marginLeft: 4, fontSize: 12, color: "#ef4444" }}>*</Text>
+                                  <Text style={{ marginStart: 4, fontSize: 12, color: "#ef4444" }}>*</Text>
                                 )}
                               </View>
                               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                <Text style={{ fontSize: 12, color: Colors.gray[400], textTransform: "capitalize", marginRight: 8 }}>
-                                  {field.field_type}
+                                <Text style={{ fontSize: 12, color: Colors.gray[400], textTransform: "capitalize", marginEnd: 8 }}>
+                                  {fieldMeta ? f(fieldMeta.labelKey) : field.field_type}
                                 </Text>
                                 <TouchableOpacity
                                   hitSlop={8}
                                   onPress={() =>
                                     handleDeleteField(template.id, field.id)
                                   }
-                                  accessibilityLabel={`Remove ${field.name} field`}
+                                  accessibilityLabel={f("removeFieldA11y", { name: field.name })}
                                   accessibilityRole="button"
                                 >
                                   <Ionicons
@@ -510,32 +520,32 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                       </View>
                     ) : (
                       <Text style={{ marginTop: 12, fontSize: 14, color: Colors.gray[400], fontStyle: "italic" }}>
-                        No fields added yet
+                        {f("noFieldsYet")}
                       </Text>
                     )}
 
                     {/* Actions */}
                     <View style={{ marginTop: 12, flexDirection: "row" }}>
                       <TouchableOpacity
-                        style={{ flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#eef2ff", paddingVertical: 10 }}
+                        style={{ flex: 1, marginEnd: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#eef2ff", paddingVertical: 10 }}
                         onPress={() => openAddField(template.id)}
-                        accessibilityLabel="Add field"
+                        accessibilityLabel={f("addFieldA11y")}
                         accessibilityRole="button"
                       >
                         <Ionicons name="add" size={16} color="#6366f1" />
-                        <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: "#4f46e5" }}>
-                          Add Field
+                        <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "500", color: "#4f46e5" }}>
+                          {f("addField")}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingVertical: 10 }}
                         onPress={() => openEditForm(template)}
-                        accessibilityLabel="Edit form"
+                        accessibilityLabel={f("editFormA11y")}
                         accessibilityRole="button"
                       >
                         <Ionicons name="pencil" size={14} color="#6b7280" />
-                        <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
-                          Edit
+                        <Text style={{ marginStart: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
+                          {f("edit")}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -554,12 +564,12 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         router.push("/(app)/(tabs)/more/bookings" as never);
                       }}
-                      accessibilityLabel="View responses on bookings"
+                      accessibilityLabel={f("viewResponsesA11y")}
                       accessibilityRole="button"
                     >
                       <Ionicons name="reader-outline" size={14} color="#6b7280" />
-                      <Text style={{ marginLeft: 4, fontSize: 13, color: Colors.gray[600] }}>
-                        Responses appear on each booking
+                      <Text style={{ marginStart: 4, fontSize: 13, color: Colors.gray[600] }}>
+                        {f("responsesOnBookings")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -574,58 +584,58 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       <BottomSheet
         visible={showFormModal}
         onClose={() => setShowFormModal(false)}
-        title={editingForm ? "Edit Form" : "New Form"}
+        title={editingForm ? f("editFormTitle") : f("newFormTitle")}
       >
         <View>
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Title *</Text>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{f("titleLabel")}</Text>
             <TextInput
               style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              placeholder="Form title"
+              placeholder={f("titlePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={form.title}
               onChangeText={(v) => updateForm("title", v)}
-              accessibilityLabel="Form title"
+              accessibilityLabel={f("titleA11y")}
             />
           </View>
 
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Description</Text>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{f("descriptionLabel")}</Text>
             <TextInput
               style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              placeholder="Describe this form"
+              placeholder={f("descriptionPlaceholder")}
               placeholderTextColor="#9ca3af"
               value={form.description}
               onChangeText={(v) => updateForm("description", v)}
               multiline
-              accessibilityLabel="Form description"
+              accessibilityLabel={f("descriptionA11y")}
             />
           </View>
 
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Form Type</Text>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{f("formTypeLabel")}</Text>
             <View style={{ flexDirection: "row" }}>
-              {FORM_TYPES.map((t) => (
+              {FORM_TYPES.map((opt) => (
                 <TouchableOpacity
-                  key={t.value}
+                  key={opt.value}
                   style={{
                     flex: 1,
                     alignItems: "center",
                     borderRadius: 12,
                     paddingVertical: 12,
-                    marginRight: 8,
-                    backgroundColor: form.form_type === t.value ? Colors.gray[900] : Colors.white,
-                    borderWidth: form.form_type === t.value ? 0 : 1,
+                    marginEnd: 8,
+                    backgroundColor: form.form_type === opt.value ? Colors.gray[900] : Colors.white,
+                    borderWidth: form.form_type === opt.value ? 0 : 1,
                     borderColor: Colors.gray[200],
                   }}
-                  onPress={() => updateForm("form_type", t.value)}
-                  accessibilityLabel={`Set form type to ${t.label}`}
+                  onPress={() => updateForm("form_type", opt.value)}
+                  accessibilityLabel={f("setFormTypeA11y", { label: f(opt.labelKey) })}
                   accessibilityRole="button"
                 >
                   <Text
-                    style={{ fontSize: 14, fontWeight: "500", color: form.form_type === t.value ? Colors.white : Colors.gray[600] }}
+                    style={{ fontSize: 14, fontWeight: "500", color: form.form_type === opt.value ? Colors.white : Colors.gray[600] }}
                   >
-                    {t.label}
+                    {f(opt.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -639,22 +649,22 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             this is the assignment control rather than a per-field thing.
           */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Attach to every booking</Text>
+            <View style={{ flex: 1, paddingEnd: 12 }}>
+              <Text style={{ fontSize: 16, color: Colors.gray[700] }}>{f("attachEveryBooking")}</Text>
               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                Clients complete this form when booking any service.
+                {f("attachEveryBookingDesc")}
               </Text>
             </View>
             <Switch
               value={form.is_required}
               onValueChange={(v) => updateForm("is_required", v)}
               trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-              accessibilityLabel="Required toggle"
+              accessibilityLabel={f("requiredToggleA11y")}
             />
           </View>
 
           <ActionButton
-            label={editingForm ? "Save Changes" : "Create Form"}
+            label={editingForm ? f("saveChanges") : f("createForm")}
             onPress={handleSaveForm}
             loading={creating}
             fullWidth
@@ -666,23 +676,23 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       <BottomSheet
         visible={showFieldModal}
         onClose={() => setShowFieldModal(false)}
-        title="Add Field"
+        title={f("addFieldTitle")}
       >
         <View>
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Field Name *</Text>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{f("fieldNameLabel")}</Text>
             <TextInput
               style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              placeholder="e.g. Full Name, Date of Birth"
+              placeholder={f("fieldNamePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={fieldForm.name}
               onChangeText={(v) => updateFieldForm("name", v)}
-              accessibilityLabel="Field name"
+              accessibilityLabel={f("fieldNameA11y")}
             />
           </View>
 
           <View style={{ marginBottom: 12 }}>
-            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Field Type</Text>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{f("fieldTypeLabel")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {FIELD_TYPES.map((ft) => (
                 <TouchableOpacity
@@ -693,14 +703,14 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                     borderRadius: 12,
                     paddingHorizontal: 16,
                     paddingVertical: 12,
-                    marginRight: 8,
+                    marginEnd: 8,
                     marginBottom: 8,
                     backgroundColor: fieldForm.field_type === ft.value ? Colors.gray[900] : Colors.white,
                     borderWidth: fieldForm.field_type === ft.value ? 0 : 1,
                     borderColor: Colors.gray[200],
                   }}
                   onPress={() => updateFieldForm("field_type", ft.value)}
-                  accessibilityLabel={`Set field type to ${ft.label}`}
+                  accessibilityLabel={f("setFieldTypeA11y", { label: f(ft.labelKey) })}
                   accessibilityRole="button"
                 >
                   <Ionicons
@@ -709,9 +719,9 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                     color={fieldForm.field_type === ft.value ? "#fff" : "#6b7280"}
                   />
                   <Text
-                    style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: fieldForm.field_type === ft.value ? Colors.white : Colors.gray[600] }}
+                    style={{ marginStart: 8, fontSize: 14, fontWeight: "500", color: fieldForm.field_type === ft.value ? Colors.white : Colors.gray[600] }}
                   >
-                    {ft.label}
+                    {f(ft.labelKey)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -719,16 +729,16 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
           </View>
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}>
-            <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Required</Text>
+            <Text style={{ fontSize: 16, color: Colors.gray[700] }}>{f("fieldRequired")}</Text>
             <Switch
               value={fieldForm.is_required}
               onValueChange={(v) => updateFieldForm("is_required", v)}
               trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-              accessibilityLabel="Field required toggle"
+              accessibilityLabel={f("fieldRequiredA11y")}
             />
           </View>
 
-          <ActionButton label="Add Field" onPress={handleSaveField} fullWidth />
+          <ActionButton label={f("addField")} onPress={handleSaveField} fullWidth />
         </View>
       </BottomSheet>
     </>
@@ -737,9 +747,9 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Forms"
+        title={f("title")}
         showBack
-        subtitle={`${forms?.length ?? 0} form templates`}
+        subtitle={f("subtitle", { count: forms?.length ?? 0 })}
         rightAction={
           <TouchableOpacity
             onPress={() => {
@@ -748,8 +758,8 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             }}
             style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#e0f2fe", paddingHorizontal: 12, paddingVertical: 8 }}
           >
-            <Ionicons name="add" size={16} color="#0c4a6e" style={{ marginRight: 6 }} />
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0c4a6e" }}>Create</Text>
+            <Ionicons name="add" size={16} color="#0c4a6e" style={{ marginEnd: 6 }} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0c4a6e" }}>{f("create")}</Text>
           </TouchableOpacity>
         }
       />

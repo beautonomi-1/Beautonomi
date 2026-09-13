@@ -1,5 +1,8 @@
+"use client";
+
 import React from "react";
 import Image from "next/image";
+import { useTranslation } from "@beautonomi/i18n";
 // Placeholder images - originals were missing
 const Getting = "/images/getting-started-optimized.jpg";
   const Dashboard = "/images/getting-started-optimized.jpg";
@@ -18,43 +21,44 @@ interface Guide {
   mobileSrc: string;
 }
 
-const guides: Guide[] = [
-  {
-    src: Getting,
-    alt: "Access and manage your account",
-    description: "Getting started with Beautonomi for Work",
-     mobileSrc: Started,
-    link:"/"
-  },
-  {
-    src: Dashboard,
-    alt: "Getting paid",
-    description: "Using your dashboard",
-     mobileSrc: Started,
-    link:"/"
-  },
-  {
-    src: Reservation,
-    alt: "Help with hosting",
-    description: "How booking and reservations work",
-     mobileSrc: Started,
-    link:"/"
-  },
-  {
-    src: Biling,
-    alt: "Getting protected through AirCover for Hosts",
-    description: "Help with billing",
-     mobileSrc: Started,
-    link:"/"
-  },
-];
-
 export default function BusinessAdmin() {
+  const { t } = useTranslation();
+  const guides: Guide[] = [
+    {
+      src: Getting,
+      alt: t("web.helpGuides.accessAccountAlt"),
+      description: t("web.helpGuides.gettingStartedWork"),
+       mobileSrc: Started,
+      link:"/"
+    },
+    {
+      src: Dashboard,
+      alt: t("web.helpGuides.gettingPaid"),
+      description: t("web.helpGuides.usingDashboard"),
+       mobileSrc: Started,
+      link:"/"
+    },
+    {
+      src: Reservation,
+      alt: t("web.helpGuides.helpHostingAlt"),
+      description: t("web.helpGuides.bookingReservations"),
+       mobileSrc: Started,
+      link:"/"
+    },
+    {
+      src: Biling,
+      alt: t("web.helpGuides.aircoverHostsAlt"),
+      description: t("web.helpGuides.helpBilling"),
+       mobileSrc: Started,
+      link:"/"
+    },
+  ];
+
   return (
     <div className="max-w-6xl mx-auto py-5 sm:py-8">
       <div className="block sm:flex justify-between items-center mb-6">
         <h2 className="text-[26px] mb-5 sm:mb-1 font-normal  text-secondary">
-          Guides for business admins
+          {t("web.helpGuides.businessAdminTitle")}
         </h2>
 
         <div className="block sm:hidden">
@@ -71,7 +75,7 @@ export default function BusinessAdmin() {
                   {guide.description}
                 </h2>
               </div>
-              <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+              <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
             </div>
           </Link>
         ))}
@@ -81,10 +85,10 @@ export default function BusinessAdmin() {
           href="#"
           className="flex items-center font-normal  text-lg sm:text-sm text-secondary"
         >
-          Browse all topics{" "}
-          <ArrowRightIcon className="hidden sm:block ml-1 h-4 w-4" />
+          {t("web.helpGuides.browseAllTopics")}{" "}
+          <ArrowRightIcon className="hidden sm:block ms-1 h-4 w-4" />
         </a>
-        <Image src={Arrow} alt="Arrow icon" className="h-5 w-5" />
+        <Image src={Arrow} alt={t("web.helpGuides.arrowAlt")} className="h-5 w-5" />
       </div>
     </div>
     <div className="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-0">

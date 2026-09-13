@@ -17,17 +17,18 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { trackReturnRequested } from "@/lib/analytics";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 const PRIMARY = Colors.primary;
 
 const REASONS = [
-  { value: "damaged", label: "Item arrived damaged", icon: "alert-circle-outline" },
-  { value: "wrong_item", label: "Received wrong item", icon: "swap-horizontal-outline" },
-  { value: "not_as_described", label: "Not as described", icon: "document-text-outline" },
-  { value: "quality_issue", label: "Quality issue", icon: "warning-outline" },
-  { value: "changed_mind", label: "Changed my mind", icon: "refresh-outline" },
-  { value: "arrived_late", label: "Arrived too late", icon: "time-outline" },
-  { value: "other", label: "Other reason", icon: "ellipsis-horizontal-outline" },
+  { value: "damaged", labelKey: "reasonDamaged", icon: "alert-circle-outline" },
+  { value: "wrong_item", labelKey: "reasonWrongItem", icon: "swap-horizontal-outline" },
+  { value: "not_as_described", labelKey: "reasonNotAsDescribed", icon: "document-text-outline" },
+  { value: "quality_issue", labelKey: "reasonQuality", icon: "warning-outline" },
+  { value: "changed_mind", labelKey: "reasonChangedMind", icon: "refresh-outline" },
+  { value: "arrived_late", labelKey: "reasonArrivedLate", icon: "time-outline" },
+  { value: "other", labelKey: "reasonOther", icon: "ellipsis-horizontal-outline" },
 ] as const;
 
 export default function RequestReturnScreen() {
@@ -98,8 +99,8 @@ export default function RequestReturnScreen() {
           borderBottomColor: "#F3F4F6",
         }}
       >
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+        <TouchableOpacity onPress={() => router.back()} style={{ marginEnd: 12 }}>
+          <DirectionalIcon name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
           {t("customer.mobile.stackTitles.requestReturn")}
@@ -115,10 +116,10 @@ export default function RequestReturnScreen() {
       >
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>
-            Why are you returning this item?
+            {rr("whyReturning")}
           </Text>
           <Text style={{ fontSize: 13, color: "#9CA3AF", marginBottom: 16 }}>
-            Select the reason that best describes your issue
+            {rr("selectReasonHint")}
           </Text>
 
           {REASONS.map((r) => {
@@ -146,13 +147,13 @@ export default function RequestReturnScreen() {
                 <Text
                   style={{
                     flex: 1,
-                    marginLeft: 12,
+                    marginStart: 12,
                     fontSize: 15,
                     fontWeight: active ? "600" : "400",
                     color: active ? PRIMARY : "#374151",
                   }}
                 >
-                  {r.label}
+                  {rr(r.labelKey)}
                 </Text>
                 <View
                   style={{
@@ -183,7 +184,7 @@ export default function RequestReturnScreen() {
 
         <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
-            Additional Details (optional)
+            {rr("additionalDetails")}
           </Text>
           <TextInput
             style={{
@@ -198,7 +199,7 @@ export default function RequestReturnScreen() {
             }}
             value={description}
             onChangeText={setDescription}
-            placeholder="Describe the issue in more detail..."
+            placeholder={rr("detailPlaceholder")}
             placeholderTextColor="#9CA3AF"
             multiline
             maxLength={1000}
@@ -208,14 +209,12 @@ export default function RequestReturnScreen() {
         <View style={{ backgroundColor: "#FFF7ED", borderRadius: 12, padding: contentPadding, marginBottom: 20 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
             <Ionicons name="information-circle-outline" size={18} color="#F59E0B" />
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginLeft: 8 }}>
-              Return Policy
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginStart: 8 }}>
+              {rr("returnPolicy")}
             </Text>
           </View>
           <Text style={{ fontSize: 13, color: "#78350F", lineHeight: 20 }}>
-            Returns must be requested within 14 days of delivery. Items must be in their original
-            condition. The provider will review your request and respond within 2 business days.
-            If your request is rejected, you can escalate to our support team.
+            {rr("returnPolicyBody")}
           </Text>
         </View>
 
@@ -235,7 +234,7 @@ export default function RequestReturnScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
-                Submit Return Request
+                {rr("submitCta")}
               </Text>
             )}
           </TouchableOpacity>

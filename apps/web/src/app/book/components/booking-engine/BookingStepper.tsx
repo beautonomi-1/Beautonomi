@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { cn } from "@/lib/utils";
 import type { BookingStep } from "../../types/booking-engine";
 import { getStepLabel, STEP_ORDER } from "../../types/booking-engine";
@@ -15,6 +16,7 @@ interface BookingStepperProps {
 }
 
 export function BookingStepper({ currentStep, className, compact, steps: stepsProp }: BookingStepperProps) {
+  const { t } = useTranslation();
   const steps = stepsProp ?? STEP_ORDER;
   const currentIndex = steps.indexOf(currentStep);
   const safeIndex = currentIndex === -1 ? 0 : currentIndex;
@@ -42,7 +44,7 @@ export function BookingStepper({ currentStep, className, compact, steps: stepsPr
   return (
     <nav
       className={cn("flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none", className)}
-      aria-label="Booking progress"
+      aria-label={t("web.a11y.bookingProgress")}
     >
       {steps.map((step, i) => {
         const isActive = i === safeIndex;
@@ -52,7 +54,7 @@ export function BookingStepper({ currentStep, className, compact, steps: stepsPr
             key={step}
             className={cn(
               "flex items-center shrink-0",
-              i > 0 && "ml-1"
+              i > 0 && "ms-1"
             )}
           >
             {i > 0 && (

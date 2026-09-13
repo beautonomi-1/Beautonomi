@@ -1534,7 +1534,9 @@ export async function validateBooking(
   const { determineAppointmentStatusFromDB } = await import(
     "@/lib/provider-portal/appointment-settings"
   );
-  const appointmentStatus = await determineAppointmentStatusFromDB(supabaseAdmin, draft.provider_id);
+  const appointmentStatus = await determineAppointmentStatusFromDB(supabaseAdmin, draft.provider_id, undefined, {
+    bookingSource: "online",
+  });
 
   // ── Group booking duration (for conflict check) ─────────────────────────
   const isGroupBooking =

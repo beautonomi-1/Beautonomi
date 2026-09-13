@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import Image from "next/image";
 import React, { useState, useRef, useEffect } from "react";
 import Search from "./../../../public/images/search-alt-1-svgrepo-com.svg";
@@ -9,39 +11,40 @@ import ChevronUp from "./../../../public/images/chevron-up-svgrepo-com(1).svg";
 import Link from "next/link";
 
 const navItems = [
-  { text: "Home", href: "#" },
-  { text: "Events & Presentations", href: "#" },
-  { text: "Press Releases", href: "#" },
-  { text: "Stock Info", href: "#" },
-  { text: "Financials", href: "#" },
-  { text: "Governance", href: "#" },
-  { text: "Resources", href: "#" },
+  { textKey: "web.layout.navbar5.home", href: "#" },
+  { textKey: "web.layout.navbar5.eventsPresentations", href: "#" },
+  { textKey: "web.layout.navbar5.pressReleases", href: "#" },
+  { textKey: "web.layout.navbar5.stockInfo", href: "#" },
+  { textKey: "web.layout.navbar5.financials", href: "#" },
+  { textKey: "web.layout.navbar5.governance", href: "#" },
+  { textKey: "web.layout.navbar.resources", href: "#" },
 ];
 
 const dropdownContents = [
   [
-    { text: "Stock Quote", href: "#" },
-    { text: "Analyst Coverage", href: "#" },
+    { textKey: "web.layout.navbar5.stockQuote", href: "#" },
+    { textKey: "web.layout.navbar5.analystCoverage", href: "#" },
   ],
   [
-    { text: "Quarterly Results", href: "#" },
-    { text: "SEC Filings", href: "#" },
+    { textKey: "web.layout.navbar5.quarterlyResults", href: "#" },
+    { textKey: "web.layout.navbar5.secFilings", href: "#" },
   ],
   [
-    { text: "Executive Management", href: "#" },
-    { text: "Board of Directors", href: "#" },
-    { text: "Committee Composition", href: "#" },
-    { text: "Governance Documents", href: "#" },
-    { text: "Sustainability", href: "#" },
+    { textKey: "web.layout.navbar5.executiveManagement", href: "#" },
+    { textKey: "web.layout.navbar5.boardOfDirectors", href: "#" },
+    { textKey: "web.layout.navbar5.committeeComposition", href: "#" },
+    { textKey: "web.layout.navbar5.governanceDocuments", href: "#" },
+    { textKey: "web.layout.navbar5.sustainability", href: "#" },
   ],
   [
-    { text: "Investor FAQs", href: "#" },
-    { text: "Investor Email Alerts", href: "#" },
-    { text: "Investor Contacts", href: "#" },
+    { textKey: "web.layout.navbar5.investorFaqs", href: "#" },
+    { textKey: "web.layout.navbar5.investorEmailAlerts", href: "#" },
+    { textKey: "web.layout.navbar5.investorContacts", href: "#" },
   ],
 ];
 
 const Navbar5: React.FC = () => {
+  const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [searchVisible, setSearchVisible] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -98,7 +101,7 @@ const Navbar5: React.FC = () => {
         <div className="flex justify-between items-center py-3 mb-20">
           <div className="flex gap-8 items-center">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-primary">Beautonomi</span>
+            <span className="text-xl font-bold text-primary">{t("web.seo.siteName")}</span>
           </Link>
           </div>
           <div className="md:hidden flex items-center">
@@ -106,7 +109,7 @@ const Navbar5: React.FC = () => {
               className="p-2"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
-              <Image src={Sidebar} alt="Menu" />
+              <Image src={Sidebar} alt={t("web.layout.navbar.menu")} />
             </button>
           </div>
           <div
@@ -124,7 +127,7 @@ const Navbar5: React.FC = () => {
                   href={item.href}
                   className={`relative text-sm font-semibold text-secondary group`}
                 >
-                  {item.text}
+                  {t(item.textKey)}
                   {index >= 0 && (
                     <span
                       className={`absolute left-0 bottom-0 w-full h-[2px] bg-black transition-transform duration-300 transform ${
@@ -137,8 +140,8 @@ const Navbar5: React.FC = () => {
                   <div className="absolute right-0 top-full mt-2 bg-white border rounded-lg shadow py-5 z-10 w-60">
                     <ul className="text-secondary text-sm font-normal  space-y-5">
                       {dropdownContents[index - 3].map((link, linkIndex) => (
-                        <li key={linkIndex} className="pr-4 pl-5">
-                          <a href={link.href}>{link.text}</a>
+                        <li key={linkIndex} className="pe-4 ps-5">
+                          <a href={link.href}>{t(link.textKey)}</a>
                         </li>
                       ))}
                     </ul>
@@ -152,11 +155,11 @@ const Navbar5: React.FC = () => {
               onMouseLeave={handleSearchMouseLeave}
               ref={searchRef}
             >
-              <Image src={Search} alt="Search" className="cursor-pointer" />
+              <Image src={Search} alt={t("web.layout.navbar.search")} className="cursor-pointer" />
               {searchVisible && (
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder={t("web.layout.navbar5.searchPlaceholder")}
                   className="absolute top-full right-0 mt-2 border rounded-lg p-2 shadow-md w-48"
                   onClick={(e) => e.stopPropagation()}
                 />
@@ -172,10 +175,10 @@ const Navbar5: React.FC = () => {
         >
           <div className="flex justify-between items-center p-4 border-b">
             <Link href="/" className="flex items-center gap-2">
-              <span className="text-xl font-bold text-primary">Beautonomi</span>
+              <span className="text-xl font-bold text-primary">{t("web.seo.siteName")}</span>
             </Link>
             <button onClick={() => setMobileMenuOpen(false)}>
-              <Image src={CloseIcon} alt="Close Menu" />
+              <Image src={CloseIcon} alt={t("web.layout.navbar5.closeMenuAlt")} />
             </button>
           </div>
           <div className="relative mt-4 p-4">
@@ -183,13 +186,13 @@ const Navbar5: React.FC = () => {
                 className="border  w-full p-3 rounded-xl flex items-center space-x-2 text-secondary"
                 onClick={() => setSearchVisible(!searchVisible)}
               >
-                <Image src={Search} alt="Search Investors" />
-                <span>Search</span>
+                <Image src={Search} alt={t("web.layout.navbar5.searchInvestorsAlt")} />
+                <span>{t("web.layout.navbar.search")}</span>
               </button>
               {searchVisible && (
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder={t("web.layout.navbar5.searchPlaceholder")}
                   className="mt-2 border rounded-lg p-2 shadow-md w-full"
                 />
               )}
@@ -201,11 +204,11 @@ const Navbar5: React.FC = () => {
                   className="flex items-center justify-between w-full py-2 text-secondary text-base mb-4 font-semibold"
                   onClick={() => toggleSubItems(index)}
                 >
-                  {item.text}
+                  {t(item.textKey)}
                   {index >= 3 && (
                     <Image
                       src={expandedIndex === index ? ChevronUp : ChevronDown}
-                      alt="Toggle"
+                      alt={t("web.layout.navbar5.toggleAlt")}
                       className="w-7 h-7"
                     />
                   )}
@@ -216,10 +219,10 @@ const Navbar5: React.FC = () => {
                       <a
                         key={linkIndex}
                         href={link.href}
-                        className="py-2 text-secondary text-sm font-normal ml-5"
+                        className="py-2 text-secondary text-sm font-normal ms-5"
                         onClick={() => setMobileMenuOpen(false)}
                       >
-                        {link.text}
+                        {t(link.textKey)}
                       </a>
                     ))}
                   </div>

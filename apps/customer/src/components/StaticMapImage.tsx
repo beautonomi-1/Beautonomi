@@ -15,6 +15,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Image } from "expo-image";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { getMapboxConfig } from "@/lib/third-party-config";
 
@@ -100,6 +101,8 @@ export function StaticMapImage({
   style,
   fallbackQuery,
 }: StaticMapImageProps) {
+  const { t } = useTranslation();
+  const sm = (key: string) => t(`customer.mobile.components.staticMap.${key}`) as string;
   const [uri, setUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -204,11 +207,11 @@ export function StaticMapImage({
         ]}
       >
         <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary, textAlign: "center" }}>
-          {canOpen ? "Open in Maps" : "Map unavailable"}
+          {canOpen ? sm("openInMaps") : sm("mapUnavailable")}
         </Text>
         {canOpen ? (
           <Text style={{ fontSize: 11, color: Colors.gray[500], marginTop: 4, textAlign: "center" }}>
-            Opens in Apple or Google Maps
+            {sm("opensInExternalMaps")}
           </Text>
         ) : null}
       </TouchableOpacity>

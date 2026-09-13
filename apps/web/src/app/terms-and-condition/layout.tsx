@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Terms and Conditions",
-  description: "Read Beautonomi's terms and conditions for using the platform.",
-  alternates: {
-    canonical: "/terms-and-condition",
-    languages: getHreflangAlternateUrls("/terms-and-condition"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/terms-and-condition",
+    titleKey: "web.seo.termsTitle",
+    descriptionKey: "web.seo.termsDescription",
+  });
+}
 
 export default function TermsLayout({ children }: { children: React.ReactNode }) {
   return children;

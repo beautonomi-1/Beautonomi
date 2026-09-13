@@ -1,7 +1,9 @@
 import { Stack } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function ShopStackLayout() {
+  const { t } = useTranslation();
   return (
     <Stack
       screenOptions={{
@@ -10,8 +12,14 @@ export default function ShopStackLayout() {
         headerBackTitle: "",
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Shop", headerShown: false }} />
-      <Stack.Screen name="product-checkout" options={{ title: "Checkout" }} />
+      <Stack.Screen
+        name="index"
+        options={{ title: t("customer.mobile.stackTitles.shop"), headerShown: false }}
+      />
+      <Stack.Screen
+        name="product-checkout"
+        options={{ title: t("customer.mobile.stackTitles.checkout") }}
+      />
     </Stack>
   );
 }

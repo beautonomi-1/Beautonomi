@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { currencySelectLabel } from "@/lib/locale/currency";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface Client {
   id?: string;
@@ -83,20 +84,20 @@ interface AddClientDialogProps {
 }
 
 const LANGUAGES = [
-  { value: "en", label: "English" },
-  { value: "af", label: "Afrikaans" },
-  { value: "zu", label: "Zulu" },
-  { value: "xh", label: "Xhosa" },
-  { value: "fr", label: "French" },
+  { value: "en" },
+  { value: "af" },
+  { value: "zu" },
+  { value: "xh" },
+  { value: "fr" },
 ];
 
 const TIMEZONES = [
-  { value: "Africa/Johannesburg", label: "South Africa (SAST)" },
-  { value: "Africa/Cairo", label: "Egypt (EET)" },
-  { value: "Africa/Lagos", label: "Nigeria (WAT)" },
-  { value: "Africa/Nairobi", label: "Kenya (EAT)" },
-  { value: "UTC", label: "UTC" },
-];
+  { value: "Africa/Johannesburg", labelKey: "tzJohannesburg" },
+  { value: "Africa/Cairo", labelKey: "tzCairo" },
+  { value: "Africa/Lagos", labelKey: "tzLagos" },
+  { value: "Africa/Nairobi", labelKey: "tzNairobi" },
+  { value: "UTC", labelKey: "tzUtc" },
+] as const;
 
 const EMERGENCY_RELATIONSHIPS = [
   "Spouse",
@@ -105,7 +106,9 @@ const EMERGENCY_RELATIONSHIPS = [
   "Child",
   "Friend",
   "Other",
-];
+] as const;
+
+const ADD_CLIENT_COUNTRIES = ["ZA", "US", "GB", "KE", "NG", "GH"] as const;
 
 export function AddClientDialog({
   open,
@@ -113,6 +116,7 @@ export function AddClientDialog({
   onSuccess,
   defaultCountryCode,
 }: AddClientDialogProps) {
+  const { t } = useTranslation();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const tenantRegionCode = bundle?.meta?.tenant_region?.code ?? "ZA";
@@ -248,7 +252,7 @@ export function AddClientDialog({
     if (e) e.preventDefault();
     
     if (!formData.first_name || !formData.last_name) {
-      alert("Please enter client's first and last name");
+      alert(t("web.provider.portal.addClientDialog.nameRequired"));
       return;
     }
 
@@ -307,7 +311,7 @@ export function AddClientDialog({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to create client");
+        throw new Error(error.error || t("web.provider.portal.addClientDialog.createFailed"));
       }
 
       const result = await response.json();
@@ -315,7 +319,7 @@ export function AddClientDialog({
       onOpenChange(false);
     } catch (error: unknown) {
       console.error("Failed to create client:", error);
-      alert(error instanceof Error ? error.message : "Failed to create client. Please try again.");
+      alert(error instanceof Error ? error.message : t("web.provider.portal.addClientDialog.createFailedRetry"));
     } finally {
       setIsLoading(false);
     }
@@ -337,12 +341,12 @@ export function AddClientDialog({
           <button
             onClick={() => onOpenChange(false)}
             className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
-            aria-label="Close"
+            aria-label={t("web.provider.portal.addClientDialog.close")}
           >
             <X className="w-5 h-5 text-gray-600" />
           </button>
-          <SheetTitle className="text-xl font-bold text-gray-900 pr-10">
-            Add New Client
+          <SheetTitle className="text-xl font-bold text-gray-900 pe-10">
+            {t("web.provider.portal.addClientDialog.title")}
           </SheetTitle>
         </SheetHeader>
 
@@ -358,17 +362,17 @@ export function AddClientDialog({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <User className="w-4 h-4" />
-                Basic Information
+                {t("web.provider.portal.addClientDialog.basicInformation")}
               </h3>
               
               {/* Name Fields */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    First Name *
+                    {t("web.provider.portal.addClientDialog.firstName")}
                   </Label>
                   <Input
-                    placeholder="John"
+                    placeholder={t("web.provider.portal.addClientDialog.firstNamePlaceholder")}
                     value={formData.first_name}
                     onChange={(e) =>
                       setFormData({ ...formData, first_name: e.target.value })
@@ -379,10 +383,10 @@ export function AddClientDialog({
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    Last Name *
+                    {t("web.provider.portal.addClientDialog.lastName")}
                   </Label>
                   <Input
-                    placeholder="Doe"
+                    placeholder={t("web.provider.portal.addClientDialog.lastNamePlaceholder")}
                     value={formData.last_name}
                     onChange={(e) =>
                       setFormData({ ...formData, last_name: e.target.value })
@@ -396,10 +400,10 @@ export function AddClientDialog({
               {/* Preferred Name */}
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Preferred Name
+                  {t("web.provider.portal.addClientDialog.preferredName")}
                 </Label>
                 <Input
-                  placeholder="How they like to be called"
+                  placeholder={t("web.provider.portal.addClientDialog.preferredNamePlaceholder")}
                   value={formData.preferred_name}
                   onChange={(e) =>
                     setFormData({ ...formData, preferred_name: e.target.value })
@@ -411,22 +415,22 @@ export function AddClientDialog({
               {/* Date of Birth */}
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Date of Birth
+                  {t("web.provider.portal.addClientDialog.dateOfBirth")}
                 </Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full h-12 text-base justify-start text-left font-normal",
+                        "w-full h-12 text-base justify-start text-start font-normal",
                         !formData.date_of_birth && "text-muted-foreground"
                       )}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      <CalendarIcon className="me-2 h-4 w-4" />
                       {formData.date_of_birth ? (
                         format(formData.date_of_birth, "PPP")
                       ) : (
-                        <span>Pick a date</span>
+                        <span>{t("web.provider.portal.addClientDialog.pickDate")}</span>
                       )}
                     </Button>
                   </PopoverTrigger>
@@ -451,24 +455,24 @@ export function AddClientDialog({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <Mail className="w-4 h-4" />
-                Contact Information
+                {t("web.provider.portal.addClientDialog.contactInformation")}
               </h3>
 
               {/* Email */}
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Email
+                  {t("web.provider.portal.addClientDialog.email")}
                 </Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <Input
                     type="email"
-                    placeholder="john.doe@example.com"
+                    placeholder={t("web.provider.portal.addClientDialog.emailPlaceholder")}
                     value={formData.email}
                     onChange={(e) =>
                       setFormData({ ...formData, email: e.target.value })
                     }
-                    className="h-12 text-base pl-10"
+                    className="h-12 text-base ps-10"
                   />
                 </div>
               </div>
@@ -481,8 +485,8 @@ export function AddClientDialog({
                     const e164Format = value.replace(/\s/g, '');
                     setFormData({ ...formData, phone: e164Format });
                   }}
-                  label="Phone Number"
-                  placeholder="123 456 7890"
+                  label={t("web.provider.portal.addClientDialog.phoneNumber")}
+                  placeholder={t("web.provider.portal.addClientDialog.phonePlaceholder")}
                   defaultCountryCode={defaultCountry}
                   required={false}
                 />
@@ -493,15 +497,15 @@ export function AddClientDialog({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <MapPin className="w-4 h-4" />
-                Address
+                {t("web.provider.portal.addClientDialog.address")}
               </h3>
 
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Street Address
+                  {t("web.provider.portal.addClientDialog.streetAddress")}
                 </Label>
                 <Input
-                  placeholder="123 Main Street"
+                  placeholder={t("web.provider.portal.addClientDialog.streetPlaceholder")}
                   value={formData.address?.line1 || ""}
                   onChange={(e) =>
                     setFormData({
@@ -519,10 +523,10 @@ export function AddClientDialog({
 
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Apartment, Suite, etc. (Optional)
+                  {t("web.provider.portal.addClientDialog.apartmentOptional")}
                 </Label>
                 <Input
-                  placeholder="Apt 4B"
+                  placeholder={t("web.provider.portal.addClientDialog.apartmentPlaceholder")}
                   value={formData.address?.line2 || ""}
                   onChange={(e) =>
                     setFormData({
@@ -541,10 +545,10 @@ export function AddClientDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    City *
+                    {t("web.provider.portal.addClientDialog.cityRequired")}
                   </Label>
                   <Input
-                    placeholder="Cape Town"
+                    placeholder={t("web.provider.portal.addClientDialog.cityPlaceholder")}
                     value={formData.address?.city || ""}
                     onChange={(e) =>
                       setFormData({
@@ -562,10 +566,10 @@ export function AddClientDialog({
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    State/Province
+                    {t("web.provider.portal.addClientDialog.stateProvince")}
                   </Label>
                   <Input
-                    placeholder="Western Cape"
+                    placeholder={t("web.provider.portal.addClientDialog.statePlaceholder")}
                     value={formData.address?.state || ""}
                     onChange={(e) =>
                       setFormData({
@@ -585,10 +589,10 @@ export function AddClientDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    Postal Code
+                    {t("web.provider.portal.addClientDialog.postalCode")}
                   </Label>
                   <Input
-                    placeholder="8001"
+                    placeholder={t("web.provider.portal.addClientDialog.postalPlaceholder")}
                     value={formData.address?.postal_code || ""}
                     onChange={(e) =>
                       setFormData({
@@ -605,7 +609,7 @@ export function AddClientDialog({
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    Country
+                    {t("web.provider.portal.addClientDialog.country")}
                   </Label>
                   <Select
                     value={formData.address?.country || tenantRegionCode}
@@ -623,12 +627,11 @@ export function AddClientDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ZA">South Africa</SelectItem>
-                      <SelectItem value="US">United States</SelectItem>
-                      <SelectItem value="GB">United Kingdom</SelectItem>
-                      <SelectItem value="KE">Kenya</SelectItem>
-                      <SelectItem value="NG">Nigeria</SelectItem>
-                      <SelectItem value="GH">Ghana</SelectItem>
+                      {ADD_CLIENT_COUNTRIES.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {t(`web.provider.portal.addClientDialog.countries.${code}`)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -639,16 +642,16 @@ export function AddClientDialog({
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <Heart className="w-4 h-4" />
-                Emergency Contact
+                {t("web.provider.portal.addClientDialog.emergencyContact")}
               </h3>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    Name
+                    {t("web.provider.portal.addClientDialog.name")}
                   </Label>
                   <Input
-                    placeholder="Emergency contact name"
+                    placeholder={t("web.provider.portal.addClientDialog.emergencyNamePlaceholder")}
                     value={formData.emergency_contact?.name || ""}
                     onChange={(e) =>
                       setFormData({
@@ -664,7 +667,7 @@ export function AddClientDialog({
                 </div>
                 <div className="space-y-3">
                   <Label className="text-sm font-semibold text-gray-900">
-                    Relationship
+                    {t("web.provider.portal.addClientDialog.relationship")}
                   </Label>
                   <Select
                     value={formData.emergency_contact?.relationship || ""}
@@ -679,12 +682,12 @@ export function AddClientDialog({
                     }
                   >
                     <SelectTrigger className="h-12 text-base">
-                      <SelectValue placeholder="Select relationship" />
+                      <SelectValue placeholder={t("web.provider.portal.addClientDialog.selectRelationship")} />
                     </SelectTrigger>
                     <SelectContent>
                       {EMERGENCY_RELATIONSHIPS.map((rel) => (
                         <SelectItem key={rel} value={rel} className="h-12">
-                          {rel}
+                          {t(`web.provider.portal.addClientDialog.relationships.${rel}`)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -694,7 +697,7 @@ export function AddClientDialog({
 
               <div className="space-y-3">
                 <Label className="text-sm font-semibold text-gray-900">
-                  Phone Number
+                  {t("web.provider.portal.addClientDialog.phoneNumber")}
                 </Label>
                 <PhoneInput
                   value={formData.emergency_contact?.phone || ""}
@@ -709,7 +712,7 @@ export function AddClientDialog({
                     });
                   }}
                   label=""
-                  placeholder="123 456 7890"
+                  placeholder={t("web.provider.portal.addClientDialog.phonePlaceholder")}
                   defaultCountryCode={defaultCountry}
                   required={false}
                 />
@@ -723,7 +726,7 @@ export function AddClientDialog({
               className="flex items-center justify-between w-full p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <span className="text-sm font-semibold text-gray-900">
-                Advanced Options
+                {t("web.provider.portal.addClientDialog.advancedOptions")}
               </span>
               <ChevronDown
                 className={cn(
@@ -746,13 +749,13 @@ export function AddClientDialog({
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                       <Globe className="w-4 h-4" />
-                      Preferences
+                      {t("web.provider.portal.addClientDialog.preferences")}
                     </h3>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-3">
                         <Label className="text-sm font-semibold text-gray-900">
-                          Preferred Language
+                          {t("web.provider.portal.addClientDialog.preferredLanguage")}
                         </Label>
                         <Select
                           value={formData.preferred_language || "en"}
@@ -769,7 +772,7 @@ export function AddClientDialog({
                           <SelectContent>
                             {LANGUAGES.map((lang) => (
                               <SelectItem key={lang.value} value={lang.value} className="h-12">
-                                {lang.label}
+                                {t(`web.provider.portal.addClientDialog.languages.${lang.value}`)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -778,7 +781,7 @@ export function AddClientDialog({
 
                       <div className="space-y-3">
                         <Label className="text-sm font-semibold text-gray-900">
-                          Preferred Currency
+                          {t("web.provider.portal.addClientDialog.preferredCurrency")}
                         </Label>
                         <Select
                           value={formData.preferred_currency || tenantCurrency}
@@ -805,7 +808,7 @@ export function AddClientDialog({
 
                     <div className="space-y-3">
                       <Label className="text-sm font-semibold text-gray-900">
-                        Timezone
+                        {t("web.provider.portal.addClientDialog.timezone")}
                       </Label>
                       <Select
                         value={formData.timezone || "Africa/Johannesburg"}
@@ -822,7 +825,7 @@ export function AddClientDialog({
                         <SelectContent>
                           {TIMEZONES.map((tz) => (
                             <SelectItem key={tz.value} value={tz.value} className="h-12">
-                              {tz.label}
+                              {t(`web.provider.portal.addClientDialog.${tz.labelKey}`)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -834,17 +837,17 @@ export function AddClientDialog({
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                       <Bell className="w-4 h-4" />
-                      Communication Preferences
+                      {t("web.provider.portal.addClientDialog.communicationPreferences")}
                     </h3>
 
                     <div className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <Label className="text-sm font-semibold text-gray-900">
-                            Email Notifications
+                            {t("web.provider.portal.addClientDialog.emailNotifications")}
                           </Label>
                           <p className="text-xs text-gray-600 mt-0.5">
-                            Receive booking confirmations and updates via email
+                            {t("web.provider.portal.addClientDialog.emailNotificationsHint")}
                           </p>
                         </div>
                         <Switch
@@ -864,10 +867,10 @@ export function AddClientDialog({
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <Label className="text-sm font-semibold text-gray-900">
-                            SMS Notifications
+                            {t("web.provider.portal.addClientDialog.smsNotifications")}
                           </Label>
                           <p className="text-xs text-gray-600 mt-0.5">
-                            Receive text message reminders and updates
+                            {t("web.provider.portal.addClientDialog.smsNotificationsHint")}
                           </p>
                         </div>
                         <Switch
@@ -887,10 +890,10 @@ export function AddClientDialog({
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
                           <Label className="text-sm font-semibold text-gray-900">
-                            Push Notifications
+                            {t("web.provider.portal.addClientDialog.pushNotifications")}
                           </Label>
                           <p className="text-xs text-gray-600 mt-0.5">
-                            Receive push notifications on mobile app
+                            {t("web.provider.portal.addClientDialog.pushNotificationsHint")}
                           </p>
                         </div>
                         <Switch
@@ -915,10 +918,10 @@ export function AddClientDialog({
             {/* Notes */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-gray-900">
-                Notes
+                {t("web.provider.portal.addClientDialog.notes")}
               </Label>
               <Textarea
-                placeholder="Any additional notes about this client (allergies, preferences, etc.)..."
+                placeholder={t("web.provider.portal.addClientDialog.notesPlaceholder")}
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -939,7 +942,7 @@ export function AddClientDialog({
               disabled={isLoading}
               className="flex-1 h-14 text-base font-semibold"
             >
-              Cancel
+              {t("web.provider.portal.addClientDialog.cancel")}
             </Button>
             <Button
               type="button"
@@ -948,11 +951,11 @@ export function AddClientDialog({
               className="flex-1 h-14 text-base font-semibold bg-primary hover:bg-primary-hover text-white active:scale-95 transition-transform"
             >
               {isLoading ? (
-                "Creating..."
+                t("web.provider.portal.addClientDialog.creating")
               ) : (
                 <>
-                  <Save className="w-5 h-5 mr-2" />
-                  Create Client
+                  <Save className="w-5 h-5 me-2" />
+                  {t("web.provider.portal.addClientDialog.createClient")}
                 </>
               )}
             </Button>

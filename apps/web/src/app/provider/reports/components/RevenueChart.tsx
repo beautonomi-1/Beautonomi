@@ -2,6 +2,7 @@
 
 import React from "react";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { getDefaultMoneyLocale } from "@beautonomi/utils";
 import {
   LineChart,
   Line,
@@ -41,14 +42,14 @@ function formatChartDate(dateStr: string, period?: string): string {
     const [, month] = dateStr.split("-");
     const m = parseInt(month, 10);
     if (!Number.isFinite(m) || m < 1 || m > 12) return dateStr;
-    return new Date(2000, m - 1).toLocaleDateString("en-US", { month: "short" }) + " " + dateStr.slice(0, 4);
+    return new Date(2000, m - 1).toLocaleDateString(getDefaultMoneyLocale(), { month: "short" }) + " " + dateStr.slice(0, 4);
   }
   if (period === "week" && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return `Wk ${new Date(dateStr + "T12:00:00.000Z").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    return `Wk ${new Date(dateStr + "T12:00:00.000Z").toLocaleDateString(getDefaultMoneyLocale(), { month: "short", day: "numeric" })}`;
   }
   const d = new Date(dateStr + (dateStr.length <= 10 ? "T12:00:00.000Z" : ""));
   if (!Number.isFinite(d.getTime())) return dateStr;
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(getDefaultMoneyLocale(), {
     month: "short",
     day: "numeric",
   });

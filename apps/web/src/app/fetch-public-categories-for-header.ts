@@ -8,6 +8,7 @@ export type HeaderGlobalCategory = {
   name: string;
   slug: string;
   icon?: string;
+  nameI18n?: Record<string, string> | null;
 };
 
 /**
@@ -28,6 +29,10 @@ export async function fetchPublicCategoriesForHeader(): Promise<HeaderGlobalCate
       name: String(cat.name ?? ""),
       slug: String(cat.slug ?? ""),
       icon: cat.icon != null ? String(cat.icon) : "BeautonomiAll",
+      nameI18n:
+        cat.name_i18n && typeof cat.name_i18n === "object" && !Array.isArray(cat.name_i18n)
+          ? (cat.name_i18n as Record<string, string>)
+          : null,
     }));
   } catch (e) {
     console.warn("fetchPublicCategoriesForHeader failed:", e);

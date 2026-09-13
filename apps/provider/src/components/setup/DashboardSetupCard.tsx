@@ -21,6 +21,8 @@ import {
   type SetupNavStep,
 } from "@/lib/setup-step-navigation";
 import { PROVIDER_SETUP_STATUS_CHANGED } from "@/lib/setup-status-cache";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export type DashboardSetupStep = {
   id: string;
@@ -47,6 +49,9 @@ function pickRouteForStep(step: DashboardSetupStep): string {
 
 export function DashboardSetupCard() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const ds = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.components.dashboardSetupCard.${key}`, opts) as string;
   // Shares the same cache key as every other setup-status consumer — no
   // duplicate network call when this screen mounts alongside the More tab.
   const { data, loading, refresh } = useApi<DashboardSetupStatus>(
@@ -103,7 +108,7 @@ export function DashboardSetupCard() {
           shadowOffset: { width: 0, height: 4 },
           elevation: 2,
         }}
-        accessibilityLabel="Start business setup"
+        accessibilityLabel={ds("startA11y")}
       >
         <View style={{ flexDirection: "row", alignItems: "center" }}>
           <View
@@ -114,17 +119,17 @@ export function DashboardSetupCard() {
               backgroundColor: "#fdf2f8",
               alignItems: "center",
               justifyContent: "center",
-              marginRight: 14,
+              marginEnd: 14,
             }}
           >
             <Ionicons name="rocket" size={24} color={Colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", letterSpacing: -0.2 }}>
-              Start your business profile
+              {ds("startTitle")}
             </Text>
             <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-              Complete setup to accept bookings and go live
+              {ds("startSubtitle")}
             </Text>
           </View>
         </View>
@@ -141,12 +146,12 @@ export function DashboardSetupCard() {
             justifyContent: "center",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Start business setup wizard"
+          accessibilityLabel={ds("startWizardA11y")}
         >
           <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: 0.2 }}>
-            Start business setup
+            {ds("startCta")}
           </Text>
-          <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
+          <DirectionalIcon name="arrow-forward" size={16} color="#fff" style={{ marginStart: 8 }} />
         </TouchableOpacity>
       </View>
     );
@@ -176,7 +181,7 @@ export function DashboardSetupCard() {
         shadowOffset: { width: 0, height: 4 },
         elevation: 2,
       }}
-      accessibilityLabel={`Setup ${pct} percent complete. ${requiredDone} of ${requiredTotal} required steps done.`}
+      accessibilityLabel={ds("progressA11y", { pct, done: requiredDone, total: requiredTotal })}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <View
@@ -187,17 +192,17 @@ export function DashboardSetupCard() {
             backgroundColor: "#fdf2f8",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: 14,
+            marginEnd: 14,
           }}
         >
           <Ionicons name="rocket" size={24} color={Colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", letterSpacing: -0.2 }}>
-            Finish setup to go live
+            {ds("finishTitle")}
           </Text>
           <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
-            {requiredDone} of {requiredTotal} required tasks done
+            {ds("tasksDone", { done: requiredDone, total: requiredTotal })}
           </Text>
         </View>
         <View
@@ -247,7 +252,7 @@ export function DashboardSetupCard() {
               marginBottom: 8,
             }}
           >
-            Next up
+            {ds("nextUp")}
           </Text>
           {nextSteps.map((step, idx) => (
             <TouchableOpacity
@@ -262,7 +267,7 @@ export function DashboardSetupCard() {
                 borderTopColor: "#f3f4f6",
               }}
               accessibilityRole="button"
-              accessibilityLabel={`Open ${step.title}`}
+              accessibilityLabel={ds("openStepA11y", { title: step.title })}
             >
               <View
                 style={{
@@ -272,7 +277,7 @@ export function DashboardSetupCard() {
                   backgroundColor: "#fdf2f8",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginRight: 12,
+                  marginEnd: 12,
                 }}
               >
                 <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.primary }}>
@@ -282,7 +287,7 @@ export function DashboardSetupCard() {
               <Text style={{ flex: 1, fontSize: 14, color: "#111827", fontWeight: "500" }}>
                 {step.title}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color="#cbd5f5" />
+              <DirectionalIcon name="chevron-forward" size={16} color="#cbd5f5" />
             </TouchableOpacity>
           ))}
         </View>
@@ -301,12 +306,12 @@ export function DashboardSetupCard() {
           justifyContent: "center",
         }}
         accessibilityRole="button"
-        accessibilityLabel="Continue setup"
+        accessibilityLabel={ds("continueA11y")}
       >
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: 0.2 }}>
-          Continue setup
+          {ds("continueCta")}
         </Text>
-        <Ionicons name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 8 }} />
+        <DirectionalIcon name="arrow-forward" size={16} color="#fff" style={{ marginStart: 8 }} />
       </TouchableOpacity>
     </View>
   );

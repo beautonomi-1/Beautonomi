@@ -47,6 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PayCloudPaymentDialog = dynamic(
   () =>
@@ -73,6 +74,8 @@ export function GroupBookingViewSheet({
   onEdit,
   onRefresh,
 }: GroupBookingViewSheetProps) {
+  const { t } = useTranslation();
+  const gv = "web.provider.bookings.groupView";
   const { hasPermission, isOwner } = usePermissions();
   const { format: formatMoney } = useProviderMoneyFormat();
   const paystackEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
@@ -102,7 +105,7 @@ export function GroupBookingViewSheet({
       const fresh = await providerApi.getGroupBooking(normalizeGroupBookingId(groupId));
       setBooking(fresh);
     } catch {
-      toast.error("Failed to load group booking");
+      toast.error(t(`${gv}.loadFailed`));
       setBooking(null);
     } finally {
       setLoading(false);
@@ -134,11 +137,18 @@ export function GroupBookingViewSheet({
       } else {
         await fetcher.patch(`/api/provider/group-bookings/${id}`, { status });
       }
-      toast.success(`Group marked as ${status}`);
+      toast.success(t(`${gv}.markedAs`, {
+        status:
+          status === "started"
+            ? t(`${gv}.statusStarted`)
+            : status === "completed"
+              ? t(`${gv}.statusCompleted`)
+              : status,
+      }));
       await load();
       onRefresh?.();
     } catch {
-      toast.error("Failed to update group status");
+      toast.error(t(`${gv}.updateFailed`));
     } finally {
       setBusy(false);
     }
@@ -148,10 +158,10 @@ export function GroupBookingViewSheet({
     if (!booking) return;
     try {
       await providerApi.checkInGroupParticipant(normalizeGroupBookingId(booking.id), participantId);
-      toast.success("Checked in");
+      toast.success(t(`${gv}.checkedIn`));
       await load();
     } catch {
-      toast.error("Check-in failed");
+      toast.error(t(`${gv}.checkInFailed`));
     }
   };
 
@@ -159,10 +169,10 @@ export function GroupBookingViewSheet({
     if (!booking) return;
     try {
       await providerApi.checkOutGroupParticipant(normalizeGroupBookingId(booking.id), participantId);
-      toast.success("Checked out");
+      toast.success(t(`${gv}.checkedOut`));
       await load();
     } catch {
-      toast.error("Check-out failed");
+      toast.error(t(`${gv}.checkOutFailed`));
     }
   };
 
@@ -173,11 +183,11 @@ export function GroupBookingViewSheet({
         `/api/provider/group-bookings/${normalizeGroupBookingId(booking.id)}?action=mark_paid`,
         { payment_method: method },
       );
-      toast.success("Payment recorded");
+      toast.success(t(`${gv}.paymentRecorded`));
       await load();
       onRefresh?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Payment failed");
+      toast.error(err instanceof Error ? err.message : t(`${gv}.paymentFailed`));
     }
   };
 
@@ -185,12 +195,12 @@ export function GroupBookingViewSheet({
     if (!booking || !canCancel) return;
     try {
       await providerApi.deleteGroupBooking(normalizeGroupBookingId(booking.id));
-      toast.success("Group booking cancelled");
+      toast.success(t(`${gv}.cancelled`));
       setCancelOpen(false);
       onOpenChange(false);
       onRefresh?.();
     } catch {
-      toast.error("Cancel failed");
+      toast.error(t(`${gv}.cancelFailed`));
     }
   };
 
@@ -202,16 +212,16 @@ export function GroupBookingViewSheet({
       );
       const url = res?.data?.url;
       if (url) window.open(url, "_blank");
-      else toast.error("Receipt unavailable");
+      else toast.error(t(`${gv}.receiptUnavailable`));
     } catch {
-      toast.error("Could not load receipt");
+      toast.error(t(`${gv}.receiptLoadFailed`));
     }
   };
 
   const header = (
     <div className="flex items-center gap-2">
       <div className="flex-1 min-w-0">
-        <h2 className="text-lg font-semibold text-gray-900 truncate">Group booking</h2>
+        <h2 className="text-lg font-semibold text-gray-900 truncate">{t(`${gv}.title`)}</h2>
         {booking?.ref_number ? (
           <p className="text-xs text-gray-500 font-mono">{booking.ref_number}</p>
         ) : null}
@@ -224,8 +234,8 @@ export function GroupBookingViewSheet({
       <button
         type="button"
         onClick={() => onOpenChange(false)}
-        className="p-2 -mr-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
-        aria-label="Close"
+        className="p-2 -me-2 rounded-full touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+        aria-label={t(`${gv}.close`)}
       >
         <X className="h-5 w-5" />
       </button>
@@ -244,24 +254,24 @@ export function GroupBookingViewSheet({
             <div className="flex flex-wrap gap-2">
               {canEdit && canStart && !isFinal ? (
                 <BookingActionButton size="sm" fullWidth={false} disabled={busy} onClick={() => void handleStatus("started")}>
-                  <Play className="mr-1 h-4 w-4" />
-                  Start
+                  <Play className="me-1 h-4 w-4" />
+                  {t(`${gv}.start`)}
                 </BookingActionButton>
               ) : null}
               {canEdit && started && !isFinal ? (
                 <BookingActionButton size="sm" fullWidth={false} disabled={busy} onClick={() => void handleStatus("completed")}>
-                  <CheckCircle className="mr-1 h-4 w-4" />
-                  Complete
+                  <CheckCircle className="me-1 h-4 w-4" />
+                  {t(`${gv}.complete`)}
                 </BookingActionButton>
               ) : null}
               <BookingActionButton size="sm" fullWidth={false} variant="outline" onClick={() => void handleReceipt()}>
-                <FileText className="mr-1 h-4 w-4" />
-                Receipt
+                <FileText className="me-1 h-4 w-4" />
+                {t(`${gv}.receipt`)}
               </BookingActionButton>
               {canEdit && !isFinal && onEdit ? (
                 <BookingActionButton size="sm" fullWidth={false} variant="outline" onClick={() => onEdit(booking)}>
-                  <Edit className="mr-1 h-4 w-4" />
-                  Edit
+                  <Edit className="me-1 h-4 w-4" />
+                  {t(`${gv}.edit`)}
                 </BookingActionButton>
               ) : null}
             </div>
@@ -269,17 +279,17 @@ export function GroupBookingViewSheet({
             <BookingSectionCard>
               <BookingSectionLabel className="mb-2 flex items-center gap-1.5">
                 <Calendar className="h-4 w-4" />
-                Session
+                {t(`${gv}.session`)}
               </BookingSectionLabel>
               {booking.scheduled_at ? (
-                <BookingSummaryRow label="When" value={new Date(booking.scheduled_at).toLocaleString()} />
+                <BookingSummaryRow label={t(`${gv}.when`)} value={new Date(booking.scheduled_at).toLocaleString()} />
               ) : null}
-              {booking.service_name ? <BookingSummaryRow label="Service" value={booking.service_name} /> : null}
-              {booking.team_member_name ? <BookingSummaryRow label="Staff" value={booking.team_member_name} /> : null}
+              {booking.service_name ? <BookingSummaryRow label={t(`${gv}.service`)} value={booking.service_name} /> : null}
+              {booking.team_member_name ? <BookingSummaryRow label={t(`${gv}.staff`)} value={booking.team_member_name} /> : null}
               {(booking as { location_type?: string }).location_type === "at_home" ? (
                 <>
-                  <BookingSummaryRow label="Type" value="At home" />
-                  {travelFee > 0 ? <BookingSummaryRow label="Travel" value={formatMoney(travelFee)} /> : null}
+                  <BookingSummaryRow label={t(`${gv}.type`)} value={t(`${gv}.atHome`)} />
+                  {travelFee > 0 ? <BookingSummaryRow label={t(`${gv}.travel`)} value={formatMoney(travelFee)} /> : null}
                 </>
               ) : null}
               {booking.notes ? (
@@ -298,10 +308,10 @@ export function GroupBookingViewSheet({
 
             {canProcessPayments && !isFinal && outstanding > 0 ? (
               <BookingSectionCard>
-                <BookingSectionLabel className="mb-2">Collect payment</BookingSectionLabel>
+                <BookingSectionLabel className="mb-2">{t(`${gv}.collectPayment`)}</BookingSectionLabel>
                 {!hasLinkedBookings ? (
                   <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    Link participant bookings before recording group payment.
+                    {t(`${gv}.linkBookingsFirst`)}
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -315,11 +325,11 @@ export function GroupBookingViewSheet({
                     />
                     {(
                       [
-                        ["cash", "Mark paid (cash)"],
-                        ["card", "Mark paid (card)"],
-                        ["yoco", "Yoco"],
-                        ["bank_transfer", "Bank transfer"],
-                        ["other", "Other"],
+                        ["cash", t(`${gv}.markPaidCash`)],
+                        ["card", t(`${gv}.markPaidCard`)],
+                        ["yoco", t(`${gv}.yoco`)],
+                        ["bank_transfer", t(`${gv}.bankTransfer`)],
+                        ["other", t(`${gv}.other`)],
                       ] as const
                     ).map(([method, label]) => (
                       <BookingActionButton
@@ -332,7 +342,7 @@ export function GroupBookingViewSheet({
                     ))}
                     {paystackEnabled ? (
                       <BookingActionButton variant="outline" onClick={() => setPaystackOpen(true)}>
-                        Paystack Terminal
+                        {t(`${gv}.paystackTerminal`)}
                       </BookingActionButton>
                     ) : null}
                   </div>
@@ -343,17 +353,17 @@ export function GroupBookingViewSheet({
             <BookingSectionCard>
               <BookingSectionLabel className="mb-3 flex items-center gap-1.5">
                 <Users className="h-4 w-4" />
-                Participants ({participants.length})
+                {t(`${gv}.participants`, { count: participants.length })}
               </BookingSectionLabel>
               {participants.length === 0 ? (
-                <p className="text-sm text-gray-500">No participants yet.</p>
+                <p className="text-sm text-gray-500">{t(`${gv}.noParticipants`)}</p>
               ) : (
                 <ul className="space-y-3">
                   {participants.map((p) => (
                     <li key={p.id} className="rounded-xl border border-gray-100 p-3 text-sm">
                       <div className="flex justify-between gap-2">
                         <div>
-                          <p className="font-medium">{p.client_name ?? "Guest"}</p>
+                          <p className="font-medium">{p.client_name ?? t(`${gv}.guest`)}</p>
                           <p className="text-xs text-gray-500">{p.service_name ?? "—"}</p>
                         </div>
                         {p.price != null ? (
@@ -363,12 +373,12 @@ export function GroupBookingViewSheet({
                       <div className="mt-2 flex flex-wrap gap-2">
                         {canEdit && !isFinal && !p.checked_in ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckIn(p.id)}>
-                            Check in
+                            {t(`${gv}.checkIn`)}
                           </button>
                         ) : null}
                         {canEdit && !isFinal && p.checked_in && !p.checked_out ? (
                           <button type="button" className="text-xs font-semibold underline" onClick={() => void handleCheckOut(p.id)}>
-                            Check out
+                            {t(`${gv}.checkOut`)}
                           </button>
                         ) : null}
                         {p.booking_id ? (
@@ -380,8 +390,8 @@ export function GroupBookingViewSheet({
                                 openViewMode({
                                   id: p.booking_id!,
                                   booking_id: p.booking_id!,
-                                  client_name: p.client_name ?? "Participant",
-                                  service_name: p.service_name ?? "Service",
+                                  client_name: p.client_name ?? t(`${gv}.participant`),
+                                  service_name: p.service_name ?? t(`${gv}.serviceFallback`),
                                   status: "booked",
                                   scheduled_date: "",
                                   scheduled_time: "",
@@ -391,7 +401,7 @@ export function GroupBookingViewSheet({
                                 } as Parameters<typeof openViewMode>[0])
                               }
                             >
-                              Open booking
+                              {t(`${gv}.openBooking`)}
                             </button>
                             {canProcessPayments ? (
                               <button
@@ -400,13 +410,13 @@ export function GroupBookingViewSheet({
                                 onClick={() =>
                                   setParticipantRefund({
                                     bookingId: p.booking_id!,
-                                    name: p.client_name ?? "Participant",
+                                    name: p.client_name ?? t(`${gv}.participant`),
                                     maxAmount:
                                       Number((p as { total_paid?: number }).total_paid ?? 0) || undefined,
                                   })
                                 }
                               >
-                                Refund
+                                {t(`${gv}.refund`)}
                               </button>
                             ) : null}
                           </>
@@ -420,7 +430,7 @@ export function GroupBookingViewSheet({
 
             {canCancel && booking.status !== "cancelled" && !isFinal ? (
               <BookingActionButton variant="outline" onClick={() => setCancelOpen(true)}>
-                Cancel group booking
+                {t(`${gv}.cancelGroup`)}
               </BookingActionButton>
             ) : null}
           </div>
@@ -459,14 +469,14 @@ export function GroupBookingViewSheet({
       <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancel group booking?</AlertDialogTitle>
+            <AlertDialogTitle>{t(`${gv}.cancelTitle`)}</AlertDialogTitle>
             <AlertDialogDescription>
-              This cancels the group session and linked participant bookings.
+              {t(`${gv}.cancelDescription`)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Keep</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void handleCancel()}>Cancel booking</AlertDialogAction>
+            <AlertDialogCancel>{t(`${gv}.keep`)}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleCancel()}>{t(`${gv}.cancelBooking`)}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -474,15 +484,34 @@ export function GroupBookingViewSheet({
       <AlertDialog open={!!recordPaymentConfirm} onOpenChange={(next) => !next && setRecordPaymentConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Record group payment?</AlertDialogTitle>
+            <AlertDialogTitle>{t(`${gv}.recordPaymentTitle`)}</AlertDialogTitle>
             <AlertDialogDescription>
-              Mark linked participant bookings as paid via{" "}
-              <span className="font-semibold">{recordPaymentConfirm?.method.replace("_", " ")}</span>
-              {outstanding > 0 ? ` for approximately ${formatMoney(outstanding)} outstanding.` : "."}
+              {outstanding > 0
+                ? t(`${gv}.recordPaymentBodyWithAmount`, {
+                    method: ({
+                      cash: t(`${gv}.methodCash`),
+                      card: t(`${gv}.methodCard`),
+                      yoco: t(`${gv}.methodYoco`),
+                      bank_transfer: t(`${gv}.methodBankTransfer`),
+                      other: t(`${gv}.methodOther`),
+                    } as Record<string, string>)[recordPaymentConfirm?.method ?? ""] ??
+                      recordPaymentConfirm?.method.replace("_", " "),
+                    amount: formatMoney(outstanding),
+                  })
+                : t(`${gv}.recordPaymentBody`, {
+                    method: ({
+                      cash: t(`${gv}.methodCash`),
+                      card: t(`${gv}.methodCard`),
+                      yoco: t(`${gv}.methodYoco`),
+                      bank_transfer: t(`${gv}.methodBankTransfer`),
+                      other: t(`${gv}.methodOther`),
+                    } as Record<string, string>)[recordPaymentConfirm?.method ?? ""] ??
+                      recordPaymentConfirm?.method.replace("_", " "),
+                  })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t(`${gv}.cancel`)}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (recordPaymentConfirm) {
@@ -491,7 +520,7 @@ export function GroupBookingViewSheet({
                 }
               }}
             >
-              Record payment
+              {t(`${gv}.recordPayment`)}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

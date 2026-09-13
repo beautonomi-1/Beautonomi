@@ -33,7 +33,25 @@ export async function GET(request: NextRequest) {
       query = query.eq("is_featured", true);
     }
 
-    const { data: categories, error } = await query;
+    let { data: categories, error } = await query;
+
+    // `select("*")` fails if 895 (`name_i18n`) is not applied. That error string
+    // also contains "does not exist" — retry without the column before treating
+    // it as a missing table (which would empty home / header / mobile categories).
+    if (error && /name_i18n/i.test(error.message ?? "")) {
+      let retry = supabase
+        .from("global_service_categories")
+        .select("id, slug, name, description, icon, display_order, is_featured, is_active")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true });
+      if (featuredOnly) {
+        retry = retry.eq("is_featured", true);
+      }
+      const again = await retry;
+      categories = again.data;
+      error = again.error;
+    }
 
     if (error) {
       console.error("Error fetching global categories:", error);

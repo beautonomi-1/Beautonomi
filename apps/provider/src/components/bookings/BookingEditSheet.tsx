@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useApi } from "@/hooks/useApi";
@@ -104,6 +105,12 @@ type Props = {
 };
 
 export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaymentAction }: Props) {
+  const { t } = useTranslation();
+  const be = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.bookingEditSheet.${key}`, opts) as string,
+    [t],
+  );
   const locationId = booking.location_id ?? null;
   const servicesUrl =
     "/api/provider/services?include_inactive=true&include_variants=true&include_offering_resources=false";
@@ -238,7 +245,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
         .reduce((sum, p) => sum + p.quantity, 0);
       const maxStock = stockLimitForProductLine(product, variant, existingOnBooking);
       if (maxStock !== null && maxStock <= 0) {
-        Alert.alert("Out of stock", `${product.name} is not available right now.`);
+        Alert.alert(be("outOfStockTitle"), be("outOfStockBody", { name: product.name }));
         return prev;
       }
       const existing = prev.find(
@@ -246,7 +253,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       );
       if (existing) {
         if (maxStock != null && existing.quantity >= maxStock) {
-          Alert.alert("Stock limit", `Only ${maxStock} available for ${product.name}.`);
+          Alert.alert(be("stockLimitTitle"), be("stockLimitBody", { count: maxStock, name: product.name }));
           return prev;
         }
         return prev.map((p) =>
@@ -269,7 +276,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       ];
     });
     setProductPickerOpen(false);
-  }, []);
+  }, [be]);
 
   const updateProductQty = useCallback((index: number, delta: number) => {
     setSelectedProducts((prev) =>
@@ -279,14 +286,14 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
           const nextQty = p.quantity + delta;
           if (nextQty < 1) return { ...p, quantity: 0 };
           if (p.maxStock != null && nextQty > p.maxStock) {
-            Alert.alert("Stock limit", `Only ${p.maxStock} available for ${p.productName}.`);
+            Alert.alert(be("stockLimitTitle"), be("stockLimitBody", { count: p.maxStock, name: p.productName }));
             return p;
           }
           return { ...p, quantity: nextQty };
         })
         .filter((p) => p.quantity > 0),
     );
-  }, []);
+  }, [be]);
 
   const removeProduct = useCallback((index: number) => {
     setSelectedProducts((prev) => prev.filter((_, i) => i !== index));
@@ -294,13 +301,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
   const handleSave = async () => {
     if (selectedServices.length === 0 && selectedProducts.length === 0) {
-      Alert.alert("Required", "Add at least one service or product.");
+      Alert.alert(be("requiredTitle"), be("requiredBody"));
       return;
     }
     if (staffList.length > 0 && selectedServices.length > 0) {
       const missingStaff = selectedServices.some((s) => !s.staffId);
       if (missingStaff) {
-        Alert.alert("Staff required", "Assign staff to each service before saving.");
+        Alert.alert(be("staffRequiredTitle"), be("staffRequiredBody"));
         return;
       }
     }
@@ -328,16 +335,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
     if (result.error) {
       if (result.errorCode === "PRODUCT_EDIT_LOCKED") {
-        Alert.alert(
-          "Cannot edit products",
-          "This booking is closed. Create a sale or refund adjustment instead.",
-        );
+        Alert.alert(be("cannotEditProductsTitle"), be("cannotEditProductsBody"));
       } else if (result.errorCode === "INSUFFICIENT_STOCK") {
-        Alert.alert("Insufficient stock", result.error);
+        Alert.alert(be("insufficientStock"), result.error);
       } else if (result.errorCode === "CONFLICT") {
-        Alert.alert("Conflict", "This booking changed, reload");
+        Alert.alert(be("conflictTitle"), be("conflictBody"));
       } else {
-        Alert.alert("Could not save", result.error);
+        Alert.alert(be("saveFailed"), result.error);
       }
       return;
     }
@@ -357,35 +361,35 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
   return (
     <>
-      <BottomSheet visible={visible} onClose={onClose} title="Edit appointment" snapHeight="full">
+      <BottomSheet visible={visible} onClose={onClose} title={be("title")} snapHeight="full">
         <ScrollView
           style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-            Update services, staff, retail items, discount, and notes. Time changes stay under Reschedule.
+            {be("intro")}
           </Text>
 
           {preservedDiscountTotal > 0 ? (
             <View style={twStyle("mb-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2")}>
               <Text style={twStyle("text-xs text-blue-800")}>
-                Membership, promo, or loyalty discounts ({formatCurrency(preservedDiscountTotal, currency)}) stay applied.
+                {be("preservedDiscounts", { amount: formatCurrency(preservedDiscountTotal, currency) })}
               </Text>
             </View>
           ) : null}
 
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>Services</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>{be("services")}</Text>
           {servicesLoading ? (
             <ActivityIndicator style={twStyle("my-4")} />
           ) : catalogServices.length === 0 ? (
-            <Text style={twStyle("mb-4 text-sm text-gray-500")}>No services in catalogue.</Text>
+            <Text style={twStyle("mb-4 text-sm text-gray-500")}>{be("noServices")}</Text>
           ) : (
             <View style={twStyle("mb-4 gap-y-2")}>
               {selectedServices.length > 0 ? (
                 <View style={twStyle("mb-3 gap-y-2")}>
                   <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>
-                    On this appointment
+                    {be("onThisAppointment")}
                   </Text>
                   {selectedServices.map((sel) => {
                     const display = resolveBookingEditServiceDisplay(sel, catalogServices);
@@ -408,7 +412,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                           <TouchableOpacity
                             onPress={() => toggleService(sel.serviceId)}
                             accessibilityRole="button"
-                            accessibilityLabel={`Remove ${resolveServiceLabel(sel)}`}
+                            accessibilityLabel={be("removeServiceA11y", { name: resolveServiceLabel(sel) })}
                           >
                             <Ionicons name="close-circle" size={22} color="#9ca3af" />
                           </TouchableOpacity>
@@ -418,14 +422,14 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                           style={twStyle("mt-2 flex-row items-center self-start rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
                         >
                           <Ionicons name="person-outline" size={14} color="#6b7280" />
-                          <Text style={twStyle("ml-1 text-xs text-gray-600")}>{staffName ?? "Assign staff"}</Text>
+                          <Text style={twStyle("ms-1 text-xs text-gray-600")}>{staffName ?? be("assignStaff")}</Text>
                         </TouchableOpacity>
                       </View>
                     );
                   })}
                 </View>
               ) : null}
-              <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>Add services</Text>
+              <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>{be("addServices")}</Text>
               {parentCatalogServices.slice(0, 40).map((service) => {
                 const isSelected = selectedServices.some((s) => s.serviceId === service.id);
                 if (isSelected) return null;
@@ -435,9 +439,9 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                     onPress={() => toggleService(service.id)}
                     style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-white p-3")}
                     accessibilityRole="button"
-                    accessibilityLabel={`Add ${service.title}`}
+                    accessibilityLabel={be("addServiceA11y", { name: service.title })}
                   >
-                    <View style={twStyle("flex-1 pr-2")}>
+                    <View style={twStyle("flex-1 pe-2")}>
                       <Text style={twStyle("text-sm font-medium text-gray-900")}>{service.title}</Text>
                       <Text style={twStyle("text-xs text-gray-500")}>
                         {formatDuration(service.duration_minutes)} · {formatCurrency(service.price, service.currency)}
@@ -451,13 +455,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
           )}
 
           <View style={twStyle("mb-2 flex-row items-center justify-between")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-800")}>Products</Text>
+            <Text style={twStyle("text-sm font-semibold text-gray-800")}>{be("products")}</Text>
             <TouchableOpacity onPress={() => setProductPickerOpen(true)}>
-              <Text style={twStyle("text-sm font-semibold text-primary")}>Add product</Text>
+              <Text style={twStyle("text-sm font-semibold text-primary")}>{be("addProduct")}</Text>
             </TouchableOpacity>
           </View>
           {selectedProducts.length === 0 ? (
-            <Text style={twStyle("mb-4 text-sm text-gray-500")}>No retail items on this booking.</Text>
+            <Text style={twStyle("mb-4 text-sm text-gray-500")}>{be("noRetailItems")}</Text>
           ) : (
             <View style={twStyle("mb-4 gap-y-2")}>
               {selectedProducts.map((p, index) => (
@@ -465,13 +469,13 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                   key={`${p.productId}-${p.productVariantId ?? "base"}-${index}`}
                   style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-white p-3")}
                 >
-                  <View style={twStyle("flex-1 pr-2")}>
+                  <View style={twStyle("flex-1 pe-2")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName}
                     </Text>
                     <Text style={twStyle("text-xs text-gray-500")}>
-                      {formatCurrency(p.unitPrice, currency)} each
-                      {p.maxStock != null ? ` · ${p.maxStock} max` : ""}
+                      {be("eachPrice", { amount: formatCurrency(p.unitPrice, currency) })}
+                      {p.maxStock != null ? be("maxStock", { count: p.maxStock }) : ""}
                     </Text>
                   </View>
                   <View style={twStyle("flex-row items-center")}>
@@ -486,7 +490,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                     >
                       <Ionicons name="add-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeProduct(index)} style={twStyle("ml-1 px-1")}>
+                    <TouchableOpacity onPress={() => removeProduct(index)} style={twStyle("ms-1 px-1")}>
                       <Ionicons name="trash-outline" size={20} color="#b91c1c" />
                     </TouchableOpacity>
                   </View>
@@ -495,7 +499,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
             </View>
           )}
 
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>Manual discount</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>{be("manualDiscount")}</Text>
           <TextInput
             value={manualDiscount}
             onChangeText={setManualDiscount}
@@ -504,52 +508,55 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
             style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900")}
           />
 
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>Notes</Text>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>{be("notes")}</Text>
           <TextInput
             value={notes}
             onChangeText={setNotes}
             multiline
-            placeholder="Internal or client-facing notes"
+            placeholder={be("notesPlaceholder")}
             style={twStyle("mb-4 min-h-[88px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-base text-gray-900")}
           />
 
           <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3")}>
-            <Text style={twStyle("text-xs font-semibold uppercase text-gray-500")}>Updated total</Text>
+            <Text style={twStyle("text-xs font-semibold uppercase text-gray-500")}>{be("updatedTotal")}</Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(totalsPreview.totalAmount, currency)}
             </Text>
             <Text style={twStyle("mt-1 text-xs text-gray-600")}>
-              Subtotal {formatCurrency(subtotal, currency)} · Tax {formatCurrency(totalsPreview.taxAmount, currency)}
+              {be("subtotalTax", {
+                subtotal: formatCurrency(subtotal, currency),
+                tax: formatCurrency(totalsPreview.taxAmount, currency),
+              })}
             </Text>
             {paidAfterRefunds > 0 ? (
               <View style={twStyle("mt-2 border-t border-gray-200 pt-2")}>
                 <Text style={twStyle("text-xs text-gray-600")}>
-                  Already paid: {formatCurrency(paidAfterRefunds, currency)}
+                  {be("alreadyPaid", { amount: formatCurrency(paidAfterRefunds, currency) })}
                 </Text>
                 {balanceAfterEdit > 0 ? (
                   <Text style={twStyle("mt-1 text-xs font-semibold text-amber-800")}>
-                    Balance due after save: {formatCurrency(balanceAfterEdit, currency)}
+                    {be("balanceDue", { amount: formatCurrency(balanceAfterEdit, currency) })}
                   </Text>
                 ) : null}
                 {overpaymentAfterEdit > 0 ? (
                   <View style={twStyle("mt-2")}>
                     <Text style={twStyle("text-xs font-semibold text-blue-800")}>
-                      Overpayment after save: {formatCurrency(overpaymentAfterEdit, currency)}
+                      {be("overpayment", { amount: formatCurrency(overpaymentAfterEdit, currency) })}
                     </Text>
                     {onOverpaymentAction ? (
                       <TouchableOpacity
                         onPress={() => onOverpaymentAction(overpaymentAfterEdit)}
                         style={twStyle("mt-2 rounded-lg bg-blue-600 py-2 px-3 self-start")}
                         accessibilityRole="button"
-                        accessibilityLabel="Refund overpayment"
+                        accessibilityLabel={be("refundOverpaymentA11y")}
                       >
                         <Text style={twStyle("text-xs font-semibold text-white")}>
-                          Refund {formatCurrency(overpaymentAfterEdit, currency)} on the correct payment method
+                          {be("refundOnMethod", { amount: formatCurrency(overpaymentAfterEdit, currency) })}
                         </Text>
                       </TouchableOpacity>
                     ) : (
                       <Text style={twStyle("mt-1 text-xs text-blue-700")}>
-                        Refund or credit the customer from the booking payment section.
+                        {be("refundFromPayments")}
                       </Text>
                     )}
                   </View>
@@ -560,7 +567,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
 
           <View style={twStyle("mt-4")}>
             <ActionButton
-              label={saving ? "Saving…" : "Save changes"}
+              label={saving ? be("saving") : be("saveChanges")}
               onPress={() => void handleSave()}
               disabled={saving}
               loading={saving}
@@ -572,7 +579,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       <BottomSheet
         visible={staffPickerServiceId != null}
         onClose={() => setStaffPickerServiceId(null)}
-        title="Assign staff"
+        title={be("assignStaff")}
         snapHeight="half"
       >
         <ScrollView>
@@ -599,7 +606,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
       <BottomSheet
         visible={productPickerOpen}
         onClose={() => setProductPickerOpen(false)}
-        title="Add product"
+        title={be("addProduct")}
         snapHeight="full"
       >
         <ScrollView>
@@ -616,7 +623,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                 <Text style={twStyle("text-base text-gray-900")}>{product.name}</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
                   {formatCurrency(product.price, product.currency ?? currency)}
-                  {baseMax != null ? (baseOut ? " · Out of stock" : ` · ${baseMax} in stock`) : ""}
+                  {baseMax != null ? (baseOut ? be("outOfStockSuffix") : be("inStockSuffix", { count: baseMax })) : ""}
                 </Text>
               </TouchableOpacity>
               {(product.variants ?? []).map((variant) => {
@@ -632,7 +639,7 @@ export function BookingEditSheet({ visible, booking, onClose, onSave, onOverpaym
                   <Text style={twStyle("text-sm text-gray-800")}>{variant.name}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
                     {formatCurrency(variant.price, product.currency ?? currency)}
-                    {variantMax != null ? (variantOut ? " · Out of stock" : ` · ${variantMax} in stock`) : ""}
+                    {variantMax != null ? (variantOut ? be("outOfStockSuffix") : be("inStockSuffix", { count: variantMax })) : ""}
                   </Text>
                 </TouchableOpacity>
               );})}

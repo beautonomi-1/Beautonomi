@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CityWaitlistModalProps {
   open: boolean;
@@ -32,6 +33,7 @@ export default function CityWaitlistModal({
   defaultCity = "",
 }: CityWaitlistModalProps) {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     city_name: defaultCity,
@@ -47,17 +49,17 @@ export default function CityWaitlistModal({
     e.preventDefault();
 
     if (!formData.city_name.trim()) {
-      toast.error("Please enter a city name");
+      toast.error(t("web.global.cityWaitlist.enterCity"));
       return;
     }
 
     if (!formData.name.trim()) {
-      toast.error("Please enter your name");
+      toast.error(t("web.global.cityWaitlist.enterName"));
       return;
     }
 
     if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.global.cityWaitlist.invalidPhone"));
       return;
     }
 
@@ -65,7 +67,7 @@ export default function CityWaitlistModal({
     try {
       const response = await fetcher.post<{ data?: { entry?: { message?: string } } }>("/api/public/city-waitlist", formData);
       
-      toast.success(response?.data?.entry?.message || "Successfully joined the waitlist!");
+      toast.success(response?.data?.entry?.message || t("web.global.cityWaitlist.joinedSuccess"));
       onOpenChange(false);
       
       // Reset form
@@ -79,7 +81,7 @@ export default function CityWaitlistModal({
         notes: "",
       });
     } catch (error: any) {
-      const errorMessage = error.message || "Failed to join waitlist. Please try again.";
+      const errorMessage = error.message || t("web.global.cityWaitlist.joinFailed");
       toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
@@ -92,54 +94,54 @@ export default function CityWaitlistModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
-            Join City Waitlist
+            {t("web.global.cityWaitlist.title")}
           </DialogTitle>
           <DialogDescription>
-            We'll notify you when Beautonomi becomes available in your city.
+            {t("web.global.cityWaitlist.description")}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="city_name">City Name *</Label>
+            <Label htmlFor="city_name">{t("web.global.cityWaitlist.cityNameRequired")}</Label>
             <Input
               id="city_name"
               value={formData.city_name}
               onChange={(e) => setFormData({ ...formData, city_name: e.target.value })}
-              placeholder="e.g., New York, Los Angeles"
+              placeholder={t("web.global.cityWaitlist.cityPlaceholder")}
               required
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="name">Your Name *</Label>
+            <Label htmlFor="name">{t("web.global.cityWaitlist.yourNameRequired")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Your full name"
+              placeholder={t("web.global.cityWaitlist.fullNamePlaceholder")}
               required
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("web.global.cityWaitlist.email")}</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="your@email.com"
+                placeholder={t("web.global.cityWaitlist.emailPlaceholder")}
               />
             </div>
             <div className="space-y-2">
               <PhoneInput
                 inputId="city-waitlist-phone"
-                label="Phone"
+                label={t("web.global.cityWaitlist.phone")}
                 value={formData.phone}
                 onChange={(e164) => setFormData({ ...formData, phone: e164 })}
-                placeholder="Phone number"
+                placeholder={t("web.global.cityWaitlist.phonePlaceholder")}
               />
             </div>
           </div>
@@ -156,29 +158,29 @@ export default function CityWaitlistModal({
               htmlFor="is_building_owner"
               className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              I'm a building owner interested in making my property Beautonomi-friendly
+              {t("web.global.cityWaitlist.buildingOwner")}
             </Label>
           </div>
 
           {formData.is_building_owner && (
             <div className="space-y-2">
-              <Label htmlFor="building_address">Building Address</Label>
+              <Label htmlFor="building_address">{t("web.global.cityWaitlist.buildingAddress")}</Label>
               <Input
                 id="building_address"
                 value={formData.building_address}
                 onChange={(e) => setFormData({ ...formData, building_address: e.target.value })}
-                placeholder="Street address, City, State"
+                placeholder={t("web.global.cityWaitlist.buildingAddressPlaceholder")}
               />
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Additional Notes (Optional)</Label>
+            <Label htmlFor="notes">{t("web.global.cityWaitlist.notesOptional")}</Label>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Tell us more about your interest..."
+              placeholder={t("web.global.cityWaitlist.notesPlaceholder")}
               rows={3}
             />
           </div>
@@ -191,7 +193,7 @@ export default function CityWaitlistModal({
               className="flex-1"
               disabled={isSubmitting}
             >
-              Cancel
+              {t("web.global.cityWaitlist.cancel")}
             </Button>
             <Button
               type="submit"
@@ -200,13 +202,13 @@ export default function CityWaitlistModal({
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Joining...
+                  <Loader2 className="w-4 h-4 me-2 animate-spin" />
+                  {t("web.global.cityWaitlist.joining")}
                 </>
               ) : (
                 <>
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Join Waitlist
+                  <MapPin className="w-4 h-4 me-2" />
+                  {t("web.global.cityWaitlist.joinWaitlist")}
                 </>
               )}
             </Button>

@@ -14,9 +14,24 @@ export async function GET() {
   try {
     const supabase = await getSupabaseServer();
 
-    const { data: categories, error } = await supabase
-      .from("global_service_categories")
-      .select(`
+    const selectWithI18n = `
+        id,
+        slug,
+        name,
+        description,
+        icon,
+        name_i18n,
+        is_active,
+        subcategories (
+          id,
+          category_id,
+          slug,
+          name,
+          description,
+          is_active
+        )
+      `;
+    const selectLegacy = `
         id,
         slug,
         name,
@@ -31,9 +46,26 @@ export async function GET() {
           description,
           is_active
         )
-      `)
+      `;
+
+    let { data: categories, error } = await supabase
+      .from("global_service_categories")
+      .select(selectWithI18n)
       .eq("is_active", true)
       .order("name");
+
+    if (error && /name_i18n/i.test(error.message ?? "")) {
+      const retry = await supabase
+        .from("global_service_categories")
+        .select(selectLegacy)
+        .eq("is_active", true)
+        .order("name");
+      categories = (retry.data ?? []).map((row) => ({
+        ...row,
+        name_i18n: null,
+      }));
+      error = retry.error;
+    }
 
     if (error) {
       console.error("Error fetching categories:", error);

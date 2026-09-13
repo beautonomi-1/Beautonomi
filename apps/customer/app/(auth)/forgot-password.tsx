@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase/client";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function ForgotPasswordScreen() {
   const { t } = useTranslation();
@@ -87,7 +88,7 @@ export default function ForgotPasswordScreen() {
           accessibilityRole="button"
           accessibilityLabel={fp("goBackA11y")}
         >
-          <Ionicons name="arrow-back" size={20} color={Colors.gray[900]} />
+          <DirectionalIcon name="arrow-back" size={20} color={Colors.gray[900]} />
         </TouchableOpacity>
 
         {sent ? (

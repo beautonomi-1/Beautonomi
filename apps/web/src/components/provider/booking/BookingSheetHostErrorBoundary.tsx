@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { i18n } from "@beautonomi/i18n";
 import { Button } from "@/components/ui/button";
 import { closeSidebar } from "@/stores/appointment-sidebar-store";
 
@@ -21,7 +22,7 @@ export class BookingSheetHostErrorBoundary extends React.Component<
   state: State = { hasError: false, errorMessage: null };
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, errorMessage: error.message || "Unknown error" };
+    return { hasError: true, errorMessage: error.message || i18n.t("web.bookingSheetError.unknownError") };
   }
 
   componentDidCatch(error: Error) {
@@ -45,16 +46,16 @@ export class BookingSheetHostErrorBoundary extends React.Component<
           role="alert"
           data-testid="booking-sheet-error-boundary"
         >
-          <p className="text-sm font-semibold text-amber-950">Booking sheet failed to load</p>
+          <p className="text-sm font-semibold text-amber-950">{i18n.t("web.bookingSheetError.title")}</p>
           <p className="text-xs text-amber-800">
-            {this.state.errorMessage ?? "Something went wrong opening this booking."}
+            {this.state.errorMessage ?? i18n.t("web.bookingSheetError.fallback")}
           </p>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="outline" onClick={this.handleClose}>
-              Close
+              {i18n.t("common.close")}
             </Button>
             <Button type="button" size="sm" onClick={this.handleRetry}>
-              Try again
+              {i18n.t("common.retry")}
             </Button>
           </div>
         </div>

@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { cropImageFromTransform, computeCropFrameSize, rotateImageUri } from "./cropImage";
 import { useReduceMotion } from "./useReduceMotion";
+import { useTranslation } from "@beautonomi/i18n";
 import {
   ASPECT_PRESETS,
   DEFAULT_ASPECT,
@@ -51,6 +52,8 @@ function aspectsEqual(a: CropAspect, b: CropAspect): boolean {
 }
 
 export function ImageCropperOverlay({ request, onClose }: Props) {
+  const { t } = useTranslation();
+  const ic = (key: string, opts?: Record<string, unknown>) => t(`provider.mobile.components.imageCropper.${key}`, opts) as string;
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
@@ -229,10 +232,10 @@ export function ImageCropperOverlay({ request, onClose }: Props) {
             }}
           >
             <Text style={{ color: CROP_UI.toolbar, fontSize: 17, fontWeight: "700" }}>
-              Adjust photo
+              {ic("adjustPhoto")}
             </Text>
             <Text style={{ color: CROP_UI.hint, fontSize: 13 }}>
-              Pinch to zoom · drag to move
+              {ic("pinchHint")}
             </Text>
           </View>
 
@@ -397,7 +400,7 @@ export function ImageCropperOverlay({ request, onClose }: Props) {
                     key={preset.label}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
-                    accessibilityLabel={`Aspect ratio ${preset.label}`}
+                    accessibilityLabel={ic("aspectA11y", { label: preset.label })}
                     onPress={() => handleAspectChange(preset.value)}
                     style={{
                       minHeight: 36,
@@ -438,26 +441,26 @@ export function ImageCropperOverlay({ request, onClose }: Props) {
             }}
           >
             <ToolbarButton
-              label="Cancel"
+              label={ic("cancel")}
               icon="close"
               onPress={() => onClose(null)}
               disabled={busy}
             />
             <ToolbarButton
-              label="Rotate"
+              label={ic("rotate")}
               icon="refresh"
               onPress={() => void handleRotate()}
               disabled={busy}
               loading={busyAction === "rotate"}
             />
             <ToolbarButton
-              label="Reset"
+              label={ic("reset")}
               icon="scan-outline"
               onPress={resetTransform}
               disabled={busy}
             />
             <ToolbarButton
-              label="Done"
+              label={ic("done")}
               icon="checkmark"
               onPress={() => void handleDone()}
               disabled={busy}

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { BookingSectionCard, BookingSectionLabel, BookingActionButton } from "../ui";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CreateServicesSectionProps {
   catalog: ServiceItem[];
@@ -43,6 +44,7 @@ export function CreateServicesSection({
   defaultStaffId,
   onChange,
 }: CreateServicesSectionProps) {
+  const { t } = useTranslation();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
@@ -129,7 +131,7 @@ export function CreateServicesSection({
 
   return (
     <BookingSectionCard>
-      <BookingSectionLabel className="mb-2">Services</BookingSectionLabel>
+      <BookingSectionLabel className="mb-2">{t("web.provider.portal.appointmentCreate.services")}</BookingSectionLabel>
       {services.length > 0 ? (
         <ul className="space-y-2 mb-3">
           {services.map((line) => {
@@ -142,8 +144,13 @@ export function CreateServicesSection({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{line.serviceName}</p>
                   <p className="text-xs text-gray-500">
-                    {line.duration} min · {formatMoney(line.price)}
-                    {meta?.variants?.length && !line.variantId ? " · pick variant below" : ""}
+                    {t("web.provider.portal.appointmentCreate.durationPrice", {
+                      duration: line.duration,
+                      price: formatMoney(line.price),
+                    })}
+                    {meta?.variants?.length && !line.variantId
+                      ? t("web.provider.portal.appointmentCreate.pickVariant")
+                      : ""}
                   </p>
                   {teamMembers.length > 0 ? (
                     <Select
@@ -151,7 +158,7 @@ export function CreateServicesSection({
                       onValueChange={(v) => updateStaff(line.id, v)}
                     >
                       <SelectTrigger className="mt-2 h-9 rounded-lg text-xs">
-                        <SelectValue placeholder="Assign staff" />
+                        <SelectValue placeholder={t("web.provider.portal.appointmentCreate.assignStaff")} />
                       </SelectTrigger>
                       <SelectContent>
                         {teamMembers.map((m) => (
@@ -167,7 +174,7 @@ export function CreateServicesSection({
                   type="button"
                   className="p-2 text-red-600 touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
                   onClick={() => removeService(line.id)}
-                  aria-label="Remove service"
+                  aria-label={t("web.provider.portal.appointmentCreate.removeService")}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -176,7 +183,7 @@ export function CreateServicesSection({
           })}
         </ul>
       ) : (
-        <p className="text-sm text-gray-500 mb-3">Add at least one service.</p>
+        <p className="text-sm text-gray-500 mb-3">{t("web.provider.portal.appointmentCreate.addAtLeastOne")}</p>
       )}
 
       <Select
@@ -186,12 +193,16 @@ export function CreateServicesSection({
         }}
       >
         <SelectTrigger className="rounded-xl min-h-[44px]">
-          <SelectValue placeholder="Add service" />
+          <SelectValue placeholder={t("web.provider.portal.appointmentCreate.addService")} />
         </SelectTrigger>
         <SelectContent>
           {flatOptions.map((opt) => (
             <SelectItem key={opt.key} value={opt.key}>
-              {opt.label} · {opt.duration} min · {formatMoney(opt.price)}
+              {t("web.provider.portal.appointmentCreate.optionLine", {
+                label: opt.label,
+                duration: opt.duration,
+                price: formatMoney(opt.price),
+              })}
             </SelectItem>
           ))}
         </SelectContent>
@@ -208,8 +219,8 @@ export function CreateServicesSection({
           }}
           disabled={flatOptions.length === 0}
         >
-          <Plus className="mr-2 h-4 w-4" />
-          Add first service
+          <Plus className="me-2 h-4 w-4" />
+          {t("web.provider.portal.appointmentCreate.addFirstService")}
         </BookingActionButton>
       ) : null}
 
@@ -219,8 +230,10 @@ export function CreateServicesSection({
         className="mt-2"
         onClick={() => setCustomOpen((v) => !v)}
       >
-        <Plus className="mr-2 h-4 w-4" />
-        {customOpen ? "Hide custom line" : "Add custom line"}
+        <Plus className="me-2 h-4 w-4" />
+        {customOpen
+          ? t("web.provider.portal.appointmentCreate.hideCustomLine")
+          : t("web.provider.portal.appointmentCreate.addCustomLine")}
       </BookingActionButton>
 
       {customOpen ? (
@@ -228,7 +241,7 @@ export function CreateServicesSection({
           <Input
             value={customName}
             onChange={(e) => setCustomName(e.target.value)}
-            placeholder="Service name"
+            placeholder={t("web.provider.portal.appointmentCreate.serviceName")}
             className="rounded-xl min-h-[44px]"
           />
           <div className="grid grid-cols-2 gap-2">
@@ -238,7 +251,7 @@ export function CreateServicesSection({
               step="0.01"
               value={customPrice}
               onChange={(e) => setCustomPrice(e.target.value)}
-              placeholder="Price"
+              placeholder={t("web.provider.portal.appointmentCreate.price")}
               className="rounded-xl min-h-[44px]"
             />
             <Input
@@ -247,7 +260,7 @@ export function CreateServicesSection({
               step="1"
               value={customDuration}
               onChange={(e) => setCustomDuration(e.target.value)}
-              placeholder="Minutes"
+              placeholder={t("web.provider.portal.appointmentCreate.minutes")}
               className="rounded-xl min-h-[44px]"
             />
           </div>
@@ -256,7 +269,7 @@ export function CreateServicesSection({
             onClick={addCustomService}
             disabled={!customName.trim()}
           >
-            Add custom service
+            {t("web.provider.portal.appointmentCreate.addCustomService")}
           </BookingActionButton>
         </div>
       ) : null}

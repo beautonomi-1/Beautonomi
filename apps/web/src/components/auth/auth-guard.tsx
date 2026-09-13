@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { useState } from "react";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -25,6 +26,7 @@ export default function AuthGuard({
   showLoginPrompt = false 
 }: AuthGuardProps) {
   const { user, isLoading } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
   const _searchParams = useSearchParams();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -84,7 +86,7 @@ export default function AuthGuard({
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12 lg:py-16 text-center">
         <div className="flex flex-col items-center gap-2">
           <div className="w-8 h-8 border-4 border-[#FF0077] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-500">Loading...</p>
+          <p className="text-gray-500">{t("common.loading")}</p>
         </div>
       </div>
     );
@@ -96,10 +98,10 @@ export default function AuthGuard({
       <>
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12 lg:py-16 text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
-            Please log in to continue
+            {t("web.auth.guard.pleaseLogIn")}
           </h2>
           <p className="text-gray-600 mb-6">
-            You need to be logged in to access this page.
+            {t("web.auth.guard.loginRequired")}
           </p>
         </div>
         <LoginModal
@@ -118,7 +120,7 @@ export default function AuthGuard({
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12 lg:py-16 text-center">
         <div className="flex flex-col items-center gap-2">
           <div className="w-8 h-8 border-4 border-[#FF0077] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-gray-500">Redirecting to sign in...</p>
+          <p className="text-gray-500">{t("web.auth.guard.redirecting")}</p>
         </div>
       </div>
     );

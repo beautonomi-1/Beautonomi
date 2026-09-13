@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { useLayoutEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -65,6 +66,7 @@ type GateState =
 export function ProviderPortalGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+const { t } = useTranslation();
   const { signOut } = useAuth();
 
   const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/join", "/provider/embed"];
@@ -155,7 +157,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
           return;
         }
 
-        const message = error instanceof Error ? error.message : "Unable to verify your account.";
+const message = error instanceof Error ? error.message : t("web.provider.pages.portalGate.unableToVerify");
         setState({ kind: "error", message });
       }
     };
@@ -174,7 +176,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
   if (state.kind === "loading") {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
-        <div className="animate-pulse text-gray-500">Loading…</div>
+<div className="animate-pulse text-gray-500">{t("web.provider.pages.join.loading")}</div>
       </div>
     );
   }
@@ -184,15 +186,13 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
       <div className="min-h-[60vh] flex items-center justify-center px-6">
         <div className="max-w-md w-full text-center">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Couldn't verify your account
+{t("web.provider.pages.portalGate.title")}
           </h2>
           <p className="text-sm text-gray-600 mb-6">
-            We couldn't reach the server to confirm your provider access. This usually means a
-            network issue. Please try again — we won't unlock the portal until verification
-            succeeds.
+{t("web.provider.pages.portalGate.body")}
           </p>
           {state.message ? (
-            <p className="text-xs text-gray-500 mb-6">Details: {state.message}</p>
+<p className="text-xs text-gray-500 mb-6">{t("web.provider.pages.portalGate.details", { message: state.message })}</p>
           ) : null}
           <div className="flex items-center justify-center gap-3">
             <button
@@ -200,7 +200,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
               onClick={() => setRetryKey((k) => k + 1)}
               className="px-4 py-2 rounded-md bg-primary hover:bg-primary-hover text-white text-sm font-medium transition-colors"
             >
-              Try again
+{t("web.provider.moreHub.tryAgain")}
             </button>
             <button
               type="button"
@@ -215,7 +215,7 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
               }}
               className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
             >
-              Sign out
+{t("web.provider.moreHub.signOut")}
             </button>
           </div>
         </div>

@@ -13,6 +13,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { trackContentReportSubmitted } from "@/lib/analytics";
+import { endTextAlign } from "@/lib/rtlText";
 
 export type ContentReportTargetType =
   | "explore_post"
@@ -147,7 +148,7 @@ export function ContentReportSheet({
                 borderWidth: 1.5,
                 borderColor: active ? "#EF4444" : "#E5E7EB",
                 backgroundColor: active ? "#FEF2F2" : "#fff",
-                marginRight: 8,
+                marginEnd: 8,
                 marginBottom: 8,
               }}
             >
@@ -185,7 +186,7 @@ export function ContentReportSheet({
           marginBottom: 8,
         }}
       />
-      <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "right", marginBottom: 16 }}>
+      <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: endTextAlign(), marginBottom: 16 }}>
         {details.length}/2000
       </Text>
 
@@ -206,7 +207,7 @@ export function ContentReportSheet({
           <ActivityIndicator size="small" color="#fff" />
         ) : (
           <>
-            <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
+            <Ionicons name="flag" size={18} color="#fff" style={{ marginEnd: 8 }} />
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
               {tr("submitCta")}
             </Text>

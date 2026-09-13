@@ -11,6 +11,11 @@ import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
 import { PaymentLoadingHero } from "@/components/ui/payment-loading-hero";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_PAYMENT_SUCCESS } from "@/lib/analytics/amplitude/types";
+import { pendingConfirmationSlaDisplay, slaSettingsFromHours } from "@/lib/bookings/pending-confirmation-sla-copy";
+import { BookingEmbedBridge } from "@/components/booking/BookingEmbedBridge";
+import { isLikelyFramed, postBookingEmbedMessage } from "@/lib/booking/embed-host";
+import { isBookingEmbedEnabled } from "@beautonomi/utils";
+import { formatMoney as formatMoneyUtil } from "@beautonomi/utils";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -25,15 +30,7 @@ function formatMoney(amount: number, currency: string | undefined): string {
   const cur = (currency || "").trim();
   const value = Number.isFinite(amount) ? amount : 0;
   if (!cur) return value.toFixed(2);
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: cur,
-      maximumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${cur} ${value.toFixed(2)}`;
-  }
+  return formatMoneyUtil(value, cur);
 }
 
 /** Deep link scheme for customer mobile app (opens app to a specific screen when installed) */
@@ -92,6 +89,8 @@ function CheckoutSuccessContent() {
   const isWaitlist = searchParams?.get("waitlist") === "1" || searchParams?.get("source") === "waitlist";
   const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
   const offerId = searchParams?.get("offer_id");
+  const embed = isBookingEmbedEnabled(searchParams);
+  const embedBookedPosted = useRef(false);
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
   const [customOfferPollingComplete, setCustomOfferPollingComplete] = useState(false);
@@ -296,6 +295,8 @@ function CheckoutSuccessContent() {
 
   const [bookingData, setBookingData] = useState<{
     selected_datetime: string;
+    created_at?: string;
+    scheduled_at?: string;
     booking_number: string;
     status?: string;
     payment_status?: string;
@@ -306,8 +307,15 @@ function CheckoutSuccessContent() {
     outstanding_balance?: number;
     currency?: string;
     services: Array<{ offering_name?: string; title?: string; duration_minutes?: number; duration?: number }>;
-    provider?: { business_name?: string };
-    location?: { address?: string; name?: string };
+    location?: { address?: string; name?: string; working_hours?: Record<string, unknown> | null };
+    provider?: {
+      business_name?: string;
+      timezone?: string | null;
+      confirmation_sla_hours?: number | null;
+      unconfirmed_expire_hours_before_slot?: number | null;
+    };
+    pending_confirmation_sla?: { body?: string; overnight?: boolean; lastMinute?: boolean };
+    recurring_series_id?: string | null;
     address?: { line1?: string; line2?: string; city?: string };
     location_type?: string;
     /** Pricing breakdown — same fields surfaced by /api/me/bookings/[id]; mirrors /booking/confirmation. */
@@ -519,6 +527,31 @@ function CheckoutSuccessContent() {
     verifyStatus,
     bookingPollComplete,
     isStillConfirming,
+  ]);
+
+  useEffect(() => {
+    if (providerBranch) return;
+    if (verifyFailed) return;
+    if (!resolvedBookingId) return;
+    if (!embed && !isLikelyFramed()) return;
+    if (paystackReference && (verifyStatus === "idle" || verifyStatus === "verifying")) return;
+    if (paystackReference && verifyStatus === "success" && !bookingPollComplete && !isCustomOffer) return;
+    if (embedBookedPosted.current) return;
+    embedBookedPosted.current = true;
+    postBookingEmbedMessage("booked", {
+      bookingId: resolvedBookingId,
+      bookingNumber: bookingNumber ?? undefined,
+    });
+  }, [
+    embed,
+    providerBranch,
+    verifyFailed,
+    resolvedBookingId,
+    bookingNumber,
+    paystackReference,
+    verifyStatus,
+    bookingPollComplete,
+    isCustomOffer,
   ]);
 
   if (providerBranch) {
@@ -738,12 +771,24 @@ function CheckoutSuccessContent() {
                   <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
                     Your payment is received. The provider will confirm your appointment shortly.
                   </p>
+                  {!bookingData.recurring_series_id && (
                   <div className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium" style={{ background: "#FEF3C7", color: "#92400E" }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                     </svg>
-                    Providers typically confirm within 8 hours
+                    {bookingData.pending_confirmation_sla?.body ??
+                      pendingConfirmationSlaDisplay({
+                        scheduledAt: bookingData.selected_datetime ?? bookingData.scheduled_at,
+                        createdAt: bookingData.created_at,
+                        paymentStatus: bookingData.payment_status,
+                        timezone: bookingData.provider?.timezone,
+                        workingHours: (bookingData.location?.working_hours ?? null) as
+                          | import("@/lib/bookings/lifecycle-deadlines").WorkingHoursJson
+                          | null,
+                        settings: slaSettingsFromHours(bookingData.provider),
+                      }).body}
                   </div>
+                  )}
                 </>
               ) : (
                 <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
@@ -753,7 +798,7 @@ function CheckoutSuccessContent() {
                 </p>
               )}
               {isSplitPayment && (
-                <div className="mt-3 rounded-xl px-4 py-3 text-left space-y-1.5" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
+                <div className="mt-3 rounded-xl px-4 py-3 text-start space-y-1.5" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
                   <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7C3AED" }}>Payment breakdown</p>
                   {walletAmountUsed > 0 && (
                     <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
@@ -832,7 +877,7 @@ function CheckoutSuccessContent() {
                     {(bookingForCalendar.services ?? []).map((s, i) => (
                       <p key={i} className="text-sm" style={{ color: TEXT_PRIMARY }}>
                         {s.offering_name ?? s.title ?? "Service"}
-                        <span className="ml-1.5 text-xs" style={{ color: TEXT_SECONDARY }}>
+                        <span className="ms-1.5 text-xs" style={{ color: TEXT_SECONDARY }}>
                           {(s.duration_minutes ?? s.duration) != null && `${s.duration_minutes ?? s.duration} min`}
                         </span>
                       </p>
@@ -1083,6 +1128,7 @@ function CheckoutSuccessContent() {
           {/* App deep link first — primary CTA for mobile WebView returns after Paystack */}
           <a
             href={openInAppUrl}
+            target={embed ? "_top" : undefined}
             className="flex items-center justify-center gap-2.5 w-full min-h-[52px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] hover:opacity-95 text-sm"
             style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${ACCENT}40` }}
           >
@@ -1094,6 +1140,7 @@ function CheckoutSuccessContent() {
           </p>
           <Link
             href={webPrimaryHref}
+            target={embed ? "_top" : undefined}
             className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-semibold border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
             style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB", background: "#fff" }}
           >
@@ -1102,6 +1149,7 @@ function CheckoutSuccessContent() {
           {isCustomOffer && resolvedBookingId ? (
             <Link
               href="/account-settings/custom-requests"
+              target={embed ? "_top" : undefined}
               className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] hover:bg-[#F9FAFB] text-sm"
               style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB", background: "#fff" }}
             >
@@ -1171,7 +1219,17 @@ export default function CheckoutSuccessPage() {
         />
       }
     >
-      <CheckoutSuccessContent />
+      <CheckoutSuccessWithBridge />
     </Suspense>
+  );
+}
+
+function CheckoutSuccessWithBridge() {
+  const searchParams = useSearchParams();
+  return (
+    <>
+      <BookingEmbedBridge active={isBookingEmbedEnabled(searchParams)} />
+      <CheckoutSuccessContent />
+    </>
   );
 }

@@ -100,6 +100,16 @@ export async function checkProviderAiEntitlement(
   providerId: string,
   featureKey: string
 ): Promise<{ allowed: boolean; entitlement?: AiEntitlement; reason?: string }> {
+  const supabase = getSupabaseAdmin();
+  const { data: providerRow } = await supabase
+    .from("providers")
+    .select("ai_opt_out")
+    .eq("id", providerId)
+    .maybeSingle();
+  if ((providerRow as { ai_opt_out?: boolean } | null)?.ai_opt_out) {
+    return { allowed: false, reason: "provider_ai_opt_out" };
+  }
+
   const planId = await determineProviderPlan(providerId);
   if (!planId) {
     return { allowed: false, reason: "no_active_plan" };

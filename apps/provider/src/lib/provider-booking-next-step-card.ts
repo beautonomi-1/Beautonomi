@@ -6,13 +6,61 @@ export type BookingNextStepCardInput = {
   current_stage?: string | null;
   arrival_otp_verified?: boolean | null;
   qr_code_verified?: boolean | null;
+  needs_close_out?: boolean | null;
+  suggested_close_out_action?: "complete" | "review" | "provider_cancel" | null;
+  customer_running_late_at?: string | null;
+  customer_running_late_minutes?: number | null;
+  provider_late_ack_at?: string | null;
 };
 
 export function getBookingNextStepCard(
   booking: BookingNextStepCardInput,
-  options: { outstanding: number; isAtHome: boolean; isAtSalon: boolean },
+  options: {
+    outstanding: number;
+    isAtHome: boolean;
+    isAtSalon: boolean;
+    needsCloseOut?: boolean;
+  },
 ): { title: string; description: string; icon: keyof typeof Ionicons.glyphMap; color: string } {
   const status = (booking.status || "").toLowerCase();
+  const needsCloseOut = options.needsCloseOut === true || booking.needs_close_out === true;
+  if (needsCloseOut) {
+    const action = booking.suggested_close_out_action ?? "review";
+    if (action === "complete") {
+      return {
+        title: "Close out appointment",
+        description: "Service should be finished. Mark completed and settle any remaining balance.",
+        icon: "checkmark-done-outline",
+        color: "#d97706",
+      };
+    }
+    if (action === "provider_cancel") {
+      return {
+        title: "Close out house call",
+        description: "The visit window has passed. Review the booking and cancel or mark no-show if the client did not arrive.",
+        icon: "home-outline",
+        color: "#dc2626",
+      };
+    }
+    return {
+      title: "Needs close-out",
+      description: "The appointment window has ended. Complete, reschedule, or mark no-show so reports stay accurate.",
+      icon: "alert-circle-outline",
+      color: "#d97706",
+    };
+  }
+  if (booking.customer_running_late_at && !booking.provider_late_ack_at) {
+    const mins = booking.customer_running_late_minutes;
+    return {
+      title: "Customer running late",
+      description:
+        typeof mins === "number" && mins > 0
+          ? `They reported about ${mins} min late. Acknowledge so they know you're expecting them.`
+          : "They reported running late. Acknowledge so they know you're expecting them.",
+      icon: "time-outline",
+      color: "#b45309",
+    };
+  }
   if (status === "pending" || status === "pending_payment") {
     return {
       title: "Review and confirm",

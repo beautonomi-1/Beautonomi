@@ -50,6 +50,7 @@ import { Separator } from "@/components/ui/separator";
 import { format, formatDistanceToNow, parseISO, isToday, isTomorrow } from "date-fns";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 // Types
 interface WaitlistEntry {
@@ -88,12 +89,13 @@ interface Service {
 
 // Status Badge Component
 function WaitlistStatusBadge({ status }: { status: WaitlistEntry["status"] }) {
+  const { t } = useTranslation();
   const config = {
-    waiting: { label: "Waiting", className: "bg-amber-100 text-amber-700" },
-    contacted: { label: "Contacted", className: "bg-blue-100 text-blue-700" },
-    booked: { label: "Booked", className: "bg-green-100 text-green-700" },
-    cancelled: { label: "Cancelled", className: "bg-gray-100 text-gray-700" },
-    expired: { label: "Expired", className: "bg-red-100 text-red-700" },
+    waiting: { label: t("web.provider.portal.waitlistManager.statusWaiting"), className: "bg-amber-100 text-amber-700" },
+    contacted: { label: t("web.provider.portal.waitlistManager.statusContacted"), className: "bg-blue-100 text-blue-700" },
+    booked: { label: t("web.provider.portal.waitlistManager.statusBooked"), className: "bg-green-100 text-green-700" },
+    cancelled: { label: t("web.provider.portal.waitlistManager.statusCancelled"), className: "bg-gray-100 text-gray-700" },
+    expired: { label: t("web.provider.portal.waitlistManager.statusExpired"), className: "bg-red-100 text-red-700" },
   };
 
   return (
@@ -105,11 +107,12 @@ function WaitlistStatusBadge({ status }: { status: WaitlistEntry["status"] }) {
 
 // Priority Badge Component
 function PriorityBadge({ priority }: { priority: WaitlistEntry["priority"] }) {
+  const { t } = useTranslation();
   const config = {
-    low: { label: "Low", className: "bg-gray-100 text-gray-600" },
-    normal: { label: "Normal", className: "bg-blue-100 text-blue-600" },
-    high: { label: "High", className: "bg-orange-100 text-orange-600" },
-    urgent: { label: "Urgent", className: "bg-red-100 text-red-600" },
+    low: { label: t("web.provider.portal.waitlistManager.priorityLow"), className: "bg-gray-100 text-gray-600" },
+    normal: { label: t("web.provider.portal.waitlistManager.priorityNormal"), className: "bg-blue-100 text-blue-600" },
+    high: { label: t("web.provider.portal.waitlistManager.priorityHigh"), className: "bg-orange-100 text-orange-600" },
+    urgent: { label: t("web.provider.portal.waitlistManager.priorityUrgent"), className: "bg-red-100 text-red-600" },
   };
 
   return (
@@ -135,14 +138,15 @@ function WaitlistCard({
   onCancel,
   onViewDetails,
 }: WaitlistCardProps) {
+  const { t } = useTranslation();
   const formatPreferredDates = () => {
     if (!entry.preferred_dates || entry.preferred_dates.length === 0) {
-      return "Any date";
+      return t("web.provider.portal.waitlistManager.anyDate");
     }
     return entry.preferred_dates.slice(0, 2).map((date) => {
       const d = parseISO(date);
-      if (isToday(d)) return "Today";
-      if (isTomorrow(d)) return "Tomorrow";
+      if (isToday(d)) return t("web.provider.portal.waitlistManager.today");
+      if (isTomorrow(d)) return t("web.provider.portal.waitlistManager.tomorrow");
       return format(d, "MMM d");
     }).join(", ");
   };
@@ -151,8 +155,8 @@ function WaitlistCard({
     <div
       className={cn(
         "bg-white rounded-xl border p-4 transition-all",
-        entry.priority === "urgent" && "border-l-4 border-l-red-500",
-        entry.priority === "high" && "border-l-4 border-l-orange-500"
+        entry.priority === "urgent" && "border-s-4 border-s-red-500",
+        entry.priority === "high" && "border-s-4 border-s-orange-500"
       )}
     >
       <div className="flex items-start gap-3">
@@ -179,26 +183,26 @@ function WaitlistCard({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => onViewDetails(entry)}>
-                    <User className="w-4 h-4 mr-2" />
-                    View Details
+                    <User className="w-4 h-4 me-2" />
+                    {t("web.provider.portal.waitlistManager.viewDetails")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   {entry.status === "waiting" && (
                     <>
                       <DropdownMenuItem onClick={() => onContact(entry)}>
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Contact Client
+                        <MessageSquare className="w-4 h-4 me-2" />
+                        {t("web.provider.portal.waitlistManager.contactClient")}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onBook(entry)}>
-                        <CalendarPlus className="w-4 h-4 mr-2" />
-                        Book Appointment
+                        <CalendarPlus className="w-4 h-4 me-2" />
+                        {t("web.provider.portal.waitlistManager.bookAppointment")}
                       </DropdownMenuItem>
                     </>
                   )}
                   {entry.status === "contacted" && (
                     <DropdownMenuItem onClick={() => onBook(entry)}>
-                      <CalendarPlus className="w-4 h-4 mr-2" />
-                      Book Appointment
+                      <CalendarPlus className="w-4 h-4 me-2" />
+                      {t("web.provider.portal.waitlistManager.bookAppointment")}
                     </DropdownMenuItem>
                   )}
                   {(entry.status === "waiting" || entry.status === "contacted") && (
@@ -208,8 +212,8 @@ function WaitlistCard({
                         onClick={() => onCancel(entry)}
                         className="text-red-600"
                       >
-                        <XCircle className="w-4 h-4 mr-2" />
-                        Remove from Waitlist
+                        <XCircle className="w-4 h-4 me-2" />
+                        {t("web.provider.portal.waitlistManager.removeFromWaitlist")}
                       </DropdownMenuItem>
                     </>
                   )}
@@ -221,7 +225,7 @@ function WaitlistCard({
           <div className="flex flex-wrap gap-2 mt-2">
             <PriorityBadge priority={entry.priority} />
             <span className="text-xs text-gray-400">
-              Added {formatDistanceToNow(parseISO(entry.created_at), { addSuffix: true })}
+              {t("web.provider.portal.waitlistManager.addedAgo", { time: formatDistanceToNow(parseISO(entry.created_at), { addSuffix: true }) })}
             </span>
           </div>
 
@@ -246,16 +250,16 @@ function WaitlistCard({
                 className="flex-1"
                 onClick={() => onContact(entry)}
               >
-                <MessageSquare className="w-4 h-4 mr-1" />
-                Contact
+                <MessageSquare className="w-4 h-4 me-1" />
+                {t("web.provider.portal.waitlistManager.contact")}
               </Button>
               <Button
                 size="sm"
                 className="flex-1 bg-primary hover:bg-primary-hover"
                 onClick={() => onBook(entry)}
               >
-                <CalendarPlus className="w-4 h-4 mr-1" />
-                Book
+                <CalendarPlus className="w-4 h-4 me-1" />
+                {t("web.provider.portal.waitlistManager.book")}
               </Button>
             </div>
           )}
@@ -281,6 +285,7 @@ export function AddToWaitlistDialog({
   teamMembers,
   onSubmit,
 }: AddToWaitlistDialogProps) {
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     client_name: "",
     client_email: "",
@@ -296,7 +301,7 @@ export function AddToWaitlistDialog({
   const handleSubmit = async () => {
     if (!formData.client_name || !formData.service_id) return;
     if (formData.client_phone?.trim() && !isCompleteE164(formData.client_phone)) {
-      toast.error("Enter a valid phone number or leave the field blank.");
+      toast.error(t("web.provider.portal.waitlistManager.invalidPhone"));
       return;
     }
 
@@ -345,12 +350,12 @@ export function AddToWaitlistDialog({
           <button
             onClick={onClose}
             className="absolute right-6 top-0 p-2 -mt-2 rounded-full hover:bg-gray-100 transition-colors touch-manipulation"
-            aria-label="Close"
+            aria-label={t("web.provider.portal.waitlistManager.close")}
           >
             <X className="w-5 h-5 text-gray-600" />
           </button>
-          <SheetTitle className="text-xl font-bold text-gray-900 pr-10">
-            Add to Waitlist
+          <SheetTitle className="text-xl font-bold text-gray-900 pe-10">
+            {t("web.provider.portal.waitlistManager.addToWaitlist")}
           </SheetTitle>
         </SheetHeader>
 
@@ -358,33 +363,33 @@ export function AddToWaitlistDialog({
         <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 sm:py-8 space-y-6">
           {/* Client Info */}
           <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-900">Client Name *</Label>
+            <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.clientNameRequired")}</Label>
             <Input
               value={formData.client_name}
               onChange={(e) =>
                 setFormData({ ...formData, client_name: e.target.value })
               }
-              placeholder="Enter client name"
+              placeholder={t("web.provider.portal.waitlistManager.clientNamePlaceholder")}
               className="h-12 text-base"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-3">
-              <Label className="text-sm font-semibold text-gray-900">Email</Label>
+              <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.email")}</Label>
               <Input
                 type="email"
                 value={formData.client_email}
                 onChange={(e) =>
                   setFormData({ ...formData, client_email: e.target.value })
                 }
-                placeholder="email@example.com"
+                placeholder={t("web.provider.portal.waitlistManager.emailPlaceholder")}
                 className="h-12 text-base"
               />
             </div>
             <div className="space-y-3">
               <PhoneInput
-                label="Phone"
+                label={t("web.provider.portal.waitlistManager.phone")}
                 inputId="waitlist-add-client-phone"
                 value={formData.client_phone}
                 onChange={(e164) => setFormData({ ...formData, client_phone: e164 })}
@@ -397,7 +402,7 @@ export function AddToWaitlistDialog({
 
           {/* Service & Preferences */}
           <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-900">Service *</Label>
+            <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.serviceRequired")}</Label>
             <Select
               value={formData.service_id}
               onValueChange={(value) =>
@@ -405,7 +410,7 @@ export function AddToWaitlistDialog({
               }
             >
               <SelectTrigger className="h-12 text-base">
-                <SelectValue placeholder="Select a service" />
+                <SelectValue placeholder={t("web.provider.portal.waitlistManager.selectService")} />
               </SelectTrigger>
               <SelectContent>
                 {services.map((service) => (
@@ -418,7 +423,7 @@ export function AddToWaitlistDialog({
           </div>
 
           <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-900">Preferred Staff (Optional)</Label>
+            <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.preferredStaff")}</Label>
             <Select
               value={formData.preferred_team_member_id || RADIX_SELECT_ANY}
               onValueChange={(value) =>
@@ -429,10 +434,10 @@ export function AddToWaitlistDialog({
               }
             >
               <SelectTrigger className="h-12 text-base">
-                <SelectValue placeholder="Any available" />
+                <SelectValue placeholder={t("web.provider.portal.waitlistManager.anyAvailable")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={RADIX_SELECT_ANY} className="h-12">Any available</SelectItem>
+                <SelectItem value={RADIX_SELECT_ANY} className="h-12">{t("web.provider.portal.waitlistManager.anyAvailable")}</SelectItem>
                 {teamMembers.map((member) => (
                   <SelectItem key={member.id} value={member.id} className="h-12">
                     {member.name}
@@ -443,7 +448,7 @@ export function AddToWaitlistDialog({
           </div>
 
           <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-900">Priority</Label>
+            <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.priority")}</Label>
             <Select
               value={formData.priority}
               onValueChange={(value) =>
@@ -457,22 +462,22 @@ export function AddToWaitlistDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low" className="h-12">Low</SelectItem>
-                <SelectItem value="normal" className="h-12">Normal</SelectItem>
-                <SelectItem value="high" className="h-12">High</SelectItem>
-                <SelectItem value="urgent" className="h-12">Urgent</SelectItem>
+                <SelectItem value="low" className="h-12">{t("web.provider.portal.waitlistManager.priorityLow")}</SelectItem>
+                <SelectItem value="normal" className="h-12">{t("web.provider.portal.waitlistManager.priorityNormal")}</SelectItem>
+                <SelectItem value="high" className="h-12">{t("web.provider.portal.waitlistManager.priorityHigh")}</SelectItem>
+                <SelectItem value="urgent" className="h-12">{t("web.provider.portal.waitlistManager.priorityUrgent")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-3">
-            <Label className="text-sm font-semibold text-gray-900">Notes</Label>
+            <Label className="text-sm font-semibold text-gray-900">{t("web.provider.portal.waitlistManager.notes")}</Label>
             <Textarea
               value={formData.notes}
               onChange={(e) =>
                 setFormData({ ...formData, notes: e.target.value })
               }
-              placeholder="Any special requests or notes..."
+              placeholder={t("web.provider.portal.waitlistManager.notesPlaceholder")}
               className="min-h-[100px] text-base resize-none"
             />
           </div>
@@ -487,14 +492,14 @@ export function AddToWaitlistDialog({
               disabled={isSubmitting}
               className="flex-1 h-14 text-base font-semibold"
             >
-              Cancel
+              {t("web.provider.portal.waitlistManager.cancel")}
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={!formData.client_name || !formData.service_id || isSubmitting}
               className="flex-1 h-14 text-base font-semibold bg-primary hover:bg-primary-hover text-white active:scale-95 transition-transform"
             >
-              {isSubmitting ? "Adding..." : "Add to Waitlist"}
+              {isSubmitting ? t("web.provider.portal.waitlistManager.adding") : t("web.provider.portal.waitlistManager.addToWaitlist")}
             </Button>
           </div>
         </div>
@@ -523,6 +528,7 @@ export function WaitlistManager({
   onContactClient,
   onBookAppointment,
 }: WaitlistManagerProps) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [sortBy, setSortBy] = useState<"date" | "priority">("priority");
@@ -561,7 +567,7 @@ export function WaitlistManager({
     });
 
   const handleCancel = async (entry: WaitlistEntry) => {
-    if (confirm(`Remove ${entry.client_name} from the waitlist?`)) {
+    if (confirm(t("web.provider.portal.waitlistManager.removeConfirm", { name: entry.client_name }))) {
       await onUpdateEntry(entry.id, { status: "cancelled" });
     }
   };
@@ -578,21 +584,21 @@ export function WaitlistManager({
         <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 text-amber-600 mb-1">
             <Clock className="w-4 h-4" />
-            <span className="text-xs font-medium">Waiting</span>
+            <span className="text-xs font-medium">{t("web.provider.portal.waitlistManager.statusWaiting")}</span>
           </div>
           <p className="text-2xl font-bold">{waitingCount}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 text-red-600 mb-1">
             <AlertCircle className="w-4 h-4" />
-            <span className="text-xs font-medium">Urgent</span>
+            <span className="text-xs font-medium">{t("web.provider.portal.waitlistManager.priorityUrgent")}</span>
           </div>
           <p className="text-2xl font-bold">{urgentCount}</p>
         </div>
         <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 text-blue-600 mb-1">
             <MessageSquare className="w-4 h-4" />
-            <span className="text-xs font-medium">Contacted</span>
+            <span className="text-xs font-medium">{t("web.provider.portal.waitlistManager.statusContacted")}</span>
           </div>
           <p className="text-2xl font-bold">
             {entries.filter((e) => e.status === "contacted").length}
@@ -601,7 +607,7 @@ export function WaitlistManager({
         <div className="bg-white rounded-lg border p-3">
           <div className="flex items-center gap-2 text-green-600 mb-1">
             <CheckCircle2 className="w-4 h-4" />
-            <span className="text-xs font-medium">Booked</span>
+            <span className="text-xs font-medium">{t("web.provider.portal.waitlistManager.statusBooked")}</span>
           </div>
           <p className="text-2xl font-bold">
             {entries.filter((e) => e.status === "booked").length}
@@ -616,40 +622,40 @@ export function WaitlistManager({
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search clients, services..."
-            className="pl-9"
+            placeholder={t("web.provider.portal.waitlistManager.searchPlaceholder")}
+            className="ps-9"
           />
         </div>
         <div className="flex gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-32">
-              <Filter className="w-4 h-4 mr-2" />
+              <Filter className="w-4 h-4 me-2" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="waiting">Waiting</SelectItem>
-              <SelectItem value="contacted">Contacted</SelectItem>
-              <SelectItem value="booked">Booked</SelectItem>
-              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="active">{t("web.provider.portal.waitlistManager.filterActive")}</SelectItem>
+              <SelectItem value="waiting">{t("web.provider.portal.waitlistManager.statusWaiting")}</SelectItem>
+              <SelectItem value="contacted">{t("web.provider.portal.waitlistManager.statusContacted")}</SelectItem>
+              <SelectItem value="booked">{t("web.provider.portal.waitlistManager.statusBooked")}</SelectItem>
+              <SelectItem value="all">{t("web.provider.portal.waitlistManager.filterAll")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "date" | "priority")}>
             <SelectTrigger className="w-32">
-              <ArrowUpDown className="w-4 h-4 mr-2" />
+              <ArrowUpDown className="w-4 h-4 me-2" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="priority">Priority</SelectItem>
-              <SelectItem value="date">Date Added</SelectItem>
+              <SelectItem value="priority">{t("web.provider.portal.waitlistManager.priority")}</SelectItem>
+              <SelectItem value="date">{t("web.provider.portal.waitlistManager.dateAdded")}</SelectItem>
             </SelectContent>
           </Select>
           <Button
             onClick={() => setIsAddDialogOpen(true)}
             className="bg-primary hover:bg-primary-hover"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.portal.waitlistManager.add")}
           </Button>
         </div>
       </div>
@@ -659,19 +665,19 @@ export function WaitlistManager({
         <div className="text-center py-12 bg-white rounded-xl border">
           <Clock className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-gray-900 mb-1">
-            No waitlist entries
+            {t("web.provider.portal.waitlistManager.noEntries")}
           </h3>
           <p className="text-gray-500 mb-4">
             {searchQuery
-              ? "No entries match your search"
-              : "Add clients who want to be notified when a spot opens up"}
+              ? t("web.provider.portal.waitlistManager.noMatch")
+              : t("web.provider.portal.waitlistManager.emptyHint")}
           </p>
           <Button
             onClick={() => setIsAddDialogOpen(true)}
             className="bg-primary hover:bg-primary-hover"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add to Waitlist
+            <Plus className="w-4 h-4 me-2" />
+            {t("web.provider.portal.waitlistManager.addToWaitlist")}
           </Button>
         </div>
       ) : (

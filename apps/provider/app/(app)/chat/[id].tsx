@@ -4,6 +4,7 @@ import { View, ActivityIndicator } from "react-native";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
 
 /**
  * Redirect route: forwards to the full messaging screen so deep links
@@ -11,6 +12,7 @@ import { twStyle } from "@/lib/twStyle";
  * `/(app)/chat/[id]` land on the Chats tab thread screen.
  */
 export default function ChatRedirectScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
@@ -25,7 +27,7 @@ export default function ChatRedirectScreen() {
 
   return (
     <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
-      <ScreenHeader title="Conversation" onBack={() => router.back()} />
+      <ScreenHeader title={t("provider.mobile.screens.chatRedirect.conversation")} onBack={() => router.back()} />
       <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <ActivityIndicator size="large" />
       </View>

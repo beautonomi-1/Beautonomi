@@ -18,6 +18,7 @@ import {
 } from "@/lib/legal-acceptance";
 import { webPartnerEulaUrl, webPrivacyPolicyUrl } from "@/lib/legal-web";
 import { api } from "@/lib/api-client";
+import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 
 type Props = {
@@ -25,6 +26,8 @@ type Props = {
 };
 
 export function LegalAcceptanceGate({ children }: Props) {
+  const { t } = useTranslation();
+  const lg = (key: string) => t(`provider.mobile.components.legalAcceptanceGate.${key}`) as string;
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
@@ -99,12 +102,10 @@ export function LegalAcceptanceGate({ children }: Props) {
       >
         <BeautonomiLogo size={32} />
         <Text style={{ marginTop: 24, fontSize: 24, fontWeight: "700", color: "#111827" }}>
-          Partner End User License Agreement
+          {lg("title")}
         </Text>
         <Text style={{ marginTop: 12, fontSize: 15, lineHeight: 22, color: "#4B5563" }}>
-          {session
-            ? "We've updated our End User License Agreement. Review and accept to continue using Beautonomi Partner."
-            : "Before you sign in or create an account, review and accept our EULA. It covers subscriptions, user-generated content, zero-tolerance community standards, reporting, blocking, and our 24-hour moderation response commitment."}
+          {session ? lg("bodySignedIn") : lg("bodyGuest")}
         </Text>
 
         <TouchableOpacity
@@ -122,8 +123,8 @@ export function LegalAcceptanceGate({ children }: Props) {
           accessibilityRole="link"
         >
           <Ionicons name="document-text-outline" size={22} color={Colors.primary} />
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 15, fontWeight: "600", color: "#111827" }}>
-            Read full EULA
+          <Text style={{ marginStart: 10, flex: 1, fontSize: 15, fontWeight: "600", color: "#111827" }}>
+            {lg("readFullEula")}
           </Text>
           <Ionicons name="open-outline" size={18} color={Colors.gray[400]} />
         </TouchableOpacity>
@@ -140,20 +141,20 @@ export function LegalAcceptanceGate({ children }: Props) {
             color={checked ? Colors.primary : Colors.gray[400]}
             style={{ marginTop: 2 }}
           />
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 14, lineHeight: 20, color: "#374151" }}>
-            I have read and agree to the{" "}
+          <Text style={{ marginStart: 10, flex: 1, fontSize: 14, lineHeight: 20, color: "#374151" }}>
+            {lg("agreeLead")}{" "}
             <Text
               style={{ fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(webPartnerEulaUrl()).catch(() => {})}
             >
-              Partner EULA
+              {lg("eula")}
             </Text>{" "}
-            and{" "}
+            {lg("and")}{" "}
             <Text
               style={{ fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
             >
-              Privacy Policy
+              {lg("privacyPolicy")}
             </Text>
             .
           </Text>
@@ -177,7 +178,7 @@ export function LegalAcceptanceGate({ children }: Props) {
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Continue</Text>
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>{t("common.continue") as string}</Text>
           )}
         </TouchableOpacity>
       </ScrollView>

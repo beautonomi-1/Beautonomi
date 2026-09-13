@@ -17,6 +17,7 @@ import {
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 import { formatCurrency } from "@/lib/pricing/calculate-booking-price-complete";
 import type { LoyaltyPointsPageData, LoyaltyPointsTransaction } from "./loyalty-points-page-types";
 
@@ -28,6 +29,7 @@ export default function LoyaltyPointsPage({
 }: {
   initialLoyaltyPoints: LoyaltyPointsPageData | null;
 }) {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(() => initialLoyaltyPoints === null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loyaltyData, setLoyaltyData] = useState<LoyaltyData | null>(() => initialLoyaltyPoints);
@@ -55,7 +57,7 @@ export default function LoyaltyPointsPage({
       }
     } catch (error) {
       console.error("Failed to fetch loyalty points:", error);
-      toast.error("Failed to load loyalty points data");
+      toast.error(t("web.accountSettings.loyaltyPoints.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -74,15 +76,15 @@ export default function LoyaltyPointsPage({
         data.referral_link ||
         (data.referral_code ? `${window.location.origin}/signup?ref=${encodeURIComponent(data.referral_code)}` : "");
       if (!referralLink) {
-        toast.error("Could not load your referral link. Please try again.");
+        toast.error(t("web.accountSettings.loyaltyPoints.referralLoadFailed"));
         return;
       }
       await navigator.clipboard.writeText(referralLink);
       setCopiedReferral(true);
-      toast.success("Referral link copied to clipboard");
+      toast.success(t("web.accountSettings.loyaltyPoints.referralCopied"));
       setTimeout(() => setCopiedReferral(false), 2000);
     } catch {
-      toast.error("Could not copy your referral link. Please try again.");
+      toast.error(t("web.accountSettings.loyaltyPoints.referralCopyFailed"));
     }
   };
 
@@ -115,7 +117,7 @@ export default function LoyaltyPointsPage({
       }
     } catch (error) {
       console.error("Failed to load more loyalty transactions:", error);
-      toast.error("Failed to load more activity");
+      toast.error(t("web.accountSettings.loyaltyPoints.loadMoreFailed"));
     } finally {
       setLoadingMore(false);
     }
@@ -150,7 +152,7 @@ export default function LoyaltyPointsPage({
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500">{t("web.accountSettings.loyaltyPoints.loading")}</p>
       </div>
     );
   }
@@ -165,9 +167,9 @@ export default function LoyaltyPointsPage({
   return (
     <div className="container max-w-6xl py-8 space-y-8">
       <div>
-        <h1 className="text-3xl font-bold">Loyalty Points</h1>
+        <h1 className="text-3xl font-bold">{t("web.accountSettings.loyaltyPoints.title")}</h1>
         <p className="text-muted-foreground mt-2">
-          Earn points with every booking and redeem them for discounts
+          {t("web.accountSettings.loyaltyPoints.subtitle")}
         </p>
       </div>
 
@@ -176,7 +178,7 @@ export default function LoyaltyPointsPage({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Star className="w-6 h-6 text-yellow-500 fill-yellow-500" />
-            Your Balance
+            {t("web.accountSettings.loyaltyPoints.yourBalance")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -184,27 +186,29 @@ export default function LoyaltyPointsPage({
             <div className="text-6xl font-bold text-primary mb-2">
               {loyaltyData.balance.available.toLocaleString()}
             </div>
-            <p className="text-muted-foreground">Available Points</p>
+            <p className="text-muted-foreground">{t("web.accountSettings.loyaltyPoints.availablePoints")}</p>
             <p className="text-2xl font-semibold text-green-600 mt-2">
-              = {formatCurrency(loyaltyData.conversion.can_redeem_amount, loyaltyData.conversion.currency)} in discounts
+              {t("web.accountSettings.loyaltyPoints.inDiscounts", {
+                amount: formatCurrency(loyaltyData.conversion.can_redeem_amount, loyaltyData.conversion.currency),
+              })}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-background/60 rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground mb-1">Total Earned</p>
+              <p className="text-sm text-muted-foreground mb-1">{t("web.accountSettings.loyaltyPoints.totalEarned")}</p>
               <p className="text-2xl font-bold text-green-600">
                 {loyaltyData.balance.total_earned.toLocaleString()}
               </p>
             </div>
             <div className="bg-background/60 rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground mb-1">Total Redeemed</p>
+              <p className="text-sm text-muted-foreground mb-1">{t("web.accountSettings.loyaltyPoints.totalRedeemed")}</p>
               <p className="text-2xl font-bold text-blue-600">
                 {loyaltyData.balance.total_redeemed.toLocaleString()}
               </p>
             </div>
             <div className="bg-background/60 rounded-lg p-4 text-center">
-              <p className="text-sm text-muted-foreground mb-1">Conversion Rate</p>
+              <p className="text-sm text-muted-foreground mb-1">{t("web.accountSettings.loyaltyPoints.conversionRate")}</p>
               <p className="text-lg font-semibold">
                 {loyaltyData.conversion.display}
               </p>
@@ -214,12 +218,14 @@ export default function LoyaltyPointsPage({
           {/* Progress to Next Tier */}
           <div className="bg-background/60 rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="font-semibold">Next Tier: Platinum</p>
+              <p className="font-semibold">{t("web.accountSettings.loyaltyPoints.nextTierPlatinum")}</p>
               <Badge variant="secondary">{Math.round(progressToNextTier)}%</Badge>
             </div>
             <Progress value={progressToNextTier} className="h-3 mb-2" />
             <p className="text-sm text-muted-foreground">
-              Earn {pointsToNextTier.toLocaleString()} more points to unlock Platinum benefits
+              {t("web.accountSettings.loyaltyPoints.earnMoreForPlatinum", {
+                amount: pointsToNextTier.toLocaleString(),
+              })}
             </p>
           </div>
         </CardContent>
@@ -228,9 +234,9 @@ export default function LoyaltyPointsPage({
       {/* How It Works */}
       <Card>
         <CardHeader>
-          <CardTitle>How Loyalty Points Work</CardTitle>
+          <CardTitle>{t("web.accountSettings.loyaltyPoints.howItWorks")}</CardTitle>
           <CardDescription>
-            Understanding the loyalty program
+            {t("web.accountSettings.loyaltyPoints.howItWorksDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -238,48 +244,70 @@ export default function LoyaltyPointsPage({
             <div>
               <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-green-600" />
-                Earning Points
+                {t("web.accountSettings.loyaltyPoints.earningPoints")}
               </h3>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
                   <Star className="w-4 h-4 text-yellow-500 mt-0.5" />
-                  <span>Earn <strong>{loyaltyData.config.earning_rate} point</strong> per {formatCurrency(1, loyaltyData.conversion.currency)} spent</span>
+                  <span>
+                    {t("web.accountSettings.loyaltyPoints.earnPerSpent", {
+                      rate: loyaltyData.config.earning_rate,
+                      amount: formatCurrency(1, loyaltyData.conversion.currency),
+                    })}
+                  </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Gift className="w-4 h-4 text-purple-500 mt-0.5" />
-                  <span><strong>2x points</strong> on your first booking</span>
+                  <span>{t("web.accountSettings.loyaltyPoints.firstBookingBonus")}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="w-4 h-4 text-blue-500 mt-0.5" />
-                  <span><strong>50 bonus points</strong> on your birthday</span>
+                  <span>{t("web.accountSettings.loyaltyPoints.birthdayBonus")}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Users className="w-4 h-4 text-green-500 mt-0.5" />
-                  <span><strong>100 bonus points</strong> for each successful referral</span>
+                  <span>{t("web.accountSettings.loyaltyPoints.referralBonus")}</span>
                 </li>
               </ul>
             </div>
             <div>
               <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                 <Gift className="w-5 h-5 text-blue-600" />
-                Redeeming Points
+                {t("web.accountSettings.loyaltyPoints.redeemingPoints")}
               </h3>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5" />
-                  <span><strong>{loyaltyData.conversion.rate} points</strong> = {formatCurrency(1, loyaltyData.conversion.currency)} discount</span>
+                  <span>
+                    {t("web.accountSettings.loyaltyPoints.pointsEqualDiscount", {
+                      rate: loyaltyData.conversion.rate,
+                      amount: formatCurrency(1, loyaltyData.conversion.currency),
+                    })}
+                  </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5" />
-                  <span>Minimum redemption: <strong>{loyaltyData.config.min_redemption_points} points</strong></span>
+                  <span>
+                    {t("web.accountSettings.loyaltyPoints.minRedemption", {
+                      count: loyaltyData.config.min_redemption_points,
+                    })}
+                  </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-green-600 mt-0.5" />
-                  <span>Maximum: <strong>{loyaltyData.config.max_redemption_percentage}% of booking</strong> can be paid with points</span>
+                  <span>
+                    {t("web.accountSettings.loyaltyPoints.maxRedemption", {
+                      percent: loyaltyData.config.max_redemption_percentage,
+                    })}
+                  </span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="w-4 h-4 text-orange-500 mt-0.5" />
-                  <span>Points expire after <strong>{loyaltyData.config.points_expiry_days} days</strong></span>
+                  <span>
+                    {t("web.accountSettings.loyaltyPoints.pointsExpire", {
+                      days: loyaltyData.config.points_expiry_days,
+                    })}
+                  </span>
                 </li>
               </ul>
             </div>
@@ -292,10 +320,10 @@ export default function LoyaltyPointsPage({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="w-6 h-6 text-purple-600" />
-            Invite Friends, Earn More Points
+            {t("web.accountSettings.loyaltyPoints.inviteTitle")}
           </CardTitle>
           <CardDescription>
-            Get 100 bonus points for each friend who signs up and completes their first booking
+            {t("web.accountSettings.loyaltyPoints.inviteDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -304,17 +332,17 @@ export default function LoyaltyPointsPage({
               {copiedReferral ? (
                 <>
                   <Check className="w-4 h-4" />
-                  Copied!
+                  {t("web.accountSettings.loyaltyPoints.copied")}
                 </>
               ) : (
                 <>
                   <Copy className="w-4 h-4" />
-                  Copy Referral Link
+                  {t("web.accountSettings.loyaltyPoints.copyReferralLink")}
                 </>
               )}
             </Button>
             <p className="text-sm text-muted-foreground">
-              Share your link and start earning!
+              {t("web.accountSettings.loyaltyPoints.shareAndEarn")}
             </p>
           </div>
         </CardContent>
@@ -323,9 +351,9 @@ export default function LoyaltyPointsPage({
       {/* Recent Activity */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle>{t("web.accountSettings.loyaltyPoints.recentActivity")}</CardTitle>
           <CardDescription>
-            Your latest points transactions
+            {t("web.accountSettings.loyaltyPoints.recentActivityDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -333,8 +361,8 @@ export default function LoyaltyPointsPage({
             {loyaltyData.recent_transactions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Star className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No transactions yet</p>
-                <p className="text-sm">Make your first booking to start earning points!</p>
+                <p>{t("web.accountSettings.loyaltyPoints.noTransactions")}</p>
+                <p className="text-sm">{t("web.accountSettings.loyaltyPoints.noTransactionsHint")}</p>
               </div>
             ) : (
               loyaltyData.recent_transactions.map((transaction) => (
@@ -351,19 +379,23 @@ export default function LoyaltyPointsPage({
                         {transaction.booking_ref && (
                           <>
                             <span>•</span>
-                            <span>Booking #{transaction.booking_ref}</span>
+                            <span>{t("web.accountSettings.loyaltyPoints.bookingRef", { ref: transaction.booking_ref })}</span>
                           </>
                         )}
                         {transaction.expires_at && (
                           <>
                             <span>•</span>
-                            <span>Expires {formatDate(transaction.expires_at)}</span>
+                            <span>
+                              {t("web.accountSettings.loyaltyPoints.expiresOn", {
+                                date: formatDate(transaction.expires_at),
+                              })}
+                            </span>
                           </>
                         )}
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-end">
                     <p
                       className={`text-lg font-bold ${
                         transaction.points > 0 ? "text-green-600" : "text-red-600"
@@ -374,7 +406,9 @@ export default function LoyaltyPointsPage({
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {typeof transaction.balance_after === "number"
-                        ? `Balance: ${transaction.balance_after.toLocaleString()}`
+                        ? t("web.accountSettings.loyaltyPoints.balanceAfter", {
+                            amount: transaction.balance_after.toLocaleString(),
+                          })
                         : null}
                     </p>
                   </div>
@@ -385,7 +419,9 @@ export default function LoyaltyPointsPage({
             {loyaltyData.pagination.has_more && (
               <div className="text-center">
                 <Button variant="outline" size="sm" onClick={loadMoreTransactions} disabled={loadingMore}>
-                  {loadingMore ? "Loading..." : "Load More"}
+                  {loadingMore
+                    ? t("web.accountSettings.loyaltyPoints.loadingMore")
+                    : t("web.accountSettings.loyaltyPoints.loadMore")}
                 </Button>
               </div>
             )}
@@ -396,14 +432,19 @@ export default function LoyaltyPointsPage({
       {/* Tips */}
       <Card className="bg-gradient-to-br from-blue-50 to-transparent dark:from-blue-950/20">
         <CardHeader>
-          <CardTitle className="text-blue-900 dark:text-blue-100">💡 Pro Tips</CardTitle>
+          <CardTitle className="text-blue-900 dark:text-blue-100">{t("web.accountSettings.loyaltyPoints.proTips")}</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2 text-sm text-blue-900 dark:text-blue-100">
-            <li>• Book regularly to maximize your point earning potential</li>
-            <li>• Combine points with membership discounts and promo codes for maximum savings</li>
-            <li>• Don&apos;t let your points expire! Use them within {loyaltyData.config.points_expiry_days} days</li>
-            <li>• Share your referral link on social media to earn bonus points</li>
+            <li>• {t("web.accountSettings.loyaltyPoints.tipBookRegularly")}</li>
+            <li>• {t("web.accountSettings.loyaltyPoints.tipCombine")}</li>
+            <li>
+              •{" "}
+              {t("web.accountSettings.loyaltyPoints.tipDontExpire", {
+                days: loyaltyData.config.points_expiry_days,
+              })}
+            </li>
+            <li>• {t("web.accountSettings.loyaltyPoints.tipShareSocial")}</li>
           </ul>
         </CardContent>
       </Card>

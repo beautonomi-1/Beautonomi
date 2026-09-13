@@ -17,6 +17,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 import { getAppleBillingPaystackBlock } from "@/lib/iap/apple/ios-eligibility";
+import { assertReportingCurrencyReady } from "@/lib/fx/assert-reporting-currency-ready";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -99,6 +100,12 @@ export async function POST(request: NextRequest) {
     
     if (!amount || amount <= 0) {
       throw new Error("Invalid plan amount for selected billing period");
+    }
+
+    const chargeCurrency = String((plan as { currency?: string }).currency || lastResortCurrency).toUpperCase();
+    const fxReady = await assertReportingCurrencyReady(supabase, chargeCurrency);
+    if (fxReady.ok === false) {
+      return errorResponse(fxReady.message, fxReady.code, 503);
     }
 
     // Get or create Paystack customer

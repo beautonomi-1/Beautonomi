@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { useState, useEffect } from "react";
 import { Check, AlertCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -49,6 +51,7 @@ export default function ResourceSelection({
   className,
   onNoResources,
 }: ResourceSelectionProps) {
+  const { t } = useTranslation();
   const [resources, setResources] = useState<Resource[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
@@ -139,7 +142,7 @@ export default function ResourceSelection({
   };
 
   const groupedResources = resources.reduce((acc, resource) => {
-    const groupName = resource.resource_group_name || "Other";
+    const groupName = resource.resource_group_name || t("web.booking.products.otherCategory");
     if (!acc[groupName]) {
       acc[groupName] = [];
     }
@@ -150,7 +153,7 @@ export default function ResourceSelection({
   if (isLoading) {
     return (
       <div className={className}>
-        <p className="text-sm text-gray-500">Loading resources...</p>
+        <p className="text-sm text-gray-500">{t("web.booking.resources.loading")}</p>
       </div>
     );
   }
@@ -166,18 +169,18 @@ export default function ResourceSelection({
       <div className="space-y-4">
         <div>
           <Label className="text-base font-semibold">
-            {hasRequiredResources ? "Select required resources" : "Select resources (optional)"}
+            {hasRequiredResources ? t("web.booking.resources.selectRequired") : t("web.booking.resources.selectOptional")}
           </Label>
           <p className="text-sm text-gray-500 mt-1">
             {hasRequiredResources
-              ? "Required resources for this service are marked below"
-              : "Choose any additional resources needed for your booking"}
+              ? t("web.booking.resources.requiredHint")
+              : t("web.booking.resources.optionalHint")}
           </p>
         </div>
 
         {Object.entries(groupedResources).map(([groupName, groupResources]) => (
           <div key={groupName} className="space-y-2">
-            {groupName !== "Other" && (
+            {groupName !== t("web.booking.products.otherCategory") && (
               <h4 className="text-sm font-medium text-gray-700">{groupName}</h4>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -203,7 +206,7 @@ export default function ResourceSelection({
                             {resource.name}
                             {isRequired && (
                               <Badge variant="outline" className="text-xs">
-                                Required
+                                {t("common.required")}
                               </Badge>
                             )}
                           </CardTitle>
@@ -226,14 +229,14 @@ export default function ResourceSelection({
                     </CardHeader>
                     {resource.capacity && (
                       <CardContent className="pt-0">
-                        <p className="text-xs text-gray-500">Capacity: {resource.capacity}</p>
+                        <p className="text-xs text-gray-500">{t("web.booking.resources.capacity", { count: resource.capacity })}</p>
                       </CardContent>
                     )}
                     {!isAvailable && selectedDate && selectedTimeSlot && (
                       <CardContent className="pt-0">
                         <div className="flex items-center gap-1 text-xs text-amber-600">
                           <AlertCircle className="w-3 h-3" />
-                          <span>Not available at this time</span>
+                          <span>{t("web.booking.resources.notAvailable")}</span>
                         </div>
                       </CardContent>
                     )}
@@ -247,8 +250,7 @@ export default function ResourceSelection({
         {selectedResources.length > 0 && (
           <div className="bg-blue-50 p-3 rounded-lg">
             <p className="text-sm text-blue-900">
-              {selectedResources.length} resource{selectedResources.length !== 1 ? "s" : ""}{" "}
-              selected
+              {t("web.booking.resources.selected", { count: selectedResources.length })}
             </p>
           </div>
         )}

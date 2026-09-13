@@ -4,6 +4,7 @@ import { MapPin, Clock } from "lucide-react";
 import Link from "next/link";
 import { formatProviderDescriptionDisplay } from "@beautonomi/utils";
 import type { ViewerTier } from "@/lib/providers/provider-disclosure";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 interface PartnerAboutProps {
   description?: string | null;
@@ -86,6 +87,16 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
   disclosureTier = "anon",
   isAuthenticated = false,
 }) => {
+  const { pp } = usePartnerProfileT();
+  const dayKeys = [
+    ["monday", "dayMonday"],
+    ["tuesday", "dayTuesday"],
+    ["wednesday", "dayWednesday"],
+    ["thursday", "dayThursday"],
+    ["friday", "dayFriday"],
+    ["saturday", "daySaturday"],
+    ["sunday", "daySunday"],
+  ] as const;
   const formatOperatingHours = () => {
     if (disclosureTier === "anon") return null;
 
@@ -104,14 +115,13 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
 
     if (!hasNonEmptyHours(hoursData)) return null;
 
-    const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
-    return days.map((day) => {
+    return dayKeys.map(([day, key]) => {
       const normalized = normalizeDayHours(readDayValue(hoursData, day));
       if (!normalized || normalized.closed || !normalized.open || !normalized.close) {
-        return { day: day.charAt(0).toUpperCase() + day.slice(1), hours: "Closed" };
+        return { day: pp(key), hours: pp("closed") };
       }
       return {
-        day: day.charAt(0).toUpperCase() + day.slice(1),
+        day: pp(key),
         hours: `${normalized.open} - ${normalized.close}`,
       };
     });
@@ -131,21 +141,16 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
-      <h2 className="text-2xl font-semibold mb-6">About</h2>
+      <h2 className="text-2xl font-semibold mb-6">{pp("tabAbout")}</h2>
 
       {showSignInGate ? (
         <div className="prose max-w-none mb-8">
-          <p className="text-gray-600 leading-relaxed">
-            <Link href="/login" className="text-blue-600 hover:text-blue-800 underline">
-              Sign in
-            </Link>{" "}
-            to read the full description, opening times, and location details.
-          </p>
+          <p className="text-gray-600 leading-relaxed">{pp("signInToReadAbout")}</p>
         </div>
       ) : (
         <div className="prose max-w-none mb-8">
           <p className="text-gray-700 leading-relaxed">
-            {aboutDescription || "This provider hasn't added a description yet."}
+            {aboutDescription || pp("noDescriptionYet")}
           </p>
         </div>
       )}
@@ -155,7 +160,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              Opening times
+              {pp("openingTimes")}
             </h3>
             <div className="space-y-2">
               {formattedHours.map((schedule, index) => (
@@ -172,9 +177,9 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
         ) : null}
 
         <div>
-          <h3 className="text-lg font-semibold mb-4">Additional information</h3>
+          <h3 className="text-lg font-semibold mb-4">{pp("additionalInformation")}</h3>
           <div className="space-y-2">
-            <p className="text-gray-700">Instant Confirmation</p>
+            <p className="text-gray-700">{pp("instantConfirmation")}</p>
           </div>
         </div>
 
@@ -182,7 +187,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Location
+              {pp("locationFallback")}
             </h3>
             <p className="text-gray-700 mb-2">
               {[
@@ -203,7 +208,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 underline text-sm"
               >
-                Get directions
+                {pp("directionsCta")}
               </Link>
             )}
           </div>
@@ -211,17 +216,18 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <MapPin className="h-5 w-5" />
-              Location
+              {pp("locationFallback")}
             </h3>
             <p className="text-gray-700 mb-2">
-              Service area:{" "}
-              {[fallbackAreaLocation.city, fallbackAreaLocation.state, fallbackAreaLocation.country]
-                .filter(Boolean)
-                .join(", ")}
+              {pp("serviceArea", {
+                area: [fallbackAreaLocation.city, fallbackAreaLocation.state, fallbackAreaLocation.country]
+                  .filter(Boolean)
+                  .join(", "),
+              })}
             </p>
             {disclosureTier === "authed" && (
               <p className="text-sm text-gray-500">
-                Exact address is shared after booking confirmation.
+                {pp("exactAddressAfterBooking")}
               </p>
             )}
           </div>

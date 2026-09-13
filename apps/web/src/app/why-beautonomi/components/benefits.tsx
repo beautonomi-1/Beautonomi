@@ -83,7 +83,7 @@ export default function Benefits({ content }: BenefitsProps) {
                 className="bg-gradient-to-r from-[#FF0077] to-[#D60565] px-8 text-white shadow-lg shadow-primary/20 transition-transform hover:scale-[1.02] hover:from-[#D60565] hover:to-[#FF0077]"
               >
                 {ctaText}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ms-2 h-4 w-4" />
               </Button>
             </Link>
           </div>

@@ -44,6 +44,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { PaymentProcessingOverlay } from "@/components/payment/PaymentProcessingOverlay";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   PaymentSuccessOverlay,
   type PaymentSuccessSummaryRow,
@@ -84,11 +85,12 @@ interface ShippingConfig {
 
 function summarizeCartItems(
   providerItems: Array<{ quantity: number; product?: { name?: string } | null }>,
+  itemFallback: string,
 ): string {
   if (providerItems.length === 0) return "";
   return (
     providerItems
-      .map((i) => `${i.quantity}× ${i.product?.name ?? "Item"}`)
+      .map((i) => `${i.quantity}× ${i.product?.name ?? itemFallback}`)
       .slice(0, 4)
       .join(", ") + (providerItems.length > 4 ? "…" : "")
   );
@@ -114,7 +116,9 @@ function normalizeSavedAddressList(raw: unknown): Address[] {
 }
 
 /** Matches web/customer booking: check res.error, retry once on transient failure. */
-async function fetchSavedAddressesWithRetry(): Promise<{ list: Address[]; error: string | null }> {
+async function fetchSavedAddressesWithRetry(
+  loadFailedFallback: string,
+): Promise<{ list: Address[]; error: string | null }> {
   let lastError: string | null = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await api.get<Address[] | { data?: Address[] } | { addresses?: Address[] }>(
@@ -131,7 +135,7 @@ async function fetchSavedAddressesWithRetry(): Promise<{ list: Address[]; error:
     if (attempt === 0) {
       await new Promise((r) => setTimeout(r, 450));
     } else {
-      lastError = getApiErrorMessage(res.error, "Failed to load addresses");
+      lastError = getApiErrorMessage(res.error, loadFailedFallback);
     }
   }
   return { list: [], error: lastError };
@@ -158,6 +162,12 @@ export default function ProductCheckoutScreen() {
     },
     [t],
   );
+  const pcs = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      return t(`customer.mobile.screens.productCheckout.${key}`, options ?? {}) as string;
+    },
+    [t],
+  );
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -169,7 +179,9 @@ export default function ProductCheckoutScreen() {
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [processingMessage, setProcessingMessage] = useState("Processing payment…");
+  const [processingMessage, setProcessingMessage] = useState(() =>
+    pc("processingPayment", undefined, "Processing payment…"),
+  );
   const [orderSuccessData, setOrderSuccessData] = useState<{
     orderNumber?: string;
     total: number;
@@ -239,7 +251,7 @@ export default function ProductCheckoutScreen() {
     setRefetchingAddresses(true);
     setAddressesLoadError(null);
     try {
-      const { list, error } = await fetchSavedAddressesWithRetry();
+      const { list, error } = await fetchSavedAddressesWithRetry(pcs("loadAddressesFailed"));
       setAddresses(list);
       setAddressesLoadError(error);
       setSelectedAddress((prev) => {
@@ -250,7 +262,7 @@ export default function ProductCheckoutScreen() {
     } finally {
       setRefetchingAddresses(false);
     }
-  }, [user]);
+  }, [user, pcs]);
 
   useEffect(() => {
     if (!provider_id) {
@@ -265,7 +277,7 @@ export default function ProductCheckoutScreen() {
       if (cancelled) return;
 
       if (user) {
-        const { list, error } = await fetchSavedAddressesWithRetry();
+        const { list, error } = await fetchSavedAddressesWithRetry(pcs("loadAddressesFailed"));
         if (cancelled) return;
         setAddresses(list);
         setAddressesLoadError(error);
@@ -352,7 +364,7 @@ export default function ProductCheckoutScreen() {
     return () => {
       cancelled = true;
     };
-  }, [provider_id, user, fetchCart]);
+  }, [provider_id, user, fetchCart, pcs]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
   const providerItems = providerCart?.items ?? [];
@@ -461,7 +473,7 @@ export default function ProductCheckoutScreen() {
               orderNumber: recovered.order_number,
               total,
               currency: fb,
-              items: summarizeCartItems(providerItems),
+              items: summarizeCartItems(providerItems, pcs("itemFallback")),
               status: "success",
               subtitle: pc("orderPlacedWalletBody", {
                 orderNumber: String(recovered.order_number ?? ""),
@@ -507,7 +519,7 @@ export default function ProductCheckoutScreen() {
       trackProductOrderPlaced(order.id, order.order_number, total, paymentMethod, fulfillment);
     }
 
-    const itemsSummary = summarizeCartItems(providerItems);
+    const itemsSummary = summarizeCartItems(providerItems, pcs("itemFallback"));
 
     // Paid fully with wallet (or nothing left to collect) – no Paystack
     if (paidWithWallet || amountDue <= 0.005) {
@@ -828,6 +840,7 @@ export default function ProductCheckoutScreen() {
     refreshSession,
     fetchCart,
     pc,
+    pcs,
     errTitle,
     t,
     paymentMethod,
@@ -861,11 +874,11 @@ export default function ProductCheckoutScreen() {
             borderBottomColor: "#F3F4F6",
           }}
         >
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+          <TouchableOpacity onPress={() => router.back()} style={{ marginEnd: 12 }}>
+            <DirectionalIcon name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
           <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
-            Checkout
+            {pcs("title")}
           </Text>
         </View>
         <View
@@ -877,7 +890,7 @@ export default function ProductCheckoutScreen() {
           }}
         >
           <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>
-            Missing seller information. Open checkout from your cart.
+            {pcs("missingSellerBody")}
           </Text>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
@@ -889,7 +902,7 @@ export default function ProductCheckoutScreen() {
               borderRadius: 12,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>Go to cart</Text>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{pcs("goToCartCta")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -910,11 +923,11 @@ export default function ProductCheckoutScreen() {
             borderBottomColor: "#F3F4F6",
           }}
         >
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+          <TouchableOpacity onPress={() => router.back()} style={{ marginEnd: 12 }}>
+            <DirectionalIcon name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
           <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
-            Checkout
+            {pcs("title")}
           </Text>
         </View>
         <View
@@ -927,10 +940,10 @@ export default function ProductCheckoutScreen() {
         >
           <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>
-            No items for this seller
+            {pcs("noItemsTitle")}
           </Text>
           <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
-            Add products from this provider to your cart first.
+            {pcs("noItemsBody")}
           </Text>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
@@ -942,7 +955,7 @@ export default function ProductCheckoutScreen() {
               borderRadius: 12,
             }}
           >
-            <Text style={{ color: "#fff", fontWeight: "700" }}>View cart</Text>
+            <Text style={{ color: "#fff", fontWeight: "700" }}>{pcs("viewCartCta")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1004,11 +1017,11 @@ export default function ProductCheckoutScreen() {
             borderBottomColor: "#F3F4F6",
           }}
         >
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
-            <Ionicons name="arrow-back" size={24} color="#111827" />
+          <TouchableOpacity onPress={() => router.back()} style={{ marginEnd: 12 }}>
+            <DirectionalIcon name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>
           <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>
-            Checkout
+            {pcs("title")}
           </Text>
         </View>
 
@@ -1032,11 +1045,10 @@ export default function ProductCheckoutScreen() {
               }}
             >
               <Text style={{ fontSize: 15, fontWeight: "700", color: "#1E40AF" }}>
-                Sign in to place your order
+                {pcs("signInBannerTitle")}
               </Text>
               <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 6, lineHeight: 18 }}>
-                You can review delivery options below. When you are ready, sign in to pay and
-                confirm.
+                {pcs("signInBannerBody")}
               </Text>
               <TouchableOpacity
                 onPress={() =>
@@ -1056,7 +1068,7 @@ export default function ProductCheckoutScreen() {
                   borderRadius: 10,
                 }}
               >
-                <Text style={{ color: "#fff", fontWeight: "700" }}>Sign in</Text>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>{pcs("signInCta")}</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -1088,18 +1100,17 @@ export default function ProductCheckoutScreen() {
                         backgroundColor: "#FFEDD5",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginEnd: 12,
                       }}
                     >
                       <Ionicons name="storefront" size={22} color="#C2410C" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: "700", color: "#C2410C" }}>
-                        In-store pickup only
+                        {pcs("pickupOnlyTitle")}
                       </Text>
                       <Text style={{ fontSize: 13, color: "#92400E", marginTop: 2 }}>
-                        This provider does not offer delivery. You must collect your order in
-                        person.
+                        {pcs("pickupOnlyBody")}
                       </Text>
                     </View>
                   </View>
@@ -1142,19 +1153,19 @@ export default function ProductCheckoutScreen() {
                         backgroundColor: "#DBEAFE",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 12,
+                        marginEnd: 12,
                       }}
                     >
                       <Ionicons name="bicycle" size={22} color="#1D4ED8" />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: "700", color: "#1D4ED8" }}>
-                        Delivery only
+                        {pcs("deliveryOnlyTitle")}
                       </Text>
                       <Text style={{ fontSize: 13, color: "#1E40AF", marginTop: 2 }}>
                         {deliveryFee === 0
-                          ? "Free delivery to your address."
-                          : `Delivery fee: ${fmt(deliveryFee)}`}
+                          ? pcs("freeDeliveryToAddress")
+                          : pcs("deliveryFeeAmount", { amount: fmt(deliveryFee) })}
                       </Text>
                     </View>
                   </View>
@@ -1178,11 +1189,10 @@ export default function ProductCheckoutScreen() {
                         name="time-outline"
                         size={14}
                         color="#6B7280"
-                        style={{ marginRight: 6 }}
+                        style={{ marginEnd: 6 }}
                       />
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                        Estimated delivery: {sc.estimated_delivery_days}{" "}
-                        {sc.estimated_delivery_days === 1 ? "day" : "days"}
+                        {pcs("estimatedDelivery", { count: sc.estimated_delivery_days })}
                       </Text>
                     </View>
                   )}
@@ -1195,7 +1205,7 @@ export default function ProductCheckoutScreen() {
                 <Text
                   style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}
                 >
-                  How would you like to receive your order?
+                  {pcs("fulfillmentQuestion")}
                 </Text>
                 <View style={{ flexDirection: "row" }}>
                   {(bothAvailable || sc?.offers_collection !== false) && (
@@ -1210,7 +1220,7 @@ export default function ProductCheckoutScreen() {
                         backgroundColor:
                           fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
                         alignItems: "center",
-                        marginRight: sc?.offers_delivery ? 12 : 0,
+                        marginEnd: sc?.offers_delivery ? 12 : 0,
                       }}
                     >
                       <Ionicons
@@ -1226,10 +1236,10 @@ export default function ProductCheckoutScreen() {
                           marginTop: 8,
                         }}
                       >
-                        Collection
+                        {pcs("collection")}
                       </Text>
                       <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                        Free · In-store
+                        {pcs("collectionHint")}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -1260,10 +1270,10 @@ export default function ProductCheckoutScreen() {
                           marginTop: 8,
                         }}
                       >
-                        Delivery
+                        {pcs("delivery")}
                       </Text>
                       <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                        {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
+                        {deliveryFee === 0 ? pcs("free") : fmt(deliveryFee)}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -1276,12 +1286,11 @@ export default function ProductCheckoutScreen() {
           {fulfillment === "collection" && locations.length === 0 && (
             <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-                Collection Point
+                {pcs("collectionPoint")}
               </Text>
               <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 14 }}>
                 <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
-                  No collection locations are available for this provider. Please switch to delivery
-                  or contact the provider.
+                  {pcs("noCollectionLocations")}
                 </Text>
               </View>
             </View>
@@ -1289,7 +1298,7 @@ export default function ProductCheckoutScreen() {
           {fulfillment === "collection" && locations.length > 0 && (
             <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-                Collection Point
+                {pcs("collectionPoint")}
               </Text>
               {shippingConfig?.collection_notes &&
               !(shippingConfig.offers_collection && !shippingConfig.offers_delivery) ? (
@@ -1307,7 +1316,7 @@ export default function ProductCheckoutScreen() {
                     name="information-circle-outline"
                     size={16}
                     color="#C2410C"
-                    style={{ marginRight: 6, marginTop: 1 }}
+                    style={{ marginEnd: 6, marginTop: 1 }}
                   />
                   <Text style={{ flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 }}>
                     {shippingConfig.collection_notes}
@@ -1338,7 +1347,7 @@ export default function ProductCheckoutScreen() {
                       borderColor: selectedLocation === loc.id ? PRIMARY : "#D1D5DB",
                       alignItems: "center",
                       justifyContent: "center",
-                      marginRight: 12,
+                      marginEnd: 12,
                     }}
                   >
                     {selectedLocation === loc.id && (
@@ -1369,7 +1378,7 @@ export default function ProductCheckoutScreen() {
           {fulfillment === "delivery" && (
             <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-                Delivery Address
+                {pcs("deliveryAddress")}
               </Text>
               {user && addressesLoadError ? (
                 <View
@@ -1394,7 +1403,7 @@ export default function ProductCheckoutScreen() {
                       <ActivityIndicator size="small" color={PRIMARY} />
                     ) : (
                       <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>
-                        Try again
+                        {pcs("tryAgain")}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -1410,7 +1419,7 @@ export default function ProductCheckoutScreen() {
                       textAlign: "center",
                     }}
                   >
-                    {user ? "No addresses saved" : "Sign in to add a delivery address"}
+                    {user ? pcs("noAddressesSaved") : pcs("signInToAddAddress")}
                   </Text>
                   {user ? (
                     <TouchableOpacity
@@ -1422,7 +1431,7 @@ export default function ProductCheckoutScreen() {
                         backgroundColor: PRIMARY,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>{pcs("addAddress")}</Text>
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
@@ -1441,7 +1450,7 @@ export default function ProductCheckoutScreen() {
                         backgroundColor: PRIMARY,
                       }}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "600" }}>Sign in</Text>
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>{pcs("signInCta")}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1472,7 +1481,7 @@ export default function ProductCheckoutScreen() {
                           borderColor: selectedAddress === addr.id ? PRIMARY : "#D1D5DB",
                           alignItems: "center",
                           justifyContent: "center",
-                          marginRight: 12,
+                          marginEnd: 12,
                         }}
                       >
                         {selectedAddress === addr.id && (
@@ -1488,7 +1497,7 @@ export default function ProductCheckoutScreen() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                          {addr.label ?? "Address"}
+                          {addr.label ?? pcs("addressFallback")}
                         </Text>
                         <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
                           {addr.address_line1}, {addr.city}
@@ -1503,13 +1512,13 @@ export default function ProductCheckoutScreen() {
 
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Promo & gift card
+              {pcs("promoGiftCard")}
             </Text>
             <TextInput
               value={promotionCode}
               onChangeText={setPromotionCode}
               autoCapitalize="characters"
-              placeholder="Promotion code"
+              placeholder={pcs("promotionCodePlaceholder")}
               style={{
                 borderWidth: 1,
                 borderColor: "#E5E7EB",
@@ -1525,7 +1534,7 @@ export default function ProductCheckoutScreen() {
               value={giftCardCode}
               onChangeText={setGiftCardCode}
               autoCapitalize="characters"
-              placeholder="Gift card code"
+              placeholder={pcs("giftCardCodePlaceholder")}
               style={{
                 borderWidth: 1,
                 borderColor: "#E5E7EB",
@@ -1541,7 +1550,7 @@ export default function ProductCheckoutScreen() {
           {/* Payment method */}
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Payment Method
+              {pcs("paymentMethod")}
             </Text>
             <View>
               <TouchableOpacity
@@ -1562,7 +1571,7 @@ export default function ProductCheckoutScreen() {
                   size={22}
                   color={paymentMethod === "paystack" ? PRIMARY : "#9CA3AF"}
                 />
-                <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flex: 1, marginStart: 12 }}>
                   <Text
                     style={{
                       fontSize: 14,
@@ -1570,10 +1579,10 @@ export default function ProductCheckoutScreen() {
                       color: paymentMethod === "paystack" ? PRIMARY : "#374151",
                     }}
                   >
-                    Pay Online
+                    {pcs("payOnline")}
                   </Text>
                   <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                    Secure payment with card (card, EFT, etc.)
+                    {pcs("payOnlineHint")}
                   </Text>
                 </View>
                 <View
@@ -1614,7 +1623,7 @@ export default function ProductCheckoutScreen() {
                     size={22}
                     color={paymentMethod === "card_on_delivery" ? PRIMARY : "#9CA3AF"}
                   />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={{ flex: 1, marginStart: 12 }}>
                     <Text
                       style={{
                         fontSize: 14,
@@ -1622,10 +1631,10 @@ export default function ProductCheckoutScreen() {
                         color: paymentMethod === "card_on_delivery" ? PRIMARY : "#374151",
                       }}
                     >
-                      Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
+                      {fulfillment === "delivery" ? pcs("payAtDelivery") : pcs("payAtCollection")}
                     </Text>
                     <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                      Cash or card when you receive your order
+                      {pcs("payAtFulfillmentHint")}
                     </Text>
                   </View>
                   <View
@@ -1653,7 +1662,7 @@ export default function ProductCheckoutScreen() {
                   <Text
                     style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 }}
                   >
-                    Card
+                    {pcs("card")}
                   </Text>
                   <TouchableOpacity
                     onPress={() => {
@@ -1676,7 +1685,7 @@ export default function ProductCheckoutScreen() {
                         borderRadius: 9,
                         borderWidth: 2,
                         borderColor: !useNewCard ? PRIMARY : "#D1D5DB",
-                        marginRight: 10,
+                        marginEnd: 10,
                         alignItems: "center",
                         justifyContent: "center",
                       }}
@@ -1687,7 +1696,7 @@ export default function ProductCheckoutScreen() {
                         />
                       ) : null}
                     </View>
-                    <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>Use saved card</Text>
+                    <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>{pcs("useSavedCard")}</Text>
                   </TouchableOpacity>
                   {!useNewCard
                     ? savedCards.map((c) => {
@@ -1700,7 +1709,7 @@ export default function ProductCheckoutScreen() {
                           <TouchableOpacity
                             key={c.id}
                             onPress={() => setSelectedCardId(c.id)}
-                            style={{ paddingVertical: 6, paddingLeft: 32 }}
+                            style={{ paddingVertical: 6, paddingStart: 32 }}
                           >
                             <Text
                               style={{
@@ -1709,12 +1718,12 @@ export default function ProductCheckoutScreen() {
                                 fontWeight: selectedCardId === c.id ? "700" : "400",
                               }}
                             >
-                              •••• {c.last4 ?? "0000"}
-                              {c.is_default ? " · default" : ""}
+                              {pcs("cardLast4", { last4: c.last4 ?? "0000" })}
+                              {c.is_default ? pcs("cardDefault") : ""}
                             </Text>
                             {expiry ? (
                               <Text style={{ fontSize: 11, color: "#9CA3AF", paddingTop: 2 }}>
-                                Expires {expiry}
+                                {pcs("cardExpires", { expiry })}
                               </Text>
                             ) : null}
                           </TouchableOpacity>
@@ -1725,12 +1734,12 @@ export default function ProductCheckoutScreen() {
                     <TouchableOpacity
                       onPress={() => router.push("/account-settings/payments")}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={{ paddingVertical: 6, paddingLeft: 32, marginBottom: 4 }}
+                      style={{ paddingVertical: 6, paddingStart: 32, marginBottom: 4 }}
                       accessibilityRole="link"
-                      accessibilityLabel="Manage saved cards"
+                      accessibilityLabel={pcs("manageSavedCards")}
                     >
                       <Text style={{ fontSize: 12, color: PRIMARY, fontWeight: "600" }}>
-                        Manage saved cards
+                        {pcs("manageSavedCards")}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -1753,7 +1762,7 @@ export default function ProductCheckoutScreen() {
                         borderRadius: 9,
                         borderWidth: 2,
                         borderColor: useNewCard ? PRIMARY : "#D1D5DB",
-                        marginRight: 10,
+                        marginEnd: 10,
                         alignItems: "center",
                         justifyContent: "center",
                       }}
@@ -1765,7 +1774,7 @@ export default function ProductCheckoutScreen() {
                       ) : null}
                     </View>
                     <Text style={{ flex: 1, fontSize: 14, color: "#374151" }}>
-                      Use a different card (secure browser)
+                      {pcs("useDifferentCard")}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1792,7 +1801,7 @@ export default function ProductCheckoutScreen() {
                       height: 22,
                       borderRadius: 6,
                       borderWidth: 2,
-                      marginRight: 10,
+                      marginEnd: 10,
                       borderColor: useWallet ? PRIMARY : "#9CA3AF",
                       backgroundColor: useWallet ? PRIMARY : "transparent",
                       alignItems: "center",
@@ -1805,7 +1814,7 @@ export default function ProductCheckoutScreen() {
                     name="wallet-outline"
                     size={18}
                     color={useWallet ? PRIMARY : "#6B7280"}
-                    style={{ marginRight: 10 }}
+                    style={{ marginEnd: 10 }}
                   />
                   <Text
                     style={{
@@ -1815,13 +1824,15 @@ export default function ProductCheckoutScreen() {
                       fontSize: 14,
                     }}
                   >
-                    Use wallet balance — {fmt(walletBalance)} available
+                    {pcs("useWalletBalance", { amount: fmt(walletBalance) })}
                   </Text>
                 </Pressable>
               )}
               {paymentMethod === "paystack" && useWallet && walletBalance > 0 && (
                 <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6, paddingHorizontal: 4 }}>
-                  {`Wallet applies first; you pay ${fmt(Math.max(0, total - Math.min(walletBalance, total)))} by card.`}
+                  {pcs("walletAppliesFirst", {
+                    amount: fmt(Math.max(0, total - Math.min(walletBalance, total))),
+                  })}
                 </Text>
               )}
             </View>
@@ -1838,8 +1849,8 @@ export default function ProductCheckoutScreen() {
                 }}
               >
                 <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
-                <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
-                  A platform fee of {fmt(platformFee)} applies to online payments
+                <Text style={{ fontSize: 12, color: "#92400E", marginStart: 8, flex: 1 }}>
+                  {pcs("platformFeeApplies", { amount: fmt(platformFee) })}
                 </Text>
               </View>
             )}
@@ -1855,8 +1866,8 @@ export default function ProductCheckoutScreen() {
                 }}
               >
                 <Ionicons name="information-circle-outline" size={16} color="#1D4ED8" />
-                <Text style={{ fontSize: 12, color: "#1E3A8A", marginLeft: 8, flex: 1 }}>
-                  Pay-at-collection/delivery is disabled by platform policy. Please pay online.
+                <Text style={{ fontSize: 12, color: "#1E3A8A", marginStart: 8, flex: 1 }}>
+                  {pcs("payAtCollectionDisabled")}
                 </Text>
               </View>
             )}
@@ -1865,7 +1876,7 @@ export default function ProductCheckoutScreen() {
           {/* Order summary */}
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-              Order Summary
+              {pcs("orderSummary")}
             </Text>
             {providerCart?.items.map((item) => (
               <View
@@ -1878,9 +1889,12 @@ export default function ProductCheckoutScreen() {
                   borderBottomColor: "#F9FAFB",
                 }}
               >
-                <View style={{ flex: 1, marginRight: 8 }}>
+                <View style={{ flex: 1, marginEnd: 8 }}>
                   <Text style={{ fontSize: 14, color: "#374151" }} numberOfLines={1}>
-                    {item.product?.name} x{item.quantity}
+                    {pcs("lineItemQty", {
+                      name: item.product?.name ?? pcs("itemFallback"),
+                      quantity: item.quantity,
+                    })}
                   </Text>
                   {(item as any).product_variant?.option_values &&
                     Object.keys((item as any).product_variant.option_values).length > 0 && (
@@ -1910,14 +1924,14 @@ export default function ProductCheckoutScreen() {
               <View
                 style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
               >
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>{pcs("subtotal")}</Text>
                 <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
               </View>
               {taxAmount > 0 && (
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>{pcs("tax")}</Text>
                   <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(taxAmount)}</Text>
                 </View>
               )}
@@ -1925,9 +1939,9 @@ export default function ProductCheckoutScreen() {
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>{pcs("delivery")}</Text>
                   <Text style={{ fontSize: 14, color: deliveryFee === 0 ? "#22C55E" : "#111827" }}>
-                    {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
+                    {deliveryFee === 0 ? pcs("free") : fmt(deliveryFee)}
                   </Text>
                 </View>
               )}
@@ -1935,7 +1949,7 @@ export default function ProductCheckoutScreen() {
                 <View
                   style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}
                 >
-                  <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform Fee</Text>
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>{pcs("platformFee")}</Text>
                   <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
                 </View>
               )}
@@ -1949,7 +1963,9 @@ export default function ProductCheckoutScreen() {
                   borderTopColor: "#E5E7EB",
                 }}
               >
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>
+                  {pcs("total")}
+                </Text>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
                   {fmt(total)}
                 </Text>
@@ -1981,14 +1997,16 @@ export default function ProductCheckoutScreen() {
               ...constraintStyle,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Place order"
-            accessibilityHint="Double tap to submit your order"
+            accessibilityLabel={pcs("placeOrderA11y")}
+            accessibilityHint={pcs("placeOrderHint")}
           >
             {placing ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
-                {paymentMethod === "paystack" ? "Pay" : "Place"} Order — {fmt(total)}
+                {paymentMethod === "paystack"
+                  ? pcs("payOrderCta", { amount: fmt(total) })
+                  : pcs("placeOrderCta", { amount: fmt(total) })}
               </Text>
             )}
           </TouchableOpacity>

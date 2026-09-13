@@ -20,6 +20,8 @@ import { formatCurrency, formatTimeAgo } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { getProviderActivityIcon } from "@/lib/provider-activity-icons";
 import { twStyle } from "@/lib/twStyle";
+import { useTranslation } from "@beautonomi/i18n";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 interface DashboardData {
   total_bookings: number;
@@ -66,6 +68,12 @@ function unwrapActivityFeed(data: ActivityFeedPayload | ActivityItem[] | null | 
 
 
 export default function ActivityScreen() {
+  const { t } = useTranslation();
+  const act = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.activity.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [feedLimit, setFeedLimit] = useState(25);
@@ -116,7 +124,7 @@ export default function ActivityScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Activity" showBack />
+        <ScreenHeader title={act("title")} showBack />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -127,7 +135,7 @@ export default function ActivityScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Activity" showBack />
+        <ScreenHeader title={act("title")} showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -140,12 +148,12 @@ export default function ActivityScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Activity"
+        title={act("title")}
         showBack
         subtitle={
           selectedLocationId
-            ? "Operational timeline (not a balance sheet) · filtered branch where noted"
-            : "Operational timeline — bookings, ledger, reviews (not a balance sheet)"
+            ? act("subtitleFiltered")
+            : act("subtitleAll")
         }
       />
       <ScrollView
@@ -156,8 +164,8 @@ export default function ActivityScreen() {
       >
         {feedMeta?.window?.fromYmd ? (
           <Text style={twStyle("mb-3 text-xs text-gray-500")}>
-            Feed window {feedMeta.window.fromYmd} → {feedMeta.window.toYmd}
-            {feedMeta.timezone ? ` · ${feedMeta.timezone.replace(/_/g, " ")}` : ""}
+            {act("feedWindow", { from: feedMeta.window.fromYmd, to: feedMeta.window.toYmd })}
+            {feedMeta.timezone ? act("feedWindowTz", { timezone: feedMeta.timezone.replace(/_/g, " ") }) : ""}
           </Text>
         ) : null}
 
@@ -166,35 +174,35 @@ export default function ActivityScreen() {
           <View
             style={[
               twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"),
-              { marginRight: 12, marginBottom: 12 },
+              { marginEnd: 12, marginBottom: 12 },
             ]}
           >
             <View style={twStyle("flex-row items-center")}>
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
                 <Ionicons name="calendar-outline" size={20} color="#6366f1" />
               </View>
-              <Text style={twStyle("ml-2 text-2xl font-bold text-gray-900")}>{stats.appointments_today ?? 0}</Text>
+              <Text style={twStyle("ms-2 text-2xl font-bold text-gray-900")}>{stats.appointments_today ?? 0}</Text>
             </View>
             <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>
-              Appointments today · scheduled in your calendar day
+              {act("appointmentsToday")}
             </Text>
           </View>
           <View
             style={[
               twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"),
-              { marginRight: 12, marginBottom: 12 },
+              { marginEnd: 12, marginBottom: 12 },
             ]}
           >
             <View style={twStyle("flex-row items-center")}>
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-emerald-50")}>
                 <Ionicons name="cash-outline" size={20} color="#059669" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {formatCurrency(stats.revenue_this_month ?? 0)}
               </Text>
             </View>
             <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>
-              Recognized revenue this month (ledger)
+              {act("revenueThisMonth")}
             </Text>
             {(stats.revenue_growth ?? 0) !== 0 ? (
               <Text
@@ -202,27 +210,28 @@ export default function ActivityScreen() {
                   `mt-1 text-xs font-medium ${(stats.revenue_growth ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`,
                 )}
               >
-                {(stats.revenue_growth ?? 0) >= 0 ? "+" : ""}
-                {stats.revenue_growth}% vs prior month
+                {act("vsPriorMonth", {
+                  value: `${(stats.revenue_growth ?? 0) >= 0 ? "+" : ""}${stats.revenue_growth}`,
+                })}
               </Text>
             ) : null}
           </View>
           <View
             style={[
               twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"),
-              { marginRight: 12, marginBottom: 12 },
+              { marginEnd: 12, marginBottom: 12 },
             ]}
           >
             <View style={twStyle("flex-row items-center")}>
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-amber-50")}>
                 <Ionicons name="wallet-outline" size={20} color="#d97706" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {formatCurrency(stats.available_balance ?? 0)}
               </Text>
             </View>
             <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>
-              Available to withdraw (after holds) · payout settings apply
+              {act("availableToWithdraw")}
             </Text>
           </View>
           <View style={twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -230,11 +239,11 @@ export default function ActivityScreen() {
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-rose-50")}>
                 <Ionicons name="star-outline" size={20} color="#e11d48" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {(stats.average_rating ?? 0).toFixed(1)}
               </Text>
             </View>
-            <Text style={twStyle("mt-2 text-xs text-gray-500")}>{stats.total_reviews ?? 0} reviews</Text>
+            <Text style={twStyle("mt-2 text-xs text-gray-500")}>{act("reviewsCount", { count: stats.total_reviews ?? 0 })}</Text>
           </View>
         </View>
 
@@ -247,33 +256,33 @@ export default function ActivityScreen() {
             }}
             style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}
             accessibilityRole="button"
-            accessibilityLabel="Open rewards and badges"
+            accessibilityLabel={act("rewardsA11y")}
           >
             <View style={twStyle("flex-row items-center justify-between")}>
-              <Text style={twStyle("text-base font-semibold text-gray-900")}>Reward points</Text>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>{act("rewardPoints")}</Text>
               <View style={twStyle("flex-row items-center rounded-full bg-amber-50 px-3 py-1")}>
                 <Ionicons name="trophy-outline" size={14} color="#b45309" />
-                <Text style={twStyle("ml-1 text-sm font-semibold text-amber-900")}>
-                  {stats.gamification.total_points ?? 0} pts
+                <Text style={twStyle("ms-1 text-sm font-semibold text-amber-900")}>
+                  {act("pts", { count: stats.gamification.total_points ?? 0 })}
                 </Text>
               </View>
             </View>
             {stats.gamification.current_badge ? (
-              <Text style={twStyle("mt-2 text-xs text-gray-500")}>Badge: {stats.gamification.current_badge.name}</Text>
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>{act("badge", { name: stats.gamification.current_badge.name })}</Text>
             ) : null}
             <Text style={twStyle("mt-3 text-xs leading-4 text-gray-500")}>
-              Points are separate from the business timeline below — tap for milestones & badges.
+              {act("pointsSeparate")}
             </Text>
             <View style={twStyle("mt-2 flex-row items-center")}>
-              <Text style={twStyle("flex-1 text-sm font-semibold text-primary")}>View rewards</Text>
-              <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
+              <Text style={twStyle("flex-1 text-sm font-semibold text-primary")}>{act("viewRewards")}</Text>
+              <DirectionalIcon name="chevron-forward" size={16} color={Colors.primary} />
             </View>
           </TouchableOpacity>
         ) : null}
 
         {feedMeta?.basis && Object.keys(feedMeta.basis).length > 0 ? (
           <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-            <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-900")}>How this feed works</Text>
+            <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-900")}>{act("howFeedWorks")}</Text>
             {Object.entries(feedMeta.basis).map(([k, v]) => (
               <Text key={k} style={twStyle("mt-2 text-xs leading-5 text-indigo-950")}>
                 <Text style={twStyle("font-semibold capitalize text-indigo-950")}>{k.replace(/_/g, " ")}: </Text>
@@ -283,15 +292,15 @@ export default function ActivityScreen() {
           </View>
         ) : null}
 
-        <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>Recent timeline</Text>
+        <Text style={twStyle("mb-2 text-sm font-semibold text-gray-800")}>{act("recentTimeline")}</Text>
         <Text style={twStyle("mb-3 text-xs leading-4 text-gray-500")}>
-          Newest first · appointments, retail, ledger earnings, refunds, payouts, reviews
+          {act("timelineHint")}
         </Text>
 
         {feedLoading && recent.length === 0 ? (
           <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-10")}>
             <Ionicons name="hourglass-outline" size={28} color="#9ca3af" />
-            <Text style={twStyle("mt-2 text-sm text-gray-500")}>Loading timeline…</Text>
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>{act("loadingTimeline")}</Text>
           </View>
         ) : feedError && recent.length === 0 ? (
           <TouchableOpacity
@@ -299,13 +308,12 @@ export default function ActivityScreen() {
             style={twStyle("items-center rounded-2xl border border-red-100 bg-red-50 py-8")}
           >
             <Ionicons name="alert-circle-outline" size={26} color="#dc2626" />
-            <Text style={twStyle("mt-2 text-center text-sm text-red-700")}>Could not load timeline · tap to retry</Text>
+            <Text style={twStyle("mt-2 text-center text-sm text-red-700")}>{act("loadTimelineFailed")}</Text>
           </TouchableOpacity>
         ) : recent.length === 0 ? (
           <View style={twStyle("rounded-2xl border border-gray-100 bg-gray-50/80 px-6 py-10")}>
             <Text style={twStyle("text-center text-sm leading-5 text-gray-500")}>
-              No items in this window. Events appear when bookings are created, ledger rows settle, payouts post, or reviews
-              arrive.
+              {act("emptyTimeline")}
             </Text>
           </View>
         ) : (
@@ -341,14 +349,14 @@ export default function ActivityScreen() {
                   >
                     <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
                   </View>
-                  <View style={twStyle("ml-3 flex-1 min-w-0")}>
+                  <View style={twStyle("ms-3 flex-1 min-w-0")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>
                       {item.description}
                     </Text>
                     <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{formatTimeAgo(item.created_at)}</Text>
                   </View>
                   {item.data?.amount != null ? (
-                    <Text style={twStyle("ml-2 shrink-0 text-sm font-semibold text-gray-900")}>
+                    <Text style={twStyle("ms-2 shrink-0 text-sm font-semibold text-gray-900")}>
                       {formatCurrency(item.data.amount)}
                     </Text>
                   ) : null}
@@ -367,11 +375,11 @@ export default function ActivityScreen() {
               `mt-3 flex-row items-center justify-center rounded-2xl border border-gray-200 bg-white py-3 ${feedLoading ? "opacity-60" : ""}`,
             )}
             accessibilityRole="button"
-            accessibilityLabel="Load more activity"
+            accessibilityLabel={act("loadMoreA11y")}
           >
             <Ionicons name="chevron-down" size={16} color={Colors.primary} />
-            <Text style={twStyle("ml-1 text-sm font-semibold text-primary")}>
-              {feedLoading ? "Loading…" : "Load more"}
+            <Text style={twStyle("ms-1 text-sm font-semibold text-primary")}>
+              {feedLoading ? act("loading") : act("loadMore")}
             </Text>
           </TouchableOpacity>
         ) : null}

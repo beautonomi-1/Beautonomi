@@ -36,12 +36,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface AppointmentNotesPanelProps {
   appointmentId: string;
 }
 
 export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelProps) {
+  const { t } = useTranslation();
+  const an = "web.provider.portal.appointmentNotes";
   const [notes, setNotes] = useState<AppointmentNote[]>([]);
   const [templates, setTemplates] = useState<NoteTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -64,7 +67,7 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
       setTemplates(templatesData);
     } catch (error) {
       console.error("Failed to load notes:", error);
-      toast.error("Failed to load notes");
+      toast.error(t(`${an}.loadFailed`));
     } finally {
       setIsLoading(false);
     }
@@ -81,15 +84,15 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
   };
 
   const handleDeleteNote = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this note?")) return;
+    if (!confirm(t(`${an}.deleteConfirm`))) return;
 
     try {
       await providerApi.deleteAppointmentNote(id, appointmentId);
-      toast.success("Note deleted");
+      toast.success(t(`${an}.deleted`));
       loadData();
     } catch (error) {
       console.error("Failed to delete note:", error);
-      toast.error("Failed to delete note");
+      toast.error(t(`${an}.deleteFailed`));
     }
   };
 
@@ -132,25 +135,25 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Notes & History</h3>
+        <h3 className="text-lg font-semibold">{t(`${an}.title`)}</h3>
         <Button onClick={handleAddNote} size="sm" className="bg-primary hover:bg-primary-hover">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Note
+          <Plus className="w-4 h-4 me-2" />
+          {t(`${an}.addNote`)}
         </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList>
-          <TabsTrigger value="notes">Notes ({notes.length})</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="notes">{t(`${an}.notesTab`, { count: notes.length })}</TabsTrigger>
+          <TabsTrigger value="templates">{t(`${an}.templatesTab`)}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="notes" className="mt-4">
           {isLoading ? (
-            <div className="text-sm text-gray-500">Loading notes...</div>
+            <div className="text-sm text-gray-500">{t(`${an}.loading`)}</div>
           ) : notes.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-8">
-              No notes yet. Add a note to track important information about this appointment.
+              {t(`${an}.emptyNotes`)}
             </div>
           ) : (
             <div className="space-y-3">
@@ -165,15 +168,15 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
                         <span className="flex items-center gap-1">
                           {getNoteTypeIcon(note.type)}
                           {note.type === "internal"
-                            ? "Internal"
+                            ? t(`${an}.typeInternal`)
                             : note.type === "client_visible"
-                            ? "Client Visible"
-                            : "System"}
+                            ? t(`${an}.typeClientVisible`)
+                            : t(`${an}.typeSystem`)}
                         </span>
                       </Badge>
                       {note.is_edited && (
                         <Badge variant="outline" className="text-xs">
-                          Edited
+                          {t(`${an}.edited`)}
                         </Badge>
                       )}
                     </div>
@@ -185,28 +188,28 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => handleEditNote(note)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
+                          <Edit className="w-4 h-4 me-2" />
+                          {t(`${an}.edit`)}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={async () => {
                             const copied = await copyTextToClipboard(note.content);
                             if (copied) {
-                              toast.success("Note copied");
+                              toast.success(t(`${an}.copied`));
                               return;
                             }
-                            toast.error("Unable to copy note on this browser");
+                            toast.error(t(`${an}.copyFailed`));
                           }}
                         >
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy
+                          <Copy className="w-4 h-4 me-2" />
+                          {t(`${an}.copy`)}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => handleDeleteNote(note.id)}
                           className="text-red-600"
                         >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
+                          <Trash2 className="w-4 h-4 me-2" />
+                          {t(`${an}.delete`)}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -223,7 +226,7 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
                     </div>
                     {note.edited_date && (
                       <span className="text-gray-400">
-                        Edited {format(new Date(note.edited_date), "PPp")}
+                        {t(`${an}.editedAt`, { date: format(new Date(note.edited_date), "PPp") })}
                       </span>
                     )}
                   </div>
@@ -237,7 +240,7 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
           <div className="space-y-2">
             {templates.length === 0 ? (
               <div className="text-sm text-gray-500 text-center py-8">
-                No templates available. Create templates to quickly add common notes.
+                {t(`${an}.emptyTemplates`)}
               </div>
             ) : (
               templates.map((template) => (
@@ -251,13 +254,17 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-medium text-sm">{template.name}</span>
                         <Badge className={getNoteTypeColor(template.type)} variant="outline">
-                          {template.type}
+                          {template.type === "internal"
+                            ? t(`${an}.typeInternal`)
+                            : template.type === "client_visible"
+                            ? t(`${an}.typeClientVisible`)
+                            : t(`${an}.typeSystem`)}
                         </Badge>
                       </div>
                       <p className="text-xs text-gray-600 line-clamp-2">{template.content}</p>
                     </div>
                     <Button variant="ghost" size="sm">
-                      Use
+                      {t(`${an}.use`)}
                     </Button>
                   </div>
                 </div>
@@ -292,6 +299,8 @@ function NoteDialog({
   appointmentId: string;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation();
+  const an = "web.provider.portal.appointmentNotes";
   const [formData, setFormData] = useState({
     type: "internal" as NoteType,
     content: "",
@@ -342,19 +351,19 @@ function NoteDialog({
           appointment_id: appointmentId,
           ...formData,
         });
-        toast.success("Note updated");
+        toast.success(t(`${an}.updated`));
       } else {
         await providerApi.createAppointmentNote({
           appointment_id: appointmentId,
           ...formData,
         });
-        toast.success("Note added");
+        toast.success(t(`${an}.added`));
       }
       onSuccess();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save note:", error);
-      toast.error("Failed to save note");
+      toast.error(t(`${an}.saveFailed`));
     } finally {
       setIsLoading(false);
     }
@@ -364,12 +373,12 @@ function NoteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{note ? "Edit Note" : "Add Note"}</DialogTitle>
+          <DialogTitle>{note ? t(`${an}.titleEdit`) : t(`${an}.titleAdd`)}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="type">Note Type</Label>
+            <Label htmlFor="type">{t(`${an}.noteType`)}</Label>
             <Select
               value={formData.type}
               onValueChange={(value) => setFormData({ ...formData, type: value as NoteType })}
@@ -381,27 +390,27 @@ function NoteDialog({
                 <SelectItem value="internal">
                   <div className="flex items-center gap-2">
                     <EyeOff className="w-4 h-4" />
-                    <span>Internal (Staff only)</span>
+                    <span>{t(`${an}.internalStaffOnly`)}</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="client_visible">
                   <div className="flex items-center gap-2">
                     <Eye className="w-4 h-4" />
-                    <span>Client Visible</span>
+                    <span>{t(`${an}.typeClientVisible`)}</span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 mt-1">
               {formData.type === "internal"
-                ? "Only visible to staff members"
-                : "Visible to both staff and client"}
+                ? t(`${an}.internalHint`)
+                : t(`${an}.clientVisibleHint`)}
             </p>
           </div>
 
           {templates.length > 0 && (
             <div>
-              <Label>Use Template</Label>
+              <Label>{t(`${an}.useTemplate`)}</Label>
               <div className="grid grid-cols-2 gap-2 mt-2">
                 {templates.slice(0, 4).map((template) => (
                   <Button
@@ -410,9 +419,9 @@ function NoteDialog({
                     variant="outline"
                     size="sm"
                     onClick={() => handleUseTemplate(template)}
-                    className="justify-start text-left"
+                    className="justify-start text-start"
                   >
-                    <FileText className="w-3 h-3 mr-2" />
+                    <FileText className="w-3 h-3 me-2" />
                     {template.name}
                   </Button>
                 ))}
@@ -421,13 +430,13 @@ function NoteDialog({
           )}
 
           <div>
-            <Label htmlFor="content">Note Content *</Label>
+            <Label htmlFor="content">{t(`${an}.noteContentRequired`)}</Label>
             <Textarea
               id="content"
               value={formData.content}
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
               rows={6}
-              placeholder="Enter note content..."
+              placeholder={t(`${an}.contentPlaceholder`)}
               required
             />
           </div>
@@ -439,14 +448,14 @@ function NoteDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t(`${an}.cancel`)}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : note ? "Update" : "Add Note"}
+              {isLoading ? t(`${an}.saving`) : note ? t(`${an}.update`) : t(`${an}.addNote`)}
             </Button>
           </DialogFooter>
         </form>

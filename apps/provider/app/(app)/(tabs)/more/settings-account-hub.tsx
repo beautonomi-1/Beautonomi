@@ -7,6 +7,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -22,12 +23,14 @@ import { openNativeStoreReview } from "@/lib/open-store-review";
 import { recordManualStoreReview } from "@/lib/store-review-prompt";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { usePaycloudFeatureEnabled } from "@/hooks/usePaycloudFeatureEnabled";
 import { pushInAppBrowser } from "@/lib/in-app-web";
 import { webPrivacyPolicyUrl, webTermsOfServiceUrl } from "@/lib/legal-web";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 type SettingsItem = {
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   href: string;
   /** Native screen route (all settings are native). */
   mobileRoute?: string;
@@ -43,152 +46,158 @@ type SettingsItem = {
 
 type SettingsCategory = {
   id: string;
-  title: string;
-  description: string;
+  titleKey: string;
+  descriptionKey: string;
   items: SettingsItem[];
 };
 
 const SETTINGS_CATEGORIES: SettingsCategory[] = [
   {
     id: "app",
-    title: "App",
-    description: "Language and display",
+    titleKey: "catApp",
+    descriptionKey: "catAppDesc",
     items: [
-      { title: "Language & region", description: "App language & market entry point", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
+      { titleKey: "itemLanguage", descriptionKey: "itemLanguageDesc", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
     ],
   },
   {
     id: "appointment-activity",
-    title: "Appointment & activity",
-    description: "Appointments, business details, locations, hours",
+    titleKey: "catAppointment",
+    descriptionKey: "catAppointmentDesc",
     items: [
-      { title: "Appointment settings", description: "Default status, confirmation", href: "/provider/settings/appointments", mobileRoute: "/(app)/(tabs)/more/settings-appointment-defaults" },
-      { title: "Business details", description: "Business information", href: "/provider/settings/appointment-activity/business-details", mobileRoute: "/(app)/(tabs)/more/settings/business" },
-      { title: "Business description", description: "Description customers see", href: "/provider/settings/business-description", mobileRoute: "/(app)/(tabs)/more/settings-business-description" },
-      { title: "Gallery & images", description: "Business photos", href: "/provider/settings/gallery", mobileRoute: "/(app)/(tabs)/more/gallery" },
-      { title: "Billing & invoices", description: "Billing and invoices", href: "/provider/settings/billing", mobileRoute: "/(app)/(tabs)/more/settings/billing" },
-      { title: "Locations", description: "Business locations", href: "/provider/settings/locations", mobileRoute: "/(app)/(tabs)/more/locations" },
-      { title: "Operating hours", description: "Opening and closing times", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings/hours" },
-      { title: "Distance settings", description: "House call limits", href: "/provider/settings/distance", mobileRoute: "/(app)/(tabs)/more/settings/distance-settings" },
-      { title: "Service zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
-      { title: "Identity verification", description: "KYC for payouts", href: "/provider/settings/verification", mobileRoute: "/(app)/(tabs)/more/settings/verification" },
-      { title: "Online booking", description: "Online booking settings", href: "/provider/settings/appointment-activity/online-booking", mobileRoute: "/(app)/(tabs)/more/settings/online-booking" },
-      { title: "Note templates", description: "Reusable note templates", href: "/provider/settings/note-templates", mobileRoute: "/(app)/(tabs)/more/settings/note-templates" },
-      { title: "Resources", description: "Resources and equipment", href: "/provider/settings/appointment-activity/resources", mobileRoute: "/(app)/(tabs)/more/settings/resource-groups" },
-      { title: "Closed periods", description: "Holiday and closure dates", href: "/provider/settings/appointment-activity/closed-periods", mobileRoute: "/(app)/(tabs)/more/settings/closed-periods" },
-      { title: "Blocked time types", description: "Blocked time options", href: "/provider/settings/appointment-activity/blocked-time", mobileRoute: "/(app)/(tabs)/more/settings/blocked-time" },
-      { title: "Waitlist settings", description: "Waitlist configuration", href: "/provider/settings/appointment-activity/waitlist", mobileRoute: "/(app)/(tabs)/more/settings/waitlist-settings" },
+      { titleKey: "itemAppointments", descriptionKey: "itemAppointmentsDesc", href: "/provider/settings/appointments", mobileRoute: "/(app)/(tabs)/more/settings-appointment-defaults" },
+      { titleKey: "itemBusinessDetails", descriptionKey: "itemBusinessDetailsDesc", href: "/provider/settings/appointment-activity/business-details", mobileRoute: "/(app)/(tabs)/more/settings/business" },
+      { titleKey: "itemBusinessDescription", descriptionKey: "itemBusinessDescriptionDesc", href: "/provider/settings/business-description", mobileRoute: "/(app)/(tabs)/more/settings-business-description" },
+      { titleKey: "itemGallery", descriptionKey: "itemGalleryDesc", href: "/provider/settings/gallery", mobileRoute: "/(app)/(tabs)/more/gallery" },
+      { titleKey: "itemBilling", descriptionKey: "itemBillingDesc", href: "/provider/settings/billing", mobileRoute: "/(app)/(tabs)/more/settings/billing" },
+      { titleKey: "itemLocations", descriptionKey: "itemLocationsDesc", href: "/provider/settings/locations", mobileRoute: "/(app)/(tabs)/more/locations" },
+      { titleKey: "itemHours", descriptionKey: "itemHoursDesc", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings/hours" },
+      { titleKey: "itemDistance", descriptionKey: "itemDistanceDesc", href: "/provider/settings/distance", mobileRoute: "/(app)/(tabs)/more/settings/distance-settings" },
+      { titleKey: "itemServiceZones", descriptionKey: "itemServiceZonesDesc", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
+      { titleKey: "itemVerification", descriptionKey: "itemVerificationDesc", href: "/provider/settings/verification", mobileRoute: "/(app)/(tabs)/more/settings/verification" },
+      { titleKey: "itemOnlineBooking", descriptionKey: "itemOnlineBookingDesc", href: "/provider/settings/appointment-activity/online-booking", mobileRoute: "/(app)/(tabs)/more/settings/online-booking" },
+      { titleKey: "itemNoteTemplates", descriptionKey: "itemNoteTemplatesDesc", href: "/provider/settings/note-templates", mobileRoute: "/(app)/(tabs)/more/settings/note-templates" },
+      { titleKey: "itemResources", descriptionKey: "itemResourcesDesc", href: "/provider/settings/appointment-activity/resources", mobileRoute: "/(app)/(tabs)/more/settings/resource-groups" },
+      { titleKey: "itemClosedPeriods", descriptionKey: "itemClosedPeriodsDesc", href: "/provider/settings/appointment-activity/closed-periods", mobileRoute: "/(app)/(tabs)/more/settings/closed-periods" },
+      { titleKey: "itemBlockedTime", descriptionKey: "itemBlockedTimeDesc", href: "/provider/settings/appointment-activity/blocked-time", mobileRoute: "/(app)/(tabs)/more/settings/blocked-time" },
+      { titleKey: "itemWaitlist", descriptionKey: "itemWaitlistDesc", href: "/provider/settings/appointment-activity/waitlist", mobileRoute: "/(app)/(tabs)/more/settings/waitlist-settings" },
     ],
   },
   {
     id: "clients",
-    title: "Clients",
-    description: "Client management and preferences",
+    titleKey: "catClients",
+    descriptionKey: "catClientsDesc",
     items: [
-      { title: "Client list", description: "View and manage clients", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/clients" },
-      { title: "Referral sources", description: "Track where clients come from", href: "/provider/settings/clients/referrals", mobileRoute: "/(app)/(tabs)/more/settings/referral-sources" },
-      { title: "Cancellation reasons", description: "Manage cancellation reasons", href: "/provider/settings/clients/cancellation-reasons", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-reasons" },
-      { title: "Cancellation policies", description: "Refund and cancellation policies", href: "/provider/settings/cancellation-policies", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-policies" },
-      { title: "Customer visibility", description: "How lists are displayed", href: "/provider/settings/customer-visibility", mobileRoute: "/(app)/(tabs)/more/settings/customer-visibility" },
+      { titleKey: "itemClientList", descriptionKey: "itemClientListDesc", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/clients" },
+      { titleKey: "itemReferrals", descriptionKey: "itemReferralsDesc", href: "/provider/settings/clients/referrals", mobileRoute: "/(app)/(tabs)/more/settings/referral-sources" },
+      { titleKey: "itemCancelReasons", descriptionKey: "itemCancelReasonsDesc", href: "/provider/settings/clients/cancellation-reasons", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-reasons" },
+      { titleKey: "itemCancelPolicies", descriptionKey: "itemCancelPoliciesDesc", href: "/provider/settings/cancellation-policies", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-policies" },
+      { titleKey: "itemVisibility", descriptionKey: "itemVisibilityDesc", href: "/provider/settings/customer-visibility", mobileRoute: "/(app)/(tabs)/more/settings/customer-visibility" },
     ],
   },
   {
     id: "services",
-    title: "Services",
-    description: "Service menu and add-ons",
+    titleKey: "catServices",
+    descriptionKey: "catServicesDesc",
     items: [
-      { title: "Services menu", description: "Service offerings", href: "/provider/settings/services/menu", mobileRoute: "/(app)/(tabs)/more/catalogue" },
-      { title: "Packages", description: "Bundles of services and products", href: "/provider/packages", mobileRoute: "/(app)/(tabs)/more/packages-list" },
-      { title: "Service add-ons", description: "Add-ons and upgrades", href: "/provider/settings/addons", mobileRoute: "/(app)/(tabs)/more/settings/service-addons" },
-      { title: "Memberships", description: "Membership plans", href: "/provider/settings/services/memberships", mobileRoute: "/(app)/(tabs)/more/membership-plans" },
+      { titleKey: "itemServicesMenu", descriptionKey: "itemServicesMenuDesc", href: "/provider/settings/services/menu", mobileRoute: "/(app)/(tabs)/more/catalogue" },
+      { titleKey: "itemPackages", descriptionKey: "itemPackagesDesc", href: "/provider/packages", mobileRoute: "/(app)/(tabs)/more/packages-list" },
+      { titleKey: "itemAddons", descriptionKey: "itemAddonsDesc", href: "/provider/settings/addons", mobileRoute: "/(app)/(tabs)/more/settings/service-addons" },
+      { titleKey: "itemMemberships", descriptionKey: "itemMembershipsDesc", href: "/provider/settings/services/memberships", mobileRoute: "/(app)/(tabs)/more/membership-plans" },
     ],
   },
   {
     id: "sales",
-    title: "Sales",
-    description: "Payments and receipts",
+    titleKey: "catSales",
+    descriptionKey: "catSalesDesc",
     items: [
-      { title: "Payout center", description: "Balance, statements and payouts", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
-      { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
-      { title: "Card machines", description: "Beautonomi in-person terminals", href: "/provider/settings/sales/card-machines", mobileRoute: "/(app)/(tabs)/more/card-machines" },
-      { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
-      { title: "Paystack Terminal", description: "QR and link payments through Beautonomi payouts", href: "/provider/settings/sales/paystack-terminal", mobileRoute: "/(app)/(tabs)/more/paystack-terminal" },
-      { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
-      { title: "Receipt template", description: "Receipt design", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
-      { title: "Taxes", description: "Tax rates", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
-      { title: "Travel fees", description: "At-home travel fees", href: "/provider/settings/sales/travel-fees", mobileRoute: "/(app)/(tabs)/more/settings/travel-fees" },
-      { title: "Tips", description: "Tip settings", href: "/provider/settings/sales/tips", mobileRoute: "/(app)/(tabs)/more/settings/sales-settings" },
-      { title: "Tips distribution", description: "Tips between you and staff", href: "/provider/settings/tips/distribution", mobileRoute: "/(app)/(tabs)/more/settings/tip-distribution" },
-      { title: "Gift cards", description: "Gift card settings", href: "/provider/settings/sales/gift-cards", mobileRoute: "/(app)/(tabs)/more/settings/gift-cards-settings" },
-      { title: "Upselling", description: "Upselling preferences", href: "/provider/settings/sales/upselling", mobileRoute: "/(app)/(tabs)/more/settings/upselling" },
+      { titleKey: "itemPayoutCenter", descriptionKey: "itemPayoutCenterDesc", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
+      { titleKey: "itemPayoutAccounts", descriptionKey: "itemPayoutAccountsDesc", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
+      { titleKey: "itemCardMachines", descriptionKey: "itemCardMachinesDesc", href: "/provider/settings/sales/card-machines", mobileRoute: "/(app)/(tabs)/more/card-machines" },
+      { titleKey: "itemYoco", descriptionKey: "itemYocoDesc", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
+      { titleKey: "itemPaystack", descriptionKey: "itemPaystackDesc", href: "/provider/settings/sales/paystack-terminal", mobileRoute: "/(app)/(tabs)/more/paystack-terminal" },
+      { titleKey: "itemReceiptSeq", descriptionKey: "itemReceiptSeqDesc", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
+      { titleKey: "itemReceiptTpl", descriptionKey: "itemReceiptTplDesc", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
+      { titleKey: "itemTaxes", descriptionKey: "itemTaxesDesc", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
+      { titleKey: "itemTravelFees", descriptionKey: "itemTravelFeesDesc", href: "/provider/settings/sales/travel-fees", mobileRoute: "/(app)/(tabs)/more/settings/travel-fees" },
+      { titleKey: "itemTips", descriptionKey: "itemTipsDesc", href: "/provider/settings/sales/tips", mobileRoute: "/(app)/(tabs)/more/settings/sales-settings" },
+      { titleKey: "itemTipsDist", descriptionKey: "itemTipsDistDesc", href: "/provider/settings/tips/distribution", mobileRoute: "/(app)/(tabs)/more/settings/tip-distribution" },
+      { titleKey: "itemGiftCards", descriptionKey: "itemGiftCardsDesc", href: "/provider/settings/sales/gift-cards", mobileRoute: "/(app)/(tabs)/more/settings/gift-cards-settings" },
+      { titleKey: "itemUpselling", descriptionKey: "itemUpsellingDesc", href: "/provider/settings/sales/upselling", mobileRoute: "/(app)/(tabs)/more/settings/upselling" },
     ],
   },
   {
     id: "team",
-    title: "Team",
-    description: "Team and permissions",
+    titleKey: "catTeam",
+    descriptionKey: "catTeamDesc",
     items: [
-      { title: "Team members", description: "Manage your team", href: "/provider/team/members", mobileRoute: "/(app)/(tabs)/more/team" },
-      { title: "Time clock", description: "Clock in/out and time cards", href: "/provider/team/time-clock", mobileRoute: "/(app)/(tabs)/more/time-clock" },
-      { title: "Roles", description: "Team roles and permissions", href: "/provider/settings/team/roles", mobileRoute: "/(app)/(tabs)/more/settings/team-roles" },
-      { title: "Permissions", description: "Team permissions", href: "/provider/settings/team/permissions", mobileRoute: "/(app)/(tabs)/more/settings/staff-permissions" },
-      { title: "Commissions", description: "Commission rates", href: "/provider/settings/team/commissions", mobileRoute: "/(app)/(tabs)/more/settings/team-commissions" },
-      { title: "Time off types", description: "Time off categories", href: "/provider/settings/team/time-off-types", mobileRoute: "/(app)/(tabs)/more/settings/time-off-types" },
-      { title: "Team notifications", description: "Per-member notification preferences", href: "/provider/settings/team/notifications", mobileRoute: "/(app)/(tabs)/more/settings/team-staff-notifications" },
+      { titleKey: "itemTeamMembers", descriptionKey: "itemTeamMembersDesc", href: "/provider/team/members", mobileRoute: "/(app)/(tabs)/more/team" },
+      { titleKey: "itemTimeClock", descriptionKey: "itemTimeClockDesc", href: "/provider/team/time-clock", mobileRoute: "/(app)/(tabs)/more/time-clock" },
+      { titleKey: "itemRoles", descriptionKey: "itemRolesDesc", href: "/provider/settings/team/roles", mobileRoute: "/(app)/(tabs)/more/settings/team-roles" },
+      { titleKey: "itemPermissions", descriptionKey: "itemPermissionsDesc", href: "/provider/settings/team/permissions", mobileRoute: "/(app)/(tabs)/more/settings/staff-permissions" },
+      { titleKey: "itemCommissions", descriptionKey: "itemCommissionsDesc", href: "/provider/settings/team/commissions", mobileRoute: "/(app)/(tabs)/more/settings/team-commissions" },
+      { titleKey: "itemTimeOff", descriptionKey: "itemTimeOffDesc", href: "/provider/settings/team/time-off-types", mobileRoute: "/(app)/(tabs)/more/settings/time-off-types" },
+      { titleKey: "itemTeamNotifs", descriptionKey: "itemTeamNotifsDesc", href: "/provider/settings/team/notifications", mobileRoute: "/(app)/(tabs)/more/settings/team-staff-notifications" },
     ],
   },
   {
     id: "marketing",
-    title: "Marketing",
-    description: "Integrations and ads",
+    titleKey: "catMarketing",
+    descriptionKey: "catMarketingDesc",
     items: [
-      { title: "AI studio", description: "Profile and content suggestions (plan-based)", href: "/provider/settings/ai", mobileRoute: "/(app)/(tabs)/more/ai-studio" },
-      { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/settings/ads" },
-      { title: "Email integration", description: "SendGrid, Mailchimp", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
-      { title: "Twilio integration", description: "SMS and WhatsApp", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },
+      { titleKey: "itemAiStudio", descriptionKey: "itemAiStudioDesc", href: "/provider/settings/ai", mobileRoute: "/(app)/(tabs)/more/ai-studio" },
+      { titleKey: "itemPaidAds", descriptionKey: "itemPaidAdsDesc", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/settings/ads" },
+      { titleKey: "itemEmailInt", descriptionKey: "itemEmailIntDesc", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
+      { titleKey: "itemTwilio", descriptionKey: "itemTwilioDesc", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },
     ],
   },
   {
     id: "account",
-    title: "Account",
-    description: "Account and notifications",
+    titleKey: "catAccount",
+    descriptionKey: "catAccountDesc",
     items: [
-      { title: "Start my own business", description: "Open a freelancer or salon profile while keeping this team job", href: "/provider/onboarding", mobileRoute: "/(app)/onboarding/wizard", staffOnly: true },
-      { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
+      { titleKey: "itemStartBusiness", descriptionKey: "itemStartBusinessDesc", href: "/provider/onboarding", mobileRoute: "/(app)/onboarding/wizard", staffOnly: true },
+      { titleKey: "itemMyProfile", descriptionKey: "itemMyProfileDesc", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
       // §provider-setup-seamless-ux 2026-05: dedicated entry-point for the
       // freelancer Personal Profile screen (the bio that gates the
       // `personal-profile` setup step).
-      { title: "Personal profile", description: "Bio, headline & how customers see you", href: "/provider/account/personal-profile", mobileRoute: "/(app)/(tabs)/more/settings/personal-profile" },
-      { title: "Rewards & badges", description: "Points, tiers, milestones & badge progress", href: "/provider/gamification", mobileRoute: "/(app)/(tabs)/more/rewards-hub" },
-      { title: "Subscription & plan", description: "Upgrade, billing period, cancel or renew", href: "/provider/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
-      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
-      { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
-      { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
+      { titleKey: "itemPersonalProfile", descriptionKey: "itemPersonalProfileDesc", href: "/provider/account/personal-profile", mobileRoute: "/(app)/(tabs)/more/settings/personal-profile" },
+      { titleKey: "itemRewards", descriptionKey: "itemRewardsDesc", href: "/provider/gamification", mobileRoute: "/(app)/(tabs)/more/rewards-hub" },
+      { titleKey: "itemSubscription", descriptionKey: "itemSubscriptionDesc", href: "/provider/subscription", mobileRoute: "/(app)/(tabs)/more/settings/subscription" },
+      { titleKey: "itemNotifPrefs", descriptionKey: "itemNotifPrefsDesc", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
+      { titleKey: "itemMyTickets", descriptionKey: "itemMyTicketsDesc", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
+      { titleKey: "itemContactSupport", descriptionKey: "itemContactSupportDesc", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
       {
-        title: "Rate Beautonomi on the App Store",
-        description: "Opens the App Store or Google Play so you can leave a review",
+        titleKey: "itemRateApp",
+        descriptionKey: "itemRateAppDesc",
         href: "#",
         action: "rateStore" as const,
       },
-      { title: "Login & security", description: "Email, phone, password, biometrics & sessions", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-login-and-security" },
-      { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", action: "openPrivacy" as const },
-      { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", action: "openTerms" as const },
-      { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
-      { title: "Sign out", description: "Sign out of your account", href: "#", action: "signOut" as const },
-      { title: "Sign out from all devices", description: "End every active session on your account", href: "#", action: "globalSignOut" as const },
-      { title: "Delete account", description: "Permanently delete account and data", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isSubtle: true },
+      { titleKey: "itemLoginSecurity", descriptionKey: "itemLoginSecurityDesc", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-login-and-security" },
+      { titleKey: "itemPrivacy", descriptionKey: "itemPrivacyDesc", href: "/privacy-policy", action: "openPrivacy" as const },
+      { titleKey: "itemTerms", descriptionKey: "itemTermsDesc", href: "/terms-and-condition", action: "openTerms" as const },
+      { titleKey: "itemDeactivate", descriptionKey: "itemDeactivateDesc", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
+      { titleKey: "itemSignOut", descriptionKey: "itemSignOutDesc", href: "#", action: "signOut" as const },
+      { titleKey: "itemGlobalSignOut", descriptionKey: "itemGlobalSignOutDesc", href: "#", action: "globalSignOut" as const },
+      { titleKey: "itemDelete", descriptionKey: "itemDeleteDesc", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isSubtle: true },
     ],
   },
 ];
 
 export default function SettingsAccountHubScreen() {
+  const { t } = useTranslation();
+  const ah = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.settingsAccountHub.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { role } = useProvider();
   const [expandedId, setExpandedId] = useState<string | null>("account");
   const paystackTerminalEnabled = useFeatureFlag("payment_paystack_virtual_terminal");
   const yocoEnabled = useFeatureFlag("payment_yoco");
-  const paycloudEnabled = useFeatureFlag("payment_paycloud");
+  const paycloudEnabled = usePaycloudFeatureEnabled();
 
   const { data: providerData } = useApi<{ business_type?: string } | { data?: { business_type?: string } }>(
     "/api/me/provider"
@@ -207,11 +216,11 @@ export default function SettingsAccountHubScreen() {
       return;
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: performSignOut },
+    Alert.alert(ah("signOutTitle"), ah("signOutBody"), [
+      { text: ah("cancel"), style: "cancel" },
+      { text: ah("signOut"), style: "destructive", onPress: performSignOut },
     ]);
-  }, [signOut, router]);
+  }, [signOut, router, ah]);
 
   // Wave 2.4 (audit 2026-04 final 100/100): global sign-out — revokes
   // every refresh token for this provider across all devices.
@@ -221,7 +230,7 @@ export default function SettingsAccountHubScreen() {
       try {
         const res = await api.post<{ ok?: boolean }>("/api/auth/sign-out-global", {});
         if (res.error) {
-          Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
+          Alert.alert(ah("errorTitle"), res.error.message ?? ah("signOutEverywhereFailed"));
           return;
         }
         // Use AuthProvider `signOut` (bounded remote + local fallback + cache
@@ -229,19 +238,19 @@ export default function SettingsAccountHubScreen() {
         await signOut();
         goToLogin();
       } catch (e) {
-        Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));
+        Alert.alert(ah("errorTitle"), getApiErrorMessage(e, ah("signOutEverywhereFailedShort")));
       }
     };
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
-      "Sign out from all devices?",
-      "This will end every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Use this if you suspect someone else accessed your account.",
+      ah("globalSignOutTitle"),
+      ah("globalSignOutBody"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign out everywhere", style: "destructive", onPress: () => void perform() },
+        { text: ah("cancel"), style: "cancel" },
+        { text: ah("signOutEverywhere"), style: "destructive", onPress: () => void perform() },
       ],
     );
-  }, [router, signOut]);
+  }, [router, signOut, ah]);
 
   const handleItemPress = useCallback(
     (item: SettingsItem) => {
@@ -261,11 +270,11 @@ export default function SettingsAccountHubScreen() {
         return;
       }
       if (item.action === "openPrivacy") {
-        pushInAppBrowser(router, webPrivacyPolicyUrl(), "Privacy Policy");
+        pushInAppBrowser(router, webPrivacyPolicyUrl(), ah("itemPrivacy"));
         return;
       }
       if (item.action === "openTerms") {
-        pushInAppBrowser(router, webTermsOfServiceUrl(), "Terms of Service");
+        pushInAppBrowser(router, webTermsOfServiceUrl(), ah("itemTerms"));
         return;
       }
       // §Provider-launch (audit 2026-04): the dynamically-injected
@@ -281,7 +290,7 @@ export default function SettingsAccountHubScreen() {
         router.push(item.mobileRoute as never);
       }
     },
-    [router, handleSignOut, handleGlobalSignOut]
+    [router, handleSignOut, handleGlobalSignOut, ah]
   );
 
   const toggleSection = useCallback((id: string) => {
@@ -292,15 +301,15 @@ export default function SettingsAccountHubScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="Settings & account"
-        subtitle="Business settings & rewards"
+        title={ah("title")}
+        subtitle={ah("subtitle")}
         onBack={() => router.back()}
       />
 
       <View style={twStyle("px-2 pb-2")}>
         <View style={twStyle("mb-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3")}>
           <Text style={twStyle("text-sm text-gray-700")}>
-            All screens are native. Manage your business settings here.
+            {ah("nativeHint")}
           </Text>
         </View>
       </View>
@@ -320,19 +329,19 @@ export default function SettingsAccountHubScreen() {
           }}
           style={twStyle("mb-3 flex-row items-center rounded-xl border border-emerald-100 bg-emerald-50/70 p-4")}
           activeOpacity={0.7}
-          accessibilityLabel="Setup checklist. Track your business setup progress."
+          accessibilityLabel={ah("setupChecklistA11y")}
           accessibilityRole="button"
         >
-          <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-emerald-100")}>
+          <View style={twStyle("me-3 h-10 w-10 items-center justify-center rounded-full bg-emerald-100")}>
             <Ionicons name="checkbox-outline" size={22} color="#059669" />
           </View>
           <View style={twStyle("flex-1")}>
-            <Text style={twStyle("font-semibold text-emerald-900")}>Setup checklist</Text>
+            <Text style={twStyle("font-semibold text-emerald-900")}>{ah("setupChecklist")}</Text>
             <Text style={twStyle("mt-0.5 text-sm text-emerald-800")}>
-              Track and finish your business setup
+              {ah("setupChecklistSub")}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#059669" />
+          <DirectionalIcon name="chevron-forward" size={20} color="#059669" />
         </TouchableOpacity>
 
         {isFreelancer && (
@@ -340,26 +349,26 @@ export default function SettingsAccountHubScreen() {
             onPress={() => router.push("/(app)/(tabs)/more/upgrade-info" as never)}
             style={twStyle("mb-3 flex-row items-center rounded-xl border border-pink-200 bg-pink-50/80 p-4")}
             activeOpacity={0.7}
-            accessibilityLabel="Upgrade to Salon, unlock team, locations and advanced features"
+            accessibilityLabel={ah("upgradeBannerA11y")}
             accessibilityRole="button"
           >
-            <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-pink-100")}>
+            <View style={twStyle("me-3 h-10 w-10 items-center justify-center rounded-full bg-pink-100")}>
               <Ionicons name="sparkles" size={22} color="#ec4899" />
             </View>
             <View style={twStyle("flex-1")}>
-              <Text style={twStyle("font-semibold text-pink-800")}>Upgrade to Salon</Text>
+              <Text style={twStyle("font-semibold text-pink-800")}>{ah("upgradeBanner")}</Text>
               <Text style={twStyle("mt-0.5 text-sm text-pink-700")}>
-                Unlock team, locations & advanced features
+                {ah("upgradeBannerSub")}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#ec4899" />
+            <DirectionalIcon name="chevron-forward" size={20} color="#ec4899" />
           </TouchableOpacity>
         )}
 
         {SETTINGS_CATEGORIES.map((category) => {
           const isExpanded = expandedId === category.id;
           const rawItems = category.id === "appointment-activity" && isFreelancer
-            ? [{ title: "Upgrade to Salon", description: "Unlock team management and more", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
+            ? [{ titleKey: "itemUpgradeList", descriptionKey: "itemUpgradeListDesc", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
             : category.items;
           const items = rawItems.filter((item) => {
             const routeKey = item.mobileRoute ?? item.href;
@@ -376,11 +385,11 @@ export default function SettingsAccountHubScreen() {
                 onPress={() => toggleSection(category.id)}
                 style={twStyle("flex-row items-center justify-between rounded-t-xl border border-gray-200 bg-white px-4 py-3.5")}
                 activeOpacity={0.7}
-                accessibilityLabel={`${category.title}, ${isExpanded ? "collapse" : "expand"} section`}
+                accessibilityLabel={ah("sectionA11y", { title: ah(category.titleKey), action: isExpanded ? ah("collapse") : ah("expand") })}
                 accessibilityRole="button"
               >
                 <Text style={twStyle("text-base font-semibold text-gray-900")}>
-                  {category.title}
+                  {ah(category.titleKey)}
                 </Text>
                 <Ionicons
                   name={isExpanded ? "chevron-up" : "chevron-down"}
@@ -392,7 +401,7 @@ export default function SettingsAccountHubScreen() {
                 <View style={twStyle("rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden")}>
                   <View style={twStyle("px-3 pb-2")}>
                     <Text style={twStyle("text-sm text-gray-500 mb-2")}>
-                      {category.description}
+{ah(category.descriptionKey)}
                     </Text>
                   </View>
                   {items.map((item, idx) => {
@@ -405,25 +414,25 @@ export default function SettingsAccountHubScreen() {
                         onPress={() => handleItemPress(item)}
                         style={twStyle(`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""} ${isSubtle ? "bg-gray-50/50" : ""}`)}
                         activeOpacity={0.6}
-                        accessibilityLabel={item.description ? `${item.title}, ${item.description}` : item.title}
+                        accessibilityLabel={ah("itemA11y", { title: ah(item.titleKey), description: ah(item.descriptionKey) })}
                         accessibilityRole="button"
                       >
-                        <View style={twStyle("flex-1 pr-3")}>
+                        <View style={twStyle("flex-1 pe-3")}>
                           {item.isUpgrade && (
                             <Ionicons name="sparkles" size={16} color="#ec4899" style={{ position: "absolute", left: 0, top: 2 }} />
                           )}
                           <Text style={twStyle(`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : isSubtle ? "text-gray-500" : "text-gray-900"}`)}>
-                            {item.title}
+                            {ah(item.titleKey)}
                           </Text>
                           <Text style={twStyle(`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : isSubtle ? "text-gray-400" : "text-gray-500"}`)} numberOfLines={1}>
-                            {item.description}
+                            {ah(item.descriptionKey)}
                           </Text>
                         </View>
                         <View style={twStyle("flex-row items-center")}>
                           {isSignOut ? (
                             <Ionicons name="log-out-outline" size={18} color="#dc2626" />
                           ) : (
-                            <Ionicons name="chevron-forward" size={18} color={item.isUpgrade ? "#ec4899" : isDestructive ? "#dc2626" : "#9ca3af"} />
+                            <DirectionalIcon name="chevron-forward" size={18} color={item.isUpgrade ? "#ec4899" : isDestructive ? "#dc2626" : "#9ca3af"} />
                           )}
                         </View>
                       </TouchableOpacity>

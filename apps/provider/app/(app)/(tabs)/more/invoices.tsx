@@ -20,6 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ExpoLinking from "expo-linking";
 import { Redirect, useRouter } from "expo-router";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useInAppPaystackCheckout } from "@/hooks/useInAppPaystackCheckout";
 import { downloadPdf } from "@/lib/pdf-file";
@@ -78,18 +79,33 @@ interface InvoicesResponse {
   };
 }
 
-const STATUS_FILTERS = [
-  { label: "All", value: "all" },
-  { label: "Unpaid", value: "sent" },
-  { label: "Paid", value: "paid" },
-  { label: "Overdue", value: "overdue" },
+const STATUS_FILTER_DEFS = [
+  { labelKey: "filterAll", value: "all" },
+  { labelKey: "filterUnpaid", value: "sent" },
+  { labelKey: "filterPaid", value: "paid" },
+  { labelKey: "filterOverdue", value: "overdue" },
 ];
 
-const PERIOD_FILTERS = [
-  { label: "All Time", value: "all" },
-  { label: "This Month", value: "month" },
-  { label: "This Week", value: "week" },
+const PERIOD_FILTER_DEFS = [
+  { labelKey: "periodAll", value: "all" },
+  { labelKey: "periodMonth", value: "month" },
+  { labelKey: "periodWeek", value: "week" },
 ];
+
+function invoiceStatusLabel(
+  status: string,
+  overduePending: boolean,
+  iv: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (overduePending) return iv("statusOverdue");
+  if (status === "paid") return iv("statusPaid");
+  if (status === "overdue") return iv("statusOverdue");
+  if (status === "sent") return iv("statusSent");
+  if (status === "partially_paid") return iv("statusPartiallyPaid");
+  if (status === "pending") return iv("statusPending");
+  if (status === "draft") return iv("statusDraft");
+  return status.replace("_", " ");
+}
 
 /** Statuses that still owe money. `draft` is excluded: it has not been issued. */
 const PAYABLE_STATUSES = ["sent", "partially_paid", "overdue"];
@@ -133,6 +149,20 @@ function amountDue(inv: Invoice): number {
 }
 
 export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {}) {
+  const { t } = useTranslation();
+  const iv = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.invoices." + key, opts) as string,
+    [t],
+  );
+  const statusFilters = useMemo(
+    () => STATUS_FILTER_DEFS.map((f) => ({ label: iv(f.labelKey), value: f.value })),
+    [iv],
+  );
+  const periodFilters = useMemo(
+    () => PERIOD_FILTER_DEFS.map((f) => ({ label: iv(f.labelKey), value: f.value })),
+    [iv],
+  );
   const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
@@ -217,11 +247,11 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
         pdfPath: `/api/provider/invoices/${inv.id}/download`,
         signedUrlPath: `/api/provider/invoices/${inv.id}/signed-url`,
         filename: `invoice_${inv.invoice_number || inv.id}.pdf`,
-        title: `Invoice ${inv.invoice_number}`,
-        label: "invoice",
+        title: iv("invoiceTitle", { number: inv.invoice_number }),
+        label: iv("downloadLabel"),
       });
     } catch (e) {
-      Alert.alert("Download unavailable", e instanceof Error ? e.message : "Could not download this invoice.");
+      Alert.alert(iv("downloadUnavailable"), e instanceof Error ? e.message : iv("downloadFailed"));
     } finally {
       setDownloadingInvoice(false);
     }
@@ -235,7 +265,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   async function handlePayInvoice(inv: Invoice) {
     const due = amountDue(inv);
     if (due <= 0) {
-      Alert.alert("Already settled", "There is nothing outstanding on this invoice.");
+      Alert.alert(iv("alreadySettledTitle"), iv("alreadySettledBody"));
       return;
     }
 
@@ -248,32 +278,32 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       );
 
       if (error || !data) {
-        Alert.alert("Payment unavailable", error || "Could not start the payment. Please try again.");
+        Alert.alert(iv("paymentUnavailable"), error || iv("paymentStartFailed"));
         return;
       }
 
       const url = data.authorization_url ?? data.payment_url;
       if (!url) {
-        Alert.alert("Payment unavailable", "No checkout link was returned. Please try again shortly.");
+        Alert.alert(iv("paymentUnavailable"), iv("noCheckoutLink"));
         return;
       }
 
       const result = await waitForCheckout(url, {
         matchSuccess: (u) => u.includes("payment_success=true"),
         matchCancel: (u) => u.includes("payment_cancelled=1"),
-        title: `Invoice ${inv.invoice_number}`,
+        title: iv("invoiceTitle", { number: inv.invoice_number }),
         returnUrl,
       });
 
       if (result.outcome === "success") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
-          "Payment received",
-          "Thanks. It can take a moment for the invoice to show as paid.",
+          iv("paymentReceivedTitle"),
+          iv("paymentReceivedBody"),
         );
         setSelected(null);
       } else if (result.outcome === "cancel") {
-        Alert.alert("Payment cancelled", "The invoice has not been charged.");
+        Alert.alert(iv("paymentCancelledTitle"), iv("paymentCancelledBody"));
       }
       await refresh();
     } finally {
@@ -284,30 +314,30 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
   async function handleExport() {
     if (!selected) return;
     const lines = [
-      `Invoice: ${selected.invoice_number}`,
-      `Date: ${formatDate(selected.issue_date)}`,
-      `Due: ${formatDate(selected.due_date)}`,
-      `Status: ${selected.status}`,
+      iv("exportInvoice", { number: selected.invoice_number }),
+      iv("exportDate", { date: formatDate(selected.issue_date) }),
+      iv("exportDue", { date: formatDate(selected.due_date) }),
+      iv("exportStatus", { status: invoiceStatusLabel(selected.status, false, iv) }),
       "",
-      "Items:",
+      iv("exportItems"),
       ...selected.line_items.map(
-        (li) => `  ${li.description} - ${li.quantity}x ${formatCurrency(li.unit_price)} = ${formatCurrency(li.total_price)}`
+        (li) => iv("exportLine", { description: li.description, quantity: li.quantity, unit: formatCurrency(li.unit_price), total: formatCurrency(li.total_price) })
       ),
       "",
-      `Subtotal: ${formatCurrency(selected.subtotal)}`,
-      selected.tax_amount > 0 ? `Tax (${selected.tax_rate}%): ${formatCurrency(selected.tax_amount)}` : "",
-      `Total: ${formatCurrency(selected.total_amount)}`,
+      iv("exportSubtotal", { amount: formatCurrency(selected.subtotal) }),
+      selected.tax_amount > 0 ? iv("exportTax", { rate: selected.tax_rate, amount: formatCurrency(selected.tax_amount) }) : "",
+      iv("exportTotal", { amount: formatCurrency(selected.total_amount) }),
     ].filter(Boolean);
-    await Share.share({ message: lines.join("\n"), title: `Invoice ${selected.invoice_number}` });
+    await Share.share({ message: lines.join("\n"), title: iv("invoiceTitle", { number: selected.invoice_number }) });
   }
 
   async function handleExportAll() {
     if (!filtered.length) return;
-    const header = "Number,Date,Due,Amount,Status";
+    const header = iv("exportAllHeader");
     const rows = filtered.map(
       (i) => `${i.invoice_number},${formatDate(i.issue_date)},${formatDate(i.due_date)},${i.total_amount},${i.status}`
     );
-    await Share.share({ message: [header, ...rows].join("\n"), title: "Invoices Export" });
+    await Share.share({ message: [header, ...rows].join("\n"), title: iv("exportAllTitle") });
   }
 
   const selectedDue = selected ? amountDue(selected) : 0;
@@ -320,9 +350,9 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
     <InvoicesShell embedded={embedded} screenPadding={screenPadding}>
       {!embedded ? (
         <ScreenHeader
-          title="Invoices"
+          title={iv("title")}
           showBack
-          subtitle={`${stats.total} invoices`}
+          subtitle={iv("subtitle", { count: stats.total })}
           rightAction={
             <TouchableOpacity
               style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
@@ -344,14 +374,14 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       )}
 
       <View style={twStyle("mb-3 flex-row")}>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Paid" value={formatCurrency(stats.paidAmount)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+          <StatCard title={iv("statPaid")} value={formatCurrency(stats.paidAmount)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
-          <StatCard title="Outstanding" value={formatCurrency(stats.outstandingAmount)} icon="alert-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+        <View style={[twStyle("flex-1"), { marginEnd: 8 }]}>
+          <StatCard title={iv("statOutstanding")} value={formatCurrency(stats.outstandingAmount)} icon="alert-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
         <View style={twStyle("flex-1")}>
-          <StatCard title="Overdue" value={String(stats.overdueCount)} icon="warning-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
+          <StatCard title={iv("statOverdue")} value={String(stats.overdueCount)} icon="warning-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
         </View>
       </View>
 
@@ -361,18 +391,18 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
           setSearch(value);
           setPage(1);
         }}
-        placeholder="Search by number or amount..."
+        placeholder={iv("searchPlaceholder")}
       />
 
       <View style={twStyle("my-2")}>
         <FilterChipGroup
-          options={STATUS_FILTERS}
+          options={statusFilters}
           selected={filter}
           onSelect={(v) => { setFilter(v); setPage(1); }}
         />
       </View>
       <View style={twStyle("mb-3")}>
-        <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={(v) => { setPeriod(v); setPage(1); }} />
+        <FilterChipGroup options={periodFilters} selected={period} onSelect={(v) => { setPeriod(v); setPage(1); }} />
       </View>
 
       {loadError && !invData ? (
@@ -382,8 +412,8 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="document-text-outline"
-          title="No invoices"
-          description={search || filter !== "all" ? "No results for this filter" : "Invoices from Beautonomi will appear here"}
+          title={iv("emptyTitle")}
+          description={search || filter !== "all" ? iv("emptyFiltered") : iv("emptyDesc")}
         />
       ) : (
         <FlatList
@@ -411,28 +441,28 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
                   >
                     <Ionicons name={sc.icon} size={18} color={sc.color} />
                   </View>
-                  <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("ms-3 flex-1")}>
                     <View style={twStyle("flex-row items-center justify-between")}>
                       <Text style={twStyle("text-sm font-semibold text-gray-900")}>{inv.invoice_number}</Text>
                       <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(inv.total_amount)}</Text>
                     </View>
                     <View style={twStyle("flex-row items-center justify-between mt-0.5")}>
                       <View style={twStyle("flex-row items-center")}>
-                        <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>{formatDate(inv.issue_date)}</Text>
+                        <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 8 }]}>{formatDate(inv.issue_date)}</Text>
                         {inv.client_name && (
                           <Text style={twStyle("text-xs text-gray-400")}>{inv.client_name}</Text>
                         )}
                       </View>
                       <View style={twStyle(`rounded-full px-2 py-0.5 ${sc.bg}`)}>
                         <Text style={twStyle(`text-[10px] font-medium capitalize ${sc.text}`)}>
-                          {isOverdue && inv.status === "pending" ? "Overdue" : inv.status.replace("_", " ")}
+                          {invoiceStatusLabel(inv.status, isOverdue && inv.status === "pending", iv)}
                         </Text>
                       </View>
                     </View>
                   </View>
                 </View>
                 {inv.description && (
-                  <Text style={twStyle("mt-1.5 ml-[52px] text-xs text-gray-400")} numberOfLines={1}>
+                  <Text style={twStyle("mt-1.5 ms-[52px] text-xs text-gray-400")} numberOfLines={1}>
                     {inv.description}
                   </Text>
                 )}
@@ -447,19 +477,19 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
           <TouchableOpacity
             disabled={page <= 1}
             onPress={() => setPage((p) => Math.max(1, p - 1))}
-            style={[twStyle(`rounded-lg px-4 py-2 ${page <= 1 ? "bg-gray-100" : "bg-gray-200"}`), { marginRight: 16 }]}
+            style={[twStyle(`rounded-lg px-4 py-2 ${page <= 1 ? "bg-gray-100" : "bg-gray-200"}`), { marginEnd: 16 }]}
           >
-            <Text style={twStyle(`text-sm font-medium ${page <= 1 ? "text-gray-400" : "text-gray-700"}`)}>Prev</Text>
+            <Text style={twStyle(`text-sm font-medium ${page <= 1 ? "text-gray-400" : "text-gray-700"}`)}>{iv("prev")}</Text>
           </TouchableOpacity>
-          <Text style={[twStyle("text-sm text-gray-500"), { marginRight: 16 }]}>
-            Page {page} of {invData.total_pages}
+          <Text style={[twStyle("text-sm text-gray-500"), { marginEnd: 16 }]}>
+            {iv("pageOf", { page, total: invData.total_pages })}
           </Text>
           <TouchableOpacity
             disabled={page >= invData.total_pages}
             onPress={() => setPage((p) => p + 1)}
             style={twStyle(`rounded-lg px-4 py-2 ${page >= invData.total_pages ? "bg-gray-100" : "bg-gray-200"}`)}
           >
-            <Text style={twStyle(`text-sm font-medium ${page >= invData.total_pages ? "text-gray-400" : "text-gray-700"}`)}>Next</Text>
+            <Text style={twStyle(`text-sm font-medium ${page >= invData.total_pages ? "text-gray-400" : "text-gray-700"}`)}>{iv("next")}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -468,18 +498,18 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
       <BottomSheet
         visible={!!selected}
         onClose={() => setSelected(null)}
-        title={`Invoice ${selected?.invoice_number ?? ""}`}
+        title={iv("invoiceTitle", { number: selected?.invoice_number ?? "" })}
       >
         {selected && (
           <View>
             <View style={twStyle("mb-3 flex-row items-center justify-between")}>
               <View>
-                <Text style={twStyle("text-sm text-gray-500")}>Issued {formatDate(selected.issue_date)}</Text>
-                <Text style={twStyle("text-xs text-gray-400")}>Due: {formatDate(selected.due_date)}</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{iv("issued", { date: formatDate(selected.issue_date) })}</Text>
+                <Text style={twStyle("text-xs text-gray-400")}>{iv("due", { date: formatDate(selected.due_date) })}</Text>
               </View>
               <View style={twStyle(`rounded-full px-3 py-1 ${statusColor(selected.status).bg}`)}>
                 <Text style={twStyle(`text-xs font-medium capitalize ${statusColor(selected.status).text}`)}>
-                  {selected.status.replace("_", " ")}
+                  {invoiceStatusLabel(selected.status, false, iv)}
                 </Text>
               </View>
             </View>
@@ -496,7 +526,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
                     <View style={twStyle("flex-1")}>
                       <Text style={twStyle("text-sm text-gray-900")} numberOfLines={2}>{li.description}</Text>
                       <Text style={twStyle("text-xs text-gray-500")}>
-                        {li.quantity} × {formatCurrency(li.unit_price)}
+                        {iv("lineQtyPrice", { quantity: li.quantity, price: formatCurrency(li.unit_price) })}
                       </Text>
                     </View>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>
@@ -509,24 +539,24 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
 
             <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-4")}>
               <View style={twStyle("flex-row justify-between")}>
-                <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{iv("subtotal")}</Text>
                 <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selected.subtotal)}</Text>
               </View>
               {selected.tax_amount > 0 && (
                 <View style={twStyle("mt-1.5 flex-row justify-between")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Tax ({selected.tax_rate}%)</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{iv("tax", { rate: selected.tax_rate })}</Text>
                   <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selected.tax_amount)}</Text>
                 </View>
               )}
               <View style={twStyle("mt-2 border-t border-gray-100 pt-2 flex-row justify-between")}>
-                <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>{iv("total")}</Text>
                 <Text style={twStyle("text-base font-bold text-gray-900")}>
                   {formatCurrency(selected.total_amount)}
                 </Text>
               </View>
               {selectedDue > 0 && selectedDue !== selected.total_amount && (
                 <View style={twStyle("mt-1.5 flex-row justify-between")}>
-                  <Text style={twStyle("text-sm text-gray-500")}>Still due</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{iv("stillDue")}</Text>
                   <Text style={twStyle("text-sm font-semibold text-amber-700")}>
                     {formatCurrency(selectedDue)}
                   </Text>
@@ -538,7 +568,7 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
             <View style={twStyle("flex-row flex-wrap")}>
               {selectedIsPayable && (
                 <TouchableOpacity
-                  style={[twStyle("min-w-[120px] items-center rounded-lg bg-indigo-600 px-4 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
+                  style={[twStyle("min-w-[120px] items-center rounded-lg bg-indigo-600 px-4 py-2.5"), { marginEnd: 8, marginBottom: 8 }]}
                   onPress={() => handlePayInvoice(selected)}
                   disabled={isPayingSelected}
                 >
@@ -546,33 +576,33 @@ export function InvoicesContent({ embedded = false }: { embedded?: boolean } = {
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text style={twStyle("text-sm font-semibold text-white")}>
-                      Pay {formatCurrency(selectedDue)}
+                      {iv("payAmount", { amount: formatCurrency(selectedDue) })}
                     </Text>
                   )}
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginRight: 8, marginBottom: 8 }]}
+                style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginEnd: 8, marginBottom: 8 }]}
                 onPress={() => handleDownloadInvoice(selected)}
                 disabled={downloadingInvoice}
               >
                 {downloadingInvoice ? (
                   <ActivityIndicator size="small" color="#374151" />
                 ) : (
-                  <Text style={twStyle("text-sm font-medium text-gray-700")}>Download</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>{iv("download")}</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={[twStyle("items-center rounded-lg bg-gray-100 px-3 py-2.5"), { marginBottom: 8 }]}
                 onPress={handleExport}
               >
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Share summary</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{iv("shareSummary")}</Text>
               </TouchableOpacity>
             </View>
 
             {selected.status === "draft" && (
               <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-                This invoice has not been issued yet, so there is nothing to pay.
+                {iv("draftNote")}
               </Text>
             )}
           </View>

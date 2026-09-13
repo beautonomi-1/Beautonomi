@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { renderWithI18n as render, screen } from "@/test-utils/render-with-i18n";
 import React from "react";
 
 vi.mock("next/navigation", () => ({
@@ -35,11 +35,25 @@ vi.mock("../components/account-hub-grid", () => ({
   default: () => <div data-testid="account-hub-grid">hub</div>,
 }));
 
+vi.mock("@/lib/i18n/server", () => ({
+  getServerT: async () => (key: string) => {
+    const labels: Record<string, string> = {
+      "web.accountSettings.account": "Account",
+      "web.accountSettings.home.subtitle": "Manage your profile and preferences",
+    };
+    return labels[key] ?? key;
+  },
+}));
+
+vi.mock("@/lib/locale/resolve-request-language", () => ({
+  resolveRequestLanguage: async () => ({ language: "en" }),
+}));
+
 import AccountSettingsPage from "../page";
 
 describe("account-settings page", () => {
-  it("renders hub shell with account title and hub grid", () => {
-    render(<AccountSettingsPage />);
+  it("renders hub shell with account title and hub grid", async () => {
+    render(await AccountSettingsPage());
     expect(screen.getByRole("heading", { name: /account/i })).toBeInTheDocument();
     expect(screen.getByTestId("account-hub-grid")).toBeInTheDocument();
   });

@@ -12,8 +12,10 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
 import { useAuth } from "@/providers/AuthProvider";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function ReviewPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const router = useRouter();
   useAuth();
@@ -42,7 +44,7 @@ export default function ReviewPage() {
       const mappedServices = (row.services ?? [])
         .map((svc) => ({
           offering_id: String(svc.offering_id ?? ""),
-          offering_name: String(svc.offering_name ?? svc.service_name ?? "Service"),
+          offering_name: String(svc.offering_name ?? svc.service_name ?? t("web.accountSettings.review.serviceFallback")),
           staff_id: svc.staff_id ? String(svc.staff_id) : null,
           staff_name: svc.staff_name ? String(svc.staff_name) : null,
         }))
@@ -50,7 +52,7 @@ export default function ReviewPage() {
       setServices(mappedServices);
     } catch (error) {
       console.error("Failed to load booking:", error);
-      toast.error("Failed to load booking");
+      toast.error(t("web.accountSettings.review.loadFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -58,7 +60,7 @@ export default function ReviewPage() {
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      toast.error("Please select a rating");
+      toast.error(t("web.accountSettings.review.selectRating"));
       return;
     }
 
@@ -66,7 +68,7 @@ export default function ReviewPage() {
       new Map(
         services
           .filter((s) => !!s.staff_id)
-          .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+          .map((s) => [s.staff_id as string, s.staff_name || t("web.accountSettings.review.staffFallback")])
       ).entries()
     ).map(([id, name]) => ({ id, name }));
     const normalizedServiceRatings = services.map((svc) => ({
@@ -90,14 +92,14 @@ export default function ReviewPage() {
         staff_rating: normalizedStaffRating,
       });
 
-      toast.success("Review submitted successfully!");
+      toast.success(t("web.accountSettings.review.submitted"));
       router.push(`/account-settings/bookings/${bookingId}`);
     } catch (error) {
       console.error("Failed to submit review:", error);
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to submit review. Please try again."
+          : t("web.accountSettings.review.submitFailed")
       );
     } finally {
       setIsSubmitting(false);
@@ -107,7 +109,7 @@ export default function ReviewPage() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading..." />
+        <LoadingTimeout loadingMessage={t("common.loading")} />
       </div>
     );
   }
@@ -116,24 +118,26 @@ export default function ReviewPage() {
     <div className="container mx-auto px-4 py-8 max-w-2xl">
         <Link href={`/account-settings/bookings/${bookingId}`}>
           <Button variant="ghost" className="mb-6">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Booking
+            <ArrowLeft className="w-4 h-4 me-2" />
+            {t("web.accountSettings.payAdditionalCharge.backToBooking")}
           </Button>
         </Link>
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Write a Review</CardTitle>
+            <CardTitle className="text-2xl">{t("web.accountSettings.review.title")}</CardTitle>
             {booking && (
               <p className="text-gray-600 mt-2">
-                Share your experience with {booking.provider?.business_name || "this provider"}
+                {t("web.accountSettings.review.shareExperience", {
+                  provider: booking.provider?.business_name || t("web.accountSettings.review.thisProvider"),
+                })}
               </p>
             )}
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <Label className="text-base font-medium mb-3 block">
-                How would you rate your experience? *
+                {t("web.accountSettings.review.rateExperience")}
               </Label>
               <div className="flex gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -158,39 +162,39 @@ export default function ReviewPage() {
               {rating > 0 && (
                 <p className="text-sm text-gray-600 mt-2">
                   {rating === 5
-                    ? "Excellent!"
+                    ? t("web.accountSettings.review.excellent")
                     : rating === 4
-                    ? "Great!"
+                    ? t("web.accountSettings.review.great")
                     : rating === 3
-                    ? "Good"
+                    ? t("web.accountSettings.review.good")
                     : rating === 2
-                    ? "Fair"
-                    : "Poor"}
+                    ? t("web.accountSettings.review.fair")
+                    : t("web.accountSettings.review.poor")}
                 </p>
               )}
             </div>
 
             <div>
               <Label htmlFor="comment" className="text-base font-medium mb-3 block">
-                Tell us about your experience
+                {t("web.accountSettings.review.commentLabel")}
               </Label>
               <Textarea
                 id="comment"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Share details about your experience..."
+                placeholder={t("web.accountSettings.review.commentPlaceholder")}
                 rows={6}
                 maxLength={1000}
               />
               <p className="text-xs text-gray-500 mt-2">
-                {comment.length}/1000 characters
+                {t("web.accountSettings.review.charactersCount", { count: comment.length })}
               </p>
             </div>
 
             {services.length > 0 && (
               <div>
                 <Label className="text-base font-medium mb-3 block">
-                  Rate each service
+                  {t("web.accountSettings.review.rateEachService")}
                 </Label>
                 <div className="space-y-3">
                   {services.map((svc) => {
@@ -221,19 +225,19 @@ export default function ReviewPage() {
               new Map(
                 services
                   .filter((s) => !!s.staff_id)
-                  .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+                  .map((s) => [s.staff_id as string, s.staff_name || t("web.accountSettings.review.staffFallback")])
               ).entries()
             ).length > 0 && (
               <div>
                 <Label className="text-base font-medium mb-3 block">
-                  Rate staff
+                  {t("web.accountSettings.review.rateStaff")}
                 </Label>
                 <div className="space-y-3">
                   {Array.from(
                     new Map(
                       services
                         .filter((s) => !!s.staff_id)
-                        .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+                        .map((s) => [s.staff_id as string, s.staff_name || t("web.accountSettings.review.staffFallback")])
                     ).entries()
                   ).map(([staffId, staffName]) => {
                     const selected = staffRatings[staffId] ?? rating;
@@ -265,7 +269,7 @@ export default function ReviewPage() {
                 onClick={() => router.back()}
                 className="flex-1"
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleSubmit}
@@ -273,11 +277,11 @@ export default function ReviewPage() {
                 className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
               >
                 {isSubmitting ? (
-                  "Submitting..."
+                  t("web.accountSettings.review.submitting")
                 ) : (
                   <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Submit Review
+                    <Send className="w-4 h-4 me-2" />
+                    {t("web.accountSettings.review.submitReview")}
                   </>
                 )}
               </Button>

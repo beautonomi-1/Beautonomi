@@ -18,6 +18,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getCurrencySymbol } from "@/lib/locale/currency";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { sanitizeRelativeRedirect } from "@/lib/auth/post-login-return-path";
+import { usePartnerProfileT } from "@/lib/i18n/use-partner-profile-t";
 
 function filterValidHttpUrls(urls: string[]): string[] {
   return urls
@@ -40,6 +41,7 @@ type Props = {
 };
 
 export default function RequestCustomServicePage({ providerId, acceptsCustomRequests = true, businessName }: Props) {
+  const { t, pp } = usePartnerProfileT();
   const { bundle } = useConfigBundle();
   const { user, isLoading: authLoading } = useAuth();
   const pathname = usePathname();
@@ -108,13 +110,13 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
     async (files: File[]) => {
       const imageFiles = files.filter((f) => f.type.startsWith("image/"));
       if (imageFiles.length === 0) {
-        toast.error("Please drop image files only (PNG, JPG, WebP, GIF).");
+        toast.error(pp("customDropImagesOnly"));
         return;
       }
       const maxBytes = 5 * 1024 * 1024;
       for (const f of imageFiles) {
         if (f.size > maxBytes) {
-          toast.error(`"${f.name}" is over 5MB. Choose a smaller image.`);
+          toast.error(pp("customImageTooLarge", { name: f.name }));
           return;
         }
       }
@@ -122,7 +124,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
       const manualCount = imageUrlsText.split(/\n|,/).map((s) => s.trim()).filter(Boolean).length;
       const totalFiles = uploadedImages.length + manualCount + imageFiles.length;
       if (totalFiles > 6) {
-        toast.error("Maximum 6 images allowed");
+        toast.error(pp("customMaxImages"));
         return;
       }
 
@@ -150,11 +152,11 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
         if (response.data?.urls && Array.isArray(response.data.urls)) {
           setUploadedImages((prev) => [...prev, ...response.data.urls].slice(0, 6));
           toast.success(
-            `${response.data.count || response.data.urls.length} image${(response.data.count || response.data.urls.length) > 1 ? "s" : ""} uploaded successfully`
+            pp("customImagesUploaded", { count: response.data.count || response.data.urls.length })
           );
         }
       } catch (error) {
-        const msg = error instanceof FetchError ? error.message : "Failed to upload images";
+        const msg = error instanceof FetchError ? error.message : pp("customUploadFailed");
         toast.error(msg);
         setImagePreviewUrls((prev) => prev.slice(0, prev.length - imageFiles.length));
       } finally {
@@ -164,7 +166,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
         }
       }
     },
-    [imageUrlsText, uploadedImages.length]
+    [imageUrlsText, uploadedImages.length, pp]
   );
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,7 +210,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
 
   const submit = async () => {
     if (locationType === "at_home" && (!addressLine1.trim() || !addressCity.trim())) {
-      toast.error("Please provide at least a street address and city for at-home services");
+      toast.error(pp("customNeedStreetCity"));
       return;
     }
 
@@ -228,7 +230,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
       
       // Validate budget_max >= budget_min if both provided
       if (budgetMin && budgetMax && Number(budgetMax) < Number(budgetMin)) {
-        toast.error("Maximum budget must be greater than or equal to minimum budget");
+        toast.error(pp("customBudgetOrder"));
         setIsSubmitting(false);
         return;
       }
@@ -260,11 +262,11 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
       }
 
       const res = await fetcher.post<{ data: any }>("/api/me/custom-requests", payload);
-      toast.success("Custom request sent");
+      toast.success(pp("customRequestSent"));
       router.push("/account-settings/custom-requests");
       return res.data;
     } catch (e) {
-      toast.error(e instanceof FetchError ? e.message : "Failed to send request");
+      toast.error(e instanceof FetchError ? e.message : pp("customSendFailed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -274,10 +276,10 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
 
   // Quick template options for common requests
   const quickTemplates = [
-    { label: "Wedding/Event", value: "I'm looking for services for my wedding/event. I need..." },
-    { label: "Special Occasion", value: "I have a special occasion coming up and would like..." },
-    { label: "Package Deal", value: "I'm interested in a custom package that includes..." },
-    { label: "Group Booking", value: "I'd like to book services for a group of people..." },
+    { label: pp("customTplWedding"), value: pp("customTplWeddingBody") },
+    { label: pp("customTplOccasion"), value: pp("customTplOccasionBody") },
+    { label: pp("customTplPackage"), value: pp("customTplPackageBody") },
+    { label: pp("customTplGroup"), value: pp("customTplGroupBody") },
   ];
 
   const applyTemplate = (template: string) => {
@@ -290,24 +292,21 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
         <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-lg">
           <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
         </div>
-        <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 tracking-tight">Request Custom Service</h1>
+        <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 tracking-tight">{pp("requestCustomService")}</h1>
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 md:p-6 mb-6">
         <div className="flex items-start gap-3">
           <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 mb-2">What is a Custom Service Request?</h3>
+            <h3 className="font-semibold text-gray-900 mb-2">{pp("howItWorks")}</h3>
             <p className="text-sm text-gray-700 leading-relaxed mb-3">
-              Can't find exactly what you're looking for in our standard services? Request a custom service tailored to your
-              specific needs! Whether it's a special occasion, unique styling, or a combination of services, we'll work with you
-              to create the perfect experience.
+              {pp("customHowItWorksBody")}
             </p>
             <ul className="text-sm text-gray-700 space-y-1.5 list-disc list-inside">
-              <li>Describe what you need and your vision</li>
-              <li>Share your budget and preferred dates</li>
-              <li>Add inspiration photos (optional)</li>
-              <li>Get a personalized quote from the provider</li>
+              <li>{pp("customStepVision")}</li>
+              <li>{pp("customStepPhotos")}</li>
+              <li>{pp("customStepOffer")}</li>
             </ul>
           </div>
         </div>
@@ -321,8 +320,8 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
       <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8 md:py-12">
         <div className="max-w-3xl mx-auto">
           <EmptyState
-            title="Custom Service Requests Not Available"
-            description={`${businessName || "This provider"} is not currently accepting custom service requests. Please browse their available services or contact them directly.`}
+            title={pp("requestCustomService")}
+            description={pp("customServiceLead", { name: businessName || pp("providerFallback") })}
             icon={AlertCircle}
           />
         </div>
@@ -357,20 +356,19 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
               <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200/80">
                 <Lock className="h-8 w-8 text-gray-600" aria-hidden />
               </div>
-              <h2 className="text-xl md:text-2xl font-semibold text-gray-900 tracking-tight">Sign in to send a custom request</h2>
+              <h2 className="text-xl md:text-2xl font-semibold text-gray-900 tracking-tight">{pp("signInTitle")}</h2>
               <p className="mt-3 max-w-md mx-auto text-sm text-gray-600 leading-relaxed">
-                Custom requests are tied to your account so the provider can reply and send you a quote. Sign in to continue;
-                we'll bring you right back to this page.
+                {pp("customServiceLead", { name: businessName || pp("providerFallback") })}
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
                 <Button
                   asChild
                   className="rounded-xl h-12 px-8 font-semibold text-base bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white shadow-lg border-0"
                 >
-                  <Link href={loginHref}>Sign in</Link>
+                  <Link href={loginHref}>{t("web.a11y.signIn")}</Link>
                 </Button>
                 <Button variant="outline" asChild className="rounded-xl h-12 px-8 font-medium border-gray-200">
-                  <Link href="/signup">Create account</Link>
+                  <Link href="/signup">{t("auth.signup")}</Link>
                 </Button>
               </div>
             </div>
@@ -393,17 +391,17 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
               <div className="flex items-center justify-between">
                 <Label htmlFor="description" className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-gray-600" />
-                  What are you looking for? <span className="text-red-500">*</span>
+                  {pp("customLookingFor")} <span className="text-red-500">*</span>
                 </Label>
                 <span className="text-xs text-gray-500">
                   {description.trim().length >= 10 ? (
                     <span className="flex items-center gap-1 text-green-600">
                       <CheckCircle2 className="w-3 h-3" />
-                      {description.trim().length} characters
+                      {pp("customCharCount", { count: description.trim().length })}
                     </span>
                   ) : (
                     <span className="text-gray-400">
-                      {description.trim().length} / 10 chars min
+                      {pp("customCharsMin", { count: description.trim().length })}
                     </span>
                   )}
                 </span>
@@ -427,12 +425,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Example: I'm planning a wedding and need a complete bridal package including hair, makeup, and nails for myself and 3 bridesmaids. The wedding is on [date] and I prefer a natural, elegant look with soft pink tones..."
+                placeholder={pp("customDescriptionPlaceholder")}
                 rows={6}
                 className="w-full resize-none border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl text-base placeholder:text-gray-400 transition-all"
               />
               <p className="text-xs text-gray-500">
-                💡 Tip: Include the occasion, number of people, preferred style/colors, and any special requirements
+                {pp("customDescriptionTip")}
               </p>
             </div>
 
@@ -443,12 +441,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-gray-600" />
-                Budget Range <span className="text-xs font-normal text-gray-500">(Optional)</span>
+                {pp("customBudgetRange")} <span className="text-xs font-normal text-gray-500">{pp("customOptional")}</span>
               </Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="budgetMin" className="text-xs text-gray-600 font-medium">
-                    Minimum ({currencyCode})
+                    {pp("customBudgetMin", { currency: currencyCode })}
                   </Label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{currencySymbol}</span>
@@ -459,13 +457,13 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                       type="number" 
                       min={0}
                       placeholder="500"
-                      className="pl-8 border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                      className="ps-8 border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="budgetMax" className="text-xs text-gray-600 font-medium">
-                    Maximum ({currencyCode})
+                    {pp("customBudgetMax", { currency: currencyCode })}
                   </Label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{currencySymbol}</span>
@@ -476,12 +474,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                       type="number" 
                       min={0}
                       placeholder="2000"
-                      className="pl-8 border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
+                      className="ps-8 border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                     />
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-gray-500">💡 Helps the provider create a quote that fits your budget</p>
+              <p className="text-xs text-gray-500">{pp("customBudgetTip")}</p>
             </div>
 
             {/* Divider */}
@@ -491,12 +489,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-600" />
-                When & How Long <span className="text-xs font-normal text-gray-500">(Optional)</span>
+                {pp("customWhenHowLong")} <span className="text-xs font-normal text-gray-500">{pp("customOptional")}</span>
               </Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="preferredStartAt" className="text-xs text-gray-600 font-medium">
-                    Preferred Date & Time
+                    {pp("customPreferredWhen")}
                   </Label>
                   <Input 
                     id="preferredStartAt"
@@ -510,7 +508,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 <div className="space-y-2">
                   <Label htmlFor="durationMinutes" className="text-xs text-gray-600 font-medium flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    Estimated Duration
+                    {pp("customEstimatedDuration")}
                   </Label>
                   <div className="relative">
                     <Input
@@ -530,13 +528,13 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                       min={15}
                       step={15}
                       placeholder="60"
-                      className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base pr-16"
+                      className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base pe-16"
                     />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">minutes</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">{pp("customMinutes")}</span>
                   </div>
                 </div>
               </div>
-              <p className="text-xs text-gray-500">💡 Flexible? Leave blank and the provider will suggest available times</p>
+              <p className="text-xs text-gray-500">{pp("customFlexibleHint")}</p>
             </div>
 
             {/* Divider */}
@@ -546,7 +544,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-gray-600" />
-                Service Location
+                {pp("customServiceLocation")}
               </Label>
               <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
                 <button
@@ -567,7 +565,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  At Salon
+                  {pp("atSalon")}
                 </button>
                 <button
                   onClick={() => setLocationType("at_home")}
@@ -578,7 +576,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  At Home
+                  {pp("atYourHome")}
                 </button>
               </div>
               
@@ -587,8 +585,8 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                   <AddressAutocomplete
                     value={addressPlaceName || addressLine1}
                     inputId="custom-request-at-home-address"
-                    label="Search address"
-                    placeholder="Start typing your street address…"
+                    label={pp("customSearchAddress")}
+                    placeholder={pp("customSearchAddressPlaceholder")}
                     country={mapboxCountryIso}
                     defaultCountryName={defaultCountryName}
                     onInputChange={(value) => {
@@ -608,55 +606,55 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                     inputClassName="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                   />
                   <p className="text-xs text-gray-500">
-                    Pick a suggestion for the best match, or finish typing and add city / postal code below.
+                    {pp("customAddressHint")}
                   </p>
                   <div className="space-y-2">
                     <Label htmlFor="addressLine2" className="text-xs text-gray-600 font-medium">
-                      Unit / suite (optional)
+                      {pp("customUnitOptional")}
                     </Label>
                     <Input
                       id="addressLine2"
                       value={addressLine2}
                       onChange={(e) => setAddressLine2(e.target.value)}
-                      placeholder="Apartment, floor, building…"
+                      placeholder={pp("customUnitPlaceholder")}
                       className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                     />
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="addressCity" className="text-xs text-gray-600 font-medium">
-                        City <span className="text-red-500">*</span>
+                        {pp("customCity")} <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="addressCity"
                         value={addressCity}
                         onChange={(e) => setAddressCity(e.target.value)}
-                        placeholder="City"
+                        placeholder={pp("customCity")}
                         className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="addressPostalCode" className="text-xs text-gray-600 font-medium">
-                        Postal code
+                        {pp("customPostal")}
                       </Label>
                       <Input
                         id="addressPostalCode"
                         value={addressPostalCode}
                         onChange={(e) => setAddressPostalCode(e.target.value)}
-                        placeholder="Postal code"
+                        placeholder={pp("customPostal")}
                         className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                       />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="addressState" className="text-xs text-gray-600 font-medium">
-                      Province / state
+                      {pp("customProvince")}
                     </Label>
                     <Input
                       id="addressState"
                       value={addressState}
                       onChange={(e) => setAddressState(e.target.value)}
-                      placeholder="Province / state"
+                      placeholder={pp("customProvince")}
                       className="border-gray-200 focus:border-gray-400 focus:ring-2 focus:ring-pink-200 rounded-xl h-12 text-base"
                     />
                   </div>
@@ -671,8 +669,8 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
             <div className="space-y-3">
               <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-gray-600" />
-                Inspiration Photos
-                <span className="text-xs font-normal text-gray-500">(Optional)</span>
+                {pp("customInspiration")}
+                <span className="text-xs font-normal text-gray-500">{pp("customOptional")}</span>
               </Label>
 
               {/* File Upload Area */}
@@ -699,17 +697,17 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                   {uploadingImages ? (
                     <div className="flex flex-col items-center gap-2">
                       <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-                      <span className="text-sm text-gray-600">Uploading images...</span>
+                      <span className="text-sm text-gray-600">{pp("customUploading")}</span>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-2">
                       <Upload className="w-6 h-6 text-gray-400" />
                       <span className="text-sm font-medium text-gray-700">
                         {imageUrls.length >= 6
-                          ? "Maximum 6 images reached"
-                          : "Click to upload or drag and drop"}
+                          ? pp("customMaxReached")
+                          : pp("customClickUpload")}
                       </span>
-                      <span className="text-xs text-gray-500">PNG, JPG, WebP, GIF up to 5MB each</span>
+                      <span className="text-xs text-gray-500">{pp("customImageTypes")}</span>
                     </div>
                   )}
                 </div>
@@ -724,7 +722,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                         <div key={index} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
                           <Image
                             src={previewUrl}
-                            alt={`Inspiration ${index + 1}`}
+                            alt={pp("customInspirationAlt", { index: index + 1 })}
                             fill
                             className="object-cover"
                             onError={(e) => {
@@ -736,7 +734,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                             type="button"
                             onClick={() => removeImage(index)}
                             className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                            aria-label="Remove image"
+                            aria-label={pp("customRemoveImage")}
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -749,7 +747,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 {/* Manual URL Input (Alternative) */}
                 <div className="space-y-2">
                   <Label htmlFor="imageUrls" className="text-xs text-gray-600 font-medium">
-                    Or paste image URLs (one per line or comma-separated)
+                    {pp("customPasteUrls")}
                   </Label>
                   <Textarea
                     id="imageUrls"
@@ -765,12 +763,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 {imageUrls.length > 0 && (
                   <div className="flex items-center gap-2 text-xs text-gray-600">
                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                    {imageUrls.length} / 6 {imageUrls.length === 1 ? "image" : "images"} added
+                    {pp("customImagesAdded", { count: imageUrls.length })}
                   </div>
                 )}
 
                 <p className="text-xs text-gray-500">
-                  Share up to 6 inspiration images to help us understand your vision
+                  {pp("customShareVision")}
                 </p>
               </div>
             </div>
@@ -785,7 +783,7 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 disabled={isSubmitting}
                 className="rounded-xl h-12 px-6 border-gray-200 hover:bg-gray-100 text-gray-700 font-medium"
               >
-                Cancel
+                {pp("customCancel")}
               </Button>
               <Button 
                 onClick={submit} 
@@ -799,12 +797,12 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Sending Request...
+                    {pp("customSending")}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4" />
-                    Send Request
+                    {pp("customSend")}
                   </span>
                 )}
               </Button>

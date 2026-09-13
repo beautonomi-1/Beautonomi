@@ -229,7 +229,7 @@ const ServiceCard = ({ service }: { service: Service }) => {
             <div>
               <h2 className="text-lg font-normal">{service.title}</h2>
               <p className="text-gray-500 text-sm font-light">{service.duration}</p>
-              <p className="text-gray-600 mt-1 pr-8 text-sm font-light">{service.description}</p>
+              <p className="text-gray-600 mt-1 pe-8 text-sm font-light">{service.description}</p>
               <p className="text-base font-light mt-2">{service.price}</p>
             </div>
             <Link href={"/partner-profile/appointment"}>
@@ -255,7 +255,7 @@ const ServiceCard = ({ service }: { service: Service }) => {
         <div className="">
           <p className="text-2xl font-semibold mb-4">{service.modalContent.fullPrice}</p>
           
-          <ul className="list-disc pl-5 mb-4">
+          <ul className="list-disc ps-5 mb-4">
             {service.modalContent.details.map((detail, index) => (
               <li className='text-black font-light' key={index}>{detail}</li>
             ))}
@@ -359,7 +359,7 @@ const ServiceCategorySelector = () => {
         <div className="flex items-center">
           <div 
             ref={scrollRef}
-            className="flex space-x-2 overflow-x-auto scrollbar-hide mr-16 lg:mr-16"
+            className="flex space-x-2 overflow-x-auto scrollbar-hide me-16 lg:me-16"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {categories.map((category, index) => (

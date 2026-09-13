@@ -27,6 +27,7 @@ import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { FEATURE_FLAG_KEYS } from "@/lib/server/feature-flag-keys";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { useTranslation } from "@beautonomi/i18n";
 
 // Types
 interface UpcomingAppointment {
@@ -140,6 +141,8 @@ export function UpcomingAppointmentsWidget({
   maxItems = 5,
   onViewAll,
 }: UpcomingAppointmentsWidgetProps) {
+  const { t } = useTranslation();
+  const widgets = "web.provider.dashboard.widgets";
   const displayAppointments = appointments.slice(0, maxItems);
 
   const parseTimeParts = (
@@ -158,7 +161,7 @@ export function UpcomingAppointmentsWidget({
     const parsed = parseTimeParts(time);
     if (!parsed) return "--:--";
     const { hour, minute } = parsed;
-    const ampm = hour >= 12 ? "PM" : "AM";
+    const ampm = hour >= 12 ? t(`${widgets}.pm`) : t(`${widgets}.am`);
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
   };
@@ -181,11 +184,11 @@ export function UpcomingAppointmentsWidget({
   return (
     <div className="bg-white rounded-xl border p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-900">Upcoming Appointments</h3>
+        <h3 className="text-lg font-bold text-gray-900">{t(`${widgets}.upcomingAppointments`)}</h3>
         <Link href="/provider/calendar">
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary-hover">
-            View Calendar
-            <ChevronRight className="w-4 h-4 ml-1" />
+            {t(`${widgets}.viewCalendar`)}
+            <ChevronRight className="w-4 h-4 ms-1" />
           </Button>
         </Link>
       </div>
@@ -193,11 +196,11 @@ export function UpcomingAppointmentsWidget({
       {displayAppointments.length === 0 ? (
         <div className="text-center py-8">
           <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">No upcoming appointments</p>
+          <p className="text-gray-500">{t(`${widgets}.noUpcoming`)}</p>
           <Link href="/provider/calendar">
             <Button variant="outline" size="sm" className="mt-3">
-              <CalendarPlus className="w-4 h-4 mr-2" />
-              Schedule One
+              <CalendarPlus className="w-4 h-4 me-2" />
+              {t(`${widgets}.scheduleOne`)}
             </Button>
           </Link>
         </div>
@@ -225,18 +228,18 @@ export function UpcomingAppointmentsWidget({
                     </p>
                     {isAppointmentToday && (
                       <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
-                        TODAY
+                        {t(`${widgets}.today`)}
                       </Badge>
                     )}
                   </div>
                   <p className="text-sm text-gray-500 truncate">{apt.service_name}</p>
                 </div>
-                <div className="text-right flex-shrink-0">
+                <div className="text-end flex-shrink-0">
                   <p className="text-sm font-medium text-gray-900">
                     {formatTime12h(apt.scheduled_time)}
                   </p>
                   <p className="text-xs text-gray-400">
-                    {apt.duration_minutes} min
+                    {t(`${widgets}.durationMin`, { count: apt.duration_minutes })}
                   </p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
@@ -253,8 +256,8 @@ export function UpcomingAppointmentsWidget({
             className="w-full text-primary hover:bg-primary/5"
             onClick={onViewAll}
           >
-            View All ({appointments.length})
-            <ArrowRight className="w-4 h-4 ml-2" />
+            {t(`${widgets}.viewAll`, { count: appointments.length })}
+            <ArrowRight className="w-4 h-4 ms-2" />
           </Button>
         </div>
       )}
@@ -276,19 +279,23 @@ export function QuickActionsWidget({
   onNewSale,
   onMessages,
 }: QuickActionsWidgetProps) {
+  const { t } = useTranslation();
+  const widgets = "web.provider.dashboard.widgets";
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const actions = useMemo(
     () =>
       [
         {
-          label: "New Appointment",
+          id: "newAppointment",
+          label: t(`${widgets}.newAppointment`),
           icon: CalendarPlus,
           color: "bg-primary hover:bg-primary-hover",
           onClick: onNewAppointment,
           href: "/provider/calendar",
         },
         {
-          label: "Add Client",
+          id: "addClient",
+          label: t(`${widgets}.addClient`),
           icon: UserPlus,
           color: "bg-blue-500 hover:bg-blue-600",
           onClick: onNewClient,
@@ -297,7 +304,8 @@ export function QuickActionsWidget({
         ...(unifiedPosEnabled
           ? [
               {
-                label: "New Sale",
+                id: "newSale",
+                label: t(`${widgets}.newSale`),
                 icon: DollarSign,
                 color: "bg-green-500 hover:bg-green-600",
                 onClick: onNewSale,
@@ -306,24 +314,25 @@ export function QuickActionsWidget({
             ]
           : []),
         {
-          label: "Messages",
+          id: "messages",
+          label: t(`${widgets}.messages`),
           icon: MessageSquare,
           color: "bg-purple-500 hover:bg-purple-600",
           onClick: onMessages,
           href: "/provider/messaging",
         },
-      ] as const,
-    [onNewAppointment, onNewClient, onNewSale, onMessages, unifiedPosEnabled],
+      ],
+    [onNewAppointment, onNewClient, onNewSale, onMessages, unifiedPosEnabled, t],
   );
 
   return (
     <div className="bg-white rounded-xl border p-4 sm:p-5">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h3>
+      <h3 className="text-lg font-bold text-gray-900 mb-4">{t(`${widgets}.quickActions`)}</h3>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {actions.map((action) => {
           const Icon = action.icon;
           return (
-            <Link key={action.label} href={action.href}>
+            <Link key={action.id} href={action.href}>
               <button
                 className={cn(
                   "w-full flex flex-col items-center gap-2 p-4 rounded-xl text-white transition-all",
@@ -366,14 +375,16 @@ export function PerformanceOverviewWidget({
   averageRating,
   totalReviews,
 }: PerformanceOverviewProps) {
+  const { t } = useTranslation();
+  const widgets = "web.provider.dashboard.widgets";
   return (
     <div className="bg-white rounded-xl border p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-gray-900">Performance</h3>
+        <h3 className="text-lg font-bold text-gray-900">{t(`${widgets}.performance`)}</h3>
         <Link href="/provider/reports">
           <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
-            View Reports
-            <ChevronRight className="w-4 h-4 ml-1" />
+            {t(`${widgets}.viewReports`)}
+            <ChevronRight className="w-4 h-4 ms-1" />
           </Button>
         </Link>
       </div>
@@ -388,7 +399,7 @@ export function PerformanceOverviewWidget({
             </span>
           </div>
           <div className="text-sm text-gray-600">
-            Based on {totalReviews} reviews
+            {t(`${widgets}.basedOnReviews`, { count: totalReviews })}
           </div>
         </div>
 
@@ -397,17 +408,17 @@ export function PerformanceOverviewWidget({
           <div className="text-center p-3 rounded-lg bg-green-50">
             <CheckCircle2 className="w-5 h-5 text-green-600 mx-auto mb-1" />
             <p className="text-lg font-bold text-green-700">{completionRate}%</p>
-            <p className="text-xs text-green-600">Completion</p>
+            <p className="text-xs text-green-600">{t(`${widgets}.completion`)}</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-amber-50">
             <AlertCircle className="w-5 h-5 text-amber-600 mx-auto mb-1" />
             <p className="text-lg font-bold text-amber-700">{noShowRate}%</p>
-            <p className="text-xs text-amber-600">No Shows</p>
+            <p className="text-xs text-amber-600">{t(`${widgets}.noShows`)}</p>
           </div>
           <div className="text-center p-3 rounded-lg bg-red-50">
             <XCircle className="w-5 h-5 text-red-600 mx-auto mb-1" />
             <p className="text-lg font-bold text-red-700">{cancellationRate}%</p>
-            <p className="text-xs text-red-600">Cancelled</p>
+            <p className="text-xs text-red-600">{t(`${widgets}.cancelled`)}</p>
           </div>
         </div>
       </div>
@@ -429,6 +440,8 @@ export function TodaySummaryWidget({
   revenueToday,
   pendingCheckouts,
 }: TodaySummaryProps) {
+  const { t } = useTranslation();
+  const widgets = "web.provider.dashboard.widgets";
   const unifiedPosEnabled = useFeatureFlag(FEATURE_FLAG_KEYS.PROVIDER_UNIFIED_POS);
   const locale = useTenantLocaleTag();
   const formatCurrency = (amount: number) => {
@@ -443,29 +456,29 @@ export function TodaySummaryWidget({
     <div className="bg-gradient-to-br from-[#1a1f3c] to-[#2d3561] rounded-xl p-4 sm:p-5 text-white">
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-bold">Today's Summary</h3>
+        <h3 className="text-lg font-bold">{t(`${widgets}.todaysSummary`)}</h3>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <p className="text-3xl font-bold">{appointmentsToday}</p>
-          <p className="text-sm text-gray-400">Total Appointments</p>
+          <p className="text-sm text-gray-400">{t(`${widgets}.totalAppointments`)}</p>
         </div>
         <div>
           <p className="text-3xl font-bold text-green-400">
             {completedToday}
           </p>
-          <p className="text-sm text-gray-400">Completed</p>
+          <p className="text-sm text-gray-400">{t(`${widgets}.completed`)}</p>
         </div>
         <div>
           <p className="text-2xl font-bold text-primary">
             {formatCurrency(revenueToday)}
           </p>
-          <p className="text-sm text-gray-400">Revenue</p>
+          <p className="text-sm text-gray-400">{t(`${widgets}.revenue`)}</p>
         </div>
         <div>
           <p className="text-2xl font-bold text-amber-400">{pendingCheckouts}</p>
-          <p className="text-sm text-gray-400">Pending Checkouts</p>
+          <p className="text-sm text-gray-400">{t(`${widgets}.pendingCheckouts`)}</p>
         </div>
       </div>
 
@@ -475,8 +488,8 @@ export function TodaySummaryWidget({
             variant="secondary"
             className="w-full mt-4 bg-white/10 hover:bg-white/20 text-white border-0"
           >
-            Complete Checkouts
-            <ArrowRight className="w-4 h-4 ml-2" />
+            {t(`${widgets}.completeCheckouts`)}
+            <ArrowRight className="w-4 h-4 ms-2" />
           </Button>
         </Link>
       ) : null}
@@ -496,9 +509,15 @@ export function WelcomeBanner({
   businessName,
   setupProgress,
 }: WelcomeBannerProps) {
+  const { t } = useTranslation();
+  const widgets = "web.provider.dashboard.widgets";
   const hour = new Date().getHours();
   const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    hour < 12
+      ? t(`${widgets}.goodMorning`)
+      : hour < 18
+        ? t(`${widgets}.goodAfternoon`)
+        : t(`${widgets}.goodEvening`);
 
   return (
     <div className="relative overflow-hidden bg-gradient-to-r from-primary via-[#FF4D6D] to-[#FF6B35] rounded-xl p-5 sm:p-6 text-white mb-6">
@@ -532,7 +551,7 @@ export function WelcomeBanner({
         {setupProgress !== undefined && setupProgress < 100 && (
           <div className="mt-4 p-3 bg-white/10 rounded-lg backdrop-blur-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Profile Setup</span>
+              <span className="text-sm font-medium">{t(`${widgets}.profileSetup`)}</span>
               <span className="text-sm font-bold">{setupProgress}%</span>
             </div>
             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
@@ -547,8 +566,8 @@ export function WelcomeBanner({
                 size="sm"
                 className="mt-2 text-white hover:bg-white/20 p-0 h-auto"
               >
-                Complete Setup
-                <ArrowRight className="w-4 h-4 ml-1" />
+                {t(`${widgets}.completeSetup`)}
+                <ArrowRight className="w-4 h-4 ms-1" />
               </Button>
             </Link>
           </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import { ChevronRight } from "lucide-react";
 import { useCookieConsent } from "@/providers/CookieConsentProvider";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,7 @@ export function CookieSettingsFooterLink({
   /** Subtle cue that this opens a panel (footer row only). */
   showChevron?: boolean;
 }) {
+  const { t } = useTranslation();
   const { openPreferences } = useCookieConsent();
   const v = variantClass[variant];
 
@@ -38,7 +41,7 @@ export function CookieSettingsFooterLink({
       onClick={(e) => openPreferences(e.currentTarget)}
       className={cn(v, className)}
     >
-      <span>Cookie settings</span>
+<span>{t("web.global.cookieSettings")}</span>
       {showChevron ? <ChevronRight className="h-3.5 w-3.5 opacity-60" aria-hidden /> : null}
     </button>
   );

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Share,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, MONEY_SURFACE_TIMEOUT_MS } from "@/hooks/useApi";
@@ -27,12 +28,12 @@ import {
 import { appendReportLocation } from "@/lib/reportLocationQuery";
 import { ReportResponsiveStatRow } from "@/components/reports/ReportResponsiveStatRow";
 
-const DATE_RANGES: { label: string; value: ReportDateRangeKey }[] = [
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "week" },
-  { label: "This Month", value: "month" },
-  { label: "Last Month", value: "last_month" },
-  { label: "3 Months", value: "3months" },
+const DATE_RANGES: { labelKey: "rangeToday" | "rangeThisWeek" | "rangeThisMonth" | "rangeLastMonth" | "range3Months"; value: ReportDateRangeKey }[] = [
+  { labelKey: "rangeToday", value: "today" },
+  { labelKey: "rangeThisWeek", value: "week" },
+  { labelKey: "rangeThisMonth", value: "month" },
+  { labelKey: "rangeLastMonth", value: "last_month" },
+  { labelKey: "range3Months", value: "3months" },
 ];
 
 interface ProductItem {
@@ -53,6 +54,12 @@ interface ProductsData {
 }
 
 export default function ProductsReport() {
+  const { t } = useTranslation();
+  const pr = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.productsReport.${key}`, opts) as string,
+    [t],
+  );
   const { selectedLocationId, provider } = useProvider();
   const [dateRange, setDateRange] = useState<ReportDateRangeKey>("month");
   const { from, to } = getReportDateRange(dateRange, { timezone: provider?.timezone });
@@ -74,33 +81,33 @@ export default function ProductsReport() {
   const handleExport = useCallback(async () => {
     if (!data) return;
     const text = [
-      `Product & Inventory Report (${from} to ${to})`,
-      `Total Product Revenue: ${formatCurrency(data.total_product_revenue)}`,
-      `Total Units Sold: ${data.total_units_sold}`,
+      pr("exportHeading", { from, to }),
+      pr("exportTotalRevenue", { amount: formatCurrency(data.total_product_revenue) }),
+      pr("exportTotalUnits", { count: data.total_units_sold }),
       data.report_basis || "",
       "",
-      "Top Products:",
-      ...data.top_products.slice(0, 10).map((p, i) => `  ${i + 1}. ${p.name}: ${p.units_sold} sold, ${formatCurrency(p.revenue)}`),
+      pr("exportTopProducts"),
+      ...data.top_products.slice(0, 10).map((p, i) => `  ${pr("exportProductLine", { index: i + 1, name: p.name, units: p.units_sold, amount: formatCurrency(p.revenue) })}`),
       "",
-      data.low_stock.length > 0 ? "Low Stock Alerts:" : "",
-      ...data.low_stock.map((p) => `  ${p.name}: ${p.stock} left (reorder at ${p.reorder_point})`),
+      data.low_stock.length > 0 ? pr("exportLowStock") : "",
+      ...data.low_stock.map((p) => `  ${pr("exportLowStockLine", { name: p.name, stock: p.stock, reorder: p.reorder_point })}`),
     ].filter(Boolean).join("\n");
-    await Share.share({ message: text, title: "Product Report" });
-  }, [data, from, to]);
+    await Share.share({ message: text, title: pr("exportTitle") });
+  }, [data, from, to, pr]);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
-      <ScreenHeader title="Products" showBack subtitle="Top sellers, stock & packages" />
+      <ScreenHeader title={pr("title")} showBack subtitle={pr("subtitle")} />
 
       <View style={twStyle("mb-3")}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingBottom: 4 }}>
           {DATE_RANGES.map((r) => (
             <TouchableOpacity
               key={r.value}
-              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
+              style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginEnd: 8 }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
             >
-              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
+              <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{pr(r.labelKey)}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -111,14 +118,14 @@ export default function ProductsReport() {
       {!loading && dataError && !data && (
         <FinanceReportError error={dataError} errorCode={dataErrorCode} onRetry={refresh} />
       )}
-      {!loading && !data && !dataError && <EmptyState icon="bag-outline" title="No product data" description="Product analytics will appear here" />}
+      {!loading && !data && !dataError && <EmptyState icon="bag-outline" title={pr("emptyTitle")} description={pr("emptyDescription")} />}
 
       {data && (
         <View>
           <View style={twStyle("mb-4")}>
             <ReportResponsiveStatRow>
-              <StatCard title="Product Revenue" value={formatCurrency(data.total_product_revenue)} icon="cash-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
-              <StatCard title="Units Sold" value={String(data.total_units_sold)} icon="cube-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
+              <StatCard title={pr("statProductRevenue")} value={formatCurrency(data.total_product_revenue)} icon="cash-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
+              <StatCard title={pr("statUnitsSold")} value={String(data.total_units_sold)} icon="cube-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
             </ReportResponsiveStatRow>
             {data.report_basis ? (
               <Text style={twStyle("mt-2 text-xs leading-4 text-gray-500")}>{data.report_basis}</Text>
@@ -127,17 +134,17 @@ export default function ProductsReport() {
 
           {data.top_products.length > 0 && (
             <View>
-              <SectionHeader title="Top Selling Products" />
+              <SectionHeader title={pr("topSelling")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.top_products.slice(0, 10).map((p, i) => (
                   <View key={i} style={twStyle("flex-row items-center justify-between py-3 border-b border-gray-50")}>
                     <View style={twStyle("flex-row items-center flex-1")}>
-                      <View style={twStyle("h-8 w-8 rounded-full bg-violet-100 items-center justify-center mr-3")}>
+                      <View style={twStyle("h-8 w-8 rounded-full bg-violet-100 items-center justify-center me-3")}>
                         <Text style={twStyle("text-sm font-bold text-violet-600")}>{i + 1}</Text>
                       </View>
                       <View style={twStyle("flex-1")}>
                         <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>{p.name}</Text>
-                        <Text style={twStyle("text-xs text-gray-400")}>{p.units_sold} sold{p.current_stock != null ? ` · ${p.current_stock} in stock` : ""}</Text>
+                        <Text style={twStyle("text-xs text-gray-400")}>{p.current_stock != null ? pr("unitsSoldInStock", { count: p.units_sold, stock: p.current_stock }) : pr("unitsSold", { count: p.units_sold })}</Text>
                       </View>
                     </View>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(p.revenue)}</Text>
@@ -149,15 +156,15 @@ export default function ProductsReport() {
 
           {data.low_stock.length > 0 && (
             <View>
-              <SectionHeader title="Low Stock Alerts" />
+              <SectionHeader title={pr("lowStockAlerts")} />
               <View style={twStyle("rounded-2xl border border-red-100 bg-red-50 px-4 py-2")}>
                 {data.low_stock.map((p, i) => (
                   <View key={i} style={twStyle("flex-row items-center justify-between py-2.5 border-b border-red-100")}>
                     <View style={twStyle("flex-row items-center")}>
                       <Ionicons name="warning-outline" size={16} color="#ef4444" />
-                      <Text style={twStyle("text-sm text-red-900 ml-2")}>{p.name}</Text>
+                      <Text style={twStyle("text-sm text-red-900 ms-2")}>{p.name}</Text>
                     </View>
-                    <Text style={twStyle("text-sm font-semibold text-red-700")}>{p.stock} left</Text>
+                    <Text style={twStyle("text-sm font-semibold text-red-700")}>{pr("stockLeft", { count: p.stock })}</Text>
                   </View>
                 ))}
               </View>
@@ -166,14 +173,14 @@ export default function ProductsReport() {
 
           {data.package_usage && data.package_usage.length > 0 && (
             <View>
-              <SectionHeader title="Package Usage" />
+              <SectionHeader title={pr("packageUsage")} />
               <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.package_usage.map((p, i) => (
                   <View key={i} style={twStyle("py-3 border-b border-gray-50")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>{p.name}</Text>
                     <View style={twStyle("flex-row mt-1")}>
-                      <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 16 }]}>Active: <Text style={twStyle("font-medium text-gray-700")}>{p.active}</Text></Text>
-                      <Text style={twStyle("text-xs text-gray-500")}>Redeemed: <Text style={twStyle("font-medium text-gray-700")}>{p.redeemed}</Text></Text>
+                      <Text style={[twStyle("text-xs text-gray-500"), { marginEnd: 16 }]}>{pr("activeLabel")} <Text style={twStyle("font-medium text-gray-700")}>{p.active}</Text></Text>
+                      <Text style={twStyle("text-xs text-gray-500")}>{pr("redeemedLabel")} <Text style={twStyle("font-medium text-gray-700")}>{p.redeemed}</Text></Text>
                     </View>
                   </View>
                 ))}
@@ -183,7 +190,7 @@ export default function ProductsReport() {
 
           <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
+            <Text style={twStyle("ms-2 text-sm font-medium text-gray-700")}>{pr("exportReport")}</Text>
           </TouchableOpacity>
         </View>
       )}

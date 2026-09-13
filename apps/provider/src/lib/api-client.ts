@@ -11,7 +11,12 @@ import {
 } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
 import { supabase } from "@/lib/supabase/client";
-import { APP_URL, getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
+import {
+  APP_URL,
+  getBackendUrl,
+  MOBILE_WEB_USER_AGENT_TOKEN,
+  webApiTenantHeaders,
+} from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 import { getHttpErrorStatus } from "@/lib/api-error";
@@ -144,7 +149,10 @@ const baseApi = createApiClient({
   baseUrl: APP_URL ?? "",
   getBaseUrl: getApiBaseUrl,
   getAccessToken,
-  headers: { "X-App": "provider" },
+  headers: {
+    "X-App": "provider",
+    "User-Agent": MOBILE_WEB_USER_AGENT_TOKEN,
+  },
   getDefaultHeaders: (ctx) => ({
     ...webApiTenantHeaders(),
     "X-Active-Market-Country": getDeviceRegionCountryIso(),

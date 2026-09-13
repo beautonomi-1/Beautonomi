@@ -17,6 +17,7 @@ import {
   type TextInputKeyPressEventData,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 import { coerceChipMultiValue, coerceChipSingleRow } from "@beautonomi/utils";
 
 export interface SuggestionItem {
@@ -85,6 +86,7 @@ function rankScore(
 }
 
 export function ChipCombobox(props: ChipComboboxProps) {
+  const { t } = useTranslation();
   const {
     staticSuggestions = [],
     fetchSuggestions,
@@ -379,7 +381,7 @@ export function ChipCombobox(props: ChipComboboxProps) {
           {loading && (
             <View style={styles.dropdownRow}>
               <ActivityIndicator size="small" color="#6366f1" />
-              <Text style={styles.dropdownLoadingText}>Loading…</Text>
+              <Text style={styles.dropdownLoadingText}>{t("customer.mobile.components.chipCombobox.loading")}</Text>
             </View>
           )}
           {error && (
@@ -473,15 +475,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#e5e7eb",
     borderRadius: 9999,
-    paddingLeft: 10,
-    paddingRight: 4,
+    paddingStart: 10,
+    paddingEnd: 4,
     paddingVertical: 4,
     maxWidth: 160,
   },
   chipText: {
     fontSize: 14,
     color: "#374151",
-    marginRight: 4,
+    marginEnd: 4,
   },
   input: {
     flex: 1,
@@ -515,7 +517,7 @@ const styles = StyleSheet.create({
   dropdownLoadingText: {
     fontSize: 14,
     color: "#6b7280",
-    marginLeft: 8,
+    marginStart: 8,
   },
   dropdownError: {
     fontSize: 14,

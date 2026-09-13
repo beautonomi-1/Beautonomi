@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useMemo } from "react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
@@ -29,6 +30,7 @@ export function BookingStatusPieChart({
 }: {
   rows: Array<{ status: string; count: number; percentage: number }>;
 }) {
+  const { t } = useTranslation();
   const data = useMemo(
     () =>
       rows
@@ -43,7 +45,7 @@ export function BookingStatusPieChart({
   );
 
   if (data.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No distribution to chart</p>;
+    return <p className="py-8 text-center text-sm text-gray-500">{t("web.provider.reports.pages.bookings/status.noDistributionToChart")}</p>;
   }
 
   return (

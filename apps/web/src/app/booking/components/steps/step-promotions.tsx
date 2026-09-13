@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface StepPromotionsProps {
   bookingState: BookingState;
@@ -24,6 +25,8 @@ export default function StepPromotions({
   updateBookingState,
   onNext: _onNext,
 }: StepPromotionsProps) {
+  const { t } = useTranslation();
+  const promo = "web.booking.steps.promotions";
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user } = useAuth();
@@ -195,15 +198,15 @@ export default function StepPromotions({
             couponDiscount: response.data.discount,
           },
         });
-        toast.success(response.data.message || "Coupon applied!");
+        toast.success(response.data.message || t(`${promo}.couponApplied`));
       } else {
-        toast.error(response.data.message || "Invalid coupon code");
+        toast.error(response.data.message || t(`${promo}.invalidCoupon`));
       }
     } catch (error) {
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to validate coupon"
+          : t(`${promo}.validateCouponFailed`)
       );
     } finally {
       setIsValidating(false);
@@ -234,15 +237,15 @@ export default function StepPromotions({
             giftCardAmount: response.data.amount,
           },
         });
-        toast.success(response.data.message || "Gift card applied!");
+        toast.success(response.data.message || t(`${promo}.giftCardAppliedToast`));
       } else {
-        toast.error(response.data.message || "Invalid gift card code");
+        toast.error(response.data.message || t(`${promo}.invalidGiftCard`));
       }
     } catch (error) {
       toast.error(
         error instanceof FetchError
           ? error.message
-          : "Failed to validate gift card"
+          : t(`${promo}.validateGiftCardFailed`)
       );
     } finally {
       setIsValidating(false);
@@ -271,7 +274,7 @@ export default function StepPromotions({
       });
       const payload = res.data;
       if (!payload?.calculation) {
-        toast.error("Could not calculate loyalty redemption");
+        toast.error(t(`${promo}.loyaltyCalcFailed`));
         return;
       }
       const { points_to_redeem, discount_amount } = payload.calculation;
@@ -279,7 +282,7 @@ export default function StepPromotions({
       if (points_to_redeem < minPts) {
         toast.error(
           payload.errors?.filter(Boolean).join(" ") ||
-            `You need at least ${minPts} redeemable points on this booking (after % cap).`,
+            t(`${promo}.minRedeemablePoints`, { count: minPts }),
         );
         return;
       }
@@ -294,11 +297,11 @@ export default function StepPromotions({
       if (!payload.valid && payload.errors?.length) {
         toast.info(payload.errors.join(" "));
       } else {
-        toast.success("Loyalty points applied");
+        toast.success(t(`${promo}.loyaltyApplied`));
       }
     } catch (error) {
       toast.error(
-        error instanceof FetchError ? error.message : "Failed to apply loyalty points",
+        error instanceof FetchError ? error.message : t(`${promo}.loyaltyApplyFailed`),
       );
     } finally {
       setIsValidating(false);
@@ -373,7 +376,7 @@ export default function StepPromotions({
             couponDiscount: undefined,
           },
         });
-        toast.message("Cart changed — coupon removed. Re-enter a code if it still applies.");
+        toast.message(t(`${promo}.cartChangedCouponRemoved`));
       }
     }
     // Intentionally cartFingerprint only: clear coupon when cart composition/amounts change.
@@ -384,10 +387,10 @@ export default function StepPromotions({
     <div className="px-4 py-6 space-y-6">
       <div>
         <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-          Promotions & Rewards
+          {t(`${promo}.title`)}
         </h2>
         <p className="text-gray-600">
-          Apply coupons, gift cards, or use loyalty points
+          {t(`${promo}.subtitle`)}
         </p>
       </div>
 
@@ -395,7 +398,7 @@ export default function StepPromotions({
       <div className="space-y-3">
         <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
           <Ticket className="w-4 h-4" />
-          Coupon Code
+          {t(`${promo}.couponCode`)}
         </Label>
         {bookingState.promotions.couponCode ? (
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
@@ -404,13 +407,13 @@ export default function StepPromotions({
                 {bookingState.promotions.couponCode}
               </p>
               <p className="text-sm text-green-700">
-                Discount: {formatCurrency(bookingState.promotions.couponDiscount || 0, tenantCurrency)}
+                {t(`${promo}.discount`, { amount: formatCurrency(bookingState.promotions.couponDiscount || 0, tenantCurrency) })}
               </p>
             </div>
             <button
               onClick={() => removePromotion("coupon")}
               className="p-2 rounded-full hover:bg-green-100 transition-colors touch-target"
-              aria-label="Remove coupon"
+              aria-label={t(`${promo}.removeCoupon`)}
             >
               <X className="w-4 h-4 text-green-700" />
             </button>
@@ -420,7 +423,7 @@ export default function StepPromotions({
             <Input
               value={couponCode}
               onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-              placeholder="Enter coupon code"
+              placeholder={t(`${promo}.enterCouponCode`)}
               className="flex-1 touch-target"
               disabled={isValidating}
             />
@@ -429,7 +432,7 @@ export default function StepPromotions({
               disabled={!couponCode.trim() || isValidating}
               className="bg-primary hover:bg-primary-hover touch-target"
             >
-              {isValidating ? "..." : "Apply"}
+              {isValidating ? t(`${promo}.validating`) : t(`${promo}.apply`)}
             </Button>
           </div>
         )}
@@ -439,11 +442,11 @@ export default function StepPromotions({
       <div className="space-y-3">
         <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
           <Gift className="w-4 h-4" />
-          Gift Card
+          {t(`${promo}.giftCard`)}
         </Label>
         {user && savedGiftCards.length > 0 && !bookingState.promotions.giftCardCode && (
           <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
-            <p className="text-xs font-semibold text-gray-800">Your Beautonomi gift credit</p>
+            <p className="text-xs font-semibold text-gray-800">{t(`${promo}.yourGiftCredit`)}</p>
             <div className="flex flex-col gap-2">
               {savedGiftCards.map((gc) => (
                 <button
@@ -451,12 +454,12 @@ export default function StepPromotions({
                   type="button"
                   onClick={() => void handleGiftCardApply(gc.code)}
                   disabled={isValidating}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-left hover:bg-gray-50 disabled:opacity-50 touch-target"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-3 py-2.5 text-start hover:bg-gray-50 disabled:opacity-50 touch-target"
                 >
                   <span className="font-mono text-sm text-gray-900 break-all">{gc.code}</span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm text-gray-600">{formatCurrency(gc.balance, gc.currency)}</span>
-                    <span className="text-sm font-semibold text-primary">Apply</span>
+                    <span className="text-sm font-semibold text-primary">{t(`${promo}.apply`)}</span>
                   </span>
                 </button>
               ))}
@@ -467,16 +470,16 @@ export default function StepPromotions({
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
             <div>
               <p className="font-medium text-green-900">
-                Gift Card: {bookingState.promotions.giftCardCode}
+                {t(`${promo}.giftCardApplied`, { code: bookingState.promotions.giftCardCode })}
               </p>
               <p className="text-sm text-green-700">
-                Amount: {formatCurrency(bookingState.promotions.giftCardAmount || 0, tenantCurrency)}
+                {t(`${promo}.amount`, { amount: formatCurrency(bookingState.promotions.giftCardAmount || 0, tenantCurrency) })}
               </p>
             </div>
             <button
               onClick={() => removePromotion("giftCard")}
               className="p-2 rounded-full hover:bg-green-100 transition-colors touch-target"
-              aria-label="Remove gift card"
+              aria-label={t(`${promo}.removeGiftCard`)}
             >
               <X className="w-4 h-4 text-green-700" />
             </button>
@@ -486,7 +489,7 @@ export default function StepPromotions({
             <Input
               value={giftCardCode}
               onChange={(e) => setGiftCardCode(e.target.value.toUpperCase())}
-              placeholder="e.g. GC-XXXXXXXX (from email or Payments)"
+              placeholder={t(`${promo}.giftCardPlaceholder`)}
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
@@ -498,7 +501,7 @@ export default function StepPromotions({
               disabled={!giftCardCode.trim() || isValidating || giftCardCode.trim().length < 6}
               className="bg-primary hover:bg-primary-hover touch-target"
             >
-              {isValidating ? "..." : "Apply"}
+              {isValidating ? t(`${promo}.validating`) : t(`${promo}.apply`)}
             </Button>
           </div>
         )}
@@ -508,29 +511,29 @@ export default function StepPromotions({
       {/* Summary */}
       <div className="p-4 bg-gray-50 rounded-lg space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Order subtotal</span>
+          <span className="text-gray-600">{t(`${promo}.orderSubtotal`)}</span>
           <span className="font-medium">{formatCurrency(cartTotal, tenantCurrency)}</span>
         </div>
         {bookingState.promotions.couponDiscount && (
           <div className="flex justify-between text-sm text-green-600">
-            <span>Coupon Discount</span>
+            <span>{t(`${promo}.couponDiscount`)}</span>
             <span>-{formatCurrency(bookingState.promotions.couponDiscount, tenantCurrency)}</span>
           </div>
         )}
         {bookingState.promotions.giftCardAmount && (
           <div className="flex justify-between text-sm text-blue-700">
-            <span>Gift card tender</span>
-            <span>Applies at payment</span>
+            <span>{t(`${promo}.giftCardTender`)}</span>
+            <span>{t(`${promo}.appliesAtPayment`)}</span>
           </div>
         )}
         {bookingState.promotions.membershipDiscount && (
           <div className="flex justify-between text-sm text-green-600">
-            <span>{bookingState.promotions.membershipPlanName || "Membership"}</span>
+            <span>{bookingState.promotions.membershipPlanName || t(`${promo}.membership`)}</span>
             <span>-{formatCurrency(bookingState.promotions.membershipDiscount, tenantCurrency)}</span>
           </div>
         )}
         <div className="flex justify-between text-base font-semibold pt-2 border-t border-gray-200">
-          <span className="text-gray-900">After promotions</span>
+          <span className="text-gray-900">{t(`${promo}.afterPromotions`)}</span>
           <span>{formatCurrency(subtotalAfterPromotions, tenantCurrency)}</span>
         </div>
       </div>

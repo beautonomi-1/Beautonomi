@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Partner sign up",
-  description: "Create your Beautonomi provider account.",
-  alternates: {
-    canonical: "/provider/signup",
-    languages: getHreflangAlternateUrls("/provider/signup"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/provider/signup",
+    titleKey: "web.seo.providerSignupTitle",
+    descriptionKey: "web.seo.providerSignupDescription",
+  });
+}
 
 export default function ProviderSignupLayout({ children }: { children: React.ReactNode }) {
   return children;

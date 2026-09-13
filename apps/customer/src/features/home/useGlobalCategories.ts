@@ -20,6 +20,7 @@ export interface GlobalCategory {
   description?: string | null;
   provider_count?: number;
   is_featured?: boolean;
+  name_i18n?: Record<string, string> | null;
 }
 
 const ICON_MAP: Record<string, string> = {

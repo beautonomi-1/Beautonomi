@@ -269,6 +269,7 @@ export interface Category {
   id: string;
   slug: string;
   name: string;
+  name_i18n?: Record<string, string> | null;
   subcategories?: { id: string; slug: string; name: string }[];
 }
 

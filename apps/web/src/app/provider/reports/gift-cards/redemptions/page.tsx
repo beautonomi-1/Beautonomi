@@ -1,4 +1,5 @@
 "use client";
+import { useTranslation } from "@beautonomi/i18n";
 import { parseReportLoadError } from "@/lib/reports/is-subscription-required-error";
 import { ReportSubscriptionRequired } from "@/app/provider/reports/components/ReportSubscriptionRequired";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
@@ -36,16 +37,10 @@ interface GiftCardRedemptionsData {
   }>;
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  bookingWindow: "Bookings",
-  redemptionWindow: "Redemptions",
-  listLimit: "List",
-  redemptionRate: "Rate",
-};
-
 export default function GiftCardRedemptionsReport() {
   const { selectedLocationId, appendLocation } = useReportLocationQuery();
   const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
+  const { t } = useTranslation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -109,10 +104,10 @@ export default function GiftCardRedemptionsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Gift cards · Activity" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.gift-cards/redemptions.title") },
         ]}
       >
         <ReportSkeleton />
@@ -124,15 +119,15 @@ export default function GiftCardRedemptionsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Gift cards · Activity" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.gift-cards/redemptions.title") },
         ]}
       >
         <div className="space-y-6">
-          <PageHeader title="Gift cards · Activity" />
-          <ReportSubscriptionRequired feature="Gift cards · Activity" />
+          <PageHeader title={t("web.provider.reports.pages.gift-cards/redemptions.title")} />
+          <ReportSubscriptionRequired feature={t("web.provider.reports.pages.gift-cards/redemptions.title")} />
         </div>
       </SettingsDetailLayout>
     );
@@ -142,15 +137,15 @@ export default function GiftCardRedemptionsReport() {
     return (
       <SettingsDetailLayout
         breadcrumbs={[
-          { label: "Home", href: "/" },
-          { label: "Provider", href: "/provider" },
-          { label: "Reports", href: "/provider/reports" },
-          { label: "Gift cards · Activity" },
+          { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+          { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+          { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+          { label: t("web.provider.reports.pages.gift-cards/redemptions.title") },
         ]}
       >
         <EmptyReportState
-          title="Failed to load report"
-          description={error || "Unable to load gift card redemptions"}
+          title={t("web.provider.common.failedToLoadReport")}
+          description={error || t("web.provider.reports.pages.gift-cards/redemptions.unableToLoad")}
         />
       </SettingsDetailLayout>
     );
@@ -163,21 +158,21 @@ export default function GiftCardRedemptionsReport() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
-        { label: "Reports", href: "/provider/reports" },
-        { label: "Gift cards · Activity" },
+        { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+        { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+        { label: t("web.provider.sidebar.items.reports"), href: "/provider/reports" },
+        { label: t("web.provider.reports.pages.gift-cards/redemptions.title") },
       ]}
       showCloseButton={false}
     >
       <div className="space-y-6">
         <PageHeader
-          title="Gift cards · Recent captures"
-          subtitle="Up to 20 captured redemptions with the same rules as the summary report (booking scheduled date + capture time both in range)."
+          title={t("web.provider.reports.pages.gift-cards/redemptions.pageTitle")}
+          subtitle={t("web.provider.reports.pages.gift-cards/redemptions.subtitle")}
           actions={
             <Button variant="outline" onClick={handleExport} className="gap-2 min-h-[44px] touch-manipulation">
               <Download className="w-4 h-4" />
-              Export
+              {t("web.provider.common.export")}
             </Button>
           }
         />
@@ -190,13 +185,13 @@ export default function GiftCardRedemptionsReport() {
 
         {data.reportBasis ? (
           <div className="rounded-xl border border-sky-100 bg-sky-50/90 px-4 py-3 text-sm leading-relaxed text-sky-950">
-            <p className="font-medium text-sky-950">What this report counts</p>
+            <p className="font-medium text-sky-950">{t("web.provider.reports.common.whatThisReportCounts")}</p>
             <p className="mt-1 text-sky-950/95">{data.reportBasis}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-900/85">
-              {data.timezone ? <span>Timezone · {data.timezone}</span> : null}
+              {data.timezone ? <span>{t("web.provider.reports.common.timezoneDot", { tz: data.timezone })}</span> : null}
               {data.fromYmd && data.toYmd ? (
                 <span>
-                  Window · {data.fromYmd} – {data.toYmd}
+                  {t("web.provider.reports.pages.gift-cards/redemptions.window", { from: data.fromYmd, to: data.toYmd })}
                 </span>
               ) : null}
             </div>
@@ -206,12 +201,12 @@ export default function GiftCardRedemptionsReport() {
         {basisEntries.length > 0 ? (
           <Card className="border-violet-100 bg-violet-50/40 shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base text-violet-950">Definitions</CardTitle>
+              <CardTitle className="text-base text-violet-950">{t("web.provider.reports.common.definitions")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm text-violet-950/95">
               {basisEntries.map(([k, v]) => (
                 <p key={k}>
-                  <span className="font-medium">{BASIS_LABELS[k] ?? k} · </span>
+                  <span className="font-medium">{t(`web.provider.reports.pages.gift-cards/redemptions.${k}`)} · </span>
                   {v}
                 </p>
               ))}
@@ -222,7 +217,7 @@ export default function GiftCardRedemptionsReport() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Redemption rows</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.gift-cards/redemptions.redemptionRows")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -234,7 +229,7 @@ export default function GiftCardRedemptionsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Redeemed value</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.gift-cards/redemptions.redeemedValue")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -246,7 +241,7 @@ export default function GiftCardRedemptionsReport() {
 
           <Card className="border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-gray-600">Avg per row</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600">{t("web.provider.reports.pages.gift-cards/redemptions.avgPerRow")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between gap-2">
@@ -263,19 +258,19 @@ export default function GiftCardRedemptionsReport() {
 
         <Card className="border-gray-200 shadow-sm">
           <CardHeader>
-            <CardTitle>Recent captures</CardTitle>
+            <CardTitle>{t("web.provider.reports.pages.gift-cards/redemptions.recentCaptures")}</CardTitle>
             <p className="text-sm font-normal text-gray-500 mt-1">
-              Timestamps are gift_card_redemptions.captured_at (payment capture time).
+              {t("web.provider.reports.pages.gift-cards/redemptions.timestampsHint")}
             </p>
           </CardHeader>
           <CardContent>
             {data.redemptions.length === 0 ? (
-              <EmptyReportState title="No redemptions" description="No qualifying rows in the selected period." />
+              <EmptyReportState title={t("web.provider.reports.pages.gift-cards/redemptions.emptyTitle")} description={t("web.provider.reports.pages.gift-cards/redemptions.emptyDesc")} />
             ) : (
               <div className="space-y-2">
                 {data.redemptions.map((redemption) => {
-                  const t = captureTime(redemption);
-                  const safe = t ? format(new Date(t), "MMM dd, yyyy 'at' h:mm a") : "—";
+                  const captured = captureTime(redemption);
+                  const safe = captured ? format(new Date(captured), "MMM dd, yyyy 'at' h:mm a") : t("web.provider.common.emDash");
                   return (
                     <div
                       key={redemption.id}

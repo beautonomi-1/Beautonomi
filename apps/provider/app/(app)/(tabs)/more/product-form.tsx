@@ -18,6 +18,7 @@ import { ProductGalleryUpload } from "@/features/products/ProductGalleryUpload";
 import { VariantMatrixEditor } from "@/features/products/VariantMatrixEditor";
 import { BarcodeScannerModal } from "@/features/products/BarcodeScannerModal";
 import { Ionicons } from "@expo/vector-icons";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProductVariantRow {
   id?: string;
@@ -99,13 +100,13 @@ function FormField({
   );
 }
 
-const MEASURE_OPTIONS = [
-  { value: "ml", label: "Milliliters (ml)" },
-  { value: "L", label: "Liters (L)" },
-  { value: "g", label: "Grams (g)" },
-  { value: "kg", label: "Kilograms (kg)" },
-  { value: "unit", label: "Unit" },
-];
+const MEASURE_OPTION_DEFS = [
+  { value: "ml", key: "measureMl" },
+  { value: "L", key: "measureL" },
+  { value: "g", key: "measureG" },
+  { value: "kg", key: "measureKg" },
+  { value: "unit", key: "measureUnit" },
+] as const;
 
 type VariantOptionTypeForm = { name: string; values: string[] };
 
@@ -155,6 +156,9 @@ const defaultForm = {
 };
 
 export default function ProductFormScreen() {
+  const { t } = useTranslation();
+  const pf = (key: string, opts?: Record<string, unknown>) =>
+    t(`provider.mobile.screens.productForm.${key}`, opts) as string;
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const productId = params.id;
@@ -180,10 +184,14 @@ export default function ProductFormScreen() {
   const suppliers = Array.isArray(suppliersData) ? suppliersData : [];
   const categories = Array.isArray(categoriesData) ? categoriesData : [];
   const refObj = refData && typeof refData === "object" && !Array.isArray(refData) ? refData as Record<string, { value: string; label: string }[]> : {};
-  const measureOptions = (refObj.product_unit?.length ? refObj.product_unit : MEASURE_OPTIONS).map((o) =>
-    typeof o === "string" ? { value: o, label: o } : { value: o.value, label: o.label }
-  );
-  const taxOptions = refObj.tax_rate?.length ? refObj.tax_rate : [{ value: "0", label: "No tax" }, { value: "15", label: "15% VAT" }];
+  const measureOptions = (refObj.product_unit?.length ? refObj.product_unit : MEASURE_OPTION_DEFS).map((o) => {
+    if (typeof o === "string") return { value: o, label: o };
+    if ("key" in o) return { value: o.value, label: pf(o.key) };
+    return { value: o.value, label: o.label };
+  });
+  const taxOptions = refObj.tax_rate?.length
+    ? refObj.tax_rate
+    : [{ value: "0", label: pf("noTax") }, { value: "15", label: pf("vat15") }];
 
   const [form, setForm] = useState(defaultForm);
   const [brandSheetOpen, setBrandSheetOpen] = useState(false);
@@ -199,12 +207,12 @@ export default function ProductFormScreen() {
   const handleCreateBrand = useCallback(async () => {
     const name = newBrandName.trim();
     if (!name) {
-      Alert.alert("Validation", "Brand name is required.");
+      Alert.alert(pf("validationTitle"), pf("brandNameRequired"));
       return;
     }
     const { error } = await postMutation("/api/provider/brands", { name });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(pf("errorTitle"), error);
       return;
     }
     setNewBrandName("");
@@ -217,12 +225,12 @@ export default function ProductFormScreen() {
   const handleCreateCategory = useCallback(async () => {
     const name = newCategoryName.trim();
     if (!name) {
-      Alert.alert("Validation", "Category name is required.");
+      Alert.alert(pf("validationTitle"), pf("categoryNameRequired"));
       return;
     }
     const { data: created, error } = await postMutation("/api/provider/product-categories", { name });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(pf("errorTitle"), error);
       return;
     }
     const categoryName = (created as { name?: string } | null)?.name ?? name;
@@ -236,12 +244,12 @@ export default function ProductFormScreen() {
   const handleCreateSupplier = useCallback(async () => {
     const name = newSupplierName.trim();
     if (!name) {
-      Alert.alert("Validation", "Supplier name is required.");
+      Alert.alert(pf("validationTitle"), pf("supplierNameRequired"));
       return;
     }
     const { error } = await postMutation("/api/provider/suppliers", { name });
     if (error) {
-      Alert.alert("Error", error);
+      Alert.alert(pf("errorTitle"), error);
       return;
     }
     setNewSupplierName("");
@@ -267,7 +275,7 @@ export default function ProductFormScreen() {
               name: String(t?.name ?? ""),
               values: Array.isArray(t?.values) ? [...t.values] : [],
             }))
-          : [{ name: "Size", values: [] }];
+          : [{ name: pf("defaultVariantType"), values: [] }];
       const vars = product.variants ?? [];
       const urls = product.image_urls ?? [];
       setForm({
@@ -321,18 +329,18 @@ export default function ProductFormScreen() {
 
   const handleDelete = () => {
     if (!productId) return;
-    Alert.alert("Delete product", `Delete "${form.name}"?`, [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(pf("deleteTitle"), pf("deleteConfirm", { name: form.name }), [
+      { text: t("common.cancel"), style: "cancel" },
       {
-        text: "Delete",
+        text: t("common.delete"),
         style: "destructive",
         onPress: async () => {
           const { error: err } = await deleteProduct(`/api/provider/products/${productId}`);
           if (err?.includes("booking")) {
-            Alert.alert("Cannot delete", "Archive instead?", [
-              { text: "Cancel", style: "cancel" },
+            Alert.alert(pf("cannotDelete"), pf("archiveInstead"), [
+              { text: t("common.cancel"), style: "cancel" },
               {
-                text: "Archive",
+                text: pf("archive"),
                 onPress: async () => {
                   await deleteProduct(`/api/provider/products/${productId}?archive=true`);
                   emitProviderProductsCatalogChanged();
@@ -342,7 +350,7 @@ export default function ProductFormScreen() {
             ]);
             return;
           }
-          if (err) Alert.alert("Error", err);
+          if (err) Alert.alert(pf("errorTitle"), err);
           else {
             emitProviderProductsCatalogChanged();
             router.back();
@@ -363,12 +371,12 @@ export default function ProductFormScreen() {
       retail_price: form.retail_price,
     });
     if (validationError) {
-      Alert.alert("Validation", validationError);
+      Alert.alert(pf("validationTitle"), validationError);
       return;
     }
 
     if (form.hasVariants && form.variantRows.length === 0) {
-      Alert.alert("Validation", "Generate at least one variant row before saving, or turn off Has variants.");
+      Alert.alert(pf("validationTitle"), pf("needVariantRow"));
       return;
     }
 
@@ -386,8 +394,8 @@ export default function ProductFormScreen() {
         .filter((t) => t.name.length > 0 && t.values.length > 0);
       if (validTypes.length === 0) {
         Alert.alert(
-          "Validation",
-          "Add at least one option with a name and values. Use Generate variant matrix after editing options.",
+          pf("validationTitle"),
+          pf("needOptionValues"),
         );
         return;
       }
@@ -400,7 +408,7 @@ export default function ProductFormScreen() {
     if (isEdit && productId) {
       const { error } = await updateProduct(`/api/provider/products/${productId}`, payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(pf("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -409,7 +417,7 @@ export default function ProductFormScreen() {
     } else {
       const { error } = await createProduct("/api/provider/products", payload);
       if (error) {
-        Alert.alert("Error", error);
+        Alert.alert(pf("errorTitle"), error);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -421,8 +429,8 @@ export default function ProductFormScreen() {
   if (productId && loadingProduct && !product) {
     return (
       <ScreenContainer>
-        <ScreenHeader title={isEdit ? "Edit Product" : "Add Product"} />
-        <LoadingState message="Loading product..." />
+        <ScreenHeader title={isEdit ? pf("editTitle") : pf("addTitle")} />
+        <LoadingState message={pf("loadingProduct")} />
       </ScreenContainer>
     );
   }
@@ -430,16 +438,16 @@ export default function ProductFormScreen() {
   if (productId && productError && !product) {
     return (
       <ScreenContainer>
-        <ScreenHeader title="Edit Product" onBack={() => router.back()} />
+        <ScreenHeader title={pf("editTitle")} onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center p-6")}>
-          <Text style={twStyle("text-center text-gray-600")}>Product not found.</Text>
+          <Text style={twStyle("text-center text-gray-600")}>{pf("productNotFound")}</Text>
           <TouchableOpacity
             onPress={() => router.back()}
             style={twStyle("mt-4")}
-            accessibilityLabel="Go back"
+            accessibilityLabel={pf("goBack")}
             accessibilityRole="button"
           >
-            <Text style={twStyle("text-indigo-600")}>Go back</Text>
+            <Text style={twStyle("text-indigo-600")}>{pf("goBack")}</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -449,11 +457,11 @@ export default function ProductFormScreen() {
   return (
     <ScreenContainer keyboardAvoiding={false}>
       <ScreenHeader
-        title={isEdit ? "Edit Product" : "Add Product"}
+        title={isEdit ? pf("editTitle") : pf("addTitle")}
         subtitle={
           isEdit
             ? product?.name
-            : "Images, description, variants, tax, retail settings, and stock"
+            : pf("addSubtitle")
         }
         onBack={() => router.back()}
       />
@@ -472,143 +480,143 @@ export default function ProductFormScreen() {
         >
           <View style={twStyle("px-1 pt-2")}>
             <FormField
-              label="Product name *"
+              label={pf("productName")}
               value={form.name}
               onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
-              placeholder="e.g. Shampoo 500ml"
+              placeholder={pf("productNamePlaceholder")}
             />
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>SKU</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("sku")}</Text>
                 <TouchableOpacity
                   onPress={generateSku}
                   style={twStyle("py-1")}
-                  accessibilityLabel="Generate SKU"
+                  accessibilityLabel={pf("generateSkuA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Generate</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("generateSku")}</Text>
                 </TouchableOpacity>
               </View>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                placeholder="Leave empty to auto-generate"
+                placeholder={pf("skuPlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={form.sku}
                 onChangeText={(t) => setForm((p) => ({ ...p, sku: t }))}
-                accessibilityLabel="SKU"
+                accessibilityLabel={pf("sku")}
               />
             </View>
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Barcode</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("barcode")}</Text>
                 <TouchableOpacity
                   onPress={() => setBarcodeScanOpen(true)}
                   style={twStyle("flex-row items-center py-1")}
-                  accessibilityLabel="Scan barcode"
+                  accessibilityLabel={pf("scanBarcodeA11y")}
                   accessibilityRole="button"
                 >
                   <Ionicons name="barcode-outline" size={18} color="#4f46e5" />
-                  <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>Scan</Text>
+                  <Text style={twStyle("ms-1 text-sm font-medium text-indigo-600")}>{pf("scan")}</Text>
                 </TouchableOpacity>
               </View>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                placeholder="Optional — scan packaging or type manually"
+                placeholder={pf("barcodePlaceholder")}
                 placeholderTextColor="#9ca3af"
                 value={form.barcode}
                 onChangeText={(t) => setForm((p) => ({ ...p, barcode: t }))}
-                accessibilityLabel="Barcode"
+                accessibilityLabel={pf("barcode")}
               />
             </View>
 
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Category</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("category")}</Text>
                 <TouchableOpacity
                   onPress={() => setCategorySheetOpen(true)}
                   style={twStyle("py-1")}
-                  accessibilityLabel="Select or add product category"
+                  accessibilityLabel={pf("selectCategoryA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("selectOrAdd")}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setCategorySheetOpen(true)}
-                accessibilityLabel={`Product category, ${form.category || "Select product category"}`}
+                accessibilityLabel={pf("categoryA11y", { value: form.category || pf("selectProductCategory") })}
                 accessibilityRole="button"
               >
                 <Text style={twStyle(form.category ? "text-base text-gray-900" : "text-base text-gray-400")}>
-                  {form.category || "Select product category"}
+                  {form.category || pf("selectProductCategory")}
                 </Text>
               </TouchableOpacity>
             </View>
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Brand</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("brand")}</Text>
                 <TouchableOpacity
                   onPress={() => setBrandSheetOpen(true)}
                   style={twStyle("py-1")}
-                  accessibilityLabel="Select or add brand"
+                  accessibilityLabel={pf("selectBrandA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("selectOrAdd")}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setBrandSheetOpen(true)}
-                accessibilityLabel={`Brand, ${form.brand || "Select brand"}`}
+                accessibilityLabel={pf("brandA11y", { value: form.brand || pf("selectBrand") })}
                 accessibilityRole="button"
               >
                 <Text style={twStyle(form.brand ? "text-base text-gray-900" : "text-base text-gray-400")}>
-                  {form.brand || "Select brand"}
+                  {form.brand || pf("selectBrand")}
                 </Text>
               </TouchableOpacity>
             </View>
             <View style={twStyle("mb-3")}>
               <View style={twStyle("mb-1 flex-row items-center justify-between")}>
-                <Text style={twStyle("text-sm font-medium text-gray-700")}>Supplier</Text>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("supplier")}</Text>
                 <TouchableOpacity
                   onPress={() => setSupplierSheetOpen(true)}
                   style={twStyle("py-1")}
-                  accessibilityLabel="Select or add supplier"
+                  accessibilityLabel={pf("selectSupplierA11y")}
                   accessibilityRole="button"
                 >
-                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>{pf("selectOrAdd")}</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setSupplierSheetOpen(true)}
-                accessibilityLabel={`Supplier, ${form.supplier || "Select supplier"}`}
+                accessibilityLabel={pf("supplierA11y", { value: form.supplier || pf("selectSupplier") })}
                 accessibilityRole="button"
               >
                 <Text style={twStyle(form.supplier ? "text-base text-gray-900" : "text-base text-gray-400")}>
-                  {form.supplier || "Select supplier"}
+                  {form.supplier || pf("selectSupplier")}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Measure / unit</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("measure")}</Text>
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setMeasureSheetOpen(true)}
-                accessibilityLabel={`Measure, ${measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? "Select measure"}`}
+                accessibilityLabel={pf("measureA11y", { value: measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? pf("selectMeasure") })}
                 accessibilityRole="button"
               >
                 <Text style={twStyle("text-base text-gray-900")}>
-                  {measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? "Select measure"}
+                  {measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? pf("selectMeasure")}
                 </Text>
               </TouchableOpacity>
             </View>
             <FormField
-              label="Amount (per unit)"
+              label={pf("amount")}
               value={form.amount}
               onChangeText={(t) => setForm((p) => ({ ...p, amount: t }))}
-              placeholder="e.g. 500"
+              placeholder={pf("amountPlaceholder")}
               keyboardType="decimal-pad"
             />
             <ProductGalleryUpload
@@ -617,7 +625,7 @@ export default function ProductFormScreen() {
             />
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Has variants (sizes, volumesâ€¦)</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("hasVariants")}</Text>
               <Switch
                 value={form.hasVariants}
                 onValueChange={(v) =>
@@ -628,7 +636,7 @@ export default function ProductFormScreen() {
                     variantOptionTypes: v
                       ? p.variantOptionTypes.length > 0
                         ? p.variantOptionTypes
-                        : [{ name: "Size", values: [] }]
+                        : [{ name: pf("defaultVariantType"), values: [] }]
                       : [],
                   }))
                 }
@@ -649,11 +657,11 @@ export default function ProductFormScreen() {
 
             {!form.hasVariants && (
               <>
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Pricing</Text>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{pf("pricing")}</Text>
             <View style={twStyle("mb-2 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
                 <FormField
-                  label="Supply / cost price"
+                  label={pf("supplyPrice")}
                   value={form.supply_price}
                   onChangeText={(t) => {
                     const supply = parseFloat(t) || 0;
@@ -670,7 +678,7 @@ export default function ProductFormScreen() {
               </View>
               <View style={twStyle("flex-1")}>
                 <FormField
-                  label="Retail price *"
+                  label={pf("retailPrice")}
                   value={form.retail_price}
                   onChangeText={(t) => {
                     const retail = parseFloat(t) || 0;
@@ -687,7 +695,7 @@ export default function ProductFormScreen() {
               </View>
             </View>
             <FormField
-              label="Markup (%)"
+              label={pf("markup")}
               value={form.markup}
               onChangeText={(t) => {
                 const markup = parseFloat(t) || 0;
@@ -698,26 +706,26 @@ export default function ProductFormScreen() {
                   retail_price: String(computeRetailFromMarkup(supply, markup)),
                 }));
               }}
-              placeholder="Optional"
+              placeholder={t("common.optional")}
               keyboardType="decimal-pad"
             />
             <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax rate (%)</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{pf("taxRatePercent")}</Text>
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setTaxSheetOpen(true)}
               >
                 <Text style={twStyle("text-base text-gray-900")}>
-                  {taxOptions.find((o) => o.value === form.tax_rate)?.label ?? `${form.tax_rate}%`}
+                  {taxOptions.find((o) => o.value === form.tax_rate)?.label ?? pf("taxRateValue", { rate: form.tax_rate })}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Stock</Text>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>{pf("stock")}</Text>
             <View style={twStyle("mb-2 flex-row")}>
-              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <View style={[twStyle("flex-1"), { marginEnd: 12 }]}>
                 <FormField
-                  label="Quantity"
+                  label={pf("quantity")}
                   value={form.quantity}
                   onChangeText={(t) => setForm((p) => ({ ...p, quantity: t }))}
                   placeholder="0"
@@ -726,7 +734,7 @@ export default function ProductFormScreen() {
               </View>
               <View style={twStyle("flex-1")}>
                 <FormField
-                  label="Low stock level"
+                  label={pf("lowStockLevel")}
                   value={form.low_stock_level}
                   onChangeText={(t) => setForm((p) => ({ ...p, low_stock_level: t }))}
                   placeholder="5"
@@ -735,7 +743,7 @@ export default function ProductFormScreen() {
               </View>
               <View style={twStyle("flex-1")}>
                 <FormField
-                  label="Reorder qty"
+                  label={pf("reorderQty")}
                   value={form.reorder_quantity}
                   onChangeText={(t) => setForm((p) => ({ ...p, reorder_quantity: t }))}
                   placeholder="0"
@@ -747,7 +755,7 @@ export default function ProductFormScreen() {
             )}
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Track stock</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("trackStock")}</Text>
               <Switch
                 value={form.track_stock_quantity}
                 onValueChange={(v) => setForm((p) => ({ ...p, track_stock_quantity: v }))}
@@ -756,7 +764,7 @@ export default function ProductFormScreen() {
               />
             </View>
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Retail sales enabled</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("retailSalesEnabled")}</Text>
               <Switch
                 value={form.retail_sales_enabled}
                 onValueChange={(v) => setForm((p) => ({ ...p, retail_sales_enabled: v }))}
@@ -765,7 +773,7 @@ export default function ProductFormScreen() {
               />
             </View>
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("teamCommission")}</Text>
               <Switch
                 value={form.team_member_commission_enabled}
                 onValueChange={(v) => setForm((p) => ({ ...p, team_member_commission_enabled: v }))}
@@ -774,7 +782,7 @@ export default function ProductFormScreen() {
               />
             </View>
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Low stock alerts</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("lowStockAlerts")}</Text>
               <Switch
                 value={form.receive_low_stock_notifications}
                 onValueChange={(v) => setForm((p) => ({ ...p, receive_low_stock_notifications: v }))}
@@ -783,7 +791,7 @@ export default function ProductFormScreen() {
               />
             </View>
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-              <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>{pf("active")}</Text>
               <Switch
                 value={form.is_active}
                 onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -793,17 +801,17 @@ export default function ProductFormScreen() {
             </View>
 
             <FormField
-              label="Short description"
+              label={pf("shortDescription")}
               value={form.short_description}
               onChangeText={(t) => setForm((p) => ({ ...p, short_description: t }))}
-              placeholder="Brief description"
+              placeholder={pf("shortDescriptionPlaceholder")}
               multiline
             />
             <FormField
-              label="Description"
+              label={pf("description")}
               value={form.description}
               onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
-              placeholder="Full description"
+              placeholder={pf("descriptionPlaceholder")}
               multiline
             />
           </View>
@@ -816,11 +824,11 @@ export default function ProductFormScreen() {
               disabled={deleting}
               style={twStyle("mb-3 items-center rounded-xl border border-red-200 py-3")}
             >
-              <Text style={twStyle("font-medium text-red-600")}>{deleting ? "Deleting…" : "Delete product"}</Text>
+              <Text style={twStyle("font-medium text-red-600")}>{deleting ? pf("deleting") : pf("deleteProduct")}</Text>
             </TouchableOpacity>
           )}
           <ActionButton
-            label={isSaving ? "Savingâ€¦" : isEdit ? "Save changes" : "Create product"}
+            label={isSaving ? pf("saving") : isEdit ? pf("saveChanges") : pf("createProduct")}
             onPress={handleSave}
             loading={isSaving}
             fullWidth
@@ -832,8 +840,8 @@ export default function ProductFormScreen() {
       <BottomSheet
         visible={brandSheetOpen}
         onClose={() => setBrandSheetOpen(false)}
-        title="Brand"
-        subtitle="Select or create a brand"
+        title={pf("brand")}
+        subtitle={pf("brandSheetSubtitle")}
       >
         <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
@@ -842,10 +850,10 @@ export default function ProductFormScreen() {
               setForm((p) => ({ ...p, brand: "" }));
               setBrandSheetOpen(false);
             }}
-            accessibilityLabel="None"
+            accessibilityLabel={pf("none")}
             accessibilityRole="button"
           >
-            <Text style={twStyle("text-base text-gray-500")}>None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>{pf("none")}</Text>
           </TouchableOpacity>
           {brands.map((b) => (
             <TouchableOpacity
@@ -862,15 +870,15 @@ export default function ProductFormScreen() {
             </TouchableOpacity>
           ))}
           <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new brand</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{pf("addNewBrand")}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              placeholder="Brand name"
+              placeholder={pf("brandNamePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={newBrandName}
               onChangeText={setNewBrandName}
             />
-            <ActionButton label="Create & select" onPress={handleCreateBrand} fullWidth />
+            <ActionButton label={pf("createAndSelect")} onPress={handleCreateBrand} fullWidth />
           </View>
         </ScrollView>
       </BottomSheet>
@@ -879,8 +887,8 @@ export default function ProductFormScreen() {
       <BottomSheet
         visible={categorySheetOpen}
         onClose={() => setCategorySheetOpen(false)}
-        title="Product category"
-        subtitle="Select or create a category"
+        title={pf("categorySheetTitle")}
+        subtitle={pf("categorySheetSubtitle")}
       >
         <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
@@ -889,10 +897,10 @@ export default function ProductFormScreen() {
               setForm((p) => ({ ...p, category: "" }));
               setCategorySheetOpen(false);
             }}
-            accessibilityLabel="None"
+            accessibilityLabel={pf("none")}
             accessibilityRole="button"
           >
-            <Text style={twStyle("text-base text-gray-500")}>None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>{pf("none")}</Text>
           </TouchableOpacity>
           {categories.map((c) => (
             <TouchableOpacity
@@ -909,15 +917,15 @@ export default function ProductFormScreen() {
             </TouchableOpacity>
           ))}
           <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new category</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{pf("addNewCategory")}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              placeholder="Category name"
+              placeholder={pf("categoryNamePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={newCategoryName}
               onChangeText={setNewCategoryName}
             />
-            <ActionButton label="Create & select" onPress={handleCreateCategory} fullWidth />
+            <ActionButton label={pf("createAndSelect")} onPress={handleCreateCategory} fullWidth />
           </View>
         </ScrollView>
       </BottomSheet>
@@ -926,8 +934,8 @@ export default function ProductFormScreen() {
       <BottomSheet
         visible={supplierSheetOpen}
         onClose={() => setSupplierSheetOpen(false)}
-        title="Supplier"
-        subtitle="Select or create a supplier"
+        title={pf("supplier")}
+        subtitle={pf("supplierSheetSubtitle")}
       >
         <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
@@ -936,10 +944,10 @@ export default function ProductFormScreen() {
               setForm((p) => ({ ...p, supplier: "" }));
               setSupplierSheetOpen(false);
             }}
-            accessibilityLabel="None"
+            accessibilityLabel={pf("none")}
             accessibilityRole="button"
           >
-            <Text style={twStyle("text-base text-gray-500")}>None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>{pf("none")}</Text>
           </TouchableOpacity>
           {suppliers.map((s) => (
             <TouchableOpacity
@@ -956,15 +964,15 @@ export default function ProductFormScreen() {
             </TouchableOpacity>
           ))}
           <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new supplier</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>{pf("addNewSupplier")}</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              placeholder="Supplier name"
+              placeholder={pf("supplierNamePlaceholder")}
               placeholderTextColor="#9ca3af"
               value={newSupplierName}
               onChangeText={setNewSupplierName}
             />
-            <ActionButton label="Create & select" onPress={handleCreateSupplier} fullWidth />
+            <ActionButton label={pf("createAndSelect")} onPress={handleCreateSupplier} fullWidth />
           </View>
         </ScrollView>
       </BottomSheet>
@@ -972,8 +980,8 @@ export default function ProductFormScreen() {
       <BottomSheet
         visible={measureSheetOpen}
         onClose={() => setMeasureSheetOpen(false)}
-        title="Measure / unit"
-        subtitle="Select unit of measure"
+        title={pf("measure")}
+        subtitle={pf("measureSheetSubtitle")}
       >
         <ScrollView style={twStyle("max-h-80")}>
           {measureOptions.map((o) => (
@@ -996,8 +1004,8 @@ export default function ProductFormScreen() {
       <BottomSheet
         visible={taxSheetOpen}
         onClose={() => setTaxSheetOpen(false)}
-        title="Tax rate"
-        subtitle="Select tax rate"
+        title={pf("taxRate")}
+        subtitle={pf("taxRateSheetSubtitle")}
       >
         <ScrollView style={twStyle("max-h-80")}>
           {taxOptions.map((o) => (
@@ -1020,7 +1028,7 @@ export default function ProductFormScreen() {
       <BarcodeScannerModal
         visible={barcodeScanOpen}
         onClose={() => setBarcodeScanOpen(false)}
-        title="Scan product barcode"
+        title={pf("scanProductBarcode")}
         onScanned={(code) => {
           setForm((p) => ({ ...p, barcode: code }));
           setBarcodeScanOpen(false);

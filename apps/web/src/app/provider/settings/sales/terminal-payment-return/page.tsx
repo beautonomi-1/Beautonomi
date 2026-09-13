@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { verifyWithRetry } from "@/lib/payments/verify-with-retry";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PROVIDER_APP_SCHEME = "provider";
 
@@ -20,6 +21,9 @@ function isNativeAppContext(context: string): boolean {
 type VerifyOutcome = "success" | "pending" | "failed";
 
 function TerminalPaymentReturnInner() {
+  const { t } = useTranslation();
+  const pr = (key: string, opts?: Record<string, unknown>) =>
+    t(`web.provider.settings.pages.sales/terminal-payment-return.${key}`, opts) as string;
   const sp = useSearchParams();
   const router = useRouter();
   const success = sp.get("payment_success") === "1";
@@ -30,9 +34,9 @@ function TerminalPaymentReturnInner() {
   const confirmed = sp.get("confirmed") === "1";
   const nativeContext = isNativeAppContext(context) || sp.get("in_app") === "1";
 
-  const [message, setMessage] = useState("Confirming your terminal order payment...");
+  const [message, setMessage] = useState(pr("confirming"));
   const [ready, setReady] = useState(confirmed);
-  const [headline, setHeadline] = useState("Thanks — confirming with Paystack");
+  const [headline, setHeadline] = useState(pr("confirmingHeadline"));
   const [outcome, setOutcome] = useState<VerifyOutcome | "cancelled" | "idle">(
     cancelled ? "cancelled" : confirmed ? "success" : "idle",
   );
@@ -49,8 +53,8 @@ function TerminalPaymentReturnInner() {
           status: cancelled ? "cancelled" : "failed",
           order_id: orderId || null,
           message: cancelled
-            ? "You cancelled the payment. No charge was made."
-            : "This payment return link is invalid or incomplete.",
+            ? pr("nativeCancelled")
+            : pr("nativeInvalid"),
         }),
       );
     } catch {
@@ -92,7 +96,7 @@ function TerminalPaymentReturnInner() {
       try {
         if (!reference) {
           throw new Error(
-            "MISSING_REFERENCE: Paystack did not return a transaction reference. Pull to refresh your orders — payment may still apply via webhook.",
+            "MISSING_REFERENCE: " + pr("missingReference"),
           );
         }
 
@@ -101,20 +105,20 @@ function TerminalPaymentReturnInner() {
           { maxAttempts: 5, delayMs: 1500 },
         );
         if (verifyResult.status === "failed") {
-          throw new Error(verifyResult.errorMessage || "Payment verification was not successful.");
+          throw new Error(verifyResult.errorMessage || pr("confirmFailed"));
         }
         if (verifyResult.status !== "success") {
           finish(
-            "Your bank may still be finalizing the charge. Return to the app and pull to refresh your orders.",
+            pr("bankFinalizing"),
             "pending",
-            "Almost there",
+            pr("almostThere"),
           );
           return;
         }
         finish(
-          "Your terminal order is paid. Return to the app to track shipping and activation.",
+          pr("orderPaid"),
           "success",
-          "Payment confirmed",
+          pr("paymentConfirmed"),
         );
         if (nativeContext) {
           const confirmedParams = new URLSearchParams();
@@ -149,15 +153,15 @@ function TerminalPaymentReturnInner() {
           finish(
             msg.startsWith("MISSING_REFERENCE:")
               ? msg.replace(/^MISSING_REFERENCE:\s*/, "")
-              : "We could not confirm this payment. Open Terminal shop and pull to refresh, or contact support with your Paystack reference.",
+              : pr("confirmFailed"),
             "failed",
-            "We need one more step",
+            pr("needOneMoreStep"),
           );
         } else {
           finish(
-            "Your bank may still be finalizing the charge. Return to the app and pull to refresh your orders.",
+            pr("bankFinalizing"),
             "pending",
-            "Almost there",
+            pr("almostThere"),
           );
         }
       }
@@ -181,27 +185,27 @@ function TerminalPaymentReturnInner() {
       <div className="mx-auto max-w-md px-6 py-16 text-center">
         {cancelled ? (
           <>
-            <h1 className="text-xl font-semibold text-gray-900">Payment cancelled</h1>
+            <h1 className="text-xl font-semibold text-gray-900">{pr("paymentCancelledTitle")}</h1>
             <p className="mt-3 text-sm text-gray-600">
-              You cancelled the payment. No charge was made. You can try again from Terminal shop.
+              {pr("paymentCancelledBody")}
             </p>
           </>
         ) : (
-          <p className="text-gray-700">This payment return link is invalid or incomplete.</p>
+          <p className="text-gray-700">{pr("invalidLink")}</p>
         )}
         {nativeContext ? (
           <a
             href={returnToAppHref}
             className="mt-6 inline-flex items-center justify-center rounded-lg bg-pink-600 px-5 py-3 text-sm font-semibold text-white hover:bg-pink-700"
           >
-            Return to app
+            {pr("returnToApp")}
           </a>
         ) : (
           <Link
             href="/provider/settings/sales/terminal-shop"
             className="mt-6 inline-block text-pink-600 underline"
           >
-            Back to Terminal shop
+            {pr("backToTerminalShop")}
           </Link>
         )}
       </div>
@@ -218,7 +222,7 @@ function TerminalPaymentReturnInner() {
           href={returnToAppHref}
           className="mt-6 inline-flex items-center justify-center rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-700"
         >
-          Return to app
+          {pr("returnToApp")}
         </a>
       ) : null}
       {!nativeContext ? (
@@ -226,20 +230,25 @@ function TerminalPaymentReturnInner() {
           href="/provider/settings/sales/terminal-shop"
           className="mt-8 inline-flex items-center justify-center rounded-lg bg-pink-600 px-5 py-3 text-sm font-semibold text-white hover:bg-pink-700"
         >
-          Open Terminal shop
+          {pr("openTerminalShop")}
         </Link>
       ) : null}
     </div>
   );
 }
 
+function TerminalPaymentReturnLoading() {
+  const { t } = useTranslation();
+  return (
+    <div className="mx-auto max-w-md px-6 py-16 text-center text-sm text-gray-500">
+      {t("web.provider.settings.pages.sales/terminal-payment-return.loading")}
+    </div>
+  );
+}
+
 export default function TerminalPaymentReturnPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="mx-auto max-w-md px-6 py-16 text-center text-sm text-gray-500">Loading…</div>
-      }
-    >
+    <Suspense fallback={<TerminalPaymentReturnLoading />}>
       <TerminalPaymentReturnInner />
     </Suspense>
   );

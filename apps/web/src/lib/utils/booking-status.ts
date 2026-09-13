@@ -78,17 +78,43 @@ export function mapStatusToCustomer(dbStatus: BookingStatus, scheduledAt: string
     return "past";
   }
 
-  // Active appointment — always treat as upcoming for tabs/labels even if start time has passed.
-  if (dbStatus === "in_progress") {
+  // Open appointments stay upcoming until the API layer applies close-out grace
+  // (`lifecycle_hint`). Do not flip to Past at `scheduled_at`.
+  if (
+    dbStatus === "pending" ||
+    dbStatus === "pending_payment" ||
+    dbStatus === "confirmed" ||
+    dbStatus === "waiting" ||
+    dbStatus === "checked_in" ||
+    dbStatus === "in_progress"
+  ) {
     return "upcoming";
   }
 
-  // Past: completed, or not yet started but the slot time has passed
   if (dbStatus === "completed" || scheduled < now) {
     return "past";
   }
 
   return "upcoming";
+}
+
+/**
+ * Tab for My Bookings. Late-window appointments stay Upcoming; leftovers after
+ * close-out grace go to Past with the "waiting for salon to close out" label.
+ */
+export function resolveCustomerListTab(input: {
+  status: string;
+  scheduledAt: string;
+  lifecycleHint?: "upcoming" | "late_window" | "awaiting_close_out" | "past" | null;
+}): CustomerBookingStatus {
+  if (input.status === "cancelled") return "cancelled";
+  if (input.lifecycleHint === "awaiting_close_out" || input.lifecycleHint === "past") {
+    return "past";
+  }
+  if (input.lifecycleHint === "late_window" || input.lifecycleHint === "upcoming") {
+    return "upcoming";
+  }
+  return mapStatusToCustomer(input.status as BookingStatus, input.scheduledAt);
 }
 
 /**

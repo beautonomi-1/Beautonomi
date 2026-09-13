@@ -7,6 +7,7 @@ import { ExploreEmptyState } from "./ExploreEmptyState";
 import { fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 import type { ExplorePost } from "@/types/explore";
+import { useTranslation } from "@beautonomi/i18n";
 
 type SortMode = "chronological" | "trending" | "nearby" | "for_you";
 
@@ -24,6 +25,7 @@ export function ExploreFeed({
   initialHasMore,
   saved = false,
 }: ExploreFeedProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [posts, setPosts] = React.useState<ExplorePost[]>(initialPosts);
   const [cursor, setCursor] = React.useState<string | undefined>(initialCursor);
@@ -116,7 +118,7 @@ export function ExploreFeed({
         setLoadError(null);
       } catch (err) {
         setHasMore(false);
-        setLoadError(err instanceof Error ? err.message : "Failed to load posts");
+        setLoadError(err instanceof Error ? err.message : t("web.explore.feed.loadFailed"));
       } finally {
         setIsLoading(false);
       }
@@ -166,7 +168,7 @@ export function ExploreFeed({
           setHasMore(body?.has_more ?? false);
         })
         .catch((err) => {
-          setLoadError(err instanceof Error ? err.message : "Failed to load");
+          setLoadError(err instanceof Error ? err.message : t("web.explore.feed.loadFailedShort"));
           setHasMore(false);
         })
         .finally(() => {
@@ -275,7 +277,7 @@ export function ExploreFeed({
     if (loadError) {
       return (
         <div className="py-12 text-center">
-          <p className="text-gray-600 mb-2">Could not load explore feed</p>
+          <p className="text-gray-600 mb-2">{t("web.explore.feed.couldNotLoad")}</p>
           <p className="text-sm text-gray-500 mb-4">{loadError}</p>
           <button
             onClick={() => {
@@ -287,7 +289,7 @@ export function ExploreFeed({
             }}
             className="text-[#FF0077] hover:underline text-sm font-medium"
           >
-            Try again
+            {t("web.explore.feed.tryAgain")}
           </button>
         </div>
       );
@@ -321,25 +323,25 @@ export function ExploreFeed({
       {!saved && (
         <div className="mb-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">Explore</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t("web.explore.feed.title")}</h1>
             <div className="flex flex-wrap items-center gap-3">
               <Link
                 href="/explore/saved"
                 className="text-sm font-semibold text-gray-700 hover:text-[#FF0077] whitespace-nowrap"
               >
-                Saved
+                {t("web.explore.feed.saved")}
               </Link>
             </div>
           </div>
           <label className="block text-sm font-medium text-gray-600 mb-2 sr-only" htmlFor="explore-search">
-            Search inspiration
+            {t("web.explore.feed.searchAria")}
           </label>
           <input
             id="explore-search"
             type="search"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search looks, styles, treatments…"
+            placeholder={t("web.explore.feed.searchPlaceholder")}
             className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#FF0077] focus:outline-none focus:ring-2 focus:ring-pink-100 mb-4"
             autoComplete="off"
           />
@@ -356,7 +358,7 @@ export function ExploreFeed({
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            Latest
+            {t("web.explore.feed.latest")}
           </button>
           <button
             type="button"
@@ -367,7 +369,7 @@ export function ExploreFeed({
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            Trending
+            {t("web.explore.feed.trending")}
           </button>
           <button
             type="button"
@@ -379,7 +381,7 @@ export function ExploreFeed({
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             } disabled:opacity-60`}
           >
-            {locationLoading ? "Getting location…" : "Near me"}
+            {locationLoading ? t("web.explore.feed.gettingLocation") : t("web.explore.feed.nearMe")}
           </button>
           {user && (
             <button
@@ -391,7 +393,7 @@ export function ExploreFeed({
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              For You
+              {t("web.explore.feed.forYou")}
             </button>
           )}
         </div>

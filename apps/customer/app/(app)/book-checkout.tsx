@@ -56,6 +56,8 @@ import { BookingProductPickerSheet } from "@/features/checkout/BookingProductPic
 import { markReferenceProcessing } from "@/lib/paystack-verify-guard";
 import { pollBookingPaymentSettled } from "@/hooks/usePaystackPayment";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 /** Unwrap nested API envelope from GET /api/paystack/verify (booking path). */
 function bookingPaidFromPaystackVerifyBody(body: unknown): boolean {
@@ -211,13 +213,13 @@ function parseValidDate(value: unknown): Date | null {
 function formatDateOnly(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return parsed.toLocaleDateString(getTenantLocaleTag(), { weekday: "short", month: "short", day: "numeric" });
 }
 
 function formatTimeOnly(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return parsed.toLocaleTimeString(getTenantLocaleTag(), { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 function formatCurrency(amount: number, currency = getTenantDefaultCurrency()) {
@@ -273,7 +275,7 @@ function CountdownBar({
       }}
     >
       <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginRight: 8 }} />
+        <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginEnd: 8 }} />
         <Text style={{ fontSize: 13, fontWeight: "600", color: textColor, flex: 1 }}>
           {countdown.expired
             ? t("checkout.slotExpiredMessage")
@@ -364,7 +366,7 @@ function CancellationPolicy({
           name="shield-checkmark-outline"
           size={18}
           color="#6B7280"
-          style={{ marginRight: 6 }}
+          style={{ marginEnd: 6 }}
         />
         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
           {t("checkout.cancellationPolicy")}
@@ -377,7 +379,7 @@ function CancellationPolicy({
             name={line.tone === "good" ? "checkmark-circle-outline" : "alert-circle-outline"}
             size={16}
             color={line.tone === "good" ? Colors.success : Colors.warning}
-            style={{ marginTop: 1, marginRight: 8 }}
+            style={{ marginTop: 1, marginEnd: 8 }}
           />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
             {line.text}
@@ -387,7 +389,7 @@ function CancellationPolicy({
 
       <View style={{ marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB", gap: 4 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
+          <Ionicons name="lock-closed-outline" size={12} color="#9CA3AF" style={{ marginEnd: 4 }} />
           <Text style={{ fontSize: 11, color: "#9CA3AF", lineHeight: 16, flex: 1 }}>
             {content.footerText}
           </Text>
@@ -400,8 +402,20 @@ function CancellationPolicy({
   );
 }
 
+function useBookCheckoutI18n() {
+  const { t } = useTranslation();
+  return useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      const fullKey = `customer.mobile.screens.bookCheckout.${key}`;
+      return (options != null ? t(fullKey, options as never) : t(fullKey)) as string;
+    },
+    [t],
+  );
+}
+
 /* ─── Edit Chip ─── */
 function EditChip({ label, onPress }: { label: string; onPress: () => void }) {
+  const bc = useBookCheckoutI18n();
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -414,10 +428,10 @@ function EditChip({ label, onPress }: { label: string; onPress: () => void }) {
         paddingVertical: 5,
       }}
       accessibilityRole="button"
-      accessibilityLabel={`Change ${label}`}
+      accessibilityLabel={bc("changeA11y", { label })}
     >
-      <Ionicons name="pencil" size={12} color="#6B7280" style={{ marginRight: 4 }} />
-      <Text style={{ fontSize: 11, color: "#6B7280", fontWeight: "500" }}>Change</Text>
+      <Ionicons name="pencil" size={12} color="#6B7280" style={{ marginEnd: 4 }} />
+      <Text style={{ fontSize: 11, color: "#6B7280", fontWeight: "500" }}>{bc("change")}</Text>
     </TouchableOpacity>
   );
 }
@@ -456,6 +470,7 @@ function SavedCardSelector({
   onRemove?: (id: string) => void;
   removingCardId?: string | null;
 }) {
+  const bc = useBookCheckoutI18n();
   if (cards.length === 0) return null;
   return (
     <View style={{ marginBottom: 12 }}>
@@ -495,7 +510,7 @@ function SavedCardSelector({
                 backgroundColor: "#F3F4F6",
                 alignItems: "center",
                 justifyContent: "center",
-                marginRight: 12,
+                marginEnd: 12,
               }}
             >
               <Ionicons
@@ -529,7 +544,7 @@ function SavedCardSelector({
                   paddingVertical: 3,
                 }}
               >
-                <Text style={{ fontSize: 10, fontWeight: "600", color: "#059669" }}>Default</Text>
+                <Text style={{ fontSize: 10, fontWeight: "600", color: "#059669" }}>{bc("default")}</Text>
               </View>
             ) : onSetDefault ? (
               <TouchableOpacity
@@ -542,7 +557,7 @@ function SavedCardSelector({
                 style={{ paddingVertical: 4, paddingHorizontal: 6 }}
               >
                 <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.primary }}>
-                  Set default
+                  {bc("setDefault")}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -556,7 +571,7 @@ function SavedCardSelector({
                 }}
                 disabled={removingCardId === card.id}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                style={{ paddingVertical: 4, paddingHorizontal: 6, marginLeft: 6, opacity: removingCardId === card.id ? 0.5 : 1 }}
+                style={{ paddingVertical: 4, paddingHorizontal: 6, marginStart: 6, opacity: removingCardId === card.id ? 0.5 : 1 }}
                 accessibilityLabel={`Remove card ending in ${card.last4 ?? "****"}`}
                 accessibilityRole="button"
               >
@@ -579,8 +594,8 @@ function SavedCardSelector({
           borderStyle: "dashed",
         }}
       >
-        <Ionicons name="add-circle-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
-        <Text style={{ fontSize: 13, fontWeight: "500", color: "#6B7280" }}>Use a new card</Text>
+        <Ionicons name="add-circle-outline" size={18} color="#6B7280" style={{ marginEnd: 6 }} />
+        <Text style={{ fontSize: 13, fontWeight: "500", color: "#6B7280" }}>{bc("useNewCard")}</Text>
       </Pressable>
     </View>
   );
@@ -589,6 +604,7 @@ function SavedCardSelector({
 /* ─── Save Card Toggle ─── */
 function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
   const { t } = useTranslation();
+  const bc = useBookCheckoutI18n();
   const { bundle } = useConfigBundle();
   const tenantCur =
     bundle?.meta?.tenant_region?.default_currency?.trim() ?? getTenantDefaultCurrency();
@@ -621,7 +637,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
             justifyContent: "center",
             backgroundColor: enabled ? Colors.primary : "#D1D5DB",
             paddingHorizontal: 2,
-            marginRight: 10,
+            marginEnd: 10,
           }}
         >
           <View
@@ -640,8 +656,8 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
           />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>Save this card</Text>
-          <Text style={{ fontSize: 11, color: "#9CA3AF" }}>For faster checkout next time</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>{bc("saveThisCard")}</Text>
+          <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{bc("fasterCheckoutHint")}</Text>
         </View>
         <TouchableOpacity
           onPress={() => {
@@ -735,6 +751,7 @@ function CollapsibleCheckoutSection({
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
   const { t } = useTranslation();
+  const bc = useBookCheckoutI18n();
   const houseCallT = useMemo(() => toHouseCallTranslate(t), [t]);
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   // §UX-audit 2026-04: sticky footer + floating header were using
@@ -2866,7 +2883,7 @@ export default function BookCheckoutScreen() {
                 height: 38,
                 borderRadius: 19,
                 backgroundColor: "#F3F4F6",
-                marginRight: 12,
+                marginEnd: 12,
               }}
             />
             <Skeleton width="40%" height={18} />
@@ -2883,7 +2900,7 @@ export default function BookCheckoutScreen() {
               }}
             >
               <Skeleton width={48} height={48} borderRadius={24} />
-              <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flex: 1, marginStart: 12 }}>
                 <Skeleton width="60%" height={16} />
                 <Skeleton width="40%" height={12} style={{ marginTop: 6 }} />
               </View>
@@ -3030,10 +3047,10 @@ export default function BookCheckoutScreen() {
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
           >
-            <Ionicons name="arrow-back" size={20} color="#111827" />
+            <DirectionalIcon name="arrow-back" size={20} color="#111827" />
           </TouchableOpacity>
           <Text
-            style={{ flex: 1, fontSize: 18, fontWeight: "700", color: "#111827", marginLeft: 12 }}
+            style={{ flex: 1, fontSize: 18, fontWeight: "700", color: "#111827", marginStart: 12 }}
           >
             {t("checkout.title")}
           </Text>
@@ -3075,11 +3092,10 @@ export default function BookCheckoutScreen() {
                   <Ionicons name="shield-checkmark-outline" size={20} color="#D97706" />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "700", color: "#92400E" }}>
-                      Verify your identity to book
+                      {bc("verifyIdentityTitle")}
                     </Text>
                     <Text style={{ fontSize: 13, color: "#B45309", marginTop: 3, lineHeight: 18 }}>
-                      Your first booking needs a quick identity check — it takes about 2 minutes
-                      and you&apos;ll come right back here.
+                      {bc("verifyIdentityBody")}
                     </Text>
                     <TouchableOpacity
                       onPress={() => {
@@ -3091,10 +3107,10 @@ export default function BookCheckoutScreen() {
                       }}
                       style={{ marginTop: 10, alignSelf: "flex-start" }}
                       accessibilityRole="button"
-                      accessibilityLabel="Verify identity now"
+                      accessibilityLabel={bc("verifyNowA11y")}
                     >
                       <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.primary }}>
-                        Verify now →
+                        {bc("verifyNow")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -3116,7 +3132,7 @@ export default function BookCheckoutScreen() {
               {thumbnailUrl ? (
                 <Image
                   source={{ uri: thumbnailUrl }}
-                  style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }}
+                  style={{ width: 48, height: 48, borderRadius: 24, marginEnd: 12 }}
                   contentFit="cover"
                   cachePolicy="memory-disk"
                 />
@@ -3129,7 +3145,7 @@ export default function BookCheckoutScreen() {
                     backgroundColor: Colors.primaryLight,
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 12,
+                    marginEnd: 12,
                   }}
                 >
                   <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 20 }}>
@@ -3176,7 +3192,7 @@ export default function BookCheckoutScreen() {
                       backgroundColor: "#DCFCE7",
                       alignItems: "center",
                       justifyContent: "center",
-                      marginRight: 12,
+                      marginEnd: 12,
                     }}
                   >
                     <Ionicons name="gift" size={20} color="#16A34A" />
@@ -3191,7 +3207,7 @@ export default function BookCheckoutScreen() {
                         letterSpacing: 0.7,
                       }}
                     >
-                      Package
+                      {bc("packageLabel")}
                     </Text>
                     <Text
                       style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginTop: 2 }}
@@ -3236,7 +3252,7 @@ export default function BookCheckoutScreen() {
                     name="calendar-outline"
                     size={18}
                     color="#6B7280"
-                    style={{ marginRight: 6 }}
+                    style={{ marginEnd: 6 }}
                   />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                     {t("checkout.appointmentDetails")}
@@ -3250,7 +3266,7 @@ export default function BookCheckoutScreen() {
 
               {/* Date & Time */}
               <View style={{ flexDirection: "row", marginBottom: 10 }}>
-                <View style={{ flex: 1, marginRight: 16 }}>
+                <View style={{ flex: 1, marginEnd: 16 }}>
                   <Text
                     style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}
                   >
@@ -3286,7 +3302,7 @@ export default function BookCheckoutScreen() {
                   name={hold.location_type === "at_home" ? "home-outline" : "business-outline"}
                   size={14}
                   color="#6B7280"
-                  style={{ marginRight: 6 }}
+                  style={{ marginEnd: 6 }}
                 />
                 <Text style={{ fontSize: 13, color: "#6B7280" }}>
                   {hold.location_type === "at_home"
@@ -3338,7 +3354,7 @@ export default function BookCheckoutScreen() {
                         alignItems: "flex-start",
                       }}
                     >
-                      <View style={{ flex: 1, paddingRight: 12 }}>
+                      <View style={{ flex: 1, paddingEnd: 12 }}>
                         <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
                           {serviceName}
                         </Text>
@@ -3347,7 +3363,7 @@ export default function BookCheckoutScreen() {
                             name="time-outline"
                             size={12}
                             color="#9CA3AF"
-                            style={{ marginRight: 4 }}
+                            style={{ marginEnd: 4 }}
                           />
                           <Text style={{ fontSize: 12, color: "#6B7280" }}>
                             {svc.duration_minutes} min
@@ -3415,7 +3431,7 @@ export default function BookCheckoutScreen() {
                               borderWidth: 2,
                               borderColor: selected ? "#7C3AED" : "#9CA3AF",
                               backgroundColor: selected ? "#7C3AED" : "transparent",
-                              marginRight: 10,
+                              marginEnd: 10,
                               alignItems: "center",
                               justifyContent: "center",
                             }}
@@ -3439,11 +3455,11 @@ export default function BookCheckoutScreen() {
                                 paddingHorizontal: 6,
                                 paddingVertical: 2,
                                 borderRadius: 6,
-                                marginLeft: 8,
+                                marginStart: 8,
                               }}
                             >
                               <Text style={{ fontSize: 10, fontWeight: "600", color: "#92400E" }}>
-                                Recommended
+                                {bc("recommended")}
                               </Text>
                             </View>
                           )}
@@ -3487,7 +3503,7 @@ export default function BookCheckoutScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                    Group booking
+                    {bc("groupBooking")}
                   </Text>
                   <Pressable
                     onPress={() => {
@@ -3517,7 +3533,7 @@ export default function BookCheckoutScreen() {
                         }}
                       />
                     </View>
-                    <Text style={{ fontSize: 13, color: "#6B7280", marginLeft: 8 }}>
+                    <Text style={{ fontSize: 13, color: "#6B7280", marginStart: 8 }}>
                       {isGroupBooking ? "On" : "Off"}
                     </Text>
                   </Pressable>
@@ -3554,10 +3570,10 @@ export default function BookCheckoutScreen() {
                           name="add-circle-outline"
                           size={20}
                           color={Colors.primary}
-                          style={{ marginRight: 8 }}
+                          style={{ marginEnd: 8 }}
                         />
                         <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>
-                          Add participant
+                          {bc("addParticipant")}
                         </Text>
                       </TouchableOpacity>
                     )}
@@ -3594,7 +3610,7 @@ export default function BookCheckoutScreen() {
                             }}
                           >
                             <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>
-                              Participant
+                              {bc("participant")}
                             </Text>
                             <TouchableOpacity
                               onPress={() =>
@@ -3611,7 +3627,7 @@ export default function BookCheckoutScreen() {
                                 prev.map((x) => (x.id === p.id ? { ...x, name: t } : x))
                               )
                             }
-                            placeholder="Name (required)"
+                            placeholder={bc("participantNamePlaceholder")}
                             style={{
                               backgroundColor: "#FFF",
                               borderWidth: 1,
@@ -3631,7 +3647,7 @@ export default function BookCheckoutScreen() {
                                 prev.map((x) => (x.id === p.id ? { ...x, phone: t } : x))
                               )
                             }
-                            placeholder="Phone (optional)"
+                            placeholder={bc("participantPhonePlaceholder")}
                             keyboardType="phone-pad"
                             style={{
                               backgroundColor: "#FFF",
@@ -3655,7 +3671,7 @@ export default function BookCheckoutScreen() {
                                   marginBottom: 6,
                                 }}
                               >
-                                Services for this person
+                                {bc("servicesForThisPerson")}
                               </Text>
                               <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                                 {snapshotOfferings.map((off) => {
@@ -3684,7 +3700,7 @@ export default function BookCheckoutScreen() {
                                         borderWidth: 1.5,
                                         borderColor: isSelected ? Colors.primary : "#E5E7EB",
                                         backgroundColor: isSelected ? Colors.primaryLight : "#FFF",
-                                        marginRight: 8,
+                                        marginEnd: 8,
                                         marginBottom: 8,
                                       }}
                                     >
@@ -3693,7 +3709,7 @@ export default function BookCheckoutScreen() {
                                           fontSize: 13,
                                           fontWeight: "500",
                                           color: isSelected ? Colors.primary : "#374151",
-                                          marginRight: 6,
+                                          marginEnd: 6,
                                         }}
                                         numberOfLines={1}
                                       >
@@ -3707,7 +3723,7 @@ export default function BookCheckoutScreen() {
                                           name="checkmark-circle"
                                           size={18}
                                           color={Colors.primary}
-                                          style={{ marginLeft: 4 }}
+                                          style={{ marginStart: 4 }}
                                         />
                                       )}
                                     </Pressable>
@@ -3723,7 +3739,7 @@ export default function BookCheckoutScreen() {
                                 prev.map((x) => (x.id === p.id ? { ...x, notes: t } : x))
                               )
                             }
-                            placeholder="Notes (optional)"
+                            placeholder={bc("participantNotesPlaceholder")}
                             style={{
                               backgroundColor: "#FFF",
                               borderWidth: 1,
@@ -3814,7 +3830,7 @@ export default function BookCheckoutScreen() {
                     name="cart-outline"
                     size={18}
                     color={Colors.primary}
-                    style={{ marginRight: 6 }}
+                    style={{ marginEnd: 6 }}
                   />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
                     {selectedProducts.length > 0
@@ -3899,7 +3915,7 @@ export default function BookCheckoutScreen() {
                               borderWidth: 2,
                               borderColor: selected ? "#7C3AED" : "#9CA3AF",
                               backgroundColor: selected ? "#7C3AED" : "transparent",
-                              marginRight: 10,
+                              marginEnd: 10,
                               alignItems: "center",
                               justifyContent: "center",
                             }}
@@ -3972,7 +3988,7 @@ export default function BookCheckoutScreen() {
                     name="car-outline"
                     size={16}
                     color="#92400E"
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   />
                   <View>
                     <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>
@@ -4259,7 +4275,7 @@ export default function BookCheckoutScreen() {
                             marginBottom: 6,
                           }}
                         >
-                          <Text style={{ fontSize: 13, color: "#2563EB" }}>Gift card</Text>
+                          <Text style={{ fontSize: 13, color: "#2563EB" }}>{bc("giftCard")}</Text>
                           <Text style={{ fontSize: 13, color: "#2563EB", fontWeight: "600" }}>
                             -{formatCurrency(giftCardAppliedToCheckout, currency)}
                           </Text>
@@ -4322,7 +4338,7 @@ export default function BookCheckoutScreen() {
                             textAlign: "center",
                           }}
                         >
-                          Wallet and gift card reduce your total; pay the remainder securely by card.
+                          {bc("walletGiftCardReduceTotal")}
                         </Text>
                       )}
                     </>
@@ -4505,7 +4521,7 @@ export default function BookCheckoutScreen() {
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
                 >
-                  Additional details
+                  {bc("additionalDetails")}
                 </Text>
                 <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 14 }}>
                   {bookingCustomDefinitions.map((field, fi) => (
@@ -4543,7 +4559,7 @@ export default function BookCheckoutScreen() {
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}
                 >
-                  Provider forms
+                  {bc("providerForms")}
                 </Text>
                 {providerForms.map((form) => (
                   <View
@@ -4592,14 +4608,14 @@ export default function BookCheckoutScreen() {
                                   : "transparent",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                marginRight: 8,
+                                marginEnd: 8,
                               }}
                             >
                               {providerFormValues[form.id]?.[field.id] && (
                                 <Ionicons name="checkmark" size={14} color="#fff" />
                               )}
                             </View>
-                            <Text style={{ fontSize: 14, color: "#374151" }}>Yes</Text>
+                            <Text style={{ fontSize: 14, color: "#374151" }}>{bc("yes")}</Text>
                           </Pressable>
                         ) : (
                           <TextInput
@@ -4649,7 +4665,7 @@ export default function BookCheckoutScreen() {
                 <Text
                   style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 6 }}
                 >
-                  Repeat this booking
+                  {bc("repeatThisBooking")}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#4B5563", lineHeight: 17, marginBottom: 10 }}>
                   When enabled, your repeat schedule is saved as soon as the booking is created. You
@@ -4669,10 +4685,10 @@ export default function BookCheckoutScreen() {
                       fontWeight: "500",
                       color: "#374151",
                       flex: 1,
-                      marginRight: 12,
+                      marginEnd: 12,
                     }}
                   >
-                    Turn on repeating visits
+                    {bc("turnOnRepeatingVisits")}
                   </Text>
                   <Switch
                     value={subscribeRecurring}
@@ -4735,7 +4751,7 @@ export default function BookCheckoutScreen() {
                       borderWidth: 1.5,
                       padding: 14,
                       alignItems: "center",
-                      marginRight: 10,
+                      marginEnd: 10,
                       borderColor: paymentOption === "full" ? Colors.primary : "#E5E7EB",
                       backgroundColor: paymentOption === "full" ? Colors.primaryLight : "#fff",
                     }}
@@ -4844,7 +4860,7 @@ export default function BookCheckoutScreen() {
                       name="card-outline"
                       size={18}
                       color={paymentMethod === "card" ? Colors.primary : "#6B7280"}
-                      style={{ marginRight: 6 }}
+                      style={{ marginEnd: 6 }}
                     />
                     <Text
                       style={{
@@ -4860,7 +4876,7 @@ export default function BookCheckoutScreen() {
                         name="checkmark-circle"
                         size={18}
                         color={Colors.primary}
-                        style={{ marginLeft: 4 }}
+                        style={{ marginStart: 4 }}
                       />
                     )}
                   </Pressable>
@@ -4905,7 +4921,7 @@ export default function BookCheckoutScreen() {
                         name="checkmark-circle"
                         size={18}
                         color={Colors.primary}
-                        style={{ marginLeft: 4 }}
+                        style={{ marginStart: 4 }}
                       />
                     )}
                   </Pressable>
@@ -4936,7 +4952,7 @@ export default function BookCheckoutScreen() {
                       name="gift-outline"
                       size={18}
                       color={paymentMethod === "giftcard" ? Colors.primary : "#6B7280"}
-                      style={{ marginRight: 6 }}
+                      style={{ marginEnd: 6 }}
                     />
                     <Text
                       style={{
@@ -4952,7 +4968,7 @@ export default function BookCheckoutScreen() {
                         name="checkmark-circle"
                         size={18}
                         color={Colors.primary}
-                        style={{ marginLeft: 4 }}
+                        style={{ marginStart: 4 }}
                       />
                     )}
                   </Pressable>
@@ -5002,7 +5018,7 @@ export default function BookCheckoutScreen() {
                           <Text
                             style={{
                               flex: 1,
-                              marginRight: 10,
+                              marginEnd: 10,
                               fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
                               fontSize: 13,
                               color: "#111827",
@@ -5114,7 +5130,7 @@ export default function BookCheckoutScreen() {
                       backgroundColor: useWallet ? Colors.primary : "transparent",
                       alignItems: "center",
                       justifyContent: "center",
-                      marginRight: 10,
+                      marginEnd: 10,
                     }}
                   >
                     {useWallet && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -5123,7 +5139,7 @@ export default function BookCheckoutScreen() {
                     name="wallet-outline"
                     size={18}
                     color={useWallet ? Colors.primary : "#6B7280"}
-                    style={{ marginRight: 10 }}
+                    style={{ marginEnd: 10 }}
                   />
                   <Text
                     style={{
@@ -5235,11 +5251,11 @@ export default function BookCheckoutScreen() {
                         paddingVertical: 4,
                       }}
                     >
-                      <Ionicons
+                      <DirectionalIcon
                         name="arrow-back-outline"
                         size={14}
                         color={Colors.primary}
-                        style={{ marginRight: 6 }}
+                        style={{ marginEnd: 6 }}
                       />
                       <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>
                         {t("checkout.useSavedCard")}
@@ -5283,7 +5299,7 @@ export default function BookCheckoutScreen() {
                     backgroundColor: cancellationPolicyAccepted ? Colors.primary : "#fff",
                     alignItems: "center",
                     justifyContent: "center",
-                    marginRight: 10,
+                    marginEnd: 10,
                     marginTop: 2,
                   }}
                 >
@@ -5430,7 +5446,7 @@ export default function BookCheckoutScreen() {
                     name="flash-outline"
                     size={20}
                     color="#374151"
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   />
                 )}
                 <Text style={{ color: "#374151", fontWeight: "600", fontSize: 15 }}>
@@ -5501,7 +5517,7 @@ export default function BookCheckoutScreen() {
                     key="reserving"
                     entering={FadeIn.duration(200)}
                     exiting={FadeOut.duration(150)}
-                    style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginLeft: 8 }}
+                    style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginStart: 8 }}
                   >
                     {t("checkout.reservingSlot", "Reserving your slot…")}
                   </Animated.Text>
@@ -5512,7 +5528,7 @@ export default function BookCheckoutScreen() {
                     name={isExpired ? "time-outline" : usingSavedCard ? "card" : "shield-checkmark"}
                     size={20}
                     color="#fff"
-                    style={{ marginRight: 8 }}
+                    style={{ marginEnd: 8 }}
                   />
                   <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                     {isExpired

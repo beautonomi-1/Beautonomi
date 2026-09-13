@@ -138,6 +138,8 @@ export async function runAdminCopilot(raw: unknown) {
         ].join("\n"),
         user: JSON.stringify({ question: input.question, findings: findings.map((f) => f.statement) }),
         maxTokens: 500,
+        modelId: route.modelId,
+        task: "copilot",
       });
       if (llm.configured && llm.success === true) {
         answer = llm.text.trim();

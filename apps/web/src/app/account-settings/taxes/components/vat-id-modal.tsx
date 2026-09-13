@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface VatIdModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ interface VatIdModalProps {
 }
 
 export default function VatIdModal({ isOpen, onClose, onSave, initialData }: VatIdModalProps) {
+  const { t } = useTranslation();
   const [vatId, setVatId] = useState("");
   const [country, setCountry] = useState("");
   const [nameOnRegistration, setNameOnRegistration] = useState("");
@@ -87,11 +89,11 @@ export default function VatIdModal({ isOpen, onClose, onSave, initialData }: Vat
         className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="text-xl font-semibold text-gray-900">Add VAT ID Number</h2>
+          <h2 className="text-xl font-semibold text-gray-900">{t("web.accountSettings.vatIdModal.title")}</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 transition-colors"
-            aria-label="Close"
+            aria-label={t("web.accountSettings.vatIdModal.close")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -99,21 +101,21 @@ export default function VatIdModal({ isOpen, onClose, onSave, initialData }: Vat
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <p className="text-sm text-gray-600">
-            If you are registered with the European Commission, verification may take up to 48 hours.
-            We&apos;ll send you an email when it&apos;s finished. More information on VAT IDs can be found{" "}
+            {t("web.accountSettings.vatIdModal.verificationHint")}{" "}
+            {t("web.accountSettings.vatIdModal.moreInfo")}{" "}
             <Link href="/help-center" className="text-[#FF0077] hover:text-[#D60565] underline">
-              here
+              {t("web.accountSettings.vatIdModal.here")}
             </Link>
             .
           </p>
 
           <div>
             <Label htmlFor="country" className="text-sm font-medium text-gray-700 mb-2 block">
-              Country/Region *
+              {t("web.accountSettings.vatIdModal.countryLabel")}
             </Label>
             <Select value={country} onValueChange={setCountry} required>
               <SelectTrigger id="country" className="w-full">
-                <SelectValue placeholder="Select a country" />
+                <SelectValue placeholder={t("web.accountSettings.vatIdModal.countryPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {countries.map((c) => (
@@ -127,103 +129,103 @@ export default function VatIdModal({ isOpen, onClose, onSave, initialData }: Vat
 
           <div>
             <Label htmlFor="vat_id" className="text-sm font-medium text-gray-700 mb-2 block">
-              VAT ID Number *
+              {t("web.accountSettings.vatIdModal.vatIdLabel")}
             </Label>
             <Input
               id="vat_id"
               value={vatId}
               onChange={(e) => setVatId(e.target.value)}
-              placeholder="Enter your VAT ID number"
+              placeholder={t("web.accountSettings.vatIdModal.vatIdPlaceholder")}
               required
             />
           </div>
 
           <div>
             <Label htmlFor="name" className="text-sm font-medium text-gray-700 mb-2 block">
-              Name on registration
+              {t("web.accountSettings.vatIdModal.nameLabel")}
             </Label>
             <Input
               id="name"
               value={nameOnRegistration}
               onChange={(e) => setNameOnRegistration(e.target.value)}
-              placeholder="Name on registration"
+              placeholder={t("web.accountSettings.vatIdModal.namePlaceholder")}
             />
           </div>
 
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-gray-900">Address (optional)</h3>
+            <h3 className="text-base font-semibold text-gray-900">{t("web.accountSettings.vatIdModal.addressOptional")}</h3>
 
             <div>
               <Label htmlFor="address1" className="text-sm font-medium text-gray-700 mb-2 block">
-                Address Line 1
+                {t("web.accountSettings.vatIdModal.addressLine1")}
               </Label>
               <Input
                 id="address1"
                 value={address.line1}
                 onChange={(e) => setAddress({ ...address, line1: e.target.value })}
-                placeholder="Address line 1"
+                placeholder={t("web.accountSettings.vatIdModal.addressLine1Placeholder")}
               />
             </div>
 
             <div>
               <Label htmlFor="address2" className="text-sm font-medium text-gray-700 mb-2 block">
-                Address Line 2
+                {t("web.accountSettings.vatIdModal.addressLine2")}
               </Label>
               <Input
                 id="address2"
                 value={address.line2}
                 onChange={(e) => setAddress({ ...address, line2: e.target.value })}
-                placeholder="Address line 2"
+                placeholder={t("web.accountSettings.vatIdModal.addressLine2Placeholder")}
               />
             </div>
 
             <div>
               <Label htmlFor="city" className="text-sm font-medium text-gray-700 mb-2 block">
-                City
+                {t("web.accountSettings.vatIdModal.city")}
               </Label>
               <Input
                 id="city"
                 value={address.city}
                 onChange={(e) => setAddress({ ...address, city: e.target.value })}
-                placeholder="City"
+                placeholder={t("web.accountSettings.vatIdModal.cityPlaceholder")}
               />
             </div>
 
             <div>
               <Label htmlFor="province" className="text-sm font-medium text-gray-700 mb-2 block">
-                Province or region
+                {t("web.accountSettings.vatIdModal.province")}
               </Label>
               <Input
                 id="province"
                 value={address.province}
                 onChange={(e) => setAddress({ ...address, province: e.target.value })}
-                placeholder="Province or region"
+                placeholder={t("web.accountSettings.vatIdModal.provincePlaceholder")}
               />
             </div>
 
             <div>
               <Label htmlFor="zip" className="text-sm font-medium text-gray-700 mb-2 block">
-                Zip/Postal code
+                {t("web.accountSettings.vatIdModal.zip")}
               </Label>
               <Input
                 id="zip"
                 value={address.zip}
                 onChange={(e) => setAddress({ ...address, zip: e.target.value })}
-                placeholder="Zip/Postal code"
+                placeholder={t("web.accountSettings.vatIdModal.zipPlaceholder")}
               />
             </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
-              Cancel
+              {t("web.accountSettings.vatIdModal.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading || !vatId.trim() || !country}
               className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
             >
-              {isLoading ? "Saving..." : "Add"}
+              {isLoading ? t("web.accountSettings.vatIdModal.saving") : t("web.accountSettings.vatIdModal.add")}
             </Button>
           </div>
         </form>

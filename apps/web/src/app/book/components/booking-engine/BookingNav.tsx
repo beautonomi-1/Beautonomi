@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import { ChevronLeft } from "lucide-react";
 import type { BookingStep } from "../../types/booking-engine";
 import {
@@ -37,6 +38,7 @@ export function BookingNav({
   platformName = "Beautonomi",
   accentColor = BOOKING_ACCENT,
 }: BookingNavProps) {
+  const { t } = useTranslation();
   const stepsList = steps ?? [];
   const currentIndex = stepsList.length > 0 ? stepsList.indexOf(currentStep) : 0;
   const safeIndex = currentIndex === -1 ? 0 : currentIndex;
@@ -57,13 +59,13 @@ export function BookingNav({
             <button
               type="button"
               onClick={onBack}
-              className={`p-2.5 -ml-2 rounded-full touch-manipulation ${MIN_TAP} flex items-center justify-center`}
+              className={`p-2.5 -ms-2 rounded-full touch-manipulation ${MIN_TAP} flex items-center justify-center`}
               style={{
                 color: BOOKING_TEXT_PRIMARY,
                 backgroundColor: "rgba(0,0,0,0.04)",
                 border: `1px solid ${BOOKING_EDGE}`,
               }}
-              aria-label="Go back"
+              aria-label={t("web.a11y.goBack")}
             >
               <ChevronLeft size={20} strokeWidth={2} />
             </button>

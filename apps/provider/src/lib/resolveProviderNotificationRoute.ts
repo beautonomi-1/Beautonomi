@@ -18,8 +18,24 @@ function getLinkParam(link: string, key: string): string {
 }
 
 /** Keys from sendTemplateNotification(..., { appType: "provider" }). */
+export const PROVIDER_CLOSEOUT_REMINDER_TEMPLATE_KEY = "provider_closeout_reminder";
+export const PROVIDER_CLOSEOUT_BOOKINGS_ROUTE =
+  "/(app)/(tabs)/more/bookings?status=close_out";
+
+export function isProviderCloseOutNotification(templateKey: string, actionUrl = ""): boolean {
+  const key = templateKey.trim().toLowerCase();
+  const url = actionUrl.trim().toLowerCase();
+  if (key === PROVIDER_CLOSEOUT_REMINDER_TEMPLATE_KEY) return true;
+  const pathOnly = url.split("?")[0]?.split("#")[0]?.replace(/\/$/, "") ?? "";
+  const pointsAtBookingsList = pathOnly.endsWith("/provider/bookings");
+  return (
+    pointsAtBookingsList && (url.includes("status=close_out") || url.includes("filter=close_out"))
+  );
+}
+
 export const PROVIDER_BOOKING_TEMPLATE_KEYS = new Set([
   "provider_booking_request",
+  "provider_booking_request_reminder",
   "provider_booking_cancelled",
   "provider_booking_rescheduled",
   "provider_booking_time_changed",
@@ -80,12 +96,20 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
     const actionUrl = String(data.action_url ?? data.link ?? data.url ?? data.deep_link ?? "").trim();
     const actionUrlLc = actionUrl.toLowerCase();
     const typeLc = type.toLowerCase();
+    const pushAction =
+      String(data.action ?? "").trim() ||
+      getLinkParam(actionUrl, "action");
     const broadcastDeepLink =
       typeof data.url === "string"
         ? data.url.trim()
         : typeof data.deep_link === "string"
           ? String(data.deep_link).trim()
           : "";
+
+    if (isProviderCloseOutNotification(templateKey, actionUrl) || typeLc === "provider_closeout_reminder") {
+      router.push(PROVIDER_CLOSEOUT_BOOKINGS_ROUTE as never);
+      return true;
+    }
 
     if (type === "admin_broadcast") {
       const u = broadcastDeepLink;
@@ -255,9 +279,12 @@ export function applyProviderNotificationRoute(router: Router, data: Record<stri
       return true;
     }
 
-    if (PROVIDER_BOOKING_TEMPLATE_KEYS.has(templateKey)) {
+    if (PROVIDER_BOOKING_TEMPLATE_KEYS.has(templateKey) || templateKey.startsWith("provider_booking")) {
       if (bookingId) {
-        router.push({ pathname: "/(app)/(tabs)/bookings/[id]", params: { id: bookingId } });
+        router.push({
+          pathname: "/(app)/(tabs)/bookings/[id]",
+          params: { id: bookingId, ...(pushAction ? { action: pushAction } : {}) },
+        });
       } else {
         router.push("/(app)/(tabs)/bookings");
       }

@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { CalendarColorScheme, ServiceItem, TeamMember } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface CalendarColorSchemeDialogProps {
   open: boolean;
@@ -37,6 +38,7 @@ export function CalendarColorSchemeDialog({
   scheme,
   onSuccess,
 }: CalendarColorSchemeDialogProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -116,16 +118,16 @@ export function CalendarColorSchemeDialog({
 
       if (scheme) {
         await providerApi.updateCalendarColorScheme(scheme.id, schemeData);
-        toast.success("Color scheme updated");
+        toast.success(t("web.provider.portal.calendarColorScheme.updated"));
       } else {
         await providerApi.createCalendarColorScheme(schemeData);
-        toast.success("Color scheme created");
+        toast.success(t("web.provider.portal.calendarColorScheme.created"));
       }
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save color scheme:", error);
-      toast.error("Failed to save color scheme");
+      toast.error(t("web.provider.portal.calendarColorScheme.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -136,24 +138,26 @@ export function CalendarColorSchemeDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader className="px-0 sm:px-0">
           <DialogTitle className="text-base sm:text-lg">
-            {scheme ? "Edit Color Scheme" : "New Color Scheme"}
+            {scheme
+              ? t("web.provider.portal.calendarColorScheme.titleEdit")
+              : t("web.provider.portal.calendarColorScheme.titleNew")}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 px-0 sm:px-0">
           <div>
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t("web.provider.portal.calendarColorScheme.nameRequired")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Hair Services, Completed Appointments"
+              placeholder={t("web.provider.portal.calendarColorScheme.namePlaceholder")}
               required
             />
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("web.provider.portal.calendarColorScheme.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -164,7 +168,7 @@ export function CalendarColorSchemeDialog({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="color">Color *</Label>
+              <Label htmlFor="color">{t("web.provider.portal.calendarColorScheme.colorRequired")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="color"
@@ -181,18 +185,18 @@ export function CalendarColorSchemeDialog({
               </div>
             </div>
             <div>
-              <Label htmlFor="icon">Icon (Optional)</Label>
+              <Label htmlFor="icon">{t("web.provider.portal.calendarColorScheme.iconOptional")}</Label>
               <Input
                 id="icon"
                 value={formData.icon}
                 onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                placeholder="Icon name or URL"
+                placeholder={t("web.provider.portal.calendarColorScheme.iconPlaceholder")}
               />
             </div>
           </div>
 
           <div>
-            <Label htmlFor="applies_to">Applies To *</Label>
+            <Label htmlFor="applies_to">{t("web.provider.portal.calendarColorScheme.appliesToRequired")}</Label>
             <Select
               value={formData.applies_to}
               onValueChange={(value) =>
@@ -209,23 +213,23 @@ export function CalendarColorSchemeDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="service">Service</SelectItem>
-                <SelectItem value="status">Status</SelectItem>
-                <SelectItem value="team_member">Team Member</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
+                <SelectItem value="service">{t("web.provider.portal.calendarColorScheme.appliesToService")}</SelectItem>
+                <SelectItem value="status">{t("web.provider.portal.calendarColorScheme.appliesToStatus")}</SelectItem>
+                <SelectItem value="team_member">{t("web.provider.portal.calendarColorScheme.appliesToTeamMember")}</SelectItem>
+                <SelectItem value="custom">{t("web.provider.portal.calendarColorScheme.appliesToCustom")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {formData.applies_to === "service" && (
             <div>
-              <Label htmlFor="service_id">Service</Label>
+              <Label htmlFor="service_id">{t("web.provider.portal.calendarColorScheme.service")}</Label>
               <Select
                 value={formData.service_id}
                 onValueChange={(value) => setFormData({ ...formData, service_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select service" />
+                  <SelectValue placeholder={t("web.provider.portal.calendarColorScheme.selectService")} />
                 </SelectTrigger>
                 <SelectContent>
                   {services.map((service) => (
@@ -240,19 +244,19 @@ export function CalendarColorSchemeDialog({
 
           {formData.applies_to === "status" && (
             <div>
-              <Label htmlFor="status">Status</Label>
+              <Label htmlFor="status">{t("web.provider.portal.calendarColorScheme.status")}</Label>
               <Select
                 value={formData.status}
                 onValueChange={(value) => setFormData({ ...formData, status: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
+                  <SelectValue placeholder={t("web.provider.portal.calendarColorScheme.selectStatus")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="booked">Booked</SelectItem>
-                  <SelectItem value="started">Started</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="booked">{t("web.provider.portal.calendarColorScheme.booked")}</SelectItem>
+                  <SelectItem value="started">{t("web.provider.portal.calendarColorScheme.started")}</SelectItem>
+                  <SelectItem value="completed">{t("web.provider.portal.calendarColorScheme.completed")}</SelectItem>
+                  <SelectItem value="cancelled">{t("web.provider.portal.calendarColorScheme.cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -260,13 +264,13 @@ export function CalendarColorSchemeDialog({
 
           {formData.applies_to === "team_member" && (
             <div>
-              <Label htmlFor="team_member_id">Team Member</Label>
+              <Label htmlFor="team_member_id">{t("web.provider.portal.calendarColorScheme.teamMember")}</Label>
               <Select
                 value={formData.team_member_id}
                 onValueChange={(value) => setFormData({ ...formData, team_member_id: value })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select team member" />
+                  <SelectValue placeholder={t("web.provider.portal.calendarColorScheme.selectTeamMember")} />
                 </SelectTrigger>
                 <SelectContent>
                   {teamMembers.map((member) => (
@@ -288,7 +292,7 @@ export function CalendarColorSchemeDialog({
               }
             />
             <Label htmlFor="is_default" className="cursor-pointer">
-              Set as default
+              {t("web.provider.portal.calendarColorScheme.setAsDefault")}
             </Label>
           </div>
 
@@ -300,14 +304,18 @@ export function CalendarColorSchemeDialog({
               disabled={isLoading}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("web.provider.portal.calendarColorScheme.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             >
-              {isLoading ? "Saving..." : scheme ? "Update" : "Create"}
+              {isLoading
+                ? t("web.provider.portal.calendarColorScheme.saving")
+                : scheme
+                  ? t("web.provider.portal.calendarColorScheme.update")
+                  : t("web.provider.portal.calendarColorScheme.create")}
             </Button>
           </DialogFooter>
         </form>

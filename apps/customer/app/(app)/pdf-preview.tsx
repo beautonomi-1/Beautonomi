@@ -15,12 +15,18 @@ import * as Haptics from "expo-haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { sharePdf } from "@/lib/pdf-file";
+import { useTranslation } from "@beautonomi/i18n";
 
 export default function PdfPreviewScreen() {
+  const { t } = useTranslation();
+  const pp = useCallback(
+    (key: string) => t(`customer.mobile.screens.pdfPreview.${key}`) as string,
+    [t],
+  );
   const router = useRouter();
   const params = useLocalSearchParams<{ uri?: string; title?: string }>();
   const rawUri = params.uri ? decodeURIComponent(params.uri) : "";
-  const displayTitle = params.title ? decodeURIComponent(params.title) : "Document";
+  const displayTitle = params.title ? decodeURIComponent(params.title) : pp("documentFallback");
 
   const [error, setError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -47,7 +53,7 @@ export default function PdfPreviewScreen() {
             router.back();
           }}
           style={styles.headerBtn}
-          accessibilityLabel="Close"
+          accessibilityLabel={t("common.close")}
           accessibilityRole="button"
         >
           <Ionicons name="close" size={24} color={Colors.gray[700]} />
@@ -59,7 +65,7 @@ export default function PdfPreviewScreen() {
           onPress={onShare}
           style={styles.headerBtn}
           disabled={!isValid || sharing}
-          accessibilityLabel="Share or save PDF"
+          accessibilityLabel={pp("shareA11y")}
           accessibilityRole="button"
         >
           {sharing ? (
@@ -72,13 +78,13 @@ export default function PdfPreviewScreen() {
 
       {!isValid ? (
         <View style={styles.centered}>
-          <Text style={styles.errorText}>This PDF could not be found.</Text>
+          <Text style={styles.errorText}>{pp("notFound")}</Text>
         </View>
       ) : error ? (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity onPress={() => setError(null)} style={styles.retryLink}>
-            <Text style={styles.retryLinkText}>Try again</Text>
+            <Text style={styles.retryLinkText}>{pp("tryAgain")}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -86,7 +92,7 @@ export default function PdfPreviewScreen() {
           source={{ uri: rawUri }}
           style={styles.webview}
           originWhitelist={["file://*"]}
-          onError={() => setError("Could not display this PDF.")}
+          onError={() => setError(pp("displayError"))}
           startInLoadingState
           renderLoading={() => (
             <View style={styles.webviewLoading}>

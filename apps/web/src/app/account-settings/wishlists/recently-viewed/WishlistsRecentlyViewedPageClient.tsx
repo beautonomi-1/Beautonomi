@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect, useRef } from "react";
 import Breadcrumb from "../../components/breadcrumb";
 import BackButton from "../../components/back-button";
@@ -16,6 +18,7 @@ export default function WishlistsRecentlyViewedPageClient({
 }: {
   initialProviders: RecentlyViewedProvider[] | null;
 }) {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<RecentlyViewedProvider[]>(() => initialProviders ?? []);
   const [isLoading, setIsLoading] = useState(() => initialProviders === null);
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +34,10 @@ export default function WishlistsRecentlyViewedPageClient({
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.accountSettings.wishlists.requestTimeout")
             : err instanceof FetchError
               ? err.message
-              : "Failed to load recently viewed providers";
+              : t("web.accountSettings.wishlists.loadRecentlyViewedFailed");
         setError(errorMessage);
         console.error("Error loading recently viewed:", err);
       } finally {
@@ -53,7 +56,7 @@ export default function WishlistsRecentlyViewedPageClient({
   if (isLoading) {
     return (
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-10 py-4 md:py-6">
-          <LoadingTimeout loadingMessage="Loading recently viewed..." />
+          <LoadingTimeout loadingMessage={t("web.accountSettings.wishlists.loadingRecentlyViewed")} />
         </div>
     );
   }
@@ -62,10 +65,10 @@ export default function WishlistsRecentlyViewedPageClient({
     return (
       <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-10 py-4 md:py-6">
           <EmptyState
-            title="Unable to load recently viewed"
+            title={t("web.accountSettings.unableLoadRecentlyViewed")}
             description={error}
             action={{
-              label: "Try Again",
+              label: t("web.accountSettings.wishlists.tryAgain"),
               onClick: () => window.location.reload(),
             }}
           />
@@ -79,19 +82,19 @@ export default function WishlistsRecentlyViewedPageClient({
         <BackButton href="/account-settings/wishlists" />
         <Breadcrumb
           items={[
-            { label: "Account", href: "/account-settings" },
-            { label: "Wishlists", href: "/account-settings/wishlists" },
-            { label: "Recently Viewed" }
+            { label: t("web.accountSettings.wishlists.account"), href: "/account-settings" },
+            { label: t("web.accountSettings.wishlists.title"), href: "/account-settings/wishlists" },
+            { label: t("web.accountSettings.wishlists.recentlyViewedTitle") }
           ]}
         />
-        <h2 className='text-2xl md:text-3xl font-normal mb-4 md:mb-5 text-gray-900'>Recently Viewed</h2>
+        <h2 className='text-2xl md:text-3xl font-normal mb-4 md:mb-5 text-gray-900'>{t("web.accountSettings.wishlists.recentlyViewedTitle")}</h2>
 
         {providers.length === 0 ? (
           <EmptyState
-            title="No recently viewed providers"
-            description="You haven't viewed any providers recently. Start browsing to see them here."
+            title={t("web.accountSettings.noRecentlyViewed")}
+            description={t("web.accountSettings.wishlists.emptyRecentlyViewedDesc")}
             action={{
-              label: "Browse Providers",
+              label: t("web.accountSettings.wishlists.browseProviders"),
               onClick: () => window.location.href = "/",
             }}
           />

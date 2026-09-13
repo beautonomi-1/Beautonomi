@@ -17,6 +17,8 @@ export interface ResolvedPromptTemplate {
   userPrompt: string;
   /** Non-empty JSON schema object, or null when the row has none. */
   outputSchema: Record<string, unknown> | null;
+  /** Per-feature model override from admin templates. */
+  modelId: string | null;
   source: "db";
 }
 
@@ -33,7 +35,7 @@ async function fetchTemplate(featureKey: string): Promise<ResolvedPromptTemplate
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("ai_prompt_templates")
-    .select("key, version, enabled, template, system_instructions, output_schema")
+    .select("key, version, enabled, template, system_instructions, output_schema, model_id")
     .eq("key", featureKey)
     .eq("enabled", true)
     .order("version", { ascending: false })
@@ -59,6 +61,7 @@ async function fetchTemplate(featureKey: string): Promise<ResolvedPromptTemplate
     system,
     userPrompt,
     outputSchema: isNonEmptySchema(row.output_schema) ? row.output_schema : null,
+    modelId: (row as { model_id?: string | null }).model_id?.trim() || null,
     source: "db",
   };
 }

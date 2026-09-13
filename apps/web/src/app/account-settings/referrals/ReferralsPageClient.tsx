@@ -19,8 +19,10 @@ import { Copy, Share2, Gift, Users, TrendingUp, Check } from "lucide-react";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import type { ReferralSettings, ReferralStats, ReferralsPageInitial } from "./referrals-initial-types";
+import { useTranslation } from "@beautonomi/i18n";
 
 const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -64,7 +66,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
       setSettings(settingsRes?.data || referralRes.data.settings);
     } catch (error) {
       console.error("Failed to load referral data:", error);
-      toast.error("Failed to load referral information");
+      toast.error(t("web.accountSettings.referrals.loadFailed"));
       
       // Fallback to defaults
       setReferralCode("BEAUTY");
@@ -77,7 +79,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
       });
       setSettings({
         referral_amount: 50,
-        referral_message: "Join Beautonomi and get rewarded! Use my referral link to get started.",
+        referral_message: t("web.accountSettings.referrals.defaultShareMessage"),
         referral_currency: tenantCurrency,
         is_enabled: true,
       });
@@ -90,10 +92,10 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
     try {
       await navigator.clipboard.writeText(referralLink);
       setCopied(true);
-      toast.success("Referral link copied to clipboard!");
+      toast.success(t("web.accountSettings.referrals.linkCopied"));
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Failed to copy link");
+      toast.error(t("web.accountSettings.referrals.copyFailed"));
     }
   };
 
@@ -101,15 +103,15 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Join Beautonomi",
-          text: settings?.referral_message || "Join Beautonomi and get rewarded!",
+          title: t("web.accountSettings.referrals.shareTitle"),
+          text: settings?.referral_message || t("web.accountSettings.referrals.shareText"),
           url: referralLink,
         });
-        toast.success("Shared successfully!");
+        toast.success(t("web.accountSettings.referrals.shared"));
       } catch (error) {
         // User cancelled or error
         if ((error as Error).name !== "AbortError") {
-          toast.error("Failed to share");
+          toast.error(t("web.accountSettings.referrals.shareFailed"));
         }
       }
     } else {
@@ -163,37 +165,40 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
           setFaqData([
             {
               id: "item-1",
-              question: "How does the referral program work?",
+              question: t("web.accountSettings.referrals.faqHowWorks"),
               answer: [
-                "Share your unique referral link with friends and family.",
-                "When someone signs up using your link and completes their first eligible booking, you earn wallet credit and loyalty points.",
-                "Your referral must complete a booking to qualify for rewards.",
-                "Rewards are credited to your wallet after the referred user's first completed booking.",
+                t("web.accountSettings.referrals.faqHowWorks1"),
+                t("web.accountSettings.referrals.faqHowWorks2"),
+                t("web.accountSettings.referrals.faqHowWorks3"),
+                t("web.accountSettings.referrals.faqHowWorks4"),
               ],
               isList: true,
             },
             {
               id: "item-2",
-              question: "How much can I earn from referrals?",
-              answer: `You earn ${settings?.referral_amount || 50} ${settings?.referral_currency || tenantCurrency} for each successful referral. The amount may vary based on current promotions. Check your referral dashboard for the latest reward amounts.`,
+              question: t("web.accountSettings.referrals.faqHowMuch"),
+              answer: t("web.accountSettings.referrals.faqHowMuchAnswer", {
+                amount: settings?.referral_amount || 50,
+                currency: settings?.referral_currency || tenantCurrency,
+              }),
               isList: false,
             },
             {
               id: "item-3",
-              question: "When do I receive my referral rewards?",
-              answer: "You receive your referral reward after the person you referred completes their first booking on Beautonomi. The reward is credited to your wallet and can be used for future bookings or withdrawn according to our payout policy.",
+              question: t("web.accountSettings.referrals.faqWhenRewards"),
+              answer: t("web.accountSettings.referrals.faqWhenRewardsAnswer"),
               isList: false,
             },
             {
               id: "item-4",
-              question: "Can I refer the same person multiple times?",
-              answer: "No, each person can only be referred once. If someone has already signed up for Beautonomi, they cannot use your referral link to earn rewards.",
+              question: t("web.accountSettings.referrals.faqSamePerson"),
+              answer: t("web.accountSettings.referrals.faqSamePersonAnswer"),
               isList: false,
             },
             {
               id: "item-5",
-              question: "How do I track my referrals?",
-              answer: "You can track all your referrals, earnings, and pending rewards on this page. The dashboard shows your total referrals, successful referrals, and total earnings.",
+              question: t("web.accountSettings.referrals.faqTrack"),
+              answer: t("web.accountSettings.referrals.faqTrackAnswer"),
               isList: false,
             },
           ]);
@@ -207,16 +212,16 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
     if (settings) {
       loadFAQs();
     }
-  }, [settings]);
+  }, [settings, t, tenantCurrency]);
 
   return (
     <div className="min-h-screen bg-zinc-50/50 pb-20 md:pb-0">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-6 md:py-8">
           <Breadcrumb 
             items={[
-              { label: "Home", href: "/" },
-              { label: "Account Settings", href: "/account-settings" },
-              { label: "Referrals" }
+              { label: t("web.accountSettings.referrals.breadcrumbHome"), href: "/" },
+              { label: t("web.accountSettings.referrals.breadcrumbAccount"), href: "/account-settings" },
+              { label: t("web.accountSettings.referrals.breadcrumbTitle") }
             ]} 
           />
           <BackButton href="/account-settings" />
@@ -225,12 +230,12 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
-              Referrals
+              {t("web.accountSettings.referrals.title")}
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-gray-500">Loading…</p>
+                <p className="text-sm text-gray-500">{t("web.accountSettings.referrals.loading")}</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -240,7 +245,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:p-6"
                   >
                     <p className="text-sm font-medium text-amber-800">
-                      Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.
+                      {t("web.accountSettings.referrals.disabledBanner")}
                     </p>
                   </div>
                 )}
@@ -255,10 +260,10 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     </div>
                     <div>
                       <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
-                        Your referral code
+                        {t("web.accountSettings.referrals.yourCode")}
                       </h2>
                       <p className="text-sm font-light text-gray-600 mt-1">
-                        Share your code and earn rewards when friends book services
+                        {t("web.accountSettings.referrals.yourCodeHint")}
                       </p>
                     </div>
                   </div>
@@ -266,14 +271,14 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                   <div className="space-y-4">
                     <div className="flex items-center gap-3">
                       <div className="flex-1 backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4">
-                        <p className="text-xs font-medium text-gray-500 mb-1">Referral Code</p>
+                        <p className="text-xs font-medium text-gray-500 mb-1">{t("web.accountSettings.referrals.referralCode")}</p>
                         <p className="text-2xl font-bold text-gray-900 font-mono">{referralCode}</p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <div className="flex-1 backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4">
-                        <p className="text-xs font-medium text-gray-500 mb-1">Referral Link</p>
+                        <p className="text-xs font-medium text-gray-500 mb-1">{t("web.accountSettings.referrals.referralLink")}</p>
                         <p className="text-sm font-mono text-gray-700 break-all">{referralLink}</p>
                       </div>
                     </div>
@@ -286,12 +291,12 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                         {copied ? (
                           <>
                             <Check className="w-5 h-5" />
-                            <span>Copied!</span>
+                            <span>{t("web.accountSettings.referrals.copied")}</span>
                           </>
                         ) : (
                           <>
                             <Copy className="w-5 h-5" />
-                            <span>Copy Link</span>
+                            <span>{t("web.accountSettings.referrals.copyLink")}</span>
                           </>
                         )}
                       </button>
@@ -300,7 +305,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                         className="flex-1 flex items-center justify-center gap-2 backdrop-blur-sm bg-white/60 border border-white/40 hover:bg-white/80 text-gray-700 px-6 py-3 rounded-xl font-semibold transition-all"
                       >
                         <Share2 className="w-5 h-5" />
-                        <span>Share</span>
+                        <span>{t("web.accountSettings.referrals.share")}</span>
                       </button>
                     </div>
                   </div>
@@ -314,7 +319,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <Users className="w-5 h-5 text-[#FF0077]" />
-                        <p className="text-sm font-medium text-gray-600">Total Referrals</p>
+                        <p className="text-sm font-medium text-gray-600">{t("web.accountSettings.referrals.totalReferrals")}</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">{stats.total_referrals}</p>
                     </div>
@@ -324,7 +329,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <TrendingUp className="w-5 h-5 text-green-600" />
-                        <p className="text-sm font-medium text-gray-600">Successful</p>
+                        <p className="text-sm font-medium text-gray-600">{t("web.accountSettings.referrals.successful")}</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">{stats.successful_referrals}</p>
                     </div>
@@ -334,7 +339,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <Gift className="w-5 h-5 text-[#FF0077]" />
-                        <p className="text-sm font-medium text-gray-600">Total Earnings</p>
+                        <p className="text-sm font-medium text-gray-600">{t("web.accountSettings.referrals.totalEarnings")}</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">
                         {format(stats.total_earnings)}
@@ -346,7 +351,7 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                     >
                       <div className="flex items-center gap-3 mb-2">
                         <TrendingUp className="w-5 h-5 text-yellow-600" />
-                        <p className="text-sm font-medium text-gray-600">Pending</p>
+                        <p className="text-sm font-medium text-gray-600">{t("web.accountSettings.referrals.pending")}</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">
                         {format(stats.pending_earnings)}
@@ -360,12 +365,12 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-2xl font-semibold tracking-tighter text-gray-900 mb-2">
-                    Common questions
+                    {t("web.accountSettings.referrals.commonQuestions")}
                   </h2>
                   <p className="text-sm font-light text-gray-600 mb-6">
-                    Check out these answers to common questions and review other program information in the{" "}
+                    {t("web.accountSettings.referrals.faqIntroBefore")}{" "}
                     <a href="/help" className="text-[#FF0077] hover:text-[#E6006A] underline font-medium">
-                      Help Center
+                      {t("web.accountSettings.referrals.helpCenter")}
                     </a>
                     .
                   </p>
@@ -373,12 +378,12 @@ const ReferralsPage = ({ initial }: { initial: ReferralsPageInitial | null }) =>
                   <Accordion type="single" collapsible className="w-full">
                     {faqData.map((faq) => (
                       <AccordionItem key={faq.id} value={faq.id} className="border-b border-white/20">
-                        <AccordionTrigger className="text-left font-semibold text-gray-900 hover:text-[#FF0077] transition-colors py-4">
+                        <AccordionTrigger className="text-start font-semibold text-gray-900 hover:text-[#FF0077] transition-colors py-4">
                           {faq.question}
                         </AccordionTrigger>
                         <AccordionContent className="text-gray-600 font-light leading-relaxed pt-2 pb-4">
                           {faq.isList ? (
-                            <ol className="list-decimal ml-6 space-y-2">
+                            <ol className="list-decimal ms-6 space-y-2">
                               {(Array.isArray(faq.answer) ? faq.answer : []).map((item, index) => (
                                 <li key={index}>{item}</li>
                               ))}

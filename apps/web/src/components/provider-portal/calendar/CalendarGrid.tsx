@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React, { useRef, useEffect, useMemo, useCallback, memo } from "react";
 import { format, addDays, startOfWeek } from "date-fns";
 import { isTodayInTz, nowInTz, resolveTz } from "@/lib/dates/provider-tz";
@@ -72,6 +74,7 @@ function CalendarGridComponent({
   onSetDayOff,
   businessTimezone,
 }: CalendarGridProps) {
+  const { t } = useTranslation();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerStaffScrollRef = useRef<HTMLDivElement>(null);
   const currentTimeRef = useRef<HTMLDivElement>(null);
@@ -155,12 +158,12 @@ function CalendarGridComponent({
           ...a,
           name:
             a._source === "staff_unavailability"
-              ? (a.reason?.trim() || "Time off")
+              ? (a.reason?.trim() || t("web.provider.calendarMobile.timeOff"))
               : (a.reason || a.block_type),
         })),
       ];
     },
-    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, dateKey],
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, dateKey, t],
   );
 
   // Day view: include Unassigned and orphan staff
@@ -179,7 +182,7 @@ function CalendarGridComponent({
       if (memberIds.has(staffId)) return;
       orphans.push({
         id: staffId,
-        name: apts[0]?.team_member_name || "Staff",
+        name: apts[0]?.team_member_name || t("web.provider.calendarMobile.staff"),
         role: "employee",
         email: "",
         mobile: "",
@@ -190,11 +193,11 @@ function CalendarGridComponent({
 
     const result: TeamMember[] = [];
     if (hasUnassigned) {
-      result.push({ id: UNASSIGNED_ID, name: "Unassigned", role: "employee", email: "", mobile: "", is_active: true });
+      result.push({ id: UNASSIGNED_ID, name: t("web.provider.common.unassigned"), role: "employee", email: "", mobile: "", is_active: true });
     }
     result.push(...teamMembers, ...orphans);
     return result;
-  }, [teamMembers, selectedDate, view, appointmentsByStaffAndDate, dateKey]);
+  }, [teamMembers, selectedDate, view, appointmentsByStaffAndDate, dateKey, t]);
 
   // Stable callback references
   const handleAppointmentClick = useCallback(
@@ -349,7 +352,10 @@ function CalendarGridComponent({
   }, [displayMembers, selectedDate, isMultiStaffView, getAppointmentsForStaff, getBlocksForStaff, useMangomintMode, preferences.showCanceled]);
 
   return (
-    <div className="flex flex-1 h-full min-h-0 w-full max-w-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden box-border">
+    <div
+      dir="ltr"
+      className="ltr-island flex flex-1 h-full min-h-0 w-full max-w-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden box-border"
+    >
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header Row — multi-staff: horizontal scroll synced with grid body */}
         <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white flex-shrink-0 min-w-0">
@@ -463,9 +469,9 @@ function CalendarGridComponent({
         <div className="absolute inset-0 flex items-center justify-center bg-white/90">
           <div className="text-center p-8">
             <CalendarIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">No Team Members</h3>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">{t("web.calendarGrid.noTeamMembers")}</h3>
             <p className="text-gray-500 text-sm max-w-sm">
-              Add team members in Settings &rarr; Team to start scheduling appointments.
+              {t("web.calendarGrid.noTeamMembersHint")}
             </p>
           </div>
         </div>

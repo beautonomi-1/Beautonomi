@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@beautonomi/i18n";
 
 const PRESET_MINUTES = [5, 10, 15, 20, 30, 45, 60] as const;
 
@@ -13,6 +14,7 @@ export type EtaPickerProps = {
 };
 
 export function EtaPicker({ value, onChange, disabled, className }: EtaPickerProps) {
+  const { t } = useTranslation();
   const [customMode, setCustomMode] = useState(false);
   const [customValue, setCustomValue] = useState("");
 
@@ -35,7 +37,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-sm font-medium text-gray-700">Estimated arrival</p>
+      <p className="text-sm font-medium text-gray-700">{t("web.provider.etaPicker.estimatedArrival")}</p>
       <div className="flex flex-wrap gap-2">
         {PRESET_MINUTES.map((m) => (
           <button
@@ -51,7 +53,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
               disabled && "opacity-50 cursor-not-allowed",
             )}
           >
-            {m} min
+            {t("web.provider.etaPicker.minutesShort", { minutes: m })}
           </button>
         ))}
         <button
@@ -66,7 +68,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
             disabled && "opacity-50 cursor-not-allowed",
           )}
         >
-          Not sure
+          {t("web.provider.etaPicker.notSure")}
         </button>
         <button
           type="button"
@@ -80,7 +82,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
             disabled && "opacity-50 cursor-not-allowed",
           )}
         >
-          Custom
+          {t("web.provider.etaPicker.custom")}
         </button>
       </div>
       {customMode ? (
@@ -91,7 +93,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
             max={240}
             value={customValue}
             onChange={(e) => setCustomValue(e.target.value)}
-            placeholder="Minutes"
+            placeholder={t("web.provider.etaPicker.minutesPlaceholder")}
             disabled={disabled}
             className="w-24 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
           />
@@ -101,7 +103,7 @@ export function EtaPicker({ value, onChange, disabled, className }: EtaPickerPro
             onClick={applyCustom}
             className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white"
           >
-            Set
+            {t("web.provider.etaPicker.set")}
           </button>
         </div>
       ) : null}

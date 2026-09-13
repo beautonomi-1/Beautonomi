@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 
-export const metadata: Metadata = {
-  title: "Pricing",
-  description: "View Beautonomi pricing plans for beauty professionals and businesses.",
-  alternates: {
-    canonical: "/pricing",
-    languages: getHreflangAlternateUrls("/pricing"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/pricing",
+    titleKey: "web.seo.pricingTitle",
+    descriptionKey: "web.seo.pricingDescription",
+  });
+}
 
 export default function PricingLayout({ children }: { children: React.ReactNode }) {
   return children;

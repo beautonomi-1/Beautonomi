@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
@@ -78,35 +79,46 @@ export interface AnalyticsData {
   trends: { month: string; revenue: number; bookings: number }[];
 }
 
-const PERIODS: { id: "week" | "month" | "year"; label: string }[] = [
-  { id: "week", label: "Week" },
-  { id: "month", label: "Month" },
-  { id: "year", label: "Year" },
-];
+const PERIOD_IDS = ["week", "month", "year"] as const;
+const PERIOD_LABEL_KEYS = {
+  week: "periodWeek",
+  month: "periodMonth",
+  year: "periodYear",
+} as const;
 
-function periodRevenueLabel(period: string): string {
-  if (period === "week") return "Revenue this week";
-  if (period === "year") return "Revenue this year";
-  return "Revenue this month";
+function periodRevenueKey(period: string): "revenueThisWeek" | "revenueThisYear" | "revenueThisMonth" {
+  if (period === "week") return "revenueThisWeek";
+  if (period === "year") return "revenueThisYear";
+  return "revenueThisMonth";
 }
 
-function periodCompareLabel(period: string): string {
-  if (period === "week") return "vs previous week";
-  if (period === "year") return "vs previous year";
-  return "vs last month";
+function periodCompareKey(period: string): "vsPreviousWeek" | "vsPreviousYear" | "vsLastMonth" {
+  if (period === "week") return "vsPreviousWeek";
+  if (period === "year") return "vsPreviousYear";
+  return "vsLastMonth";
 }
 
-function trendsSectionTitle(period: string): string {
-  if (period === "week") return "Trends (12 weeks)";
-  if (period === "year") return "Trends (5 years)";
-  return "Trends (12 months)";
+function trendsSectionKey(period: string): "trends12Weeks" | "trends5Years" | "trends12Months" {
+  if (period === "week") return "trends12Weeks";
+  if (period === "year") return "trends5Years";
+  return "trends12Months";
 }
 
 export default function AnalyticsScreen() {
+  const { t } = useTranslation();
+  const an = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.analytics.${key}`, opts) as string,
+    [t],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<"week" | "month" | "year">("month");
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
+  const periodOptions = useMemo(
+    () => PERIOD_IDS.map((id) => ({ id, label: an(PERIOD_LABEL_KEYS[id]) })),
+    [an],
+  );
 
   const analyticsUrl = useMemo(() => {
     const p = new URLSearchParams();
@@ -133,7 +145,7 @@ export default function AnalyticsScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Analytics" showBack />
+        <ScreenHeader title={an("title")} showBack />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -144,7 +156,7 @@ export default function AnalyticsScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Analytics" showBack />
+        <ScreenHeader title={an("title")} showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -169,17 +181,13 @@ export default function AnalyticsScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
-        title="Analytics"
+        title={an("title")}
         showBack
-        subtitle={
-          selectedLocationId
-            ? "Ledger & counts · selected location"
-            : "Ledger & counts · all locations"
-        }
+        subtitle={selectedLocationId ? an("subtitleLocation") : an("subtitleAll")}
       />
       <View style={{ paddingHorizontal: screenPadding, paddingTop: 8, paddingBottom: 4 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", gap: 8 }}>
-          {PERIODS.map((p) => {
+          {periodOptions.map((p) => {
             const active = period === p.id;
             return (
               <TouchableOpacity
@@ -191,7 +199,7 @@ export default function AnalyticsScreen() {
                 style={twStyle(
                   `rounded-full px-4 py-2 ${active ? "bg-gray-900" : "border border-gray-200 bg-white"}`,
                 )}
-                accessibilityLabel={`Period ${p.label}`}
+                accessibilityLabel={an("periodA11y", { label: p.label })}
                 accessibilityState={{ selected: active }}
               >
                 <Text style={twStyle(`text-sm font-medium ${active ? "text-white" : "text-gray-600"}`)}>{p.label}</Text>
@@ -215,42 +223,46 @@ export default function AnalyticsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={twStyle("mb-4 flex-row flex-wrap")}>
-          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12, marginBottom: 12 }]}>
+          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginEnd: 12, marginBottom: 12 }]}>
             <View style={twStyle("flex-row items-center")}>
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-violet-50")}>
                 <Ionicons name="trending-up-outline" size={20} color="#8b5cf6" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {formatCurrency(rev.current_period ?? rev.thisMonth ?? 0)}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Ledger net · {periodRevenueLabel(apiPeriod)}</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>
+              {an("ledgerNetPeriod", { label: an(periodRevenueKey(apiPeriod)) })}
+            </Text>
             {hasGrowth && (
               <Text
                 style={twStyle(
                   `mt-0.5 text-xs font-medium ${growthNum >= 0 ? "text-green-600" : "text-red-600"}`,
                 )}
               >
-                {growthNum >= 0 ? "+" : ""}
-                {rev.growth}%{` ${periodCompareLabel(apiPeriod)}`}
+                {an("growthVs", {
+                  growth: `${growthNum >= 0 ? "+" : ""}${rev.growth}`,
+                  compare: an(periodCompareKey(apiPeriod)),
+                })}
               </Text>
             )}
             {rev.growth === "New" ? (
-              <Text style={twStyle("mt-0.5 text-xs text-emerald-600")}>New period activity</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-emerald-600")}>{an("newPeriodActivity")}</Text>
             ) : null}
           </View>
-          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12, marginBottom: 12 }]}>
+          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginEnd: 12, marginBottom: 12 }]}>
             <View style={twStyle("flex-row items-center")}>
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
                 <Ionicons name="calendar-outline" size={20} color="#6366f1" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {book.upcoming ?? 0}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Upcoming (scheduled)</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>{an("upcomingScheduled")}</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {book.thisMonth ?? 0} scheduled in period
+              {an("scheduledInPeriod", { count: book.thisMonth ?? 0 })}
             </Text>
           </View>
           <View style={twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -258,20 +270,20 @@ export default function AnalyticsScreen() {
               <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-teal-50")}>
                 <Ionicons name="people-outline" size={20} color="#14b8a6" />
               </View>
-              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
+              <Text style={twStyle("ms-2 text-lg font-bold text-gray-900")}>
                 {cust.total ?? 0}
               </Text>
             </View>
-            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Distinct customers</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>{an("distinctCustomers")}</Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              {cust.repeat ?? 0} repeat · {singleBooking} single-booking
+              {an("customersBreakdown", { repeat: cust.repeat ?? 0, single: singleBooking })}
             </Text>
           </View>
         </View>
 
         {data?.basis && Object.keys(data.basis).length > 0 ? (
           <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/90 px-4 py-3")}>
-            <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-900")}>Facts</Text>
+            <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-indigo-900")}>{an("facts")}</Text>
             {Object.entries(data.basis).map(([k, v]) => (
               <Text key={k} style={twStyle("mt-2 text-xs leading-5 text-indigo-950")}>
                 <Text style={twStyle("font-semibold capitalize text-indigo-950")}>{k.replace(/_/g, " ")}: </Text>
@@ -283,31 +295,31 @@ export default function AnalyticsScreen() {
 
         {rev.all_time != null && (
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>All-time ledger net</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>{an("allTimeLedgerNet")}</Text>
             <Text style={twStyle("mt-1 text-xl font-bold text-gray-900")}>{formatCurrency(rev.all_time)}</Text>
             <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-              Sum of provider_earnings in finance_transactions (platform-settled). Cash walk-ins may be absent.
+              {an("allTimeLedgerHint")}
             </Text>
           </View>
         )}
 
         {(curEb || allEb) && (
           <>
-            <SectionHeader title="Earnings and fees" />
+            <SectionHeader title={an("earningsAndFees")} />
             {curEb ? (
               <View style={twStyle("mb-3 rounded-2xl border border-gray-100 bg-white p-4")}>
-                <Text style={twStyle("text-xs font-semibold text-gray-700")}>This period</Text>
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>{an("thisPeriod")}</Text>
                 <View style={twStyle("mt-2 gap-2")}>
                   {[
-                    ["Recognized revenue (net)", curEb.recognized_revenue_net ?? curEb.service_earnings_net],
-                    ["Service earnings", curEb.service_earnings ?? 0],
-                    ["Tips (net)", curEb.tips_net],
-                    ["Cancellation fees", curEb.cancellation_fees],
-                    ["Refunds (incl. negative earnings)", curEb.refunds],
-                    ["Platform fees retained", curEb.platform_fees_retained],
+                    [an("recognizedRevenueNet"), curEb.recognized_revenue_net ?? curEb.service_earnings_net],
+                    [an("serviceEarnings"), curEb.service_earnings ?? 0],
+                    [an("tipsNet"), curEb.tips_net],
+                    [an("cancellationFees"), curEb.cancellation_fees],
+                    [an("refundsInclNegative"), curEb.refunds],
+                    [an("platformFeesRetained"), curEb.platform_fees_retained],
                   ].map(([label, v]) => (
                     <View key={String(label)} style={twStyle("flex-row justify-between")}>
-                      <Text style={twStyle("flex-1 pr-2 text-sm text-gray-600")}>{label}</Text>
+                      <Text style={twStyle("flex-1 pe-2 text-sm text-gray-600")}>{label}</Text>
                       <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(Number(v))}</Text>
                     </View>
                   ))}
@@ -316,18 +328,18 @@ export default function AnalyticsScreen() {
             ) : null}
             {allEb ? (
               <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-                <Text style={twStyle("text-xs font-semibold text-gray-700")}>All time (ledger)</Text>
+                <Text style={twStyle("text-xs font-semibold text-gray-700")}>{an("allTimeLedger")}</Text>
                 <View style={twStyle("mt-2 gap-2")}>
                   {[
-                    ["Recognized revenue (net)", allEb.recognized_revenue_net ?? allEb.service_earnings_net],
-                    ["Service earnings", allEb.service_earnings ?? 0],
-                    ["Tips (net)", allEb.tips_net],
-                    ["Cancellation fees", allEb.cancellation_fees],
-                    ["Refunds", allEb.refunds],
-                    ["Platform fees retained", allEb.platform_fees_retained],
+                    [an("recognizedRevenueNet"), allEb.recognized_revenue_net ?? allEb.service_earnings_net],
+                    [an("serviceEarnings"), allEb.service_earnings ?? 0],
+                    [an("tipsNet"), allEb.tips_net],
+                    [an("cancellationFees"), allEb.cancellation_fees],
+                    [an("refunds"), allEb.refunds],
+                    [an("platformFeesRetained"), allEb.platform_fees_retained],
                   ].map(([label, v]) => (
                     <View key={String(label)} style={twStyle("flex-row justify-between")}>
-                      <Text style={twStyle("flex-1 pr-2 text-sm text-gray-600")}>{label}</Text>
+                      <Text style={twStyle("flex-1 pe-2 text-sm text-gray-600")}>{label}</Text>
                       <Text style={twStyle("text-sm font-medium text-gray-900")}>{formatCurrency(Number(v))}</Text>
                     </View>
                   ))}
@@ -342,16 +354,16 @@ export default function AnalyticsScreen() {
 
         {exp && (
           <>
-            <SectionHeader title="Expenses" />
+            <SectionHeader title={an("expenses")} />
             <View style={twStyle("mb-4 rounded-2xl border border-amber-100 bg-amber-50/60 p-4")}>
               <View style={twStyle("flex-row justify-between")}>
-                <Text style={twStyle("text-sm text-gray-700")}>This period</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{an("thisPeriod")}</Text>
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {formatCurrency(exp.current_period ?? exp.this_month ?? 0)}
                 </Text>
               </View>
               <View style={twStyle("mt-2 flex-row justify-between")}>
-                <Text style={twStyle("text-sm text-gray-700")}>All time</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{an("allTime")}</Text>
                 <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {formatCurrency(exp.all_time ?? exp.total ?? 0)}
                 </Text>
@@ -364,8 +376,8 @@ export default function AnalyticsScreen() {
         {services.length > 0 ? (
           <>
             <SectionHeader
-              title="Top offerings"
-              subtitle="Ledger net by offering (scheduled in period) — matches Sales by service"
+              title={an("topOfferings")}
+              subtitle={an("topOfferingsSubtitle")}
             />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {services.map((s, i) => (
@@ -375,11 +387,11 @@ export default function AnalyticsScreen() {
                     `flex-row items-center justify-between border-b border-gray-100 px-4 py-3 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/80"}`,
                   )}
                 >
-                  <View style={twStyle("mr-2 flex-1")}>
+                  <View style={twStyle("me-2 flex-1")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>
                       {s.name}
                     </Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{s.count} bookings · line total</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{an("bookingsLineTotal", { count: s.count })}</Text>
                   </View>
                   <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.revenue)}</Text>
                 </View>
@@ -389,16 +401,16 @@ export default function AnalyticsScreen() {
         ) : (
           <EmptyState
             icon="cube-outline"
-            title="No offerings yet"
-            description="Completed appointments with catalog lines will appear here."
+            title={an("noOfferingsTitle")}
+            description={an("noOfferingsDesc")}
           />
         )}
 
         {trends.length > 0 ? (
           <>
             <SectionHeader
-              title={trendsSectionTitle(apiPeriod)}
-              subtitle={data?.trends_meta?.description ?? "Ledger vs appointments scheduled per bucket"}
+              title={an(trendsSectionKey(apiPeriod))}
+              subtitle={data?.trends_meta?.description ?? an("trendsSubtitleFallback")}
             />
             <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
               {trends.map((t, i) => (
@@ -411,7 +423,7 @@ export default function AnalyticsScreen() {
                   <Text style={twStyle("text-sm font-medium text-gray-800")}>{t.month}</Text>
                   <View style={twStyle("items-end")}>
                     <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(t.revenue)}</Text>
-                    <Text style={twStyle("text-xs text-gray-500")}>{t.bookings} bookings</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{an("bookingsCount", { count: t.bookings })}</Text>
                   </View>
                 </View>
               ))}
@@ -420,8 +432,8 @@ export default function AnalyticsScreen() {
         ) : (
           <EmptyState
             icon="stats-chart-outline"
-            title="No trend data yet"
-            description="Ledger and booking activity will chart here once you have history in this period."
+            title={an("noTrendTitle")}
+            description={an("noTrendDesc")}
           />
         )}
       </ScrollView>

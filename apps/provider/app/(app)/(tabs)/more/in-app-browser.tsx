@@ -19,20 +19,28 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { inAppWebViewUserAgentProps } from "@/config/public-env";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { verificationPolicyFromBundle } from "@/lib/verification/policy";
 import { isAllowedInAppWebViewUrl, getWebViewOriginWhitelist } from "@/lib/webview-allowlist";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 
 export default function InAppBrowserScreen() {
+  const { t } = useTranslation();
+  const ib = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.inAppBrowser.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const { bundle } = useConfigBundle();
   const verificationRequired = verificationPolicyFromBundle(bundle).required_for_providers;
   const params = useLocalSearchParams<{ url?: string; title?: string; returnTo?: string }>();
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
-  const displayTitle = params.title ? decodeURIComponent(params.title) : "Web";
+  const displayTitle = params.title ? decodeURIComponent(params.title) : ib("defaultTitle");
   // Optional post-success destination passed by the caller (e.g. the onboarding
   // wizard sends "verify-identity" so a paid checkout lands on the optional
   // identity step rather than straight on the dashboard).
@@ -83,21 +91,21 @@ export default function InAppBrowserScreen() {
           status,
           title:
             status === "success"
-              ? "Ad payment complete"
+              ? ib("adPaymentComplete")
               : status === "pending"
-                ? "Payment is syncing"
+                ? ib("paymentSyncing")
                 : isCancelled
-                  ? "Payment cancelled"
-                  : "Payment not completed",
+                  ? ib("paymentCancelled")
+                  : ib("paymentNotCompleted"),
           message:
             raw.message ||
             (status === "success"
-              ? "Your campaign payment was confirmed. Return to Ads to see the campaign update."
+              ? ib("adPaymentSuccess")
               : status === "pending"
-                ? "Paystack received the payment, but confirmation is still syncing. Return to Ads and pull to refresh in a moment."
+                ? ib("adPaymentPending")
                 : isCancelled
-                  ? "You cancelled the payment. No charge was made. You can try again from your Ads dashboard."
-                  : "The payment could not be confirmed. Return to Ads and try again."),
+                  ? ib("adPaymentCancelled")
+                  : ib("adPaymentFailed")),
         });
         return;
       }
@@ -120,21 +128,21 @@ export default function InAppBrowserScreen() {
           status,
           title:
             status === "success"
-              ? "Terminal order paid"
+              ? ib("terminalOrderPaid")
               : status === "pending"
-                ? "Payment is syncing"
+                ? ib("paymentSyncing")
                 : isCancelled
-                  ? "Payment cancelled"
-                  : "Payment not completed",
+                  ? ib("paymentCancelled")
+                  : ib("paymentNotCompleted"),
           message:
             raw.message ||
             (status === "success"
-              ? "Your terminal order payment was confirmed. Return to Terminal shop to track your order."
+              ? ib("terminalPaymentSuccess")
               : status === "pending"
-                ? "Paystack received the payment, but confirmation is still syncing. Return to Terminal shop and pull to refresh."
+                ? ib("terminalPaymentPending")
                 : isCancelled
-                  ? "You cancelled the payment. No charge was made."
-                  : "The payment could not be confirmed. Return to Terminal shop and try again."),
+                  ? ib("terminalPaymentCancelled")
+                  : ib("terminalPaymentFailed")),
         });
         return;
       }
@@ -147,14 +155,14 @@ export default function InAppBrowserScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setPaymentResult({
           status: "success",
-          title: returnToDashboard ? "You're ready to launch" : "Subscription payment complete",
+          title: returnToDashboard ? ib("readyToLaunch") : ib("subscriptionPaymentComplete"),
           message: returnToVerify
             ? verificationRequired
-              ? "Your plan payment was confirmed. Next, verify your identity to go live and earn the Verified trust badge."
-              : "Your plan payment was confirmed. Next, verify your identity (optional) or skip to your dashboard."
+              ? ib("verifyIdentityRequired")
+              : ib("verifyIdentityOptional")
             : returnToDashboard
-              ? "Your plan payment was confirmed. Continue to your provider dashboard."
-              : "Your plan payment was confirmed. Return to Subscription to see your active plan.",
+              ? ib("continueToDashboard")
+              : ib("returnToSubscription"),
           returnToDashboard,
           returnTo,
         });
@@ -164,9 +172,8 @@ export default function InAppBrowserScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setPaymentResult({
           status: "failed",
-          title: "Payment not completed",
-          message:
-            "The subscription payment did not go through. Check your card funds or try another payment method.",
+          title: ib("paymentNotCompleted"),
+          message: ib("subscriptionPaymentFailed"),
         });
         return;
       }
@@ -174,10 +181,8 @@ export default function InAppBrowserScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         setPaymentResult({
           status: "pending",
-          title: "Payment is syncing",
-          message:
-            raw.message ||
-            "Paystack received the payment, but the confirmation is still syncing with your bank. Return to Subscription and pull to refresh in a moment.",
+          title: ib("paymentSyncing"),
+          message: raw.message || ib("subscriptionPaymentPending"),
         });
         return;
       }
@@ -185,14 +190,14 @@ export default function InAppBrowserScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         setPaymentResult({
           status: "failed",
-          title: "Payment cancelled",
-          message: "You cancelled the payment. No charge was made.",
+          title: ib("paymentCancelled"),
+          message: ib("subscriptionPaymentCancelled"),
         });
       }
     } catch {
       // ignore non-JSON messages
     }
-  }, [screenReturnTo, verificationRequired]);
+  }, [ib, screenReturnTo, verificationRequired]);
 
   const isValid = rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
   const isAllowlisted = isValid && isAllowedInAppWebViewUrl(rawUrl);
@@ -220,17 +225,17 @@ export default function InAppBrowserScreen() {
               router.back();
             }}
             style={styles.backBtn}
-            accessibilityLabel="Go back"
+            accessibilityLabel={ib("goBackA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {displayTitle}
           </Text>
         </View>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>Invalid or missing link.</Text>
+          <Text style={styles.errorText}>{ib("invalidLink")}</Text>
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -238,7 +243,7 @@ export default function InAppBrowserScreen() {
             }}
             style={styles.backLink}
           >
-            <Text style={styles.backLinkText}>Go back</Text>
+            <Text style={styles.backLinkText}>{ib("goBack")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -255,10 +260,10 @@ export default function InAppBrowserScreen() {
               router.back();
             }}
             style={styles.backBtn}
-            accessibilityLabel="Go back"
+            accessibilityLabel={ib("goBackA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {displayTitle}
@@ -266,7 +271,7 @@ export default function InAppBrowserScreen() {
         </View>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={[styles.errorText, { marginTop: 16 }]}>Opening in your browser…</Text>
+          <Text style={[styles.errorText, { marginTop: 16 }]}>{ib("openingInBrowser")}</Text>
         </View>
       </SafeAreaView>
     );
@@ -283,10 +288,10 @@ export default function InAppBrowserScreen() {
               router.back();
             }}
             style={styles.backBtn}
-            accessibilityLabel="Go back"
+            accessibilityLabel={ib("goBackA11y")}
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+            <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {displayTitle}
@@ -294,7 +299,7 @@ export default function InAppBrowserScreen() {
         </View>
         <View style={styles.centered}>
           <Text style={styles.errorText}>
-            Opening in browser (web preview). Use the iOS or Android app for an in-app view.
+            {ib("webPreview")}
           </Text>
           <TouchableOpacity
             onPress={() => {
@@ -303,7 +308,7 @@ export default function InAppBrowserScreen() {
             }}
             style={styles.backLink}
           >
-            <Text style={styles.backLinkText}>Open link</Text>
+            <Text style={styles.backLinkText}>{ib("openLink")}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -319,10 +324,10 @@ export default function InAppBrowserScreen() {
             router.back();
           }}
           style={styles.backBtn}
-          accessibilityLabel="Go back"
+          accessibilityLabel={ib("goBackA11y")}
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          <DirectionalIcon name="arrow-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
           {displayTitle}
@@ -333,7 +338,7 @@ export default function InAppBrowserScreen() {
             openExternally();
           }}
           style={styles.openExternalBtn}
-          accessibilityLabel="Open in external browser"
+          accessibilityLabel={ib("openExternalA11y")}
           accessibilityRole="button"
         >
           <Ionicons name="open-outline" size={22} color={Colors.gray[600]} />
@@ -349,7 +354,7 @@ export default function InAppBrowserScreen() {
             }}
             style={styles.backLink}
           >
-            <Text style={styles.backLinkText}>Try again</Text>
+            <Text style={styles.backLinkText}>{ib("tryAgain")}</Text>
           </TouchableOpacity>
         </View>
       ) : paymentResult ? (
@@ -388,10 +393,10 @@ export default function InAppBrowserScreen() {
             </View>
             <Text style={styles.resultEyebrow}>
               {paymentResult.status === "success"
-                ? "Confirmed by Paystack"
+                ? ib("eyebrowConfirmed")
                 : paymentResult.status === "pending"
-                  ? "Awaiting final sync"
-                  : "Action needed"}
+                  ? ib("eyebrowPending")
+                  : ib("eyebrowActionNeeded")}
             </Text>
             <Text style={styles.resultTitle}>{paymentResult.title}</Text>
             <Text style={styles.resultMessage}>{paymentResult.message}</Text>
@@ -399,7 +404,7 @@ export default function InAppBrowserScreen() {
             <View style={styles.resultStepRow}>
               <Ionicons name="shield-checkmark-outline" size={18} color={Colors.gray[500]} />
               <Text style={styles.resultStepText}>
-                Payments are verified server-side before campaigns or plans are activated.
+                {ib("paymentsVerifiedNote")}
               </Text>
             </View>
             <TouchableOpacity
@@ -418,17 +423,17 @@ export default function InAppBrowserScreen() {
                 router.back();
               }}
               style={styles.resultButton}
-              accessibilityLabel="Return to app"
+              accessibilityLabel={ib("returnToAppA11y")}
               accessibilityRole="button"
             >
               <Text style={styles.resultButtonText}>
                 {paymentResult.returnTo === "verify-identity" && paymentResult.status === "success"
-                  ? "Continue"
+                  ? ib("continue")
                   : paymentResult.returnToDashboard && paymentResult.status === "success"
-                    ? "Go to dashboard"
-                    : "Return to app"}
+                    ? ib("goToDashboard")
+                    : ib("returnToApp")}
               </Text>
-              <Ionicons name="arrow-forward" size={18} color={Colors.white} />
+              <DirectionalIcon name="arrow-forward" size={18} color={Colors.white} />
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -452,10 +457,10 @@ export default function InAppBrowserScreen() {
           }}
           onMessage={onWebMessage}
           onError={() => {
-            setError("Could not load this page.");
+            setError(ib("couldNotLoad"));
           }}
           onHttpError={() => {
-            setError("This page returned an error.");
+            setError(ib("pageError"));
           }}
           startInLoadingState
           setSupportMultipleWindows={false}
@@ -482,8 +487,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: Colors.gray[200],
   },
-  backBtn: { padding: 8, marginRight: 4 },
-  openExternalBtn: { padding: 8, marginLeft: 4 },
+  backBtn: { padding: 8, marginEnd: 4 },
+  openExternalBtn: { padding: 8, marginStart: 4 },
   headerTitle: {
     flex: 1,
     fontSize: 17,

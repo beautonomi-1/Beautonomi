@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -19,6 +20,7 @@ const DEFAULT_CATEGORY =
   SUPPORT_TICKET_CATEGORY_GROUPS[0]?.items[0]?.value ?? "account_sign_in";
 
 export default function ProviderNewSupportTicketPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bookingPrefill = useMemo(
@@ -44,7 +46,7 @@ export default function ProviderNewSupportTicketPage() {
       setSubject((current) =>
         current.trim()
           ? current
-          : `Help with booking ${bookingPrefill.supportContextLabel.split(" (")[0]}`,
+          : t("web.provider.pages.support-tickets/new.helpWithBooking", { label: bookingPrefill.supportContextLabel.split(" (")[0] }),
       );
     }
   }, [bookingPrefill]);
@@ -52,7 +54,7 @@ export default function ProviderNewSupportTicketPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim() || !message.trim()) {
-      toast.error("Enter a subject and message");
+      toast.error(t("web.provider.pages.support-tickets/new.enterSubjectAndMessage"));
       return;
     }
     try {
@@ -71,10 +73,10 @@ export default function ProviderNewSupportTicketPage() {
       );
       const id = res.data?.ticket?.id;
       const num = res.data?.ticket?.ticket_number;
-      toast.success(num ? `Ticket ${num} submitted` : "Ticket submitted");
+      toast.success(num ? t("web.provider.pages.support-tickets/new.ticketSubmittedNumber", { number: num }) : t("web.provider.pages.support-tickets/new.ticketSubmitted"));
       router.push(id ? `/provider/support-tickets/${id}` : "/provider/support-tickets");
     } catch (err) {
-      toast.error(err instanceof FetchError ? err.message : "Failed to submit ticket");
+      toast.error(err instanceof FetchError ? err.message : t("web.provider.pages.support-tickets/new.failedToSubmit"));
     } finally {
       setSubmitting(false);
     }
@@ -83,23 +85,23 @@ export default function ProviderNewSupportTicketPage() {
   return (
     <div>
       <PageHeader
-        title="Contact support"
-        subtitle="Submit a support ticket or get help"
+        title={t("web.provider.pages.support-tickets/new.title")}
+        subtitle={t("web.provider.pages.support-tickets/new.subtitle")}
         breadcrumbs={[
-          { label: "More", href: "/provider/more" },
-          { label: "Support tickets", href: "/provider/support-tickets" },
-          { label: "New ticket" },
+          { label: t("web.provider.common.more"), href: "/provider/more" },
+          { label: t("web.provider.pages.support-tickets/new.supportTickets"), href: "/provider/support-tickets" },
+          { label: t("web.provider.pages.support-tickets/new.newTicket") },
         ]}
       />
 
       <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 max-w-xl space-y-4">
         {bookingPrefill.supportContextLabel ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-            Related booking: <span className="font-medium">{bookingPrefill.supportContextLabel}</span>
+            {t("web.provider.pages.support-tickets/new.relatedBooking")} <span className="font-medium">{bookingPrefill.supportContextLabel}</span>
           </div>
         ) : null}
         <div>
-          <Label htmlFor="category">Category</Label>
+          <Label htmlFor="category">{t("web.provider.pages.support-tickets/new.category")}</Label>
           <select
             id="category"
             className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
@@ -118,21 +120,21 @@ export default function ProviderNewSupportTicketPage() {
           </select>
         </div>
         <div>
-          <Label htmlFor="priority">Priority</Label>
+          <Label htmlFor="priority">{t("web.provider.pages.support-tickets/new.priority")}</Label>
           <select
             id="priority"
             className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
             value={priority}
             onChange={(e) => setPriority(e.target.value as typeof priority)}
           >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
+            <option value="low">{t("web.provider.pages.support-tickets/new.priorityLow")}</option>
+            <option value="medium">{t("web.provider.pages.support-tickets/new.priorityMedium")}</option>
+            <option value="high">{t("web.provider.pages.support-tickets/new.priorityHigh")}</option>
+            <option value="urgent">{t("web.provider.pages.support-tickets/new.priorityUrgent")}</option>
           </select>
         </div>
         <div>
-          <Label htmlFor="subject">Subject</Label>
+          <Label htmlFor="subject">{t("web.provider.pages.support-tickets/new.subject")}</Label>
           <Input
             id="subject"
             value={subject}
@@ -141,7 +143,7 @@ export default function ProviderNewSupportTicketPage() {
           />
         </div>
         <div>
-          <Label htmlFor="message">Message</Label>
+          <Label htmlFor="message">{t("web.provider.pages.support-tickets/new.message")}</Label>
           <Textarea
             id="message"
             value={message}
@@ -152,10 +154,10 @@ export default function ProviderNewSupportTicketPage() {
         </div>
         <div className="flex gap-3">
           <Button type="submit" disabled={submitting}>
-            {submitting ? "Submitting…" : "Submit ticket"}
+            {submitting ? t("web.provider.pages.support-tickets/new.submitting") : t("web.provider.pages.support-tickets/new.submitTicket")}
           </Button>
           <Button type="button" variant="outline" asChild>
-            <Link href="/provider/support-tickets">Cancel</Link>
+            <Link href="/provider/support-tickets">{t("web.provider.common.cancel")}</Link>
           </Button>
         </div>
       </form>

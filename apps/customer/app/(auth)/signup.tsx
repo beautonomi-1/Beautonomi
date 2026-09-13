@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Platform, Linking, Modal, Pressable, FlatList } from "react-native";
 import { AppKeyboardAvoidingView as KeyboardAvoidingView } from "@/components/AppKeyboardAvoidingView";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -15,7 +15,7 @@ import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
 import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { trackSignUp, trackSignUpStart } from "@/lib/analytics";
-import { useTranslation, supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { useTranslation, supportedLanguages, preferredLanguageFromDevice, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
 import { changeLanguage } from "@/lib/i18n";
 import * as Localization from "expo-localization";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
@@ -23,6 +23,7 @@ import { verticalFlatListPerf } from "@/lib/flatListPerformance";
 import { getSocialAuthConfig } from "@/lib/third-party-config";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { AppleAuthButton } from "@/components/auth/AppleAuthButton";
+import { DirectionalIcon } from "@/components/ui/DirectionalIcon";
 import {
   isCompleteSupabaseSmsOtp,
   normalizeSupabaseSmsOtpToken,
@@ -42,8 +43,7 @@ const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 function getDefaultLanguage(): string {
-  const deviceCode = Localization.getLocales()[0]?.languageCode?.split("-")[0] || "en";
-  return supportedLanguages.some((l) => l.code === deviceCode) ? deviceCode : "en";
+  return preferredLanguageFromDevice(Localization.getLocales()[0]?.languageCode);
 }
 
 const PRIMARY = Colors.primary;
@@ -75,7 +75,11 @@ const COUNTRY_CODES = [
   { code: "+55", flag: "🇧🇷", label: "Brazil (+55)", phoneLen: 11 },
 ];
 
-function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+function getPasswordStrength(pw: string): {
+  score: number;
+  labelKey: "passwordWeak" | "passwordFair" | "passwordGood" | "passwordStrong";
+  color: string;
+} {
   let score = 0;
   if (pw.length >= 8) score++;
   if (pw.length >= 12) score++;
@@ -83,24 +87,24 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
   if (/[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
 
-  if (score <= 1) return { score, label: "Weak", color: "#EF4444" };
-  if (score <= 2) return { score, label: "Fair", color: "#F59E0B" };
-  if (score <= 3) return { score, label: "Good", color: "#3B82F6" };
-  return { score, label: "Strong", color: "#22C55E" };
+  if (score <= 1) return { score, labelKey: "passwordWeak", color: "#EF4444" };
+  if (score <= 2) return { score, labelKey: "passwordFair", color: "#F59E0B" };
+  if (score <= 3) return { score, labelKey: "passwordGood", color: "#3B82F6" };
+  return { score, labelKey: "passwordStrong", color: "#22C55E" };
 }
 
 function stripLeadingZero(digits: string): string {
   return digits.replace(/^0+/, "");
 }
 
-function validatePhone(digits: string, countryCode: string): string | null {
+function getPhoneLengthIssue(digits: string, countryCode: string): { expectedLen: number; country: string } | null {
   const raw = digits.replace(/\D/g, "");
   if (!raw) return null;
   const clean = stripLeadingZero(raw);
   const country = COUNTRY_CODES.find((c) => c.code === countryCode);
   const expectedLen = country?.phoneLen ?? 9;
   if (clean.length < expectedLen - 1 || clean.length > expectedLen) {
-    return `Phone should be ${expectedLen} digits for ${country?.flag ?? ""} ${countryCode} (leading 0 is optional)`;
+    return { expectedLen, country: `${country?.flag ?? ""} ${countryCode}`.trim() };
   }
   return null;
 }
@@ -121,7 +125,20 @@ export default function SignupScreen() {
     trackSignUpStart("email");
   }, []);
   const { t } = useTranslation();
+  const visibleLanguages = useMemo(() => supportedLanguages, []);
   const as = useCallback((key: string) => t(`customer.mobile.screens.authSignup.${key}`), [t]);
+  const al = useCallback((key: string) => t(`customer.mobile.screens.authLogin.${key}`), [t]);
+  const phoneLengthError = useCallback(
+    (digits: string, cc: string) => {
+      const issue = getPhoneLengthIssue(digits, cc);
+      if (!issue) return null;
+      return t("customer.mobile.screens.authLogin.phoneLengthHint", {
+        digits: issue.expectedLen,
+        country: issue.country,
+      });
+    },
+    [t],
+  );
   const { signUpWithEmail, signInWithOAuth, verifySignupEmailOtp, resendSignupConfirmationEmail } = useAuth();
   const params = useLocalSearchParams<{
     ref?: string;
@@ -259,28 +276,27 @@ export default function SignupScreen() {
       const digits = text.replace(/[^\d\s]/g, "");
       setPhone(digits);
       if (digits.replace(/\s/g, "").length > 0) {
-        setPhoneError(validatePhone(digits, countryCode));
+        setPhoneError(phoneLengthError(digits, countryCode));
       } else {
         setPhoneError(null);
       }
     },
-    [countryCode],
+    [countryCode, phoneLengthError],
   );
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
-    if (!fullName.trim()) newErrors.fullName = "Full name is required";
-    if (!email.trim()) newErrors.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) newErrors.email = "Invalid email address";
-    if (!password) newErrors.password = "Password is required";
-    else if (password.length < 8) newErrors.password = "Password must be at least 8 characters";
-    if (password !== confirmPassword) newErrors.confirmPassword = "Passwords don't match";
+    if (!fullName.trim()) newErrors.fullName = as("fullNameRequired");
+    if (!email.trim()) newErrors.email = as("emailRequired");
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) newErrors.email = as("invalidEmail");
+    if (!password) newErrors.password = as("passwordRequired");
+    else if (password.length < 8) newErrors.password = al("passwordMin8");
+    if (password !== confirmPassword) newErrors.confirmPassword = as("passwordsDontMatch");
     if (!agreedToTerms) {
-      newErrors.terms =
-        "Confirm you agree to the End User License Agreement, Privacy Policy, and Cookie Policy (including product analytics while signed in).";
+      newErrors.terms = as("termsRequired");
     }
     if (phone.trim()) {
-      const pErr = validatePhone(phone, countryCode);
+      const pErr = phoneLengthError(phone, countryCode);
       if (pErr) newErrors.phone = pErr;
     }
     setErrors(newErrors);
@@ -342,7 +358,7 @@ export default function SignupScreen() {
             await api.post("/api/auth/claim/start", { email: email.trim() });
             Alert.alert(
               as("signUpFailedTitle"),
-              "We found bookings under this email. Check your inbox to claim your account.",
+              as("claimAccountBody"),
             );
           } catch {
             Alert.alert(as("signUpFailedTitle"), msg);
@@ -436,8 +452,7 @@ export default function SignupScreen() {
     if (!agreedToTerms) {
       setErrors((p) => ({
         ...p,
-        terms:
-          "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics while signed in).",
+        terms: as("oauthTermsRequired"),
       }));
       return;
     }
@@ -531,9 +546,9 @@ export default function SignupScreen() {
                   marginBottom: 20,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Go back to edit signup details"
+                accessibilityLabel={al("goBackEditSignupA11y")}
               >
-                <Ionicons name="arrow-back" size={20} color="#111827" />
+                <DirectionalIcon name="arrow-back" size={20} color="#111827" />
               </TouchableOpacity>
 
               <View
@@ -561,10 +576,10 @@ export default function SignupScreen() {
                   <Ionicons name="checkmark-circle" size={28} color="#059669" />
                 </View>
                 <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 6 }}>
-                  Verify your email
+                  {al("verifyYourEmail")}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 13, color: "#4B5563", marginBottom: 6 }}>
-                  We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+                  {t("customer.mobile.screens.authLogin.signupOtpSentPrefix", { digits: SUPABASE_AUTH_OTP_LENGTH })}
                 </Text>
                 <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 16 }}>
                   {email.trim()}
@@ -583,7 +598,7 @@ export default function SignupScreen() {
                   }}
                   disabled={verifyingSignupOtp}
                   autoFocus
-                  accessibilityLabelPrefix="Signup verification code"
+                  accessibilityLabelPrefix={al("signupVerificationCodeA11y")}
                 />
 
                 {signupOtpError ? (
@@ -604,12 +619,12 @@ export default function SignupScreen() {
                     opacity: verifyingSignupOtp || !isCompleteSupabaseSmsOtp(signupOtpCode) ? 0.6 : 1,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Verify and continue"
+                  accessibilityLabel={al("verifyAndContinueA11y")}
                 >
                   {verifyingSignupOtp ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>Verify & continue</Text>
+                    <Text style={{ color: "#fff", fontSize: 15, fontWeight: "700" }}>{al("verifyAndContinue")}</Text>
                   )}
                 </TouchableOpacity>
 
@@ -627,17 +642,17 @@ export default function SignupScreen() {
                     opacity: resendingSignupOtp || signupOtpResendCooldown > 0 ? 0.6 : 1,
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel="Resend verification code"
+                  accessibilityLabel={al("resendVerificationCodeA11y")}
                 >
                   {resendingSignupOtp ? (
                     <ActivityIndicator color={PRIMARY} />
                   ) : signupOtpResendCooldown > 0 ? (
                     <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
-                      Resend code in {signupOtpResendCooldown}s
+                      {t("customer.mobile.screens.authLogin.resendCodeInSeconds", { seconds: signupOtpResendCooldown })}
                     </Text>
                   ) : (
                     <Text style={{ color: "#374151", fontSize: 14, fontWeight: "600" }}>
-                      Resend verification code
+                      {al("resendVerificationCode")}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -650,9 +665,9 @@ export default function SignupScreen() {
                   }}
                   style={{ marginTop: 14, alignItems: "center" }}
                   accessibilityRole="button"
-                  accessibilityLabel="Go back to edit signup details"
+                  accessibilityLabel={al("goBackEditSignupA11y")}
                 >
-                  <Text style={{ color: "#6B7280", fontSize: 13 }}>Wrong email? Go back and edit</Text>
+                  <Text style={{ color: "#6B7280", fontSize: 13 }}>{al("wrongEmailGoBack")}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -699,23 +714,23 @@ export default function SignupScreen() {
             marginBottom: 20,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={as("goBackA11y")}
         >
-          <Ionicons name="arrow-back" size={20} color="#111827" />
+          <DirectionalIcon name="arrow-back" size={20} color="#111827" />
         </TouchableOpacity>
 
         {/* Header */}
         <Text style={{ fontSize: 26, fontWeight: "800", color: Colors.gray[900], marginBottom: 6 }}>
-          Create Your Account
+          {as("title")}
         </Text>
         <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 16 }}>
-          Join Beautonomi and discover the best beauty services near you
+          {as("subtitle")}
         </Text>
 
         {(showReferralInput || manualReferralCode || referralCode) ? (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700], marginBottom: 6 }}>
-              Referral code <Text style={{ fontWeight: "400", color: Colors.gray[500] }}>(optional)</Text>
+              {as("referralCodeLabel")} <Text style={{ fontWeight: "400", color: Colors.gray[500] }}>{as("optional")}</Text>
             </Text>
             <TextInput
               value={manualReferralCode || referralCode || ""}
@@ -724,7 +739,7 @@ export default function SignupScreen() {
                 setManualReferralCode(next);
                 if (next) AsyncStorage.setItem(REFERRAL_REF_KEY, next).catch(() => {});
               }}
-              placeholder="Enter a friend's code"
+              placeholder={as("referralPlaceholder")}
               autoCapitalize="characters"
               autoCorrect={false}
               style={{
@@ -744,14 +759,14 @@ export default function SignupScreen() {
             style={{ marginBottom: 16 }}
             accessibilityRole="button"
           >
-            <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>Have a referral code?</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>{as("haveReferralCode")}</Text>
           </TouchableOpacity>
         )}
 
         {/* Terms — above social + email so OAuth is never ahead of consent */}
         {hasSocialAuth && !agreedToTerms ? (
           <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }} accessibilityLiveRegion="polite">
-            Tick the box below to continue with Google, Apple, or email sign up.
+            {as("socialConsentHint")}
           </Text>
         ) : null}
         <TouchableOpacity
@@ -775,29 +790,29 @@ export default function SignupScreen() {
           >
             {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
           </View>
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
-            I have read and agree to the{" "}
+          <Text style={{ marginStart: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+            {as("agreeLead")}{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(webCustomerEulaUrl()).catch(() => {})}
             >
-              End User License Agreement
+              {as("eulaLink")}
             </Text>{" "}
-            and{" "}
+            {as("agreeAnd")}{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(webPrivacyPolicyUrl()).catch(() => {})}
             >
-              Privacy Policy
+              {as("privacyPolicyLink")}
             </Text>
-            , and{" "}
+            {as("agreeCommaAnd")}{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(webCookiePolicyUrl()).catch(() => {})}
             >
-              Cookie Policy
+              {as("cookiePolicyLink")}
             </Text>
-            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics. I can update analytics preferences in my account privacy settings.
+            {as("agreeTrail")}
           </Text>
         </TouchableOpacity>
         {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -8, marginBottom: 12 }}>{errors.terms}</Text> : null}
@@ -823,7 +838,7 @@ export default function SignupScreen() {
           >
             {marketingConsent ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
           </View>
-          <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
+          <Text style={{ marginStart: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
             {t("auth.marketingConsent")}
           </Text>
         </TouchableOpacity>
@@ -847,10 +862,10 @@ export default function SignupScreen() {
                   backgroundColor: Colors.white,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Continue with Google"
+                accessibilityLabel={al("continueGoogleA11y")}
               >
-                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
-                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
+                <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginEnd: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithGoogle")}</Text>
               </TouchableOpacity>
             )}
 
@@ -875,17 +890,17 @@ export default function SignupScreen() {
                   backgroundColor: Colors.white,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Continue with Apple"
+                accessibilityLabel={al("continueAppleA11y")}
               >
-                <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+                <Ionicons name="logo-apple" size={20} color="#000" style={{ marginEnd: 10 }} />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{t("auth.continueWithApple")}</Text>
               </TouchableOpacity>
             ) : null}
 
             {/* Divider */}
             <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-              <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
+              <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>{as("orSignUpWithEmail")}</Text>
               <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
             </View>
           </>
@@ -913,14 +928,14 @@ export default function SignupScreen() {
           accessibilityLabel={t("auth.preferredLanguage")}
         >
           <Text style={{ fontSize: 15, color: "#111827" }}>
-            {supportedLanguages.find((l) => l.code === preferredLanguage)?.nativeName ?? supportedLanguages[0].nativeName}
+            {visibleLanguages.find((l) => l.code === preferredLanguage)?.nativeName ?? visibleLanguages[0]?.nativeName}
           </Text>
           <Ionicons name="chevron-down" size={18} color="#6B7280" />
         </TouchableOpacity>
 
         {/* Full Name */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          Full Name
+          {al("fullNameLabel")}
         </Text>
         <View
           style={{
@@ -944,14 +959,14 @@ export default function SignupScreen() {
             autoCapitalize="words"
             returnKeyType="next"
             onSubmitEditing={() => emailRef.current?.focus()}
-            accessibilityLabel="Full name"
+            accessibilityLabel={al("fullNameA11y")}
           />
         </View>
         {errors.fullName ? <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{errors.fullName}</Text> : null}
 
         {/* Email */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          Email
+          {al("emailLabel")}
         </Text>
         <View
           style={{
@@ -980,14 +995,14 @@ export default function SignupScreen() {
             importantForAutofill="yes"
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
-            accessibilityLabel="Email address"
+            accessibilityLabel={al("emailA11y")}
           />
         </View>
         {errors.email ? <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{errors.email}</Text> : null}
 
         {/* Password */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          Password
+          {al("passwordLabel")}
         </Text>
         <View
           style={{
@@ -1015,7 +1030,7 @@ export default function SignupScreen() {
             passwordRules="minlength: 8;"
             returnKeyType="next"
             onSubmitEditing={() => confirmRef.current?.focus()}
-            accessibilityLabel="Password"
+            accessibilityLabel={al("passwordA11y")}
           />
           <TouchableOpacity
             onPress={() => setShowPassword((v) => !v)}
@@ -1038,23 +1053,23 @@ export default function SignupScreen() {
                     height: 4,
                     borderRadius: 2,
                     backgroundColor: strength.score >= i ? strength.color : "#E5E7EB",
-                    marginRight: i < 4 ? 4 : 0,
+                    marginEnd: i < 4 ? 4 : 0,
                   }}
                 />
               ))}
             </View>
             <Text style={{ fontSize: 12, color: strength.color, fontWeight: "500" }}>
-              {strength.label}
+              {t(`auth.${strength.labelKey}`)}
               {strength.score < 3 && (
                 <Text style={{ color: "#9CA3AF" }}>
                   {" — "}
                   {password.length < 8
-                    ? "Need 8+ characters"
+                    ? as("need8Characters")
                     : !/[A-Z]/.test(password)
-                      ? "Add an uppercase letter"
+                      ? as("addUppercase")
                       : !/[0-9]/.test(password)
-                        ? "Add a number"
-                        : "Add a special character"}
+                        ? as("addNumber")
+                        : as("addSpecialCharacter")}
                 </Text>
               )}
             </Text>
@@ -1064,7 +1079,7 @@ export default function SignupScreen() {
 
         {/* Confirm Password */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          Confirm Password
+          {as("confirmPasswordLabel")}
         </Text>
         <View
           style={{
@@ -1091,14 +1106,14 @@ export default function SignupScreen() {
             textContentType="newPassword"
             returnKeyType="next"
             onSubmitEditing={() => phoneRef.current?.focus()}
-            accessibilityLabel="Confirm password"
+            accessibilityLabel={t("auth.confirmPassword")}
           />
         </View>
         {errors.confirmPassword ? <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{errors.confirmPassword}</Text> : null}
 
         {/* Phone (optional) */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          Phone Number <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>(optional)</Text>
+          {al("phoneNumberLabel")} <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>{as("optional")}</Text>
         </Text>
         <View
           style={{
@@ -1121,8 +1136,8 @@ export default function SignupScreen() {
               borderRightColor: "#E5E7EB",
             }}
           >
-            <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>{countryCode}</Text>
+            <Text style={{ fontSize: 18, marginEnd: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginEnd: 4 }}>{countryCode}</Text>
             <Ionicons name="chevron-down" size={14} color="#6B7280" />
           </TouchableOpacity>
           <TextInput
@@ -1141,7 +1156,7 @@ export default function SignupScreen() {
             onChangeText={handlePhoneChange}
             keyboardType="phone-pad"
             returnKeyType="done"
-            accessibilityLabel="Phone number, optional"
+            accessibilityLabel={as("phoneOptionalA11y")}
             textContentType="telephoneNumber"
             autoComplete="tel-national"
             importantForAutofill="yes"
@@ -1153,7 +1168,7 @@ export default function SignupScreen() {
 
         {/* How did you hear about us? (optional) */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-          {t("auth.howHearAboutUs")} <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>(optional)</Text>
+          {t("auth.howHearAboutUs")} <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>{as("optional")}</Text>
         </Text>
         <TouchableOpacity
           onPress={() => setShowSignupSourcePicker(true)}
@@ -1193,13 +1208,13 @@ export default function SignupScreen() {
             marginBottom: 16,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Create account"
+          accessibilityLabel={as("createAccountA11y")}
           accessibilityState={{ disabled: loading }}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Create Account</Text>
+            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>{as("createAccountCta")}</Text>
           )}
         </TouchableOpacity>
 
@@ -1210,8 +1225,8 @@ export default function SignupScreen() {
           accessibilityRole="link"
         >
           <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-            Already have an account?{" "}
-            <Text style={{ fontWeight: "700", color: PRIMARY }}>Log in</Text>
+            {t("auth.alreadyHaveAccount")}{" "}
+            <Text style={{ fontWeight: "700", color: PRIMARY }}>{t("auth.login")}</Text>
           </Text>
         </TouchableOpacity>
 
@@ -1221,7 +1236,7 @@ export default function SignupScreen() {
           accessibilityRole="link"
         >
           <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "600", color: "#6B7280" }}>
-            Browse without an account
+            {al("browseWithoutAccount")}
           </Text>
         </TouchableOpacity>
 
@@ -1291,7 +1306,7 @@ export default function SignupScreen() {
                   onPress={() => {
                     setCountryCode(c.code);
                     setShowCountryPicker(false);
-                    setPhoneError(phone.trim() ? validatePhone(phone, c.code) : null);
+                    setPhoneError(phone.trim() ? phoneLengthError(phone, c.code) : null);
                   }}
                   style={{
                     flexDirection: "row",
@@ -1302,7 +1317,7 @@ export default function SignupScreen() {
                     borderColor: "#F9FAFB",
                   }}
                 >
-                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text style={{ fontSize: 20, marginEnd: 12 }}>{c.flag}</Text>
                   <Text
                     style={{
                       flex: 1,
@@ -1344,7 +1359,7 @@ export default function SignupScreen() {
             </Text>
             <FlatList
               {...verticalFlatListPerf}
-              data={[...supportedLanguages]}
+              data={[...visibleLanguages]}
               keyExtractor={(l) => l.code}
               renderItem={({ item: lang }) => (
                 <TouchableOpacity

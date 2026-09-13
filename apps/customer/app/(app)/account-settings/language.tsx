@@ -17,7 +17,8 @@ import {
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
-import { changeLanguage } from "@/lib/i18n";
+import { changeLanguage, promptReloadIfDirectionChanged } from "@/lib/i18n";
+import { normalizeLanguageCode } from "@beautonomi/i18n";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 
 /** Sync to account when the code is a bundled @beautonomi/i18n locale (matches /api/me/preferences). */
@@ -30,8 +31,14 @@ interface PreferencesResponse {
 export default function LanguageSettings() {
   useScreenTracking("Language shortcut");
   const { t } = useTranslation();
+  const ls = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`customer.mobile.screens.languageScreen.${key}`, opts) as string,
+    [t],
+  );
+  const visibleLanguages = i18nSupportedLanguages;
   const router = useRouter();
-  const [currentCode, setCurrentCode] = useState(() => (i18n.language || "en").split("-")[0]);
+  const [currentCode, setCurrentCode] = useState(() => normalizeLanguageCode(i18n.language || "en"));
   const { data: preferences, refresh } = useApi<PreferencesResponse>("/api/me/preferences");
 
   const serverLang = preferences?.preferences?.language ?? null;
@@ -39,7 +46,7 @@ export default function LanguageSettings() {
     if (
       serverLang &&
       API_LANGUAGE_CODES.has(serverLang) &&
-      serverLang !== (i18n.language || "en").split("-")[0]
+      normalizeLanguageCode(serverLang) !== normalizeLanguageCode(i18n.language || "en")
     ) {
       void changeLanguage(serverLang as SupportedLanguage);
       setCurrentCode(serverLang);
@@ -47,7 +54,7 @@ export default function LanguageSettings() {
   }, [serverLang]);
 
   useEffect(() => {
-    const handler = (lng: string) => setCurrentCode((lng || "en").split("-")[0]);
+    const handler = (lng: string) => setCurrentCode(normalizeLanguageCode(lng || "en"));
     i18n.on("languageChanged", handler);
     return () => {
       i18n.off("languageChanged", handler);
@@ -58,20 +65,22 @@ export default function LanguageSettings() {
     async (code: SupportedLanguage) => {
       if (code === currentCode) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await changeLanguage(code);
+      const { directionChanged } = await changeLanguage(code);
       setCurrentCode(code);
+      promptReloadIfDirectionChanged(directionChanged, Alert.alert, {
+        title: ls("restartRequiredTitle"),
+        body: ls("restartRequiredBody"),
+        reload: ls("restartNow"),
+      });
       if (API_LANGUAGE_CODES.has(code)) {
         const res = await api.post("/api/me/preferences", { language: code });
         if (res.error) {
-          Alert.alert(
-            t("customer.mobile.screens.languageScreen.syncNoteTitle"),
-            t("customer.mobile.screens.languageScreen.syncNoteBody"),
-          );
+          Alert.alert(ls("syncNoteTitle"), ls("syncNoteBody"));
         }
         refresh();
       }
     },
-    [currentCode, refresh, t],
+    [currentCode, refresh, ls],
   );
 
   return (
@@ -87,9 +96,12 @@ export default function LanguageSettings() {
         }}
       >
         <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>
-          <Text style={{ fontWeight: "600" }}>Language & region</Text> under Account is the main place to set language,
-          currency, and timezone. This screen is only the language list (for shortcuts); it writes the same{" "}
-          <Text style={{ fontWeight: "600" }}>preferred_language</Text> field via <Text style={{ fontWeight: "600" }}>/api/me/preferences</Text>.
+          <Text style={{ fontWeight: "600" }}>{ls("introCardTitle")}</Text>
+          {ls("introCardBodyPrefix")}
+          <Text style={{ fontWeight: "600" }}>{ls("introCardBodyField")}</Text>
+          {ls("introCardBodySuffix")}
+          <Text style={{ fontWeight: "600" }}>{ls("introCardBodyApi")}</Text>
+          {ls("introCardBodyEnd")}
         </Text>
         <TouchableOpacity
           onPress={() => {
@@ -107,52 +119,56 @@ export default function LanguageSettings() {
             backgroundColor: Colors.primary,
           }}
           accessibilityRole="button"
-          accessibilityLabel="Open Language and region settings"
+          accessibilityLabel={ls("openPreferencesA11y")}
         >
-          <Ionicons name="globe-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Open Language & region</Text>
+          <Ionicons name="globe-outline" size={18} color="#fff" style={{ marginEnd: 8 }} />
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{ls("openPreferencesCta")}</Text>
         </TouchableOpacity>
       </View>
 
       <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
-        Choose your preferred language. The app interface updates immediately.
+        {ls("chooseLanguageSubtitle")}
       </Text>
 
-      <View>
-        {i18nSupportedLanguages.map((lang, index) => {
+      <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
+        {visibleLanguages.map((lang) => {
           const isActive = currentCode === lang.code;
           return (
             <TouchableOpacity
               key={lang.code}
               onPress={() => handleSelect(lang.code)}
               style={{
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: isActive ? "#F9A8D4" : Colors.gray[100],
-                backgroundColor: isActive ? "#FDF2F8" : Colors.white,
-                padding: 16,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginTop: index === 0 ? 0 : 8,
+                width: "50%",
+                paddingHorizontal: 6,
+                marginBottom: 12,
               }}
-              accessibilityLabel={`Select ${lang.name}`}
+              accessibilityLabel={ls("selectLanguageA11y", { name: lang.name })}
               accessibilityRole="button"
             >
-              <View>
-                <Text style={{ fontSize: 16, fontWeight: "600", color: isActive ? "#BE185D" : Colors.gray[900] }}>
+              <View
+                style={{
+                  borderRadius: 16,
+                  borderWidth: 2,
+                  borderColor: isActive ? "#222222" : "transparent",
+                  backgroundColor: isActive ? Colors.white : Colors.gray[50],
+                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  minHeight: 72,
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                   {lang.nativeName}
                 </Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{lang.name}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>{lang.name}</Text>
               </View>
-              {isActive && <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />}
             </TouchableOpacity>
           );
         })}
       </View>
 
       <Text style={{ fontSize: 12, color: Colors.gray[400], textAlign: "center", marginTop: 24 }}>
-        Some content from service providers may remain in its original language.
+        {ls("providerContentNote")}
       </Text>
     </ScrollView>
   );

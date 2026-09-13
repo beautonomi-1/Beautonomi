@@ -9,6 +9,7 @@ import MapboxMapPreview, { MapboxMapPreviewUnavailable } from "@/components/mapb
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface EnhancedAddressDialogProps {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export default function EnhancedAddressDialog({
   onClose,
   onAddressSelect,
 }: EnhancedAddressDialogProps) {
+  const { t } = useTranslation();
+  const prefix = "web.global.enhancedAddressDialog";
   const [selectedAddress, setSelectedAddress] = useState<{
     address_line1: string;
     city: string;
@@ -115,8 +118,8 @@ export default function EnhancedAddressDialog({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-[95%] sm:max-w-[600px] p-6 rounded-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-left text-xl font-bold text-gray-900 flex items-center justify-between">
-            Select Address
+          <DialogTitle className="text-start text-xl font-bold text-gray-900 flex items-center justify-between">
+            {t(`${prefix}.title`)}
             <button
               onClick={onClose}
               className="p-1 hover:bg-gray-100 rounded-full transition-colors"
@@ -131,7 +134,7 @@ export default function EnhancedAddressDialog({
           <div>
             <AddressAutocomplete
               onChange={handleAddressSelect}
-              placeholder="Search for an address..."
+              placeholder={t(`${prefix}.searchPlaceholder`)}
               className="w-full"
             />
           </div>
@@ -170,17 +173,17 @@ export default function EnhancedAddressDialog({
               {availability.isLoading ? (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  <span>Checking service availability...</span>
+                  <span>{t(`${prefix}.checkingAvailability`)}</span>
                 </div>
               ) : availability.in_zone ? (
                 <div className="flex items-center gap-2 text-sm text-green-600">
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>Services are available in this area</span>
+                  <span>{t(`${prefix}.servicesAvailable`)}</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 text-sm text-amber-600">
                   <AlertCircle className="h-4 w-4" />
-                  <span>Limited service availability in this area</span>
+                  <span>{t(`${prefix}.limitedAvailability`)}</span>
                 </div>
               )}
             </div>
@@ -210,14 +213,14 @@ export default function EnhancedAddressDialog({
           {/* Action Buttons */}
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={onClose}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleConfirm}
               disabled={!selectedAddress}
               className="bg-[#FF007F] hover:bg-[#E6006F] text-white"
             >
-              Confirm Location
+              {t(`${prefix}.confirmLocation`)}
             </Button>
           </div>
         </div>

@@ -661,6 +661,8 @@ export function CpModuleAiPage() {
     max_tokens: 600,
     temperature: 0.3,
     daily_budget_credits: 0,
+    monthly_budget_usd: "" as number | "",
+    alert_threshold_pct: 80,
     per_provider_calls_per_day: 0,
     per_user_calls_per_day: 0,
   });
@@ -685,6 +687,9 @@ export function CpModuleAiPage() {
           max_tokens: Number(d.max_tokens ?? 600),
           temperature: Number(d.temperature ?? 0.3),
           daily_budget_credits: Number(d.daily_budget_credits ?? 0),
+          monthly_budget_usd:
+            d.monthly_budget_usd != null ? Number(d.monthly_budget_usd) : ("" as const),
+          alert_threshold_pct: Number(d.alert_threshold_pct ?? 80),
           per_provider_calls_per_day: Number(d.per_provider_calls_per_day ?? 0),
           per_user_calls_per_day: Number(d.per_user_calls_per_day ?? 0),
         });
@@ -703,7 +708,11 @@ export function CpModuleAiPage() {
     setSaving(true);
     setMsg(null);
     try {
-      await adminApi.putJson("/api/admin/control-plane/modules/ai", { environment: env, ...form });
+      await adminApi.putJson("/api/admin/control-plane/modules/ai", {
+        environment: env,
+        ...form,
+        monthly_budget_usd: form.monthly_budget_usd === "" ? null : form.monthly_budget_usd,
+      });
       setMsg("Saved.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Save failed");
@@ -719,7 +728,7 @@ export function CpModuleAiPage() {
       <CpBack />
       <AdminPageHeader
         title="Provider AI"
-        description="Runtime budgets, limits, and cache settings for the provider Gemini assistant."
+        description="Runtime budgets, limits, and cache settings for provider AI features."
       />
       <ProviderAiSubnav />
       <EnvSelect value={env} onChange={setEnv} />
@@ -748,6 +757,8 @@ export function CpModuleAiPage() {
               ["max_tokens", "Max tokens", "number"],
               ["temperature", "Temperature", "number"],
               ["daily_budget_credits", "Daily budget credits", "number"],
+              ["monthly_budget_usd", "Monthly budget (USD)", "number"],
+              ["alert_threshold_pct", "Alert threshold (%)", "number"],
               ["per_provider_calls_per_day", "Per-provider calls/day", "number"],
               ["per_user_calls_per_day", "Per-user calls/day", "number"],
             ] as const

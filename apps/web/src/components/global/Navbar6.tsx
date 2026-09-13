@@ -1,4 +1,6 @@
 "use client";
+
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -16,6 +18,7 @@ import { Input } from "../ui/input";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 
 const Navbar6 = () => {
+  const { t } = useTranslation();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
   const [isHovered, setHovered] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -25,32 +28,32 @@ const Navbar6 = () => {
     { src: XSocial, alt: "X", link: "https://x.com/beautonomi" },
     {
       src: Pinterest,
-      alt: "Pinterest",
+      alt: t("web.layout.navbar6.pinterest"),
       link: "https://www.pinterest.com/beautonomi",
     },
     {
       src: Tiktok,
-      alt: "Tiktok",
+      alt: t("web.layout.navbar6.tiktok"),
       link: "https://www.tiktok.com/@beautonomi",
     },
-    { src: Instagram, alt: "Instagram", link: "https://instagram.com/beautonomi" },
+{ src: Instagram, alt: t("web.layout.navbar6.instagram"), link: "https://instagram.com/beautonomi" },
   ];
 
   const navItems = [
-    { text: "About Us", href: "/about-us" },
-    { text: "Media Assets", href: "/media-assets" },
-    { text: "Product Releases", href: "/product-releases" },
-    { text: "Contact", href: PLATFORM_CONTACT_HREF },
+    { text: t("web.layout.navbar6.aboutUs"), href: "/about-us" },
+    { text: t("web.layout.navbar6.mediaAssets"), href: "/media-assets" },
+    { text: t("web.layout.navbar6.productReleases"), href: "/product-releases" },
+    { text: t("web.layout.navbar6.contact"), href: PLATFORM_CONTACT_HREF },
   ];
 
   const languages = [
-    { code: "en", name: "English" },
-    { code: "es", name: "Spanish" },
-    { code: "fr", name: "French" },
-    { code: "de", name: "German" },
-    { code: "zh", name: "Chinese" },
-    { code: "jp", name: "Japanese" },
-    { code: "kr", name: "Korean" },
+    { code: "en", name: t("web.layout.languageModal.english") },
+    { code: "es", name: t("web.layout.languageModal.spanish") },
+    { code: "fr", name: t("web.layout.languageModal.french") },
+    { code: "de", name: t("web.layout.languageModal.german") },
+    { code: "zh", name: t("web.layout.languageModal.chinese") },
+    { code: "jp", name: t("web.layout.navbar6.japanese") },
+    { code: "kr", name: t("web.layout.navbar6.korean") },
   ];
 
   return (
@@ -58,12 +61,12 @@ const Navbar6 = () => {
       <div className="container">
         <div className="flex justify-between items-center">
           <div className="flex gap-3 items-center w-44 h-20">
-            <Image src={Logo} alt="Logo" className="w-44" />
+            <Image src={Logo} alt={t("web.layout.navbar.logoAlt")} className="w-44" />
           </div>
           <div className="block md:hidden">
             <Image
               src={SidebarIcon}
-              alt="Sidebar"
+              alt={t("web.layout.navbar6.sidebarAlt")}
               onClick={() => setSidebarOpen(true)}
               className="cursor-pointer"
             />
@@ -91,12 +94,12 @@ const Navbar6 = () => {
             >
               <Image
                 src={Global}
-                alt="Global"
+                alt={t("web.layout.navbar6.globalAlt")}
                 className="h-5 w-5 cursor-pointer"
                 onMouseEnter={() => setDropdownOpen(true)}
                 onMouseLeave={() => setDropdownOpen(false)}
               />
-              <Image src={Chevron} alt="Chevron" className="h-5 w-5 ml-1" />
+              <Image src={Chevron} alt="Chevron" className="h-5 w-5 ms-1" />
               {(isDropdownOpen || isHovered) && (
                 <div
                   className="absolute top-full right-0 mt-2 w-40 bg-white border border-gray-300 rounded-lg shadow-lg z-10 dropdown-menu"
@@ -117,8 +120,8 @@ const Navbar6 = () => {
               )}
             </div>
             <div className="flex gap-1 items-center">
-              <Image src={Search} alt="Search" className="h-5 w-5" />
-              <p>Search</p>
+              <Image src={Search} alt={t("common.search")} className="h-5 w-5" />
+              <p>{t("common.search")}</p>
             </div>
           </div>
         </div>
@@ -132,7 +135,7 @@ const Navbar6 = () => {
         <div className="justify-end flex p-4 mb-4">
           <Image
             src={CloseIcon}
-            alt="Close"
+            alt={t("common.close")}
             onClick={() => setSidebarOpen(false)}
             className="h-6 w-6 cursor-pointer "
           />
@@ -142,16 +145,16 @@ const Navbar6 = () => {
             <Image src={Search} alt="" />
             <Input
               type="text"
-              placeholder="What are you looking for?"
+              placeholder={t("web.layout.navbar6.searchPlaceholder")}
               className="w-full"
             />
           </div>
           <div className="flex justify-between items-center border p-3  rounded-lg">
-            <Image src={Global} alt="Global" className="ml-2 h-5 w-5" />
+            <Image src={Global} alt="Global" className="ms-2 h-5 w-5" />
             <Image
               src={Chevron}
-              alt="Chevron"
-              className="h-5 w-5 ml-1 cursor-pointer"
+              alt={t("web.layout.navbar6.chevronAlt")}
+              className="h-5 w-5 ms-1 cursor-pointer"
               onClick={() =>
                 setMobileLangDropdownOpen(!isMobileLangDropdownOpen)
               }

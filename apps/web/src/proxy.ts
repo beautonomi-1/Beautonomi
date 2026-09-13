@@ -10,6 +10,7 @@ import {
   generateCspNonce,
 } from '@/lib/security/csp-nonce';
 import { enforceAdminIpAllowlist, isAdminScopedPath } from '@/lib/security/admin-ip-allowlist';
+import { getServerUserSafe } from '@/lib/supabase/auth-errors';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -178,6 +179,7 @@ export async function proxy(request: NextRequest) {
       pathname === '/shop/payment-callback' ||
       pathname === '/booking/callback' ||
       pathname === '/checkout/success' ||
+      pathname === '/checkout/cancelled' ||
       pathname === '/gift-card/purchase/success' ||
       pathname === '/provider/settings/ads/payment-return' ||
       isProviderSubscriptionCallback ||
@@ -355,6 +357,7 @@ export async function proxy(request: NextRequest) {
       '/age-suitability',
       '/customer/eula',
       '/provider/eula',
+      '/provider/signup',
       '/accessibility',
       '/BCover-for-partners',
       '/beautonomi-friendly',
@@ -482,11 +485,7 @@ export async function proxy(request: NextRequest) {
       // Get user - this authenticates the data by contacting Supabase Auth server
       // This is more secure than getSession() which reads directly from cookies
       // Using getUser() ensures the user data is verified with the Supabase Auth server
-      const { data: { user: authenticatedUser }, error: userError } = await supabase.auth.getUser();
-      
-      if (!userError && authenticatedUser) {
-        user = authenticatedUser;
-      }
+      user = await getServerUserSafe(supabase);
     } catch (error) {
       console.error("Error creating Supabase client or getting session:", error);
       const failUrl = new URL('/', request.nextUrl.origin);
@@ -604,6 +603,11 @@ export async function proxy(request: NextRequest) {
 
         // Public: Partner EULA for App Store / in-app legal links (no session required)
         if (pathname === '/provider/eula' || pathname.startsWith('/provider/eula/')) {
+          return finalizePageResponse(request, response);
+        }
+
+        // Public: dedicated partner signup entry (redirects to /signup?type=provider)
+        if (pathname === '/provider/signup') {
           return finalizePageResponse(request, response);
         }
 

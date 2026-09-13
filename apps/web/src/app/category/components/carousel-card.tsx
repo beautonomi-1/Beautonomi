@@ -33,13 +33,13 @@ export default function CarouselCard({ slides, content }: any) {
         // @ts-expect-error - dynamic types
         onSelect={handleSlideChange}
       >
-        <CarouselContent className="-ml-1">
+        <CarouselContent className="-ms-1">
           {slides.map(
             (
               slide: { src: string | StaticImport; alt: string },
               index: React.Key | null | undefined
             ) => (
-              <CarouselItem key={index} className="pl-1">
+              <CarouselItem key={index} className="ps-1">
                 <div className="relative w-full min-w-[315px] h-[300px] overflow-hidden">
                   <Image
                     src={slide.src}

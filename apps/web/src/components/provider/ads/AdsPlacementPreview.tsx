@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import ProviderCard from "@/app/home/components/provider-card";
 import type { PublicProviderCard } from "@/types/beautonomi";
 
@@ -19,7 +21,8 @@ export function AdsPlacementPreview({
   city,
   className,
 }: Props) {
-  const title = headline?.trim() || businessName?.trim() || "Your business name";
+  const { t } = useTranslation();
+  const title = headline?.trim() || businessName?.trim() || t("web.providerExtras.yourBusinessName");
   const provider: PublicProviderCard = {
     id: "preview",
     slug: "preview",
@@ -28,13 +31,13 @@ export function AdsPlacementPreview({
     rating: 4.8,
     review_count: 24,
     thumbnail_url: thumbnailUrl ?? null,
-    city: city?.trim() || "Johannesburg",
+    city: city?.trim() || t("web.providerExtras.johannesburg"),
     country: "ZA",
     is_featured: false,
     is_verified: true,
     starting_price: 250,
     currency: "ZAR",
-    description: "How your listing may appear in search and home sponsored rows.",
+    description: t("web.providerExtras.listingPreviewHint"),
     is_sponsored: true,
     campaign_id: "preview",
   };
@@ -42,10 +45,10 @@ export function AdsPlacementPreview({
   return (
     <div className={className}>
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Sponsored placement preview
+        {t("web.providerExtras.sponsoredPlacementPreview")}
       </p>
       <div className="pointer-events-none max-w-sm">
-        <ProviderCard provider={provider} sponsoredBadgeText="Sponsored" />
+        <ProviderCard provider={provider} sponsoredBadgeText={t("web.providerExtras.sponsored")} />
       </div>
     </div>
   );

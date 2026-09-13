@@ -11,7 +11,7 @@ import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 
 export default function CTASection() {
   const router = useRouter();
-  const { user, role, isLoading } = useAuth();
+  const { user, role } = useAuth();
   const { getSectionContent } = usePageContent("become-a-partner");
   const ctaTitle = getSectionContent("cta_title") || "Ready to grow your beauty business?";
   const ctaDescription =
@@ -20,7 +20,6 @@ export default function CTASection() {
 
   /** Same routing as hero primary CTA: partner signup funnel → `/signup?type=provider`, signed-in → app surface. */
   const handleTryItNow = () => {
-    if (isLoading) return;
     if (user) {
       if (role === "provider_owner") {
         router.push("/provider/dashboard");
@@ -58,7 +57,7 @@ export default function CTASection() {
             className="bg-primary hover:bg-primary-hover text-white px-8 py-6 text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
           >
             Get started
-            <ArrowRight className="ml-2 w-5 h-5" />
+            <ArrowRight className="ms-2 w-5 h-5" />
           </Button>
         </div>
       </div>

@@ -33,7 +33,7 @@ export function BookingConflictBanner({
         <p className="text-sm text-amber-900">{message}</p>
       </div>
       {onAction || onSecondaryAction ? (
-        <div className="flex flex-wrap gap-3 pl-6">
+        <div className="flex flex-wrap gap-3 ps-6">
           {onAction ? (
             <button
               type="button"

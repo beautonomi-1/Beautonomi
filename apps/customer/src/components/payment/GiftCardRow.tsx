@@ -81,7 +81,7 @@ export function GiftCardRow({
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
           <Ionicons name="gift" size={20} color={Colors.primary} />
-          <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+          <Text style={{ marginStart: 8, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
             {balanceLabel}
           </Text>
         </View>
@@ -178,7 +178,7 @@ export function GiftCardRow({
               size={16}
               color={copied ? "#16a34a" : Colors.gray[700]}
             />
-            <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: copied ? "#16a34a" : Colors.gray[700] }}>
+            <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: copied ? "#16a34a" : Colors.gray[700] }}>
               {copied
                 ? (t("customer.paymentsScreen.giftCardCopied", "Copied") as string)
                 : (t("customer.paymentsScreen.giftCardCopy", "Copy code") as string)}
@@ -208,7 +208,7 @@ export function GiftCardRow({
             accessibilityLabel={t("customer.paymentsScreen.giftCardShare", "Share gift card") as string}
           >
             <Ionicons name="share-social-outline" size={16} color={Colors.gray[700]} />
-            <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+            <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
               {t("customer.paymentsScreen.giftCardShare", "Share")}
             </Text>
           </TouchableOpacity>
@@ -227,11 +227,11 @@ export function GiftCardRow({
                 paddingHorizontal: 12,
               }}
               accessibilityRole="button"
-              accessibilityLabel="Resend gift card"
+              accessibilityLabel={t("customer.mobile.components.giftCardRow.resendA11y")}
             >
               <Ionicons name="send-outline" size={16} color={Colors.gray[700]} />
-              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-                Resend
+              <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                {t("customer.mobile.components.giftCardRow.resend")}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -252,7 +252,7 @@ export function GiftCardRow({
               accessibilityLabel={t("customer.paymentsScreen.giftCardRedeem", "Redeem to wallet") as string}
             >
               <Ionicons name="wallet-outline" size={16} color={Colors.white} />
-              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "700", color: Colors.white }}>
+              <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "700", color: Colors.white }}>
                 {t("customer.paymentsScreen.giftCardRedeem", "To wallet")}
               </Text>
             </TouchableOpacity>
@@ -275,7 +275,7 @@ export function GiftCardRow({
               accessibilityLabel={t("customer.paymentsScreen.removeGiftCardA11y", "Remove gift card from wallet") as string}
             >
               <Ionicons name="trash-outline" size={16} color="#DC2626" />
-              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: "#DC2626" }}>
+              <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: "#DC2626" }}>
                 {t("customer.paymentsScreen.remove", "Remove")}
               </Text>
             </TouchableOpacity>
@@ -293,11 +293,11 @@ export function GiftCardRow({
             alignSelf: "flex-start",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Contact support about this gift card"
+          accessibilityLabel={t("customer.mobile.components.giftCardRow.contactSupportA11y")}
         >
           <Ionicons name="help-circle-outline" size={16} color={Colors.gray[600]} />
-          <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
-            Contact support
+          <Text style={{ marginStart: 6, fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+            {t("customer.mobile.components.giftCardRow.contactSupport")}
           </Text>
         </TouchableOpacity>
       ) : null}

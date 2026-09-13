@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
+
 import React from "react";
 import { MapPin } from "lucide-react";
 import {
@@ -30,6 +32,7 @@ export function LocationSwitcher({
   onLocationChange,
   showAllOption = false,
 }: LocationSwitcherProps) {
+  const { t } = useTranslation();
   // Don't show if only one location (unless showAllOption is true)
   if (locations.length <= 1 && !showAllOption) {
     return null;
@@ -38,10 +41,10 @@ export function LocationSwitcher({
   const selectedLocation = locations.find(loc => loc.id === selectedLocationId);
   const displayName = selectedLocation
     ? `${selectedLocation.name}${selectedLocation.city ? `, ${selectedLocation.city}` : ''}`
-    : locations[0]?.name || "Select Location";
+    : locations[0]?.name || t("web.locationSwitcher.selectLocation");
 
   // For mobile, show just the location name (truncated), for larger screens show name + city
-  const mobileDisplayName = selectedLocation?.name || locations[0]?.name || "Location";
+  const mobileDisplayName = selectedLocation?.name || locations[0]?.name || t("web.provider.common.location");
   const desktopDisplayName = displayName;
 
   return (
@@ -52,7 +55,7 @@ export function LocationSwitcher({
         onValueChange={onLocationChange}
       >
         <SelectTrigger className="w-[120px] sm:w-[160px] md:w-[180px] lg:w-[200px] h-8 sm:h-9 text-xs sm:text-sm border-gray-200">
-          <SelectValue placeholder="Select Location">
+          <SelectValue placeholder={t("web.locationSwitcher.selectLocation")}>
             <span className="truncate flex items-center gap-1.5 sm:gap-2">
               <span className="truncate hidden sm:inline">{desktopDisplayName}</span>
               <span className="truncate sm:hidden">{mobileDisplayName}</span>
@@ -63,8 +66,8 @@ export function LocationSwitcher({
           {showAllOption && (
             <SelectItem value="all">
               <div className="flex flex-col">
-                <span className="font-medium text-sm">All Locations</span>
-                <span className="text-xs text-gray-500">View all data</span>
+                <span className="font-medium text-sm">{t("web.locationSwitcher.allLocations")}</span>
+                <span className="text-xs text-gray-500">{t("web.locationSwitcher.viewAllData")}</span>
               </div>
             </SelectItem>
           )}

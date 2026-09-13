@@ -31,12 +31,72 @@ const PROFILE_QUESTION_FIELDS = [
   { key: "pets", labelKey: "qPets" as const },
 ] as const;
 
-const DECADE_BORN_OPTIONS = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "Prefer not to say"];
-const HAIR_TYPE_OPTIONS = ["Straight", "Wavy", "Curly", "Coily", "Coloured", "Natural", "Relaxed", "Thin", "Thick"];
-const SKIN_TYPE_OPTIONS = ["Normal", "Oily", "Dry", "Combination", "Sensitive", "Mature"];
-const THINGS_TO_AVOID_OPTIONS = ["Strong fragrances", "Alcohol-based products", "Sulfates", "Parabens", "Essential oils", "Latex", "Nickel", "Dyes", "Formaldehyde"];
-const APPOINTMENT_STYLE_OPTIONS = ["Quick & efficient", "Relaxed & unhurried", "Social & chatty", "Quiet & minimal", "Flexible"];
-const PRODUCT_PREFERENCE_OPTIONS = ["Vegan", "Cruelty-free", "Natural / organic", "Fragrance-free", "Hypoallergenic", "Luxury", "Budget-friendly", "No preference"];
+const DECADE_BORN_OPTIONS = [
+  { value: "1950s", labelKey: "decade1950s" },
+  { value: "1960s", labelKey: "decade1960s" },
+  { value: "1970s", labelKey: "decade1970s" },
+  { value: "1980s", labelKey: "decade1980s" },
+  { value: "1990s", labelKey: "decade1990s" },
+  { value: "2000s", labelKey: "decade2000s" },
+  { value: "2010s", labelKey: "decade2010s" },
+  { value: "Prefer not to say", labelKey: "decadePreferNot" },
+] as const;
+const HAIR_TYPE_OPTIONS = [
+  { value: "Straight", labelKey: "hairStraight" },
+  { value: "Wavy", labelKey: "hairWavy" },
+  { value: "Curly", labelKey: "hairCurly" },
+  { value: "Coily", labelKey: "hairCoily" },
+  { value: "Coloured", labelKey: "hairColoured" },
+  { value: "Natural", labelKey: "hairNatural" },
+  { value: "Relaxed", labelKey: "hairRelaxed" },
+  { value: "Thin", labelKey: "hairThin" },
+  { value: "Thick", labelKey: "hairThick" },
+] as const;
+const SKIN_TYPE_OPTIONS = [
+  { value: "Normal", labelKey: "skinNormal" },
+  { value: "Oily", labelKey: "skinOily" },
+  { value: "Dry", labelKey: "skinDry" },
+  { value: "Combination", labelKey: "skinCombination" },
+  { value: "Sensitive", labelKey: "skinSensitive" },
+  { value: "Mature", labelKey: "skinMature" },
+] as const;
+const THINGS_TO_AVOID_OPTIONS = [
+  { value: "Strong fragrances", labelKey: "avoidStrongFragrances" },
+  { value: "Alcohol-based products", labelKey: "avoidAlcohol" },
+  { value: "Sulfates", labelKey: "avoidSulfates" },
+  { value: "Parabens", labelKey: "avoidParabens" },
+  { value: "Essential oils", labelKey: "avoidEssentialOils" },
+  { value: "Latex", labelKey: "avoidLatex" },
+  { value: "Nickel", labelKey: "avoidNickel" },
+  { value: "Dyes", labelKey: "avoidDyes" },
+  { value: "Formaldehyde", labelKey: "avoidFormaldehyde" },
+] as const;
+const APPOINTMENT_STYLE_OPTIONS = [
+  { value: "Quick & efficient", labelKey: "styleQuickEfficient" },
+  { value: "Relaxed & unhurried", labelKey: "styleRelaxed" },
+  { value: "Social & chatty", labelKey: "styleSocial" },
+  { value: "Quiet & minimal", labelKey: "styleQuiet" },
+  { value: "Flexible", labelKey: "styleFlexible" },
+] as const;
+const PRODUCT_PREFERENCE_OPTIONS = [
+  { value: "Vegan", labelKey: "prefVegan" },
+  { value: "Cruelty-free", labelKey: "prefCrueltyFree" },
+  { value: "Natural / organic", labelKey: "prefNaturalOrganic" },
+  { value: "Fragrance-free", labelKey: "prefFragranceFree" },
+  { value: "Hypoallergenic", labelKey: "prefHypoallergenic" },
+  { value: "Luxury", labelKey: "prefLuxury" },
+  { value: "Budget-friendly", labelKey: "prefBudgetFriendly" },
+  { value: "No preference", labelKey: "prefNoPreference" },
+] as const;
+const INTEREST_SUGGESTIONS = [
+  "interestHair", "interestNails", "interestSkincare", "interestMakeup", "interestPedicure", "interestManicure",
+  "interestFacial", "interestMassage", "interestHairColour", "interestBraids", "interestWaxing", "interestLashes",
+  "interestBrows", "interestTravel", "interestPhotography", "interestCooking",
+] as const;
+const ALLERGY_SUGGESTIONS = [
+  "allergyFragrance", "allergyParabens", "allergySulfates", "allergyAlcohol", "allergyDyes",
+  "allergyFormaldehyde", "allergyLatex", "allergyNickel",
+] as const;
 
 function stringField(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -202,7 +262,7 @@ export default function ProfileDetailsScreen() {
           {/* Profile questions (3+ for completion) */}
           <View style={{ marginBottom: 24 }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-              <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} style={{ marginEnd: 8 }} />
               <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("profileQuestionsSection")}</Text>
             </View>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
@@ -214,11 +274,11 @@ export default function ProfileDetailsScreen() {
                 {key === "decade_born" ? (
                   <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {DECADE_BORN_OPTIONS.map((opt) => {
-                      const selected = (profileQuestions[key] ?? "").trim() === opt;
+                      const selected = (profileQuestions[key] ?? "").trim() === opt.value;
                       return (
                         <TouchableOpacity
-                          key={opt}
-                          onPress={() => setProfileQuestions((prev) => ({ ...prev, [key]: opt }))}
+                          key={opt.value}
+                          onPress={() => setProfileQuestions((prev) => ({ ...prev, [key]: opt.value }))}
                           style={{
                             paddingHorizontal: 14,
                             paddingVertical: 10,
@@ -228,7 +288,7 @@ export default function ProfileDetailsScreen() {
                             backgroundColor: selected ? Colors.primaryLight : Colors.white,
                           }}
                         >
-                          <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{pd(opt.labelKey)}</Text>
                         </TouchableOpacity>
                       );
                     })}
@@ -258,16 +318,17 @@ export default function ProfileDetailsScreen() {
           {/* Interests */}
           <View style={{ marginBottom: 24, paddingTop: 16, borderTopWidth: 1, borderColor: Colors.gray[100] }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-              <Ionicons name="heart-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+              <Ionicons name="heart-outline" size={20} color={Colors.primary} style={{ marginEnd: 8 }} />
               <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("interestsSection")}</Text>
             </View>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 8 }}>{pd("interestsSubtitle")}</Text>
             <ChipCombobox
               value={interests}
               onChange={setInterests}
-              staticSuggestions={[
-                "Hair", "Nails", "Skincare", "Makeup", "Pedicure", "Manicure", "Facial", "Massage", "Hair colour", "Braids", "Waxing", "Lashes", "Brows", "Travel", "Photography", "Cooking",
-              ].map((i) => ({ value: i, label: i }))}
+              staticSuggestions={INTEREST_SUGGESTIONS.map((key) => {
+                const label = pd(key);
+                return { value: label, label };
+              })}
               allowFreeForm
               placeholder={pd("interestsPlaceholder")}
               accessibilityLabel={pd("interestsA11y")}
@@ -277,7 +338,7 @@ export default function ProfileDetailsScreen() {
           {/* Beauty preferences */}
           <View style={{ marginBottom: 24, paddingTop: 16, borderTopWidth: 1, borderColor: Colors.gray[100] }}>
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-              <Ionicons name="sparkles-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+              <Ionicons name="sparkles-outline" size={20} color={Colors.primary} style={{ marginEnd: 8 }} />
               <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900] }}>{pd("beautySection")}</Text>
             </View>
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>{pd("beautySubtitle")}</Text>
@@ -299,11 +360,11 @@ export default function ProfileDetailsScreen() {
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("hairType")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {HAIR_TYPE_OPTIONS.map((opt) => {
-                  const selected = hairType.trim() === opt;
+                  const selected = hairType.trim() === opt.value;
                   return (
                     <TouchableOpacity
-                      key={opt}
-                      onPress={() => setHairType(opt)}
+                      key={opt.value}
+                      onPress={() => setHairType(opt.value)}
                       style={{
                         paddingHorizontal: 14,
                         paddingVertical: 10,
@@ -313,7 +374,7 @@ export default function ProfileDetailsScreen() {
                         backgroundColor: selected ? Colors.primaryLight : Colors.white,
                       }}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{pd(opt.labelKey)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -323,11 +384,11 @@ export default function ProfileDetailsScreen() {
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("skinType")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {SKIN_TYPE_OPTIONS.map((opt) => {
-                  const selected = skinType.trim() === opt;
+                  const selected = skinType.trim() === opt.value;
                   return (
                     <TouchableOpacity
-                      key={opt}
-                      onPress={() => setSkinType(opt)}
+                      key={opt.value}
+                      onPress={() => setSkinType(opt.value)}
                       style={{
                         paddingHorizontal: 14,
                         paddingVertical: 10,
@@ -337,7 +398,7 @@ export default function ProfileDetailsScreen() {
                         backgroundColor: selected ? Colors.primaryLight : Colors.white,
                       }}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{pd(opt.labelKey)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -348,7 +409,7 @@ export default function ProfileDetailsScreen() {
               <ChipCombobox
                 value={thingsToAvoid.trim() ? thingsToAvoid.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
                 onChange={(arr) => setThingsToAvoid(arr.join(", "))}
-                staticSuggestions={THINGS_TO_AVOID_OPTIONS.map((o) => ({ value: o, label: o }))}
+                staticSuggestions={THINGS_TO_AVOID_OPTIONS.map((o) => ({ value: o.value, label: pd(o.labelKey) }))}
                 allowFreeForm
                 placeholder={pd("thingsToAvoidPlaceholder")}
                 accessibilityLabel={pd("thingsToAvoidA11y")}
@@ -358,11 +419,11 @@ export default function ProfileDetailsScreen() {
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{pd("appointmentStyle")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                 {APPOINTMENT_STYLE_OPTIONS.map((opt) => {
-                  const selected = appointmentStyle.trim() === opt;
+                  const selected = appointmentStyle.trim() === opt.value;
                   return (
                     <TouchableOpacity
-                      key={opt}
-                      onPress={() => setAppointmentStyle(opt)}
+                      key={opt.value}
+                      onPress={() => setAppointmentStyle(opt.value)}
                       style={{
                         paddingHorizontal: 14,
                         paddingVertical: 10,
@@ -372,7 +433,7 @@ export default function ProfileDetailsScreen() {
                         backgroundColor: selected ? Colors.primaryLight : Colors.white,
                       }}
                     >
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{pd(opt.labelKey)}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -383,7 +444,7 @@ export default function ProfileDetailsScreen() {
               <ChipCombobox
                 value={productPreferences.trim() ? productPreferences.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
                 onChange={(arr) => setProductPreferences(arr.join(", "))}
-                staticSuggestions={PRODUCT_PREFERENCE_OPTIONS.map((o) => ({ value: o, label: o }))}
+                staticSuggestions={PRODUCT_PREFERENCE_OPTIONS.map((o) => ({ value: o.value, label: pd(o.labelKey) }))}
                 allowFreeForm
                 placeholder={pd("productPreferencesPlaceholder")}
                 accessibilityLabel={pd("productPreferencesA11y")}
@@ -394,9 +455,10 @@ export default function ProfileDetailsScreen() {
               <ChipCombobox
                 value={allergies}
                 onChange={setAllergies}
-                staticSuggestions={[
-                  "Fragrance", "Parabens", "Sulfates", "Alcohol", "Dyes", "Formaldehyde", "Latex", "Nickel",
-                ].map((a) => ({ value: a, label: a }))}
+                staticSuggestions={ALLERGY_SUGGESTIONS.map((key) => {
+                  const label = pd(key);
+                  return { value: label, label };
+                })}
                 allowFreeForm
                 placeholder={pd("allergiesPlaceholder")}
                 accessibilityLabel={pd("allergiesA11y")}

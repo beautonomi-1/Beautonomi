@@ -313,6 +313,17 @@ export async function PATCH(
       } catch (pointsErr) {
         console.warn("[explore/posts PATCH] Award points for publish:", pointsErr);
       }
+      try {
+        const { upsertPostEmbedding } = await import("@/lib/ai/embeddings");
+        const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production";
+        const environment =
+          env === "production" ? "production" : env === "staging" ? "staging" : "development";
+        void upsertPostEmbedding(post.id, String(post.caption ?? ""), environment).catch((err) => {
+          console.warn("[explore/posts PATCH] embedding upsert:", err);
+        });
+      } catch {
+        // embeddings optional
+      }
     }
 
     let offering: { id: string; name: string; price?: number; duration_minutes?: number } | null = null;
@@ -406,6 +417,13 @@ export async function DELETE(
     const { error } = await supabaseAdmin.from("explore_posts").delete().eq("id", id);
 
     if (error) return handleApiError(error, "Failed to delete post");
+
+    try {
+      const { deletePostEmbedding } = await import("@/lib/ai/embeddings");
+      await deletePostEmbedding(id);
+    } catch {
+      // embeddings optional
+    }
 
     return successResponse({ success: true });
   } catch (error) {

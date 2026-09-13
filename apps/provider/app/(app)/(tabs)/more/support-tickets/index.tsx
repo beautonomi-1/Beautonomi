@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -28,23 +29,30 @@ type Ticket = {
   updated_at: string;
 };
 
-const SUPPORT_CONTEXT_LABELS: Record<string, string> = {
-  booking: "Booking",
-  product_order: "Product order",
-  gift_card: "Gift card",
-  payment: "Payment",
-  provider_onboarding: "Provider onboarding",
-  account: "Account",
-  technical: "Technical",
-  other: "Other",
+const SUPPORT_CONTEXT_KEYS: Record<string, string> = {
+  booking: "contextBooking",
+  product_order: "contextProductOrder",
+  gift_card: "contextGiftCard",
+  payment: "contextPayment",
+  provider_onboarding: "contextOnboarding",
+  account: "contextAccount",
+  technical: "contextTechnical",
+  other: "contextOther",
+};
+
+const STATUS_KEYS: Record<string, string> = {
+  open: "statusOpen",
+  in_progress: "statusInProgress",
+  resolved: "statusResolved",
+  closed: "statusClosed",
 };
 
 type TicketsResponse = { tickets?: Ticket[]; total?: number };
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, empty: string): string {
+  if (typeof value !== "string" || !value) return empty;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return empty;
   return parsed.toLocaleDateString();
 }
 
@@ -53,10 +61,16 @@ function categoryLabel(value: string | null | undefined): string {
   return labelForSupportTicketCategory(value);
 }
 
-function contextLabel(ticket: Ticket): string | null {
+function contextLabel(ticket: Ticket, st: (key: string) => string): string | null {
   if (!ticket.support_context_type) return ticket.support_context_label || null;
-  const base = SUPPORT_CONTEXT_LABELS[ticket.support_context_type] ?? ticket.support_context_type.replace(/_/g, " ");
+  const key = SUPPORT_CONTEXT_KEYS[ticket.support_context_type];
+  const base = key ? st(key) : ticket.support_context_type.replace(/_/g, " ");
   return ticket.support_context_label ? `${base}: ${ticket.support_context_label}` : base;
+}
+
+function statusLabel(status: string, st: (key: string) => string): string {
+  const key = STATUS_KEYS[status];
+  return key ? st(key) : status.replace(/_/g, " ");
 }
 
 function shouldAskForCsat(ticket: Ticket): boolean {
@@ -82,6 +96,12 @@ function statusBgColor(status: string): string {
 }
 
 export default function SupportTicketsListScreen() {
+  const { t } = useTranslation();
+  const st = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.supportTicketsList.${key}`, opts) as string,
+    [t],
+  );
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<TicketsResponse>(SUPPORT_TICKETS_API_PREFIX);
@@ -121,7 +141,7 @@ export default function SupportTicketsListScreen() {
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="My support tickets" onBack={() => router.back()} />
+        <ScreenHeader title={st("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -132,7 +152,7 @@ export default function SupportTicketsListScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="My support tickets" onBack={() => router.back()} />
+        <ScreenHeader title={st("title")} onBack={() => router.back()} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -143,13 +163,13 @@ export default function SupportTicketsListScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader
-        title="My support tickets"
+        title={st("title")}
         onBack={() => router.back()}
         rightAction={
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new" as never)}
             hitSlop={8}
-            accessibilityLabel="New support ticket"
+            accessibilityLabel={st("newTicketA11y")}
             accessibilityRole="button"
             style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center" }}
           >
@@ -168,65 +188,65 @@ export default function SupportTicketsListScreen() {
         {tickets.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />
-            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No support tickets yet</Text>
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>{st("empty")}</Text>
             <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Tap the + button to submit a new support ticket
+              {st("emptyHint")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new" as never)}
               style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: Colors.primary }}
-              accessibilityLabel="New support ticket"
+              accessibilityLabel={st("newTicketA11y")}
               accessibilityRole="button"
             >
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>New support ticket</Text>
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{st("newTicket")}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
-            {tickets.map((t) => (
+            {tickets.map((ticket) => (
               <TouchableOpacity
-                key={t.id}
-                onPress={() => router.push(`/(app)/(tabs)/more/support-tickets/${t.id}` as never)}
+                key={ticket.id}
+                onPress={() => router.push(`/(app)/(tabs)/more/support-tickets/${ticket.id}` as never)}
                 activeOpacity={0.7}
                 style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
-                accessibilityLabel={`Support ticket ${t.ticket_number}, ${t.subject}, ${t.status.replace("_", " ")}`}
+                accessibilityLabel={st("ticketA11y", { number: ticket.ticket_number, subject: ticket.subject, status: statusLabel(ticket.status, st) })}
                 accessibilityRole="button"
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <Text style={{ fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] }}>{t.ticket_number}</Text>
+                  <Text style={{ fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] }}>{ticket.ticket_number}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    {t.has_unread_staff_reply || t.last_message_from === "staff" ? (
+                    {ticket.has_unread_staff_reply || ticket.last_message_from === "staff" ? (
                       <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#dbeafe" }}>
-                        <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>New reply</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: "#1d4ed8" }}>{st("newReply")}</Text>
                       </View>
                     ) : null}
-                    <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(t.status) }}>
+                    <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(ticket.status) }}>
                       <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>
-                        {t.status.replace("_", " ")}
+                        {statusLabel(ticket.status, st)}
                       </Text>
                     </View>
                   </View>
                 </View>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>
-                  {t.subject}
+                  {ticket.subject}
                 </Text>
-                {contextLabel(t) ? (
+                {contextLabel(ticket, st) ? (
                   <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
-                    About {contextLabel(t)}
+                    {st("about", { context: contextLabel(ticket, st) })}
                   </Text>
                 ) : null}
                 <Text style={{ marginTop: 6, fontSize: 12, color: Colors.gray[500] }}>
-                  {t.category ? `${categoryLabel(t.category)} · ` : ""}
-                  Priority: {t.priority}
-                  {" · "}Updated {formatDateSafe(t.updated_at)}
+                  {ticket.category
+                    ? st("metaWithCategory", { category: categoryLabel(ticket.category), priority: ticket.priority, date: formatDateSafe(ticket.updated_at, st("emptyDate")) })
+                    : st("meta", { priority: ticket.priority, date: formatDateSafe(ticket.updated_at, st("emptyDate")) })}
                 </Text>
-                {shouldAskForCsat(t) ? (
+                {shouldAskForCsat(ticket) ? (
                   <Text style={{ marginTop: 8, fontSize: 12, fontWeight: "700", color: Colors.primary }}>
-                    Rate this support experience
+                    {st("rateExperience")}
                   </Text>
-                ) : typeof t.csat_score === "number" ? (
+                ) : typeof ticket.csat_score === "number" ? (
                   <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[600] }}>
-                    Your rating: {t.csat_score}/5
+                    {st("yourRating", { score: ticket.csat_score })}
                   </Text>
                 ) : null}
               </TouchableOpacity>

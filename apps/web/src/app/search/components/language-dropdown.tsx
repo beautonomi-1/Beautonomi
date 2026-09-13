@@ -46,7 +46,7 @@ const LanguageDropdown = () => {
                 onCheckedChange={() => handleLanguageSelect(language)}
                 className="h-6 w-6"
               />
-              <span className="ml-2 tex-base font-light text-secondary">{language}</span>
+              <span className="ms-2 tex-base font-light text-secondary">{language}</span>
             </label>
           ))}
         </div>

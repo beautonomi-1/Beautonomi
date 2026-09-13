@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { staticPageMetadata } from "@/lib/i18n/static-page-metadata";
 import ExploreShell from "./ExploreShell";
 
-export const metadata: Metadata = {
-  title: "Explore",
-  description: "Discover posts and inspiration from the Beautonomi community.",
-  alternates: {
-    canonical: "/explore",
-    languages: getHreflangAlternateUrls("/explore"),
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return staticPageMetadata({
+    path: "/explore",
+    titleKey: "web.seo.exploreTitle",
+    descriptionKey: "web.seo.exploreDescription",
+  });
+}
 
 export default function ExploreLayout({ children }: { children: React.ReactNode }) {
   return <ExploreShell>{children}</ExploreShell>;

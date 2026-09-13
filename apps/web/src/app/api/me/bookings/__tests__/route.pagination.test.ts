@@ -72,9 +72,10 @@ describe("GET /api/me/bookings pagination", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(query.neq).toHaveBeenCalledWith("status", "cancelled");
-    expect(query.neq).toHaveBeenCalledWith("status", "in_progress");
     expect(query.or).toHaveBeenCalledWith(expect.stringContaining("status.eq.completed"));
+    expect(query.or).toHaveBeenCalledWith(
+      expect.stringContaining("status.in.(confirmed,checked_in,waiting,in_progress)"),
+    );
     expect(query.range).toHaveBeenCalledWith(100, 199);
     expect(body.data.items).toHaveLength(1);
     expect(body.data.total).toBe(125);

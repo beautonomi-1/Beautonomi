@@ -119,7 +119,7 @@ export default function Beach() {
 
   return (
     <div className="mb-10">
-      <div className="max-w-[2340px] mx-auto pl-12">
+      <div className="max-w-[2340px] mx-auto ps-12">
         <div className="flex justify-start flex-wrap 2xl:gap-4 xl:gap-7">
           {cardsData.map((card, index) => (
             <CarouselCard

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
-import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { hreflangForPath } from "@/lib/seo/metadata-hreflang";
+import { getServerT } from "@/lib/i18n/server";
+import { resolveRequestLanguage } from "@/lib/locale/resolve-request-language";
 import {
   citySlugToDisplayName,
   getSeoMarketByCountrySlug,
@@ -42,12 +44,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const origin = await getPublicSiteOriginFromHeaders();
   const path = `/locations/${market.slug}/${citySlug}/${categorySlug}`;
-  const title = locationHubMetaTitle({
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
+  const title = locationHubMetaTitle(t, {
     countryName: market.name,
     cityName,
     categorySlug,
   });
-  const description = locationHubMetaDescription({
+  const description = locationHubMetaDescription(t, {
     countryName: market.name,
     cityName,
     categorySlug,
@@ -57,7 +61,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     alternates: {
       canonical: `${origin}${path}`,
-      languages: getHreflangAlternateUrls(path),
+      languages: await hreflangForPath(path),
     },
     openGraph: { title, description, url: `${origin}${path}`, type: "website" },
   };
@@ -93,12 +97,14 @@ export default async function CityCategoryLocationPage({ params }: Props) {
 
   if (providers.length === 0) notFound();
 
-  const title = locationHubMetaTitle({
+  const ctx = await resolveRequestLanguage();
+  const t = await getServerT(ctx.language);
+  const title = locationHubMetaTitle(t, {
     countryName: market.name,
     cityName,
     categorySlug,
   });
-  const description = locationHubMetaDescription({
+  const description = locationHubMetaDescription(t, {
     countryName: market.name,
     cityName,
     categorySlug,

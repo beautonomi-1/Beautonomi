@@ -24,6 +24,7 @@ import type { TimeBlock, BlockedTimeType, TeamMember, RecurrencePattern } from "
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { RADIX_SELECT_ANY, RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface TimeBlockDialogProps {
   open: boolean;
@@ -35,12 +36,12 @@ interface TimeBlockDialogProps {
 }
 
 const QUICK_TYPES = [
-  { name: "Lunch Break", color: "#F59E0B" },
-  { name: "Team Meeting", color: "#6366F1" },
-  { name: "Training", color: "#10B981" },
-  { name: "Personal Time", color: "#EC4899" },
-  { name: "Admin Time", color: "#64748B" },
-];
+  { nameKey: "quickTypeLunch", color: "#F59E0B" },
+  { nameKey: "quickTypeMeeting", color: "#6366F1" },
+  { nameKey: "quickTypeTraining", color: "#10B981" },
+  { nameKey: "quickTypePersonal", color: "#EC4899" },
+  { nameKey: "quickTypeAdmin", color: "#64748B" },
+] as const;
 
 const QUICK_DURATIONS = [15, 30, 45, 60, 90, 120];
 
@@ -63,6 +64,7 @@ export function TimeBlockDialog({
   onTypeCreated,
   onSuccess,
 }: TimeBlockDialogProps) {
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingType, setIsCreatingType] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
@@ -124,7 +126,7 @@ export function TimeBlockDialog({
   const handleCreateType = async (name = newTypeName.trim(), color = "#FF0077") => {
     const trimmed = name.trim();
     if (!trimmed) {
-      toast.error("Enter a type name first");
+      toast.error(t("web.provider.portal.timeBlockDialog.enterTypeName"));
       return;
     }
     setIsCreatingType(true);
@@ -141,10 +143,10 @@ export function TimeBlockDialog({
         name: current.name.trim() ? current.name : created.name,
       }));
       setNewTypeName("");
-      toast.success("Blocked time type added");
+      toast.success(t("web.provider.portal.timeBlockDialog.typeAdded"));
     } catch (error) {
       console.error("Failed to create blocked time type:", error);
-      toast.error("Failed to create blocked time type");
+      toast.error(t("web.provider.portal.timeBlockDialog.typeCreateFailed"));
     } finally {
       setIsCreatingType(false);
     }
@@ -153,7 +155,7 @@ export function TimeBlockDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (timeToMinutes(formData.end_time) <= timeToMinutes(formData.start_time)) {
-      toast.error("End time must be after start time");
+      toast.error(t("web.provider.portal.timeBlockDialog.endAfterStart"));
       return;
     }
     setIsLoading(true);
@@ -186,16 +188,16 @@ export function TimeBlockDialog({
 
       if (block) {
         await providerApi.updateTimeBlock(block.id, blockData);
-        toast.success("Time block updated");
+        toast.success(t("web.provider.portal.timeBlockDialog.updated"));
       } else {
         await providerApi.createTimeBlock(blockData);
-        toast.success("Time block created");
+        toast.success(t("web.provider.portal.timeBlockDialog.created"));
       }
       onSuccess?.();
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to save time block:", error);
-      toast.error("Failed to save time block");
+      toast.error(t("web.provider.portal.timeBlockDialog.saveFailed"));
     } finally {
       setIsLoading(false);
     }
@@ -205,43 +207,46 @@ export function TimeBlockDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{block ? "Edit Time Block" : "New Time Block"}</DialogTitle>
+          <DialogTitle>{block ? t("web.provider.portal.timeBlockDialog.titleEdit") : t("web.provider.portal.timeBlockDialog.titleNew")}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="name">What are you blocking? *</Label>
+            <Label htmlFor="name">{t("web.provider.portal.timeBlockDialog.whatBlocking")}</Label>
             <Input
               id="name"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. Lunch Break, Team Meeting, Personal Time"
+              placeholder={t("web.provider.portal.timeBlockDialog.namePlaceholder")}
               required
             />
             <div className="mt-2 flex flex-wrap gap-2">
-              {QUICK_TYPES.map((type) => (
+              {QUICK_TYPES.map((type) => {
+                const name = t(`web.provider.portal.timeBlockDialog.${type.nameKey}`);
+                return (
                 <button
-                  key={type.name}
+                  key={type.nameKey}
                   type="button"
                   className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100"
                   onClick={() => {
                     setFormData((current) => ({
                       ...current,
-                      name: type.name,
+                      name,
                       blocked_time_type_id:
-                        blockedTimeTypes.find((existing) => existing.name.toLowerCase() === type.name.toLowerCase())?.id ||
+                        blockedTimeTypes.find((existing) => existing.name.toLowerCase() === name.toLowerCase())?.id ||
                         current.blocked_time_type_id,
                     }));
                   }}
                 >
-                  {type.name}
+                  {name}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">{t("web.provider.portal.timeBlockDialog.description")}</Label>
             <Textarea
               id="description"
               value={formData.description}
@@ -252,7 +257,7 @@ export function TimeBlockDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="team_member_id">Team Member (Optional)</Label>
+              <Label htmlFor="team_member_id">{t("web.provider.portal.timeBlockDialog.teamMemberOptional")}</Label>
               <Select
                 value={formData.team_member_id || RADIX_SELECT_ANY}
                 onValueChange={(value) =>
@@ -260,10 +265,10 @@ export function TimeBlockDialog({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="All team members" />
+                  <SelectValue placeholder={t("web.provider.portal.timeBlockDialog.allTeamMembers")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_ANY}>All team members</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>{t("web.provider.portal.timeBlockDialog.allTeamMembers")}</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
@@ -273,7 +278,7 @@ export function TimeBlockDialog({
               </Select>
             </div>
             <div>
-              <Label htmlFor="blocked_time_type_id">Blocked Time Type</Label>
+              <Label htmlFor="blocked_time_type_id">{t("web.provider.portal.timeBlockDialog.blockedTimeType")}</Label>
               <Select
                 value={formData.blocked_time_type_id || RADIX_SELECT_NONE}
                 onValueChange={(value) =>
@@ -284,10 +289,10 @@ export function TimeBlockDialog({
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
+                  <SelectValue placeholder={t("web.provider.portal.timeBlockDialog.selectType")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={RADIX_SELECT_NONE}>None</SelectItem>
+                  <SelectItem value={RADIX_SELECT_NONE}>{t("web.provider.portal.timeBlockDialog.none")}</SelectItem>
                   {blockedTimeTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.name}
@@ -297,14 +302,14 @@ export function TimeBlockDialog({
               </Select>
               <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-3">
                 <Label htmlFor="new_time_type" className="text-xs text-gray-600">
-                  Add a new type directly
+                  {t("web.provider.portal.timeBlockDialog.addNewType")}
                 </Label>
                 <div className="mt-2 flex gap-2">
                   <Input
                     id="new_time_type"
                     value={newTypeName}
                     onChange={(e) => setNewTypeName(e.target.value)}
-                    placeholder="e.g. Stock Take"
+                    placeholder={t("web.provider.portal.timeBlockDialog.newTypePlaceholder")}
                     className="h-9"
                   />
                   <Button
@@ -315,7 +320,7 @@ export function TimeBlockDialog({
                     disabled={isCreatingType}
                     onClick={() => handleCreateType()}
                   >
-                    Add
+                    {t("web.provider.portal.timeBlockDialog.add")}
                   </Button>
                 </div>
               </div>
@@ -324,7 +329,7 @@ export function TimeBlockDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <Label htmlFor="date">Date *</Label>
+              <Label htmlFor="date">{t("web.provider.portal.timeBlockDialog.dateRequired")}</Label>
               <Input
                 id="date"
                 type="date"
@@ -334,7 +339,7 @@ export function TimeBlockDialog({
               />
             </div>
             <div>
-              <Label htmlFor="start_time">Start Time *</Label>
+              <Label htmlFor="start_time">{t("web.provider.portal.timeBlockDialog.startTimeRequired")}</Label>
               <Input
                 id="start_time"
                 type="time"
@@ -344,7 +349,7 @@ export function TimeBlockDialog({
               />
             </div>
             <div>
-              <Label htmlFor="end_time">End Time *</Label>
+              <Label htmlFor="end_time">{t("web.provider.portal.timeBlockDialog.endTimeRequired")}</Label>
               <Input
                 id="end_time"
                 type="time"
@@ -358,11 +363,11 @@ export function TimeBlockDialog({
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-gray-900">Duration shortcut</p>
-                <p className="text-xs text-gray-500">Pick a length and we will set the end time from the start time.</p>
+                <p className="text-sm font-medium text-gray-900">{t("web.provider.portal.timeBlockDialog.durationShortcut")}</p>
+                <p className="text-xs text-gray-500">{t("web.provider.portal.timeBlockDialog.durationShortcutHint")}</p>
               </div>
               <p className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-gray-700">
-                {Math.max(0, timeToMinutes(formData.end_time) - timeToMinutes(formData.start_time))} min
+                {t("web.provider.portal.timeBlockDialog.durationMinutes", { count: Math.max(0, timeToMinutes(formData.end_time) - timeToMinutes(formData.start_time)) })}
               </p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -375,7 +380,9 @@ export function TimeBlockDialog({
                   className="h-8"
                   onClick={() => setDuration(minutes)}
                 >
-                  {minutes < 60 ? `${minutes}m` : `${minutes / 60}h`}
+                  {minutes < 60
+                    ? t("web.provider.portal.timeBlockDialog.durationShortMinutes", { count: minutes })
+                    : t("web.provider.portal.timeBlockDialog.durationShortHours", { count: minutes / 60 })}
                 </Button>
               ))}
             </div>
@@ -390,14 +397,14 @@ export function TimeBlockDialog({
               }
             />
             <Label htmlFor="is_recurring" className="cursor-pointer">
-              Recurring time block
+              {t("web.provider.portal.timeBlockDialog.recurring")}
             </Label>
           </div>
 
           {formData.is_recurring && (
-            <div className="space-y-4 pl-6 border-l-2">
+            <div className="space-y-4 ps-6 border-s-2">
               <div>
-                <Label htmlFor="recurrence_pattern">Recurrence Pattern</Label>
+                <Label htmlFor="recurrence_pattern">{t("web.provider.portal.timeBlockDialog.recurrencePattern")}</Label>
                 <Select
                   value={formData.recurrence_pattern}
                   onValueChange={(value) =>
@@ -408,17 +415,17 @@ export function TimeBlockDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Bi-weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="daily">{t("web.provider.portal.timeBlockDialog.daily")}</SelectItem>
+                    <SelectItem value="weekly">{t("web.provider.portal.timeBlockDialog.weekly")}</SelectItem>
+                    <SelectItem value="biweekly">{t("web.provider.portal.timeBlockDialog.biweekly")}</SelectItem>
+                    <SelectItem value="monthly">{t("web.provider.portal.timeBlockDialog.monthly")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="recurrence_end_date">End Date (Optional)</Label>
+                  <Label htmlFor="recurrence_end_date">{t("web.provider.portal.timeBlockDialog.endDateOptional")}</Label>
                   <Input
                     id="recurrence_end_date"
                     type="date"
@@ -429,7 +436,7 @@ export function TimeBlockDialog({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="recurrence_occurrences">Number of Occurrences</Label>
+                  <Label htmlFor="recurrence_occurrences">{t("web.provider.portal.timeBlockDialog.numberOfOccurrences")}</Label>
                   <Input
                     id="recurrence_occurrences"
                     type="number"
@@ -441,7 +448,7 @@ export function TimeBlockDialog({
                         recurrence_occurrences: parseInt(e.target.value) || undefined,
                       })
                     }
-                    placeholder="Leave empty for no limit"
+                    placeholder={t("web.provider.portal.timeBlockDialog.occurrencesPlaceholder")}
                   />
                 </div>
               </div>
@@ -455,14 +462,14 @@ export function TimeBlockDialog({
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >
-              Cancel
+              {t("web.provider.portal.timeBlockDialog.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={isLoading}
               className="bg-primary hover:bg-primary-hover"
             >
-              {isLoading ? "Saving..." : block ? "Update" : "Create"}
+              {isLoading ? t("web.provider.portal.timeBlockDialog.saving") : block ? t("web.provider.portal.timeBlockDialog.update") : t("web.provider.portal.timeBlockDialog.create")}
             </Button>
           </DialogFooter>
         </form>

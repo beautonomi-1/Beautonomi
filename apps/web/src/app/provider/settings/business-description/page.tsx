@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslation } from "@beautonomi/i18n";
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { useRouter } from "next/navigation";
 
 export default function BusinessDescriptionPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [description, setDescription] = useState("");
   const [originalDescription, setOriginalDescription] = useState("");
@@ -34,7 +36,7 @@ export default function BusinessDescriptionPage() {
       setOriginalDescription(desc);
     } catch (error) {
       console.error("Error loading description:", error);
-      toast.error("Failed to load business description");
+      toast.error(t("web.provider.settings.pages.business-description.failedToLoadBusinessDescription"));
     } finally {
       setIsLoading(false);
     }
@@ -46,7 +48,7 @@ export default function BusinessDescriptionPage() {
 
       // Validation
       if (description.length > 2000) {
-        toast.error("Description must be 2000 characters or less");
+        toast.error(t("web.provider.settings.pages.business-description.descriptionMustBe2000CharactersOr"));
         return;
       }
 
@@ -56,14 +58,14 @@ export default function BusinessDescriptionPage() {
 
       if (response?.data) {
         setOriginalDescription(description);
-        toast.success("Business description updated successfully");
+        toast.success(t("web.provider.settings.pages.business-description.businessDescriptionUpdatedSuccessfully"));
         router.push("/provider/settings");
       }
     } catch (error) {
       const errorMessage =
         error instanceof FetchError
           ? error.message
-          : "Failed to update description. Please try again.";
+          : t("web.provider.settings.pages.business-description.failedToUpdate");
       toast.error(errorMessage);
     } finally {
       setIsSaving(false);
@@ -72,9 +74,9 @@ export default function BusinessDescriptionPage() {
 
   const handleUseTemplate = () => {
     const templates = [
-      "Welcome to our salon! We specialize in premium beauty services with years of experience. Our team is dedicated to providing exceptional service in a relaxing, professional environment. We use only premium products and stay up-to-date with the latest techniques and trends.",
-      "At our salon, we believe beauty is an art form. Our skilled professionals are passionate about helping you look and feel your best. From haircuts to facials, we offer a full range of services tailored to your unique needs.",
-      "We are your trusted partner for all your beauty and wellness needs. Our commitment to excellence and customer satisfaction sets us apart. Experience the difference with our personalized approach and attention to detail.",
+      t("web.provider.settings.pages.business-description.template1"),
+      t("web.provider.settings.pages.business-description.template2"),
+      t("web.provider.settings.pages.business-description.template3"),
     ];
     const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
     setDescription(randomTemplate);
@@ -89,19 +91,19 @@ export default function BusinessDescriptionPage() {
       <RoleGuard allowedRoles={["provider_owner", "provider_staff"]} redirectTo="/provider/dashboard">
         <div className="w-full max-w-full overflow-x-hidden">
           <PageHeader 
-          title="Business Description" 
-          subtitle="Edit your business description"
+          title={t("web.provider.settings.categories.appointmentActivity.items.businessDescription.title")} 
+          subtitle={t("web.provider.settings.categories.appointmentActivity.items.businessDescription.description")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Settings", href: "/provider/settings" },
-            { label: "Business Description" }
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+            { label: t("web.provider.settings.pages.business-description.businessDescription") }
           ]}
         />
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading...</p>
+              <p className="text-gray-600">{t("web.provider.settings.common.loading")}</p>
             </div>
           </div>
         </div>
@@ -113,13 +115,13 @@ export default function BusinessDescriptionPage() {
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]} redirectTo="/provider/dashboard">
       <div className="w-full max-w-full overflow-x-hidden">
         <PageHeader
-          title="Business Description"
-          subtitle="Edit the description that customers see on your profile"
+          title={t("web.provider.settings.categories.appointmentActivity.items.businessDescription.title")}
+          subtitle={t("web.provider.settings.categories.appointmentActivity.items.businessDescription.description")}
           breadcrumbs={[
-            { label: "Home", href: "/" },
-            { label: "Provider", href: "/provider" },
-            { label: "Settings", href: "/provider/settings" },
-            { label: "Business Description" }
+            { label: t("web.provider.common.breadcrumbHome"), href: "/" },
+            { label: t("web.provider.common.breadcrumbProvider"), href: "/provider" },
+            { label: t("web.provider.common.breadcrumbSettings"), href: "/provider/settings" },
+            { label: t("web.provider.settings.pages.business-description.businessDescription") }
           ]}
         />
 
@@ -127,17 +129,16 @@ export default function BusinessDescriptionPage() {
           <Alert className="mb-6 w-full max-w-full">
             <Info className="w-4 h-4 flex-shrink-0" />
             <AlertDescription className="break-words">
-              Your business description appears in the "About" tab on your public profile. 
-              A good description helps customers understand what makes your business unique.
+              {t("web.provider.settings.pages.business-description.aboutHint")}
             </AlertDescription>
           </Alert>
 
           <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6 space-y-4 w-full max-w-full overflow-x-hidden">
             <div className="w-full">
               <Label htmlFor="description" className="block w-full">
-                <span className="block sm:inline">Description</span>
-                <span className="text-gray-500 font-normal text-xs ml-0 sm:ml-2 block sm:inline">
-                  (Recommended: 50-500 characters)
+                <span className="block sm:inline">{t("web.provider.common.description")}</span>
+                <span className="text-gray-500 font-normal text-xs ms-0 sm:ms-2 block sm:inline">
+{t("web.provider.settings.pages.business-description.recommended")}
                 </span>
               </Label>
               <Textarea
@@ -149,7 +150,7 @@ export default function BusinessDescriptionPage() {
                     setDescription(value);
                   }
                 }}
-                placeholder="Tell customers about your business, your expertise, what makes you unique, and what they can expect..."
+                placeholder={t("web.provider.settings.pages.business-description.tellCustomersAboutYourBusinessYour")}
                 className="min-h-[200px] mt-2 w-full max-w-full"
                 maxLength={2000}
               />
@@ -158,15 +159,15 @@ export default function BusinessDescriptionPage() {
                   {showWarning ? (
                     <span className="text-amber-600 flex items-start gap-1 flex-wrap">
                       <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                      <span className="break-words flex-1 min-w-0">Consider adding more details ({description.length}/50 minimum recommended)</span>
+                      <span className="break-words flex-1 min-w-0">{t("web.provider.settings.pages.business-description.considerMore", { count: description.length })}</span>
                     </span>
                   ) : (
                     <span className="flex items-center gap-2 flex-wrap">
-                      <span className="whitespace-nowrap">{description.length}/2000 characters</span>
+                      <span className="whitespace-nowrap">{t("web.provider.onboarding.leftover3.charsOf2000", { count: description.length })}</span>
                       {isGoodLength && (
                         <span className="text-green-600 flex items-center gap-1 whitespace-nowrap">
                           <Check className="w-3 h-3 flex-shrink-0" />
-                          <span>Good length</span>
+<span>{t("web.provider.onboarding.leftover.goodLength")}</span>
                         </span>
                       )}
                     </span>
@@ -177,7 +178,7 @@ export default function BusinessDescriptionPage() {
                   onClick={handleUseTemplate}
                   className="text-xs text-primary hover:underline whitespace-nowrap flex-shrink-0 self-start sm:self-auto"
                 >
-                  Use template
+{t("web.provider.onboarding.leftover.useTemplate")}
                 </button>
               </div>
             </div>
@@ -185,14 +186,14 @@ export default function BusinessDescriptionPage() {
             {/* Preview */}
             {description && (
               <div className="mt-6 pt-6 border-t w-full">
-                <Label className="text-sm font-medium mb-2 block">Preview</Label>
+                <Label className="text-sm font-medium mb-2 block">{t("web.provider.settings.pages.business-description.preview")}</Label>
                 <div className="bg-gray-50 p-4 rounded-lg border w-full overflow-x-hidden">
                   <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed break-words">
                     {description}
                   </p>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
-                  This is how customers will see your description on your profile
+{t("web.provider.settings.pages.business-description.previewHow")}
                 </p>
               </div>
             )}
@@ -203,18 +204,18 @@ export default function BusinessDescriptionPage() {
                 disabled={isSaving || !hasChanges}
                 className="bg-primary hover:bg-primary-hover text-white w-full sm:w-auto"
               >
-                {isSaving ? "Saving..." : "Save Changes"}
+                {isSaving ? t("web.provider.settings.common.saving") : t("web.provider.settings.common.saveChanges")}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => {
                   setDescription(originalDescription);
-                  toast.info("Changes discarded");
+                  toast.info(t("web.provider.settings.pages.business-description.changesDiscarded"));
                 }}
                 disabled={!hasChanges || isSaving}
                 className="w-full sm:w-auto"
               >
-                Cancel
+                {t("web.provider.common.cancel")}
               </Button>
             </div>
           </div>

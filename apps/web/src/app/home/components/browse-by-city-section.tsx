@@ -7,6 +7,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderInfo {
   name: string;
@@ -22,6 +23,7 @@ interface City {
 }
 
 const BrowseByCitySection = () => {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState("ZA");
   const [cities, setCities] = useState<City[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
@@ -40,10 +42,10 @@ const BrowseByCitySection = () => {
       } catch (err) {
         const errorMessage =
           err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
+            ? t("web.home.requestTimedOut")
             : err instanceof FetchError
             ? err.message
-            : "Failed to load cities";
+            : t("web.home.failedLoadCities");
         setError(errorMessage);
         console.error("Error loading cities:", err);
       } finally {
@@ -63,11 +65,11 @@ const BrowseByCitySection = () => {
   };
 
   const countryNameMap: Record<string, string> = {
-    ZA: "South Africa",
-    KE: "Kenya",
-    GH: "Ghana",
-    NG: "Nigeria",
-    EG: "Egypt",
+    ZA: t("web.home.country.ZA"),
+    KE: t("web.home.country.KE"),
+    GH: t("web.home.country.GH"),
+    NG: t("web.home.country.NG"),
+    EG: t("web.home.country.EG"),
   };
 
   const getCountryCode = (tab: string): string => {
@@ -112,7 +114,7 @@ const BrowseByCitySection = () => {
     return (
       <div className="bg-[#F7F7F7] py-6 md:py-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-          <LoadingTimeout loadingMessage="Loading cities..." />
+          <LoadingTimeout loadingMessage={t("web.home.loadingCities")} />
         </div>
       </div>
     );
@@ -123,10 +125,10 @@ const BrowseByCitySection = () => {
       <div className="bg-[#F7F7F7] py-6 md:py-12">
         <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
           <EmptyState
-            title="Failed to load cities"
+            title={t("web.home.failedLoadCities")}
             description={error}
             action={{
-              label: "Retry",
+              label: t("web.home.retry"),
               onClick: () => window.location.reload(),
             }}
           />
@@ -162,7 +164,7 @@ const BrowseByCitySection = () => {
     <div className="bg-[#F7F7F7] py-6 md:py-12">
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <h2 className="text-xl md:text-2xl lg:text-3xl font-normal mb-4 md:mb-6">
-          Browse by City
+          {t("web.home.browseByCity")}
         </h2>
         <Tabs value={countryMap[activeTab] || "south-africa"} onValueChange={handleTabChange}>
           <TabsList className="bg-transparent border-b mb-4 md:mb-6 overflow-x-auto hide-scrollbar">
@@ -185,14 +187,14 @@ const BrowseByCitySection = () => {
                 </TabsTrigger>
               );
             })}
-            <ChevronRight className="h-5 w-5 text-gray-400 ml-2 flex-shrink-0" />
+            <ChevronRight className="h-5 w-5 text-gray-400 ms-2 flex-shrink-0" />
           </TabsList>
 
           <TabsContent value={countryMap[activeTab] || "south-africa"}>
             {getFilteredCities().length === 0 ? (
               <EmptyState
-                title="No cities found"
-                description={`No providers found in ${countryNameMap[activeTab]}`}
+                title={t("web.home.noCities")}
+                description={t("web.home.noCitiesInCountry", { country: countryNameMap[activeTab] })}
               />
             ) : (
               <div className="relative">

@@ -99,7 +99,9 @@ export default function CustomerAnnouncementDetailScreen() {
         <View style={{ padding: 24 }}>
           <Text style={{ fontSize: 16, color: Colors.gray[700] }}>{loadErr ?? "Not found"}</Text>
           <TouchableOpacity onPress={load} style={{ marginTop: 16 }}>
-            <Text style={{ color: Colors.primary, fontWeight: "700" }}>Retry</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "700" }}>
+              {t("customer.mobile.screens.announcements.retry")}
+            </Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -113,7 +115,7 @@ export default function CustomerAnnouncementDetailScreen() {
             <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: Colors.gray[100] }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: Colors.gray[600] }}>{annType.toUpperCase()}</Text>
             </View>
-            <Text style={{ marginLeft: 12, fontSize: 12, color: Colors.gray[500] }}>
+            <Text style={{ marginStart: 12, fontSize: 12, color: Colors.gray[500] }}>
               {new Date(row.created_at).toLocaleString()}
             </Text>
           </View>
@@ -152,7 +154,7 @@ export default function CustomerAnnouncementDetailScreen() {
               accessibilityRole="button"
             >
               <Text style={{ color: "#fff", fontWeight: "800", fontSize: 16 }}>{ctaLabel}</Text>
-              <Ionicons name="open-outline" size={18} color="#fff" style={{ marginLeft: 8 }} />
+              <Ionicons name="open-outline" size={18} color="#fff" style={{ marginStart: 8 }} />
             </TouchableOpacity>
           ) : null}
         </ScrollView>

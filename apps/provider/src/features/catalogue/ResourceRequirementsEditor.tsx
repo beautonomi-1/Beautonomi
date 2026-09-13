@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { twStyle } from "@/lib/twStyle";
 import type { OfferingResourceEntry } from "./types";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface ProviderResource {
   id: string;
@@ -19,6 +20,8 @@ export function ResourceRequirementsEditor({
   offeringResources,
   onChange,
 }: ResourceRequirementsEditorProps) {
+  const { t } = useTranslation();
+  const rr = (key: string) => t(`provider.mobile.components.resourceRequirements.${key}`) as string;
   if (resources.length === 0) return null;
 
   const setEntry = (resourceId: string, required: boolean | null) => {
@@ -38,7 +41,7 @@ export function ResourceRequirementsEditor({
 
   return (
     <View style={twStyle("mb-4")}>
-      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Resource requirements</Text>
+      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>{rr("title")}</Text>
       {resources.map((res) => {
         const state = getState(res.id);
         return (
@@ -68,7 +71,7 @@ export function ResourceRequirementsEditor({
                       `text-xs capitalize ${state === opt ? "text-white" : "text-gray-700"}`,
                     )}
                   >
-                    {opt}
+                    {rr(opt)}
                   </Text>
                 </TouchableOpacity>
               ))}

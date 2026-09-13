@@ -67,7 +67,7 @@ const WhyBeautonomiHero = ({ content }: WhyBeautonomiHeroProps) => {
                 className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] px-8 text-white shadow-lg shadow-primary/25 transition-transform hover:scale-[1.02] hover:from-[#D60565] hover:to-[#FF0077] sm:w-auto"
               >
                 {ctaButtonText}
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ms-2 h-4 w-4" />
               </Button>
             </Link>
             <Link href={secondaryCtaUrl} className="w-full sm:w-auto">

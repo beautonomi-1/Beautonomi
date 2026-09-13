@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -37,7 +37,8 @@ import {
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useTranslation } from "@beautonomi/i18n";
-import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { supportedLanguages, preferredLanguageFromDevice, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -96,22 +97,24 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const SIGNUP_CONSENT_CHECKBOX_CLASS =
   "mt-0.5 h-6 w-6 shrink-0 rounded-full border-2 border-gray-400 data-[state=checked]:bg-primary data-[state=checked]:border-primary";
 
-function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+function getPasswordStrength(pw: string): { score: number; labelKey: "passwordWeak" | "passwordFair" | "passwordGood" | "passwordStrong"; color: string } {
   let score = 0;
   if (pw.length >= 8) score++;
   if (pw.length >= 12) score++;
   if (/[A-Z]/.test(pw)) score++;
   if (/[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
-  if (score <= 1) return { score, label: "Weak", color: "bg-red-500" };
-  if (score <= 2) return { score, label: "Fair", color: "bg-amber-500" };
-  if (score <= 3) return { score, label: "Good", color: "bg-blue-500" };
-  return { score, label: "Strong", color: "bg-green-500" };
+  if (score <= 1) return { score, labelKey: "passwordWeak", color: "bg-red-500" };
+  if (score <= 2) return { score, labelKey: "passwordFair", color: "bg-amber-500" };
+  if (score <= 3) return { score, labelKey: "passwordGood", color: "bg-blue-500" };
+  return { score, labelKey: "passwordStrong", color: "bg-green-500" };
 }
 
 export default function InlineSignupForm({ redirectContext, onAuthSuccess, redirectUrl, referralCode }: InlineSignupFormProps) {
   const router = useRouter();
   const { refreshUser, role: _contextRole, user } = useAuth();
+  const { bundle: configBundle } = useConfigBundle();
+  const visibleLanguages = useMemo(() => supportedLanguages, []);
   
   const [isLoading, setIsLoading] = useState(false);
   /** false = unified welcome (phone OTP + social); true = email flows */
@@ -147,13 +150,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [accountLinkOffer, setAccountLinkOffer] = useState<"google" | "email" | "apple" | "phone" | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [preferredLanguage, setPreferredLanguage] = useState(() => {
-    if (typeof navigator !== "undefined" && navigator.language) {
-      const code = navigator.language.split("-")[0];
-      return supportedLanguages.some((l) => l.code === code) ? code : "en";
-    }
-    return "en";
-  });
+  const [preferredLanguage, setPreferredLanguage] = useState(() =>
+    typeof navigator !== "undefined" ? preferredLanguageFromDevice(navigator.language) : "en",
+  );
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [manualReferralCode, setManualReferralCode] = useState("");
   const [showReferralInput, setShowReferralInput] = useState(false);
@@ -247,11 +246,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setAwaitingEmailVerification(false);
     setError(null);
     if (!email?.trim()) {
-      setError("Email is required");
+      setError(t("web.auth.inlineSignup.emailRequired"));
       return;
     }
     if (!EMAIL_RE.test(email.trim())) {
-      setError("Please enter a valid email address");
+      setError(t("web.auth.inlineSignup.invalidEmail"));
       return;
     }
     setShowPasswordField(true);
@@ -265,34 +264,34 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     const trimmedPassword = password.trim();
 
     if (!trimmedEmail) {
-      setError("Email is required");
+      setError(t("web.auth.inlineSignup.emailRequired"));
       return;
     }
     if (!EMAIL_RE.test(trimmedEmail)) {
-      setError("Please enter a valid email address");
+      setError(t("web.auth.inlineSignup.invalidEmail"));
       return;
     }
     if (!trimmedPassword) {
-      setError("Password is required");
+      setError(t("web.auth.inlineSignup.passwordRequired"));
       return;
     }
     if (trimmedPassword.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("web.auth.inlineSignup.passwordMinLength"));
       return;
     }
     const strength = getPasswordStrength(trimmedPassword);
     if (strength.score < 2) {
-      setError("Use a stronger password (add uppercase, numbers, or symbols)");
+      setError(t("web.auth.inlineSignup.passwordTooWeak"));
       return;
     }
     if (!agreeTerms) {
       setError(
-        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in)."
+        t("web.auth.inlineSignup.agreeTermsRequired")
       );
       return;
     }
     if (phone?.trim() && !isCompleteE164(phone)) {
-      setError("Enter a valid phone number or clear the phone field.");
+      setError(t("web.auth.inlineSignup.invalidPhoneOrClear"));
       return;
     }
 
@@ -318,7 +317,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       });
 
       if (signupResult?.session) {
-        toast.success("Account created successfully! Welcome to Beautonomi.");
+        toast.success(t("web.auth.inlineSignup.accountCreated"));
         await refreshUser();
         try {
           await fetcher.patch("/api/me/profile", {
@@ -345,7 +344,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
           
           if (loginResult?.session) {
-            toast.success("Account created successfully! Welcome to Beautonomi.");
+            toast.success(t("web.auth.inlineSignup.accountCreated"));
             await refreshUser();
             try {
               await fetcher.patch("/api/me/profile", {
@@ -368,7 +367,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             }
             onAuthSuccess?.();
           } else {
-            throw new Error("Email verification required");
+            throw new Error(t("web.auth.inlineSignup.emailVerificationRequired"));
           }
         } catch (loginError: any) {
           console.log("Auto-login after signup failed, email verification is required:", loginError);
@@ -390,21 +389,21 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           );
         }
       } else {
-        throw new Error("Failed to create account. Please try again.");
+        throw new Error(t("web.auth.inlineSignup.createAccountFailed"));
       }
     } catch (error: any) {
       console.error("Auth error:", error);
-      const errorMessage = error.message || "Authentication failed. Please try again.";
+      const errorMessage = error.message || t("web.auth.inlineSignup.authFailed");
       const lowerErrorMessage = errorMessage.toLowerCase();
       
       if (lowerErrorMessage.includes("email not confirmed") || 
           lowerErrorMessage.includes("email_not_confirmed") ||
           lowerErrorMessage.includes("verify your email")) {
-        setError("Please verify your email address before logging in. Check your inbox for the verification email.");
+        setError(t("web.auth.inlineSignup.verifyEmailBeforeLogin"));
         setShowResendVerification(true);
       } else if (lowerErrorMessage.includes("invalid login credentials") || 
                  lowerErrorMessage.includes("invalid credentials")) {
-        setError("Invalid login credentials. Please check your email and password.");
+        setError(t("web.auth.inlineSignup.invalidCredentials"));
         setShowResendVerification(true);
       } else if (
         lowerErrorMessage.includes("already registered") ||
@@ -417,10 +416,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           setAccountLinkOffer(link.offer);
           setError(
             link.offer
-              ? "This email is already registered. Sign in with the method below."
-              : "We found bookings under this email. Check your inbox to claim your account.",
+              ? t("web.auth.inlineSignup.emailAlreadyRegistered")
+              : t("web.auth.inlineSignup.claimAccountInbox"),
           );
-          toast.success("Check your email to claim your account.");
+          toast.success(t("web.auth.inlineSignup.checkEmailToClaim"));
         } catch {
           setError(errorMessage);
           toast.error(errorMessage);
@@ -441,7 +440,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
 
   const handleResendVerification = async () => {
     if (!email) {
-      toast.error("Please enter your email address first");
+      toast.error(t("web.auth.inlineSignup.enterEmailFirst"));
       return;
     }
     if (signupEmailResendCooldown > 0) return;
@@ -452,23 +451,23 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         email.trim(),
         buildEmailConfirmationRedirectUrl({ redirectContext, redirectUrl }),
       );
-      toast.success("Verification email sent! Please check your inbox and spam folder.");
+      toast.success(t("web.auth.inlineSignup.verificationEmailSent"));
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
       setShowResendVerification(false);
     } catch (error: any) {
       console.error("Error resending verification email:", error);
-      const errorMessage = error.message || "Failed to send verification email.";
+      const errorMessage = error.message || t("web.auth.inlineSignup.sendVerificationFailed");
       const lowerError = errorMessage.toLowerCase();
       if (lowerError.includes("user not found") || 
           lowerError.includes("email not found") ||
           lowerError.includes("no user found")) {
-        toast.error("No account found with this email address. Please check your email or sign up.");
+        toast.error(t("web.auth.inlineSignup.noAccountForEmail"));
       } else if (lowerError.includes("already verified") || 
                  lowerError.includes("email already confirmed")) {
-        toast.error("This email is already verified. Please check your password or try signing in again.");
+        toast.error(t("web.auth.inlineSignup.emailAlreadyVerified"));
         setShowResendVerification(false);
       } else {
-        toast.error(errorMessage + " Please try again.");
+        toast.error(errorMessage + t("web.auth.inlineSignup.tryAgainSuffix"));
       }
     } finally {
       setIsResendingVerification(false);
@@ -487,13 +486,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     try {
       await verifyAuthOtp({ email: trimmedEmail, token, type: "signup" });
-      toast.success("Email verified — welcome to Beautonomi!");
+      toast.success(t("web.auth.inlineSignup.emailVerifiedWelcome"));
       setAwaitingEmailVerification(false);
       setShowResendVerification(false);
       setPasswordSignupOtpCode("");
       await finishOtpSignupSession();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Invalid or expired code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.invalidOrExpiredCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -531,13 +530,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     if (!agreeTerms) {
       setError(
-        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+        t("web.auth.inlineSignup.agreeTermsRequired"),
       );
       return;
     }
     const trimmed = phone.replace(/\s/g, "").trim();
     if (!isCompleteE164(trimmed)) {
-      setError("Enter a valid phone number with country code.");
+      setError(t("web.auth.inlineSignup.validPhoneWithCountry"));
       return;
     }
     setIsLoading(true);
@@ -548,9 +547,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       setSignupPhoneOtpSent(true);
       setSignupPhoneOtpCode("");
       setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
-      toast.success("Check your phone for the verification code");
+      toast.success(t("web.auth.inlineSignup.checkPhoneForCode"));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to send code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.sendCodeFailed");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -566,9 +565,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       await sendAuthOtp({ phone: sentPhoneE164Signup });
       setSignupPhoneOtpCode("");
       setSignupPhoneResendCooldown(SIGNUP_SMS_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      toast.success(t("web.auth.inlineSignup.newCodeSent"));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to resend code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.resendCodeFailed");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -584,9 +583,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       await sendAuthOtp({ email: sentEmailSignupOtp });
       setSignupEmailOtpCode("");
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
-      toast.success("A new verification code has been sent");
+      toast.success(t("web.auth.inlineSignup.newCodeSent"));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to resend code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.resendCodeFailed");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -601,10 +600,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     try {
       await verifyAuthOtp({ phone: sentPhoneE164Signup, token, type: "sms" });
-      toast.success("Account ready!");
+      toast.success(t("web.auth.inlineSignup.accountReady"));
       await finishOtpSignupSession({ verifiedPhoneE164: sentPhoneE164Signup });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Invalid code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.invalidCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -616,13 +615,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     if (!agreeTerms) {
       setError(
-        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+        t("web.auth.inlineSignup.agreeTermsRequired"),
       );
       return;
     }
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !EMAIL_RE.test(trimmedEmail)) {
-      setError("Please enter a valid email address");
+      setError(t("web.auth.inlineSignup.invalidEmail"));
       return;
     }
     setIsLoading(true);
@@ -632,9 +631,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       setSignupEmailOtpSent(true);
       setSignupEmailOtpCode("");
       setSignupEmailResendCooldown(SIGNUP_EMAIL_RESEND_COOLDOWN_SECONDS);
-      toast.success("Check your email for the verification code");
+      toast.success(t("web.auth.inlineSignup.checkEmailForCode"));
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to send email code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.sendEmailCodeFailed");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -649,10 +648,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     try {
       await verifyAuthOtp({ email: sentEmailSignupOtp, token, type: "email" });
-      toast.success("Account ready!");
+      toast.success(t("web.auth.inlineSignup.accountReady"));
       await finishOtpSignupSession();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Invalid code";
+      const msg = e instanceof Error ? e.message : t("web.auth.inlineSignup.invalidCode");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -663,7 +662,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const handleSocialOAuth = async (provider: "google" | "apple") => {
     if (!agreeTerms) {
       setError(
-        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in).",
+        t("web.auth.inlineSignup.agreeTermsRequired"),
       );
       return;
     }
@@ -689,13 +688,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       const callbackUrl = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
       await signInWithOAuth(provider, callbackUrl);
       toast.info(
-        provider === "google" ? "Redirecting to Google..." : "Redirecting to Apple...",
+        provider === "google" ? t("web.auth.inlineSignup.redirectingGoogle") : t("web.auth.inlineSignup.redirectingApple"),
       );
     } catch (error: any) {
       console.error("OAuth error:", error);
-      const label = provider === "google" ? "Google" : "Apple";
-      setError(error.message || `Failed to sign in with ${label}`);
-      toast.error(error.message || `Failed to sign in with ${label}`);
+      const label = provider === "google" ? t("web.auth.inlineSignup.google") : t("web.auth.inlineSignup.apple");
+      setError(error.message || t("web.auth.inlineSignup.signInWithFailed", { label }));
+      toast.error(error.message || t("web.auth.inlineSignup.signInWithFailed", { label }));
       setIsLoading(false);
     }
   };
@@ -706,15 +705,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     <div className="w-full">
       {showEmailForm && awaitingEmailVerification ? (
         <>
-          <h2 className="text-xl sm:text-2xl font-bold mb-2">Check your email</h2>
-          <p className="text-sm text-gray-500 mb-6 sm:mb-8">Confirm your address to continue</p>
+          <h2 className="text-xl sm:text-2xl font-bold mb-2">{t("web.auth.inlineSignup.checkYourEmail")}</h2>
+          <p className="text-sm text-gray-500 mb-6 sm:mb-8">{t("web.auth.inlineSignup.confirmAddressToContinue")}</p>
         </>
       ) : (
-        <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">Welcome to Beautonomi</h2>
+        <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">{t("web.auth.inlineSignup.welcome")}</h2>
       )}
       {!awaitingEmailVerification && (
         <p className="text-sm text-gray-500 mb-4 -mt-2">
-          Create your account with phone, email code, Google, or Apple — add your full name later in onboarding if you like.
+          {t("web.auth.inlineSignup.createAccountHint")}
         </p>
       )}
 
@@ -728,14 +727,14 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               {showResendVerification && (
                 <div className="mt-2">
                   <p className="text-xs text-gray-600 mb-1">
-                    If you haven&apos;t verified your email yet:
+                    {t("web.auth.inlineSignup.haventVerifiedEmail")}
                   </p>
                   <button
                     onClick={handleResendVerification}
                     disabled={isResendingVerification}
                     className="text-sm text-blue-600 underline hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isResendingVerification ? "Sending..." : "Resend verification email"}
+                    {isResendingVerification ? t("web.auth.inlineSignup.sending") : t("web.auth.inlineSignup.resendVerificationEmail")}
                   </button>
                 </div>
               )}
@@ -750,7 +749,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           {(showReferralInput || manualReferralCode || referralCode) ? (
             <div className="mb-4">
               <Label htmlFor="signup-referral-code" className={labelClass}>
-                Referral code <span className="text-gray-400 font-normal">(optional)</span>
+                {t("web.auth.inlineSignup.referralCode")} <span className="text-gray-400 font-normal">{t("web.auth.inlineSignup.optional")}</span>
               </Label>
               <Input
                 id="signup-referral-code"
@@ -760,7 +759,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   setManualReferralCode(next);
                   persistReferralRef(next);
                 }}
-                placeholder="Enter a friend's code"
+                placeholder={t("web.auth.inlineSignup.referralPlaceholder")}
                 className={fieldClass}
                 autoCapitalize="characters"
                 autoComplete="off"
@@ -772,13 +771,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               onClick={() => setShowReferralInput(true)}
               className="mb-4 text-sm text-primary font-medium hover:underline"
             >
-              Have a referral code?
+              {t("web.auth.inlineSignup.haveReferralCode")}
             </button>
           )}
 
           {!agreeTerms && (
             <p className="text-xs text-gray-600 mb-3" aria-live="polite">
-              Tick the box below to continue.
+              {t("web.auth.inlineSignup.tickBoxToContinue")}
             </p>
           )}
           <div className="mb-4 flex items-start gap-3">
@@ -790,13 +789,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               aria-describedby="signup-terms-unified-text"
             />
             <label htmlFor="signup-agree-terms-unified" id="signup-terms-unified-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
-              I have read and agree to the{" "}
+              {t("web.auth.inlineSignup.agreePrefix")}{" "}
               <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                Terms of Service
+                {t("web.auth.inlineSignup.termsOfService")}
               </Link>{" "}
-              and{" "}
+              {t("web.auth.inlineSignup.and")}{" "}
               <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                Privacy Policy
+                {t("web.auth.inlineSignup.privacyPolicy")}
               </Link>
               .
             </label>
@@ -815,7 +814,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               disabled={isLoading || !agreeTerms}
             >
               <FaGoogle className="text-lg" />
-              <span>Continue with Google</span>
+              <span>{t("auth.continueWithGoogle")}</span>
             </Button>
           )}
           {socialAuth.apple && (
@@ -826,13 +825,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               disabled={isLoading || !agreeTerms}
             >
               <FaApple className="text-lg" />
-              <span>Continue with Apple</span>
+              <span>{t("auth.continueWithApple")}</span>
             </Button>
           )}
 
           <div className="flex items-center my-6">
             <div className="flex-grow border-t border-gray-300" />
-            <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
+            <span className="flex-shrink mx-4 text-sm text-gray-600">{t("web.auth.inlineSignup.or")}</span>
             <div className="flex-grow border-t border-gray-300" />
           </div>
 
@@ -841,17 +840,17 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               <div className="mb-4">
                 <PhoneInput
                   inputId="inline-signup-phone"
-                  label="Phone number"
+                  label={t("web.auth.inlineSignup.phoneNumber")}
                   value={phone}
                   onChange={setPhone}
-                  placeholder="Phone number"
+                  placeholder={t("web.auth.inlineSignup.phonePlaceholder")}
                   required
                 />
               </div>
               <p className="text-xs text-gray-600 mb-4">
-                We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code. Standard rates apply.{" "}
+                {t("web.auth.inlineSignup.smsCodeHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}{" "}
                 <Link href="/privacy-policy" className="font-semibold underline hover:text-primary">
-                  Privacy Policy
+                  {t("web.auth.inlineSignup.privacyPolicy")}
                 </Link>
               </p>
               <Button
@@ -859,13 +858,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onClick={() => void handlePhoneSendSignupOtp()}
                 disabled={isLoading || !agreeTerms}
               >
-                {isLoading ? "Sending…" : "Text me a code"}
+{isLoading ? t("web.auth.inlineSignup.sendingEllipsis") : t("web.auth.inlineSignup.textMeACode")}
               </Button>
             </>
           ) : (
             <div className="space-y-4 mb-4">
               <p className="text-sm text-gray-600">
-                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                {t("web.auth.inlineSignup.enterCodeSentTo", { digits: SUPABASE_AUTH_OTP_LENGTH })}{" "}
                 <span className="font-semibold text-gray-900">{sentPhoneE164Signup}</span>
               </p>
               <OtpDigitInput
@@ -876,7 +875,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 }}
                 disabled={isLoading}
                 autoFocus
-                label="Phone verification code"
+                label={t("web.auth.inlineSignup.phoneOtpLabel")}
                 length={SUPABASE_AUTH_OTP_LENGTH}
               />
               <div className="flex items-center justify-end text-xs">
@@ -887,10 +886,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 >
                   {signupPhoneResending
-                    ? "Resending..."
+                    ? t("web.auth.inlineSignup.resending")
                     : signupPhoneResendCooldown > 0
-                      ? `Resend in ${signupPhoneResendCooldown}s`
-                      : "Resend code"}
+                      ? t("web.auth.inlineSignup.resendInSeconds", { seconds: signupPhoneResendCooldown })
+                      : t("web.auth.inlineSignup.resendCode")}
                 </button>
               </div>
               <Button
@@ -898,7 +897,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onClick={() => void handleVerifyPhoneSignupOtp()}
                 disabled={isLoading || !isCompleteSupabaseSmsOtp(signupPhoneOtpCode)}
               >
-                {isLoading ? "Verifying…" : "Verify & continue"}
+{isLoading ? t("web.auth.inlineSignup.verifying") : t("web.auth.inlineSignup.verifyAndContinue")}
               </Button>
               <button
                 type="button"
@@ -911,14 +910,14 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   setError(null);
                 }}
               >
-                Use a different number
+                {t("web.auth.inlineSignup.useDifferentNumber")}
               </button>
             </div>
           )}
 
           <div className="flex items-center my-6">
             <div className="flex-grow border-t border-gray-300" />
-            <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
+            <span className="flex-shrink mx-4 text-sm text-gray-600">{t("web.auth.inlineSignup.or")}</span>
             <div className="flex-grow border-t border-gray-300" />
           </div>
           <Button
@@ -935,7 +934,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             disabled={isLoading || !agreeTerms}
           >
             <CiMail className="text-lg" />
-            <span>Continue with email code</span>
+            <span>{t("web.auth.inlineSignup.continueWithEmailCode")}</span>
           </Button>
           <Button
             variant="outline"
@@ -949,7 +948,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             }}
             disabled={isLoading || !agreeTerms}
           >
-            <span>Sign up with email &amp; password</span>
+            <span>{t("web.auth.inlineSignup.signUpWithEmailPassword")}</span>
           </Button>
           <div className="text-center mt-6">
             <button
@@ -959,7 +958,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               }}
               className="text-sm text-gray-600 hover:text-gray-900 underline"
             >
-              Need help?
+              {t("web.auth.inlineSignup.needHelp")}
             </button>
           </div>
         </>
@@ -970,14 +969,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
             <CheckCircle2 className="h-8 w-8 text-emerald-600" aria-hidden />
           </div>
-          <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">Verify your email</p>
+          <p className="text-center text-[15px] font-semibold text-gray-900 mb-2">{t("web.auth.inlineSignup.verifyYourEmail")}</p>
           <p className="text-center text-[13px] leading-relaxed text-gray-600 mb-4">
-            We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code to:
+            {t("web.auth.inlineSignup.sentCodeTo", { digits: SUPABASE_AUTH_OTP_LENGTH })}
           </p>
           <p className="text-center text-sm font-semibold text-gray-900 break-all mb-5 px-1">{email.trim()}</p>
           <p className="text-[13px] leading-relaxed text-gray-600 mb-5 text-center">
-            Enter the code below to finish creating your{" "}
-            {redirectContext === "provider" ? "provider " : ""}account.
+            {redirectContext === "provider"
+              ? t("web.auth.inlineSignup.enterCodeToFinishProvider")
+              : t("web.auth.inlineSignup.enterCodeToFinish")}
           </p>
           <OtpDigitInput
             value={passwordSignupOtpCode}
@@ -992,7 +992,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             }}
             disabled={isVerifyingPasswordSignupOtp}
             autoFocus
-            label="Signup verification code"
+            label={t("web.auth.inlineSignup.signupOtpLabel")}
             length={SUPABASE_AUTH_OTP_LENGTH}
             className="mb-4"
           />
@@ -1011,11 +1011,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             >
               {isVerifyingPasswordSignupOtp ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
-                  Verifying…
+                  <Loader2 className="me-2 h-4 w-4 animate-spin inline" aria-hidden />
+                  {t("web.auth.inlineSignup.verifying")}
                 </>
               ) : (
-                "Verify & continue"
+                t("web.auth.inlineSignup.verifyAndContinue")
               )}
             </Button>
             <Button
@@ -1027,13 +1027,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             >
               {isResendingVerification ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin inline" aria-hidden />
-                  Sending…
+                  <Loader2 className="me-2 h-4 w-4 animate-spin inline" aria-hidden />
+                  {t("web.auth.inlineSignup.sendingEllipsis")}
                 </>
               ) : signupEmailResendCooldown > 0 ? (
-                `Resend code in ${signupEmailResendCooldown}s`
+                t("web.auth.inlineSignup.resendCodeInSeconds", { seconds: signupEmailResendCooldown })
               ) : (
-                "Resend verification code"
+                t("web.auth.inlineSignup.resendVerificationCode")
               )}
             </Button>
             <button
@@ -1048,15 +1048,16 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 setShowResendVerification(false);
               }}
             >
-              Wrong email? Go back and edit
+              {t("web.auth.inlineSignup.wrongEmailGoBack")}
             </button>
             <p className="mt-1 text-center text-[11px] leading-relaxed text-gray-500">
-              No code in your inbox? The Supabase &quot;Confirm signup&quot; template must include{" "}
-              <code className="text-[10px]">{"{{ .Token }}"}</code>. You can also{" "}
+              {t("web.auth.inlineSignup.noCodeHintBefore")}{" "}
+              <code className="text-[10px]">{"{{ .Token }}"}</code>
+              {t("web.auth.inlineSignup.noCodeHintAfter")}{" "}
               <Link href={signInHref} className="text-primary underline font-medium">
-                sign in
+                {t("web.auth.inlineSignup.signIn")}
               </Link>{" "}
-              after tapping the confirmation link in the email.
+              {t("web.auth.inlineSignup.noCodeHintEnd")}
             </p>
           </div>
         </div>
@@ -1076,16 +1077,16 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               setError(null);
             }}
           >
-            ← Back to phone &amp; social
+            {t("web.auth.inlineSignup.backToPhoneSocial")}
           </button>
           {!signupEmailOtpSent ? (
             <>
               <div className="mb-4">
-                <Label className={labelClass}>Email</Label>
+                <Label className={labelClass}>{t("web.auth.inlineSignup.email")}</Label>
                 <Input
                   type="email"
                   className={`${fieldClass} h-12`}
-                  placeholder="you@example.com"
+                  placeholder={t("web.auth.inlineSignup.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -1099,7 +1100,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {supportedLanguages.map((lang) => (
+                    {visibleLanguages.map((lang) => (
                       <SelectItem key={lang.code} value={lang.code}>
                         {lang.nativeName}
                       </SelectItem>
@@ -1109,7 +1110,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               </div>
               <div className="mb-4">
                 <Label className={labelClass}>
-                  {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+{t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">{t("web.auth.inlineSignup.optional")}</span>
                 </Label>
                 <Select
                   value={signupSource ?? RADIX_SELECT_NONE}
@@ -1141,13 +1142,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   id="signup-terms-email-otp-text"
                   className="text-xs text-gray-600 cursor-pointer leading-relaxed"
                 >
-                  I have read and agree to the{" "}
+                  {t("web.auth.inlineSignup.agreePrefix")}{" "}
                   <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                    Terms of Service
+                    {t("web.auth.inlineSignup.termsOfService")}
                   </Link>{" "}
-                  and{" "}
+                  {t("web.auth.inlineSignup.and")}{" "}
                   <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                    Privacy Policy
+                    {t("web.auth.inlineSignup.privacyPolicy")}
                   </Link>
                   .
                 </label>
@@ -1158,20 +1159,20 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onCheckedChange={setMarketingConsent}
               />
               <p className="text-xs text-gray-500 mb-4">
-                We&apos;ll send a {SUPABASE_AUTH_OTP_LENGTH}-digit code to your inbox (not a magic link).
+                {t("web.auth.inlineSignup.emailOtpInboxHint", { digits: SUPABASE_AUTH_OTP_LENGTH })}
               </p>
               <Button
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
                 onClick={() => void handleEmailSendSignupOtp()}
                 disabled={isLoading || !email?.trim() || !agreeTerms}
               >
-                {isLoading ? "Sending…" : "Send email code"}
+{isLoading ? t("web.auth.inlineSignup.sendingEllipsis") : t("web.auth.inlineSignup.sendEmailCode")}
               </Button>
             </>
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-gray-600">
-                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                {t("web.auth.inlineSignup.enterCodeSentTo", { digits: SUPABASE_AUTH_OTP_LENGTH })}{" "}
                 <span className="font-semibold text-gray-900">{sentEmailSignupOtp}</span>
               </p>
               <OtpDigitInput
@@ -1182,7 +1183,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 }}
                 disabled={isLoading}
                 autoFocus
-                label="Email verification code"
+                label={t("web.auth.inlineSignup.emailOtpLabel")}
                 length={SUPABASE_AUTH_OTP_LENGTH}
               />
               <div className="flex items-center justify-end text-xs">
@@ -1193,10 +1194,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
                 >
                   {signupEmailResending
-                    ? "Resending..."
+                    ? t("web.auth.inlineSignup.resending")
                     : signupEmailResendCooldown > 0
-                      ? `Resend in ${signupEmailResendCooldown}s`
-                      : "Resend code"}
+                      ? t("web.auth.inlineSignup.resendInSeconds", { seconds: signupEmailResendCooldown })
+                      : t("web.auth.inlineSignup.resendCode")}
                 </button>
               </div>
               <Button
@@ -1204,7 +1205,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onClick={() => void handleVerifyEmailSignupOtp()}
                 disabled={isLoading || !isCompleteSupabaseSmsOtp(signupEmailOtpCode)}
               >
-                {isLoading ? "Verifying…" : "Verify & continue"}
+{isLoading ? t("web.auth.inlineSignup.verifying") : t("web.auth.inlineSignup.verifyAndContinue")}
               </Button>
               <button
                 type="button"
@@ -1217,7 +1218,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   setError(null);
                 }}
               >
-                Use a different email
+                {t("web.auth.inlineSignup.useDifferentEmail")}
               </button>
             </div>
           )}
@@ -1237,16 +1238,16 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               setError(null);
             }}
           >
-            ← Back to phone &amp; social
+            {t("web.auth.inlineSignup.backToPhoneSocial")}
           </button>
           {!showPasswordField && (
             <>
               <div className="mb-4">
-                <Label className={labelClass}>Email</Label>
+                <Label className={labelClass}>{t("web.auth.inlineSignup.email")}</Label>
                 <Input
                   type="email"
                   className={`${fieldClass} h-12`}
-                  placeholder="Email"
+                  placeholder={t("web.auth.inlineSignup.emailFieldPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
@@ -1260,7 +1261,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {supportedLanguages.map((lang) => (
+                    {visibleLanguages.map((lang) => (
                       <SelectItem key={lang.code} value={lang.code}>
                         {lang.nativeName}
                       </SelectItem>
@@ -1273,7 +1274,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onClick={handleEmailContinue}
                 disabled={isLoading || !email?.trim()}
               >
-                Continue
+                {t("web.auth.inlineSignup.continue")}
               </Button>
             </>
           )}
@@ -1282,12 +1283,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           {showPasswordField && (
             <>
               <div className="mb-4">
-                <Label className={labelClass}>Password</Label>
+                <Label className={labelClass}>{t("web.auth.inlineSignup.password")}</Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
-                    className={`${fieldClass} h-12 pr-10`}
-                    placeholder="Min. 8 characters"
+                    className={`${fieldClass} h-12 pe-10`}
+                    placeholder={t("web.auth.inlineSignup.passwordPlaceholder")}
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
@@ -1303,7 +1304,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 rounded p-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? t("web.auth.inlineSignup.hidePassword") : t("web.auth.inlineSignup.showPassword")}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
@@ -1319,9 +1320,9 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                       ))}
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      Strength: {getPasswordStrength(password).label}
+                      {t("web.auth.inlineSignup.strength", { label: t(`auth.${getPasswordStrength(password).labelKey}`) })}
                       {getPasswordStrength(password).score < 2 && password.length >= 8 && (
-                        <span className="text-amber-600"> — Add uppercase, numbers, or symbols</span>
+                        <span className="text-amber-600">{t("web.auth.inlineSignup.addComplexityHint")}</span>
                       )}
                     </p>
                   </div>
@@ -1329,7 +1330,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               </div>
               <div className="mb-4">
                 <Label className={labelClass}>
-                  {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+{t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">{t("web.auth.inlineSignup.optional")}</span>
                 </Label>
                 <Select
                   value={signupSource ?? RADIX_SELECT_NONE}
@@ -1357,13 +1358,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   aria-describedby="signup-terms-text"
                 />
                 <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
-                  I have read and agree to the{" "}
+                  {t("web.auth.inlineSignup.agreePrefix")}{" "}
                   <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                    Terms of Service
+                    {t("web.auth.inlineSignup.termsOfService")}
                   </Link>{" "}
-                  and{" "}
+                  {t("web.auth.inlineSignup.and")}{" "}
                   <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
-                    Privacy Policy
+                    {t("web.auth.inlineSignup.privacyPolicy")}
                   </Link>
                   .
                 </label>
@@ -1389,7 +1390,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 onClick={handleEmailAuth}
                 disabled={isLoading || !password || !agreeTerms}
               >
-                {isLoading ? "Creating account..." : "Sign up"}
+{isLoading ? t("web.auth.inlineSignup.creatingAccount") : t("web.auth.inlineSignup.signUp")}
               </Button>
               <div className="text-center space-y-2">
                 <button
@@ -1399,7 +1400,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   }}
                   className="block w-full text-sm text-gray-600 hover:text-gray-900 underline"
                 >
-                  Back
+                  {t("web.auth.inlineSignup.back")}
                 </button>
               </div>
             </>

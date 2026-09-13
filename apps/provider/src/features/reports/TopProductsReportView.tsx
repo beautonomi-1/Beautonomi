@@ -1,7 +1,9 @@
 /**
  * Top products by aggregated line revenue — same rules as GET …/products/top.
  */
+import { useCallback } from "react";
 import { View, Text } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { ReportPayloadView } from "@/features/reports/ReportPayloadView";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -36,16 +38,23 @@ function isTopProductsPayload(data: unknown): data is {
   );
 }
 
-const BASIS_LABELS: Record<string, string> = {
-  bookingLines: "Appointment lines",
-  orderLines: "Retail order lines",
-  revenue: "Line revenue",
-  ranking: "Ranking",
-  timesSold: "Line rows",
-  averages: "Average price",
+const BASIS_KEYS: Record<string, string> = {
+  bookingLines: "basisBookingLines",
+  orderLines: "basisOrderLines",
+  revenue: "basisRevenue",
+  ranking: "basisRanking",
+  timesSold: "basisTimesSold",
+  averages: "basisAverages",
 };
 
 export function TopProductsReportView({ data }: { data: unknown }) {
+  const { t } = useTranslation();
+  const tp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t("provider.mobile.screens.topProductsReport." + key, opts) as string,
+    [t],
+  );
+
   if (!isTopProductsPayload(data)) {
     return <ReportPayloadView data={data} />;
   }
@@ -65,29 +74,31 @@ export function TopProductsReportView({ data }: { data: unknown }) {
   return (
     <View style={twStyle("gap-5 pb-8")}>
       <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>
-        Facts & definitions
+        {tp("factsDefinitions")}
       </Text>
 
       {basis ? (
         <View style={twStyle("rounded-2xl border border-sky-100 bg-sky-50/95 px-4 py-3")}>
           <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-sky-900")}>
-            What this report counts
+            {tp("whatThisCounts")}
           </Text>
           <Text style={twStyle("mt-2 text-sm leading-5 text-sky-950")}>{basis}</Text>
           <View style={twStyle("mt-2 gap-1")}>
-            {tz ? <Text style={twStyle("text-xs text-sky-900/85")}>Timezone · {tz}</Text> : null}
-            {period ? <Text style={twStyle("text-xs text-sky-900/85")}>Window · {period}</Text> : null}
-            <Text style={twStyle("text-xs text-sky-900/85")}>List cap · top {lim} by revenue</Text>
+            {tz ? <Text style={twStyle("text-xs text-sky-900/85")}>{tp("timezone", { tz })}</Text> : null}
+            {period ? <Text style={twStyle("text-xs text-sky-900/85")}>{tp("window", { period })}</Text> : null}
+            <Text style={twStyle("text-xs text-sky-900/85")}>{tp("listCap", { limit: lim })}</Text>
           </View>
         </View>
       ) : null}
 
       {basisEntries.length > 0 ? (
         <View style={twStyle("rounded-2xl border border-violet-100 bg-violet-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>Definitions</Text>
+          <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-violet-900")}>{tp("definitions")}</Text>
           {basisEntries.map(([k, v]) => (
             <Text key={k} style={twStyle("mt-2 text-sm leading-5 text-violet-950")}>
-              <Text style={twStyle("font-medium")}>{BASIS_LABELS[k] ?? k} · </Text>
+              <Text style={twStyle("font-medium")}>
+                {tp("definitionLabel", { label: BASIS_KEYS[k] ? tp(BASIS_KEYS[k]) : k })}
+              </Text>
               {v}
             </Text>
           ))}
@@ -96,24 +107,24 @@ export function TopProductsReportView({ data }: { data: unknown }) {
 
       <View style={twStyle("flex-row flex-wrap gap-3")}>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-gray-100 bg-white px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-gray-600")}>Units (window)</Text>
+          <Text style={twStyle("text-xs font-medium text-gray-600")}>{tp("unitsWindow")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-gray-900")}>
             {data.totalProductsSold}
           </Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-gray-500")}>All SKUs with lines</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-gray-500")}>{tp("allSkusWithLines")}</Text>
         </View>
         <View style={twStyle("min-w-[140px] flex-1 rounded-2xl border border-emerald-100 bg-emerald-50/90 px-4 py-3")}>
-          <Text style={twStyle("text-xs font-medium text-emerald-900")}>Line revenue (window)</Text>
+          <Text style={twStyle("text-xs font-medium text-emerald-900")}>{tp("lineRevenueWindow")}</Text>
           <Text style={twStyle("mt-1 text-xl font-semibold tabular-nums text-emerald-950")}>
             {formatCurrency(data.totalRevenue)}
           </Text>
-          <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>Sum of line amounts</Text>
+          <Text style={twStyle("mt-1 text-[11px] leading-4 text-emerald-900/85")}>{tp("sumOfLineAmounts")}</Text>
         </View>
       </View>
 
-      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>Ranking</Text>
+      <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-500")}>{tp("ranking")}</Text>
       <Text style={twStyle("text-xs leading-5 text-gray-600")}>
-        timesSold = line rows per SKU (not bookings). Avg price = revenue ÷ units.
+        {tp("rankingHint")}
       </Text>
 
       {(data.topProducts ?? []).map((product, index) => (
@@ -134,10 +145,10 @@ export function TopProductsReportView({ data }: { data: unknown }) {
               </View>
               <View style={twStyle("flex-1 min-w-0")}>
                 <Text style={twStyle("font-medium text-gray-900")} numberOfLines={2}>
-                  {product.productName ?? "Product"}
+                  {product.productName ?? tp("productFallback")}
                 </Text>
                 <Text style={twStyle("text-xs text-gray-600 capitalize mt-0.5")}>
-                  {product.category ?? "Uncategorized"}
+                  {product.category ?? tp("uncategorized")}
                 </Text>
               </View>
             </View>
@@ -147,11 +158,14 @@ export function TopProductsReportView({ data }: { data: unknown }) {
               </Text>
             </View>
           </View>
-          <Text style={twStyle("mt-2 text-xs text-gray-600 pl-12")}>
-            {Number(product.totalQuantity ?? 0)} units · avg {formatCurrency(Number(product.averagePrice ?? 0))}
+          <Text style={twStyle("mt-2 text-xs text-gray-600 ps-12")}>
+            {tp("unitsAvg", {
+              units: Number(product.totalQuantity ?? 0),
+              avg: formatCurrency(Number(product.averagePrice ?? 0)),
+            })}
           </Text>
-          <Text style={twStyle("mt-1 text-xs text-gray-500 pl-12")}>
-            {Number(product.timesSold ?? 0)} line rows
+          <Text style={twStyle("mt-1 text-xs text-gray-500 ps-12")}>
+            {tp("lineRows", { count: Number(product.timesSold ?? 0) })}
           </Text>
         </View>
       ))}

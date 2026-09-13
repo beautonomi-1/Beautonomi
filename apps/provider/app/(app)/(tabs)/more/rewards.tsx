@@ -5,6 +5,7 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
+import { useTranslation } from "@beautonomi/i18n";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect } from "expo-router";
@@ -55,15 +56,22 @@ interface GamificationResponse {
   };
 }
 
-function formatDateSafe(value: unknown): string {
-  if (typeof value !== "string" || !value) return "—";
+function formatDateSafe(value: unknown, emptyLabel = "—"): string {
+  if (typeof value !== "string" || !value) return emptyLabel;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return "—";
+  if (!Number.isFinite(parsed.getTime())) return emptyLabel;
   return parsed.toLocaleDateString();
 }
 
 /** Content-only for use in Rewards hub (Points tab). */
 export function RewardsPointsContent() {
+  const { t } = useTranslation();
+  const rp = useCallback(
+    (key: string, opts?: Record<string, unknown>) =>
+      t(`provider.mobile.screens.rewardsPoints.${key}`, opts) as string,
+    [t],
+  );
+  const emptyDate = rp("emptyValue");
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
@@ -109,25 +117,25 @@ export function RewardsPointsContent() {
       showsVerticalScrollIndicator={false}
     >
       <View style={{ marginBottom: 24, flexDirection: "row" }}>
-          <View style={{ flex: 1, marginRight: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+          <View style={{ flex: 1, marginEnd: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#fef3c7" }}>
               <Ionicons name="trophy-outline" size={18} color="#f59e0b" />
             </View>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{points.total}</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Current points</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{rp("currentPoints")}</Text>
           </View>
           <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
             <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#d1fae5" }}>
               <Ionicons name="flash-outline" size={18} color="#10b981" />
             </View>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{points.lifetime}</Text>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Lifetime points</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{rp("lifetimePoints")}</Text>
           </View>
         </View>
 
         {badge && (
           <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: "#fef3c7", backgroundColor: "rgba(255,251,235,0.5)", padding: 16 }}>
-            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Current badge</Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{rp("currentBadge")}</Text>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View
                 style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: badge.color ? `${badge.color}30` : "#fef3c7", overflow: "hidden" }}
@@ -138,7 +146,7 @@ export function RewardsPointsContent() {
                   <Ionicons name="ribbon-outline" size={24} color={badge.color ?? "#f59e0b"} />
                 )}
               </View>
-              <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ marginStart: 12, flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{badge.name}</Text>
                 {badge.description ? (
                   <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
@@ -147,11 +155,12 @@ export function RewardsPointsContent() {
                 ) : null}
                 {badge.earned_at ? (
                   <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-                    Earned {formatDateSafe(badge.earned_at)}
-                    {badge.expires_at ? ` · Until ${formatDateSafe(badge.expires_at)}` : ""}
+                    {badge.expires_at
+                      ? rp("earnedUntil", { date: formatDateSafe(badge.earned_at, emptyDate), until: formatDateSafe(badge.expires_at, emptyDate) })
+                      : rp("earnedOn", { date: formatDateSafe(badge.earned_at, emptyDate) })}
                   </Text>
                 ) : badge.expires_at ? (
-                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Until {formatDateSafe(badge.expires_at)}</Text>
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{rp("until", { date: formatDateSafe(badge.expires_at, emptyDate) })}</Text>
                 ) : null}
               </View>
             </View>
@@ -164,22 +173,22 @@ export function RewardsPointsContent() {
             (typeof stats.rating_average === "number" && stats.rating_average > 0) ||
             (typeof stats.total_earnings === "number" && stats.total_earnings > 0)) && (
           <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
-            <Text style={{ marginBottom: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Activity</Text>
+            <Text style={{ marginBottom: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{rp("activity")}</Text>
             <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 }}>
               <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_bookings}</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Bookings</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rp("bookings")}</Text>
               </View>
               <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.review_count}</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Reviews</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rp("reviews")}</Text>
               </View>
               {typeof stats.rating_average === "number" && stats.rating_average > 0 && (
                 <View style={{ width: "50%", paddingHorizontal: 8, marginBottom: 16 }}>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                     {stats.rating_average.toFixed(1)}
                   </Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Avg rating</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rp("avgRating")}</Text>
                 </View>
               )}
               {typeof stats.total_earnings === "number" && stats.total_earnings > 0 && (
@@ -187,11 +196,11 @@ export function RewardsPointsContent() {
                   <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
                     {formatCurrency(stats.total_earnings)}
                   </Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Total earned</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{rp("totalEarned")}</Text>
                   {(stats.refund_deduction ?? 0) > 0 &&
                   typeof stats.net_earnings_after_refunds === "number" ? (
                     <Text style={{ fontSize: 11, color: Colors.gray[400], marginTop: 2 }} numberOfLines={1}>
-                      {formatCurrency(stats.net_earnings_after_refunds)} after refunds
+                      {rp("afterRefunds", { amount: formatCurrency(stats.net_earnings_after_refunds) })}
                     </Text>
                   ) : null}
                 </View>
@@ -200,8 +209,7 @@ export function RewardsPointsContent() {
                 (typeof stats.total_earnings !== "number" || stats.total_earnings <= 0) && (
                 <View style={{ width: "100%", paddingHorizontal: 8, marginBottom: 8 }}>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                    Earnings appear here once payments are recorded in your finance ledger (online
-                    and platform-held payments). Cash collected directly may not show in this total.
+                    {rp("earningsHint")}
                   </Text>
                 </View>
               )}
@@ -209,19 +217,19 @@ export function RewardsPointsContent() {
           </View>
         )}
 
-        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Recent points</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>{rp("recentPoints")}</Text>
         {transactions.length === 0 ? (
           <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 16 }}>
-            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>No point transactions yet.</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{rp("emptyTransactions")}</Text>
             <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[400] }}>
-              Complete bookings and get reviews to earn points.
+              {rp("emptyTransactionsHint")}
             </Text>
           </View>
         ) : (
           <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}>
-            {transactions.slice(0, 20).map((t, idx) => (
+            {transactions.slice(0, 20).map((txn, idx) => (
               <View
-                key={t.id}
+                key={txn.id}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -234,16 +242,16 @@ export function RewardsPointsContent() {
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
-                    {t.description ?? t.source ?? "Points"}
+                    {txn.description ?? txn.source ?? rp("pointsFallback")}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                    {formatDateSafe(t.created_at)}
+                    {formatDateSafe(txn.created_at, emptyDate)}
                   </Text>
                 </View>
                 <Text
-                  style={{ fontSize: 14, fontWeight: "600", color: Number(t.points) >= 0 ? "#059669" : Colors.gray[600] }}
+                  style={{ fontSize: 14, fontWeight: "600", color: Number(txn.points) >= 0 ? "#059669" : Colors.gray[600] }}
                 >
-                  {Number(t.points) >= 0 ? "+" : ""}{t.points}
+                  {Number(txn.points) >= 0 ? "+" : ""}{txn.points}
                 </Text>
               </View>
             ))}

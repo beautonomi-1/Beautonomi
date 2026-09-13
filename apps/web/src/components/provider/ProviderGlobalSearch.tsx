@@ -219,7 +219,7 @@ export function ProviderGlobalSearch({
           }}
           placeholder={placeholder}
           className={cn(
-            "pl-10 bg-gray-50 border-gray-200 w-full text-base md:text-sm",
+            "ps-10 bg-gray-50 border-gray-200 w-full text-base md:text-sm",
             inputClassName
           )}
           style={inputStyle}
@@ -257,7 +257,7 @@ export function ProviderGlobalSearch({
                 type="button"
                 onClick={() => handleSelect(suggestion)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors",
+                  "w-full flex items-center gap-3 px-4 py-3 text-start hover:bg-gray-50 transition-colors",
                   index === selectedIndex && "bg-gray-50"
                 )}
               >

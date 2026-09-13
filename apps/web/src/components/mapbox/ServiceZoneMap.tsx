@@ -5,6 +5,7 @@ import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config
 import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { Loader2, MapPin, Check } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface PlatformZone {
   id: string;
@@ -46,6 +47,7 @@ export default function ServiceZoneMap({
   editable = false,
   height = "500px",
 }: ServiceZoneMapProps) {
+  const { t } = useTranslation();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const popupsRef = useRef<any[]>([]);
@@ -95,7 +97,7 @@ export default function ServiceZoneMap({
           if (providerLocation) {
             new mapboxgl.Marker({ color: "#FF0077" })
               .setLngLat([providerLocation.longitude, providerLocation.latitude])
-              .setPopup(new mapboxgl.Popup().setHTML("<b>Your Location</b>"))
+              .setPopup(new mapboxgl.Popup().setHTML(`<b>${t("web.mapbox.serviceZone.yourLocation")}</b>`))
               .addTo(mapInstance);
           }
 
@@ -171,11 +173,11 @@ export default function ServiceZoneMap({
                   const badge = document.createElement("span");
                   badge.style.cssText =
                     "display:inline-flex;align-items:center;gap:4px;background:#d1fae5;color:#065f46;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px";
-                  badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Joined`;
+                  badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> ${t("web.mapbox.serviceZone.joined")}`;
                   content.appendChild(badge);
                 } else if (editable && onZoneSelect) {
                   const btn = document.createElement("button");
-                  btn.textContent = "Select this zone";
+                  btn.textContent = t("web.mapbox.serviceZone.selectThisZone");
                   btn.style.cssText =
                     "background:#FF0077;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%";
                   btn.onmouseenter = () => { btn.style.background = "#D60565"; };
@@ -189,7 +191,7 @@ export default function ServiceZoneMap({
                 } else {
                   const note = document.createElement("p");
                   note.style.cssText = "font-size:11px;color:#64748b;margin:0";
-                  note.textContent = "Platform coverage area";
+                  note.textContent = t("web.mapbox.serviceZone.platformCoverage");
                   content.appendChild(note);
                 }
 
@@ -266,7 +268,7 @@ export default function ServiceZoneMap({
         });
       } catch (error: any) {
         console.error("Failed to initialize ServiceZoneMap:", error);
-        toast.error("Failed to load map. Please check Mapbox configuration.");
+        toast.error(t("web.mapbox.serviceZone.loadFailed"));
         setIsLoading(false);
       }
     };
@@ -280,7 +282,7 @@ export default function ServiceZoneMap({
       popupsRef.current = [];
       if (mapInstance) mapInstance.remove();
     };
-  }, [zones, providerLocation, editable]);
+  }, [zones, providerLocation, editable, t]);
 
   return (
     <div className="relative" style={{ height }}>
@@ -300,12 +302,12 @@ export default function ServiceZoneMap({
           <ul className="space-y-1">
             <li className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "rgba(255,0,119,0.5)", border: "1.5px solid #D60565" }} />
-              <span className="text-slate-700">Available zones</span>
+              <span className="text-slate-700">{t("web.mapbox.serviceZone.availableZones")}</span>
             </li>
             {selectedSet.size > 0 && (
               <li className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "rgba(5,150,105,0.4)", border: "1.5px solid #047857" }} />
-                <span className="text-slate-700">Joined zones</span>
+                <span className="text-slate-700">{t("web.mapbox.serviceZone.joinedZones")}</span>
               </li>
             )}
           </ul>
@@ -318,13 +320,13 @@ export default function ServiceZoneMap({
           {selectedSet.size > 0 && (
             <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm">
               <Check className="h-3 w-3" />
-              {selectedSet.size} zone{selectedSet.size > 1 ? "s" : ""} joined
+              {t("web.mapbox.serviceZone.zonesJoined", { count: selectedSet.size })}
             </div>
           )}
           {selectingId && (
             <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Joining zone…
+              {t("web.mapbox.serviceZone.joiningZone")}
             </div>
           )}
         </div>
@@ -333,8 +335,8 @@ export default function ServiceZoneMap({
       {!isLoading && zones.length === 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg bg-slate-50/90">
           <MapPin className="h-7 w-7 text-slate-400" />
-          <p className="text-sm font-medium text-slate-600">No coverage zones available yet</p>
-          <p className="text-xs text-slate-500">Check back once markets have been published.</p>
+          <p className="text-sm font-medium text-slate-600">{t("web.mapbox.serviceZone.noCoverage")}</p>
+          <p className="text-xs text-slate-500">{t("web.mapbox.serviceZone.noCoverageHint")}</p>
         </div>
       )}
     </div>

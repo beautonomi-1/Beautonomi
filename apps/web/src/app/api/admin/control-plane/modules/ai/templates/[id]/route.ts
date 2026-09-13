@@ -22,6 +22,7 @@ export async function PATCH(
       template,
       system_instructions,
       output_schema,
+      model_id,
     } = body;
 
     const supabase = getSupabaseAdmin();
@@ -33,6 +34,7 @@ export async function PATCH(
     if (template !== undefined) updates.template = String(template);
     if (system_instructions !== undefined) updates.system_instructions = String(system_instructions);
     if (output_schema !== undefined) updates.output_schema = output_schema ?? {};
+    if (model_id !== undefined) updates.model_id = model_id ? String(model_id) : null;
 
     const { data, error } = await supabase
       .from("ai_prompt_templates")

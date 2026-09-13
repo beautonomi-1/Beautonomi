@@ -1,6 +1,9 @@
+"use client";
+
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { useTranslation } from "@beautonomi/i18n";
 
 interface NotificationModalProps {
   isOpen: boolean;
@@ -10,6 +13,7 @@ interface NotificationModalProps {
 }
 
 const NotificationModal = ({ isOpen, onClose, title, description }: NotificationModalProps) => {
+  const { t } = useTranslation();
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -23,19 +27,19 @@ const NotificationModal = ({ isOpen, onClose, title, description }: Notification
           <p className="text-sm text-gray-500">{description}</p>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="font-medium">Email</span>
+              <span className="font-medium">{t("web.accountSettings.notifications.email")}</span>
               <Switch />
             </div>
             <div className="flex items-center justify-between">
-              <span className="font-medium">SMS</span>
+              <span className="font-medium">{t("web.accountSettings.notifications.sms")}</span>
               <Switch />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-medium">Browser notifications</span>
+                <span className="font-medium">{t("web.accountSettings.notifications.browserNotifications")}</span>
                 <Switch />
               </div>
-              <p className="text-sm text-gray-500">Push notifications are off. To enable this feature, turn on notifications.</p>
+              <p className="text-sm text-gray-500">{t("web.accountSettings.notifications.pushOffModal")}</p>
             </div>
           </div>
         </div>

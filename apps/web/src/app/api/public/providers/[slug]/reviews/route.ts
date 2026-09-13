@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
  * GET /api/public/providers/[slug]/reviews
@@ -142,6 +144,9 @@ export async function GET(
       return /anon/i.test(value.trim());
     };
 
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+
     const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; provider_response?: string | null; provider_response_at?: string | null; users?: { id?: string; full_name?: string; avatar_url?: string; email?: string } | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }> | null }) => {
       const userRaw = review.users;
       const user = userRaw == null ? {} : (Array.isArray(userRaw) ? userRaw[0] : userRaw) as { id?: string; full_name?: string; avatar_url?: string; email?: string };
@@ -164,7 +169,7 @@ export async function GET(
         },
         reviewerName,
         reviewerInitial,
-        date: new Date(review.created_at).toLocaleString("en-US", {
+        date: new Date(review.created_at).toLocaleString(intlLocale, {
           weekday: "short",
           year: "numeric",
           month: "short",

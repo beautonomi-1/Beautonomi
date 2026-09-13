@@ -360,7 +360,7 @@ export const getPublicProviderDetail = cache(
 const PROVIDER_SELECT = `
   id, slug, business_name, business_type, description,
   rating_average, review_count, thumbnail_url, avatar_url,
-  gallery, is_featured, is_verified, currency,
+  gallery, is_featured, is_verified, currency, timezone,
   years_in_business, website,
   accepts_custom_requests,
   offers_mobile_services,
@@ -368,6 +368,74 @@ const PROVIDER_SELECT = `
   response_rate, response_time_hours, languages_spoken,
   user_id, users(include_in_search_engines)
 `;
+
+export type PublicProviderBookingSeedLocation = {
+  id: string;
+  name: string;
+  address_line1: string;
+  city: string;
+  country: string;
+  is_primary?: boolean;
+  location_type?: "salon" | "base";
+};
+
+export type PublicProviderBookingSeed = {
+  id: string;
+  slug: string;
+  business_name: string;
+  timezone: string | null;
+  locations: PublicProviderBookingSeedLocation[];
+};
+
+/**
+ * Lightweight public seed for `/book/[slug]` — provider identity + salon/base
+ * locations. Street/geo are omitted (same disclosure as anon profile).
+ */
+export const getPublicProviderBookingSeed = cache(async (slug: string): Promise<PublicProviderBookingSeed | null> => {
+  try {
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolvePublicProfileTenantId();
+    let decodedSlug: string;
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch {
+      decodedSlug = slug;
+    }
+
+    let providerRow = await resolveProvider(supabase, decodedSlug, slug, tenantId);
+    if (!providerRow && isUnmappedPreviewOrDevHost(await getServerHost())) {
+      providerRow = await resolveProviderAcrossTenants(supabase, decodedSlug, slug);
+    }
+    if (!providerRow) return null;
+
+    const { data: locationRows } = await supabase
+      .from("provider_locations")
+      .select("id, name, city, country, is_primary, location_type, is_active")
+      .eq("provider_id", providerRow.id)
+      .eq("is_active", true);
+
+    const locations: PublicProviderBookingSeedLocation[] = (locationRows ?? []).map((loc) => ({
+      id: String(loc.id),
+      name: typeof loc.name === "string" && loc.name.trim() ? loc.name.trim() : "Location",
+      address_line1: "",
+      city: typeof loc.city === "string" ? loc.city : "",
+      country: typeof loc.country === "string" ? loc.country : "",
+      is_primary: Boolean(loc.is_primary),
+      location_type: loc.location_type === "base" ? "base" : "salon",
+    }));
+
+    return {
+      id: providerRow.id,
+      slug: providerRow.slug,
+      business_name: providerRow.business_name || "Provider",
+      timezone: typeof providerRow.timezone === "string" ? providerRow.timezone : null,
+      locations,
+    };
+  } catch (error) {
+    console.error("getPublicProviderBookingSeed error:", error);
+    return null;
+  }
+});
 
 async function resolveProvider(
   supabase: ReturnType<typeof getSupabaseAdmin>,
