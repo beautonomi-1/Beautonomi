@@ -3,7 +3,7 @@ name: Build Provider (Development)
 on:
   push:
     branches:
-      - development
+      - develop
     paths:
       - apps/provider/**
 

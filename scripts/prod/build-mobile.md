@@ -64,7 +64,7 @@ Use `--profile preview` or `--profile development` from `eas.json` as needed.
 2. **Link repo per project:** In [expo.dev](https://expo.dev) → Customer project → Project settings → GitHub → link this repo with **Base directory** `apps/customer`. Repeat for Provider with **Base directory** `apps/provider`.
 3. **Auto-builds:** Workflows in `.eas/workflows/` trigger builds on push:
    - Push to `main` (and changes under the app folder) → production build.
-   - Push to `development` (and changes under the app folder) → development build.
+   - Push to `develop` (and changes under the app folder) → development build.
 4. **Manual:** You can also use “Build from GitHub” on the project’s Builds page and pick branch/profile.
 
 ## EAS Secrets (env for builds)

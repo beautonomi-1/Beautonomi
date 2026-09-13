@@ -3,7 +3,7 @@ name: Build Customer (Development)
 on:
   push:
     branches:
-      - development
+      - develop
     paths:
       - apps/customer/**
 
